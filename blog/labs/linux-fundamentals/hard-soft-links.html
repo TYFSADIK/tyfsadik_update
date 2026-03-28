@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Working with Links (Hard & Symbolic) | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>Working with Links (Hard & Symbolic)</span></nav>
+    <div class="page-header">
+      <h1>Working with Links (Hard & Symbolic)</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Linux Fundamentals</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">ln</span><span class="tag">ls -l</span><span class="tag">inode</span><span class="tag">readlink</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Create hard links and symbolic links, understand the difference in how they reference data, and know when to use each.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>ln</code></li><li><code>ls -l</code></li><li><code>inode</code></li><li><code>readlink</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>ln source hardlink</code></div><div class='command'><code>ln -s target symlink</code></div><div class='command'><code>ls -li file</code></div><div class='command'><code>readlink -f symlink</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+graph LR
+    subgraph Hard Link
+      HL[hardlink] -->|points to| IN1[inode 42\ndata blocks]
+      F1[original] -->|points to| IN1
+    end
+    subgraph Symbolic Link
+      SL[symlink] -->|points to path| F2[original]
+      F2 -->|points to| IN2[inode 99\ndata blocks]
+    end
+    style IN1 fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style IN2 fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style SL fill:#181818,stroke:#ffd700,color:#ffd700
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Understand Inodes</strong>
+        <p>Every file has an inode — a data structure holding metadata. Hard links share an inode. Symlinks store a path string.</p>
+        <pre><code># View inode numbers
+ls -li /etc/hosts
+# See link count
+stat /etc/hosts</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Create a Hard Link</strong>
+        <p>Hard links are additional directory entries pointing to the same inode. Deleting the original doesn't remove data while any hard link exists.</p>
+        <pre><code>echo 'test data' > original.txt
+ln original.txt hardlink.txt
+ls -li original.txt hardlink.txt  # same inode!
+rm original.txt
+cat hardlink.txt  # still works</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Create a Symbolic Link</strong>
+        <p>Symlinks store the path to the target. They break if the target is moved or deleted.</p>
+        <pre><code>ln -s /var/log/syslog ~/syslog_link
+ls -l ~/syslog_link        # shows -> target
+readlink -f ~/syslog_link  # resolve full path
+ln -s /etc/nginx/nginx.conf nginx.conf</code></pre>
+        <div class="mermaid">
+stateDiagram-v2
+    [*] --> Created: ln -s target link
+    Created --> Valid: Target exists
+    Created --> Broken: Target missing
+    Valid --> Broken: Target deleted/moved
+    Broken --> Valid: Target restored
+</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <div class="step-body">
+        <strong>Compare Behaviour</strong>
+        <p>Test what happens when the original is deleted for each link type.</p>
+        <pre><code># Hard link survives original deletion
+rm original.txt && cat hardlink.txt  # OK
+
+# Symlink breaks
+rm target.txt
+ls -l symlink.txt  # shows in red (broken)</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>Hard links cannot cross filesystem boundaries</li><li>Symbolic links to relative paths break if the link is moved</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Use symlinks for config file management (e.g. /etc/nginx/sites-enabled/)</li><li>Hard link count in ls -l tells you how many names point to the inode</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

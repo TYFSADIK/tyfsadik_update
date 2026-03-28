@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Startup Files & Shell Environment | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>Startup Files & Shell Environment</span></nav>
+    <div class="page-header">
+      <h1>Startup Files & Shell Environment</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Linux Fundamentals</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">~/.bashrc</span><span class="tag">~/.bash_profile</span><span class="tag">~/.profile</span><span class="tag">/etc/profile</span><span class="tag">login shell</span><span class="tag">non-login shell</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Understand the difference between login and non-login shells, which startup files run in each case, and how to correctly configure your shell environment.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>~/.bashrc</code></li><li><code>~/.bash_profile</code></li><li><code>~/.profile</code></li><li><code>/etc/profile</code></li><li><code>login shell</code></li><li><code>non-login shell</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>source ~/.bashrc</code></div><div class='command'><code>echo $BASH_VERSION</code></div><div class='command'><code>bash --login</code></div><div class='command'><code>bash --noprofile</code></div><div class='command'><code>type -a ls</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+sequenceDiagram
+    participant LS as Login Shell
+    participant NL as Non-Login Interactive
+    participant ETC as /etc/profile
+    participant BP as ~/.bash_profile
+    participant RC as ~/.bashrc
+    LS->>ETC: Source /etc/profile
+    ETC-->>LS: System vars set
+    LS->>BP: Source ~/.bash_profile
+    BP->>RC: Often sources ~/.bashrc
+    RC-->>BP: Aliases + functions
+    BP-->>LS: Profile complete
+    NL->>RC: Source ~/.bashrc directly
+    RC-->>NL: Aliases + functions
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Login vs Non-Login Shells</strong>
+        <p>A login shell runs when you SSH in or use su - user. A non-login interactive shell runs when you open a terminal emulator.</p>
+        <pre><code># Check if current shell is login
+echo $0          # login shells start with -
+# e.g.: -bash (login)  vs  bash (non-login)
+
+# Test: start explicit login shell
+bash --login
+
+# What ran at startup?
+bash -x --login 2>&1 | head -30</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Which File to Edit</strong>
+        <p>Put environment variables (export) in .bash_profile/.profile. Put aliases and functions in .bashrc.</p>
+        <pre><code># ~/.bash_profile – runs for LOGIN shells
+export PATH=$PATH:~/bin
+export EDITOR=vim
+
+# Bridge: source .bashrc from .bash_profile
+[ -f ~/.bashrc ] && source ~/.bashrc
+
+# ~/.bashrc – runs for INTERACTIVE non-login
+alias ll='ls -lah'
+export PS1='[\u@\h \W]\$ '</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Debugging Startup</strong>
+        <p>Use -x tracing to see exactly what runs during shell startup.</p>
+        <pre><code># Trace login shell startup
+bash -x --login 2>&1 | head -50
+
+# Find where a command is defined
+type -a ls
+type -a ll
+
+# Check all sourced files manually
+grep -r 'source\|\.' ~/.bash_profile ~/.bashrc 2>/dev/null</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>.bashrc is not sourced in login shells unless .bash_profile explicitly sources it</li><li>Breaking .bashrc with a syntax error can make new terminals fail to open</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>~/.profile is the POSIX-compatible alternative to .bash_profile</li><li>Always test .bashrc changes with source ~/.bashrc before opening a new terminal</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

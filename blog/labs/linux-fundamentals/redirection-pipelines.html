@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Redirection & Pipelines | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>Redirection & Pipelines</span></nav>
+    <div class="page-header">
+      <h1>Redirection & Pipelines</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-beginner">Beginner</span>
+        <span class="lab-category">Linux Fundamentals</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">redirect</span><span class="tag">pipe</span><span class="tag">></span><span class="tag">>></span><span class="tag">2></span><span class="tag">tee</span><span class="tag">xargs</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Control where command input and output goes using redirection operators and chain commands with pipes to build powerful one-liners.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>redirect</code></li><li><code>pipe</code></li><li><code>></code></li><li><code>>></code></li><li><code>2></code></li><li><code>tee</code></li><li><code>xargs</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>ls > list.txt</code></div><div class='command'><code>cmd 2>&1 | tee log.txt</code></div><div class='command'><code>find . | xargs grep pattern</code></div><div class='command'><code>cat /dev/null > clear.txt</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart LR
+    CMD[Command] -->|stdout fd=1| OUT[Output]
+    CMD -->|stderr fd=2| ERR[Error]
+    IN[Input] -->|stdin fd=0| CMD
+    OUT -->|>| FILE[File]
+    OUT -->|>>| APPEND[Append]
+    ERR -->|2>| EFILE[Error File]
+    ERR -->|2>&1| OUT
+    OUT -->|pipe| CMD2[Next Command]
+    style CMD fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style CMD2 fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Standard Streams</strong>
+        <p>Every process has 3 streams: stdin (0), stdout (1), stderr (2). Redirection controls where each goes.</p>
+        <pre><code># stdout to file (overwrite)
+ls /etc > filelist.txt
+# stdout append
+echo 'new line' >> log.txt
+# stderr to file
+cmd 2> errors.txt
+# both stdout and stderr
+cmd > all.txt 2>&1
+# discard output
+cmd > /dev/null 2>&1</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Pipes</strong>
+        <p>The | operator connects stdout of one command to stdin of the next. Chain multiple commands.</p>
+        <pre><code>ps aux | grep nginx          # filter processes
+cat /etc/passwd | cut -d: -f1 | sort
+du -h /var | sort -rh | head -20  # disk hogs
+history | awk '{print $2}' | sort | uniq -c | sort -rn | head</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>tee — Split Output</strong>
+        <p>tee reads stdin and writes to both stdout and a file simultaneously.</p>
+        <pre><code>make 2>&1 | tee build.log     # see + save
+tcpdump -i eth0 | tee capture.txt | grep 'ERROR'
+echo 'nameserver 8.8.8.8' | sudo tee -a /etc/resolv.conf</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <div class="step-body">
+        <strong>xargs — Build Command Arguments</strong>
+        <p>xargs converts stdin lines into arguments for another command.</p>
+        <pre><code>find . -name '*.log' | xargs rm
+find . -name '*.txt' | xargs grep 'ERROR'
+cat urls.txt | xargs -I{} curl -O {}
+# Handle spaces in filenames:
+find . -name '*.txt' -print0 | xargs -0 rm</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>2>&1 order matters — must come after the > or output goes to terminal</li><li>xargs without -0 breaks on filenames with spaces</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Use tee when you need both screen output and logging simultaneously</li><li>Process substitution <(cmd) lets you diff two command outputs</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>
