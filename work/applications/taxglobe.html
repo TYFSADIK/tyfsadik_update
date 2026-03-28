@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TaxGlobe | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link active">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+
+<main class="page-content">
+  <div class="container">
+
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Application</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>TaxGlobe</span>
+    </div>
+
+    <div class="page-header">
+      <h1>TaxGlobe</h1>
+      <p class="subtitle">Web app for calculating taxes across different Canadian jurisdictions</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2023</span>
+      <span class="meta-category">Application</span>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>TaxGlobe is a client-side web application that calculates Canadian income tax for a given gross income and province. The user enters their annual income and selects a province from a dropdown; the application calculates both federal and provincial taxes by iterating through 2023 marginal tax bracket data, producing a full breakdown showing: tax owed in each bracket, total federal tax, total provincial tax, combined tax, effective tax rate (as a percentage of gross income), and net take-home income. All calculation logic runs in the browser with no server round-trip. Results update in real time as the user types or changes the province selection, with floating-point currency values rounded correctly to two decimal places using <code>Math.round</code> arithmetic to avoid the binary representation errors that affect naive floating-point addition.</p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid">
+graph TD
+    subgraph Input["User Input"]
+        A["Income Input\nnumber field"]
+        B["Province Select\ndropdown"]
+    end
+
+    subgraph Engine["JavaScript Tax Engine"]
+        C["Federal Bracket Loop\n2023 CRA brackets\nMarginal rate accumulation"]
+        D["Provincial Bracket Loop\nPer-province bracket data\nMarginal rate accumulation"]
+        E["Totals Calculator\nTotal tax · Effective rate\nNet income"]
+    end
+
+    subgraph Output["Results Display"]
+        F["Federal Breakdown Table\nBracket · Rate · Tax Owed"]
+        G["Provincial Breakdown Table\nBracket · Rate · Tax Owed"]
+        H["Summary Card\nTotal Tax · Effective Rate · Net Income"]
+    end
+
+    A --> C
+    A --> D
+    B --> D
+    C --> E
+    D --> E
+    C --> F
+    D --> G
+    E --> H
+
+    style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style B fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style C fill:#181818,stroke:#1e1e1e,color:#888
+    style D fill:#181818,stroke:#1e1e1e,color:#888
+    style E fill:#181818,stroke:#1e1e1e,color:#888
+    style F fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style G fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style H fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="tech-stack">
+      <h2>Tech Stack</h2>
+      <ul>
+        <li><strong>Vanilla JavaScript</strong> — Complete tax calculation engine; bracket data encoded as JS objects; real-time DOM updates via <code>addEventListener('input')</code></li>
+        <li><strong>2023 Canadian Tax Bracket Data</strong> — Federal CRA brackets and all provincial bracket tables encoded as arrays of <code>{ min, max, rate }</code> objects</li>
+        <li><strong>HTML5</strong> — Form with <code>type="number"</code> income input and province <code>&lt;select&gt;</code>; results rendered into a structured table and summary card</li>
+        <li><strong>CSS3</strong> — Clean card layout for results; responsive grid for the breakdown tables; colour-coded effective rate display</li>
+      </ul>
+    </section>
+
+    <section id="build-process">
+      <h2>Build Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <strong>Research &amp; Encode 2023 Tax Bracket Data</strong>
+            <p>The 2023 federal and provincial tax brackets were researched from CRA publications and encoded as JavaScript data objects. Each bracket entry specifies the lower bound, upper bound (or <code>Infinity</code> for the top bracket), and the marginal rate as a decimal.</p>
+            <pre><code>// taxData.js — 2023 Canadian federal brackets
+const federalBrackets = [
+  { min: 0,       max: 53359,   rate: 0.15   },
+  { min: 53359,   max: 106717,  rate: 0.205  },
+  { min: 106717,  max: 165430,  rate: 0.26   },
+  { min: 165430,  max: 235675,  rate: 0.29   },
+  { min: 235675,  max: Infinity, rate: 0.33  },
+];
+
+// Ontario provincial brackets (example)
+const ontarioBrackets = [
+  { min: 0,       max: 49231,   rate: 0.0505 },
+  { min: 49231,   max: 98463,   rate: 0.0915 },
+  { min: 98463,   max: 150000,  rate: 0.1116 },
+  { min: 150000,  max: 220000,  rate: 0.1216 },
+  { min: 220000,  max: Infinity, rate: 0.1316 },
+];</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <strong>Marginal Tax Calculation Engine</strong>
+            <p>The core calculation function iterates through the bracket array. For each bracket, it computes the taxable amount within that bracket — the lesser of the income above the bracket floor and the bracket width — and multiplies by the marginal rate. Accumulated totals across all brackets give the total tax for that bracket set.</p>
+            <pre><code>function calcTax(income, brackets) {
+  let totalTax = 0;
+  const breakdown = [];
+
+  for (const bracket of brackets) {
+    if (income <= bracket.min) break;
+    const taxableInBracket = Math.min(income, bracket.max) - bracket.min;
+    const taxInBracket = taxableInBracket * bracket.rate;
+    totalTax += taxInBracket;
+    breakdown.push({
+      min:    bracket.min,
+      max:    bracket.max,
+      rate:   bracket.rate,
+      taxable: taxableInBracket,
+      tax:    taxInBracket,
+    });
+  }
+
+  return { totalTax, breakdown };
+}</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <strong>Effective Rate &amp; Net Income Calculation</strong>
+            <p>After running both the federal and provincial calculations, totals are combined and derived figures computed. Floating-point values are rounded to cents using <code>Math.round(value * 100) / 100</code> before display, preventing binary representation artefacts from showing incorrect cent values in the output.</p>
+            <pre><code>function calcSummary(income, province) {
+  const fed   = calcTax(income, federalBrackets);
+  const prov  = calcTax(income, provinceBrackets[province]);
+  const total = fed.totalTax + prov.totalTax;
+  const round = v => Math.round(v * 100) / 100;
+  return {
+    federalTax:    round(fed.totalTax),
+    provincialTax: round(prov.totalTax),
+    totalTax:      round(total),
+    effectiveRate: round((total / income) * 100),
+    netIncome:     round(income - total),
+    fedBreakdown:  fed.breakdown,
+    provBreakdown: prov.breakdown,
+  };
+}</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <strong>HTML Form: Income Input &amp; Province Select</strong>
+            <p>The form uses a <code>type="number"</code> input with <code>min="0"</code> and <code>step="1"</code> for the income field. The province dropdown is populated from the keys of the bracket data object, so adding a new province's data automatically adds it to the dropdown without modifying the HTML. Both inputs use <code>required</code> for HTML5 validation.</p>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <strong>CSS Results Card &amp; Breakdown Table</strong>
+            <p>Results are displayed in two sections: a summary card showing the headline figures (total tax, effective rate, net income) and two collapsible breakdown tables showing the per-bracket calculation for federal and provincial tax respectively. The effective rate is colour-coded — green for rates under 20%, amber for 20–30%, red for above 30%.</p>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">6</div>
+          <div class="step-body">
+            <strong>Real-Time Calculation on Input</strong>
+            <p>Both the income input and province select listen for <code>input</code> events. On each event, the calculation runs and the DOM is updated immediately — no submit button required. Input debouncing with a short timeout prevents excessive recalculation during rapid typing.</p>
+            <pre><code>let debounceTimer;
+[incomeInput, provinceSelect].forEach(el => {
+  el.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      const income = parseFloat(incomeInput.value);
+      const province = provinceSelect.value;
+      if (!isNaN(income) && income > 0 && province) {
+        renderResults(calcSummary(income, province));
+      }
+    }, 150);
+  });
+});</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Calculation Flow</h2>
+      <div class="mermaid">
+flowchart LR
+    A["User Enters Income\n+ Selects Province"] --> B["input event fires\n150ms debounce"]
+    B --> C["calcTax(income, federalBrackets)\nIterate brackets · Accumulate"]
+    B --> D["calcTax(income, provinceBrackets[province])\nIterate brackets · Accumulate"]
+
+    C --> E["Federal Total Tax\n+ Breakdown Array"]
+    D --> F["Provincial Total Tax\n+ Breakdown Array"]
+
+    E --> G["calcSummary()\nCombine totals\nMath.round to cents"]
+    F --> G
+
+    G --> H["renderResults()\nUpdate DOM"]
+
+    H --> I["Summary Card\nTotal · Effective Rate · Net"]
+    H --> J["Federal Breakdown Table\nPer-bracket rows"]
+    H --> K["Provincial Breakdown Table\nPer-bracket rows"]
+
+    style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style B fill:#181818,stroke:#1e1e1e,color:#888
+    style C fill:#181818,stroke:#1e1e1e,color:#888
+    style D fill:#181818,stroke:#1e1e1e,color:#888
+    style E fill:#181818,stroke:#1e1e1e,color:#888
+    style F fill:#181818,stroke:#1e1e1e,color:#888
+    style G fill:#181818,stroke:#1e1e1e,color:#888
+    style H fill:#181818,stroke:#1e1e1e,color:#888
+    style I fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style J fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style K fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <p><strong>Floating-Point Precision in Currency Calculations.</strong> JavaScript's IEEE 754 floating-point arithmetic causes notorious precision errors in currency calculations. For example, <code>0.1 + 0.2</code> produces <code>0.30000000000000004</code> in JavaScript. In a tax calculator, these errors accumulate across bracket additions and can produce results like <code>$15,234.999999</code> instead of <code>$15,235.00</code>. The solution was to apply <code>Math.round(value * 100) / 100</code> as a final step on all currency output values — this rounds to the nearest cent before display. For summing bracket tax values, the accumulation uses raw floats (where the error is negligible per bracket) and only rounds at the final output stage.</p>
+      <p><strong>Keeping Tax Bracket Data Accurate.</strong> Tax brackets change annually. Encoding them as static JavaScript data means the application will become stale after each tax year. The data structure was designed to make updates straightforward: each jurisdiction is a named key in the brackets object, and each bracket is a simple <code>{ min, max, rate }</code> object that mirrors the CRA table format directly. Adding or updating a province requires only editing the data object, not touching any calculation logic. A <code>// DATA VERSION: 2023</code> comment is placed prominently at the top of the data file to make staleness immediately visible.</p>
+    </section>
+
+    <section id="learnings">
+      <h2>What I Learned</h2>
+      <ul>
+        <li>How Canadian marginal tax brackets work in practice: income is taxed at each bracket's rate only on the portion that falls within that bracket, not on the entire income</li>
+        <li>Effective tax rate (total tax divided by gross income) versus marginal rate (the rate applied to the last dollar earned) — a common source of public confusion that good UI can clarify</li>
+        <li>IEEE 754 floating-point precision errors are real and unavoidable in JavaScript currency arithmetic; the correct mitigation is <code>Math.round(v * 100) / 100</code> at output time, not during accumulation</li>
+        <li>Input debouncing with <code>setTimeout</code>/<code>clearTimeout</code> prevents expensive operations from running on every keystroke and is the standard pattern for real-time input-driven computation</li>
+        <li>Encoding structured data (tax brackets) as clean JavaScript objects rather than inline HTML makes the data easy to update, test, and eventually replace with an API call</li>
+        <li>Separating calculation logic from rendering logic (pure <code>calcSummary()</code> function vs <code>renderResults()</code> function) makes both independently testable and reusable</li>
+      </ul>
+    </section>
+
+    <div class="tags">
+      <span class="tag">JavaScript</span>
+      <span class="tag">HTML5</span>
+      <span class="tag">CSS3</span>
+      <span class="tag">Tax Calculator</span>
+      <span class="tag">Financial App</span>
+      <span class="tag">Vanilla JS</span>
+    </div>
+
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>
