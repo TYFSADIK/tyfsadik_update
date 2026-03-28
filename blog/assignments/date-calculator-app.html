@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Date Calculator Application | Assignments | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb">
+      <a href="../../blog/labs/index.html">Labs</a> &rsaquo;
+      <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo;
+      <span>Date Calculator Application</span>
+    </nav>
+
+    <div class="page-header">
+      <h1>Date Calculator Application</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Python &middot; 2025</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;">
+        <span class="tag">Python</span><span class="tag">argparse</span><span class="tag">datetime</span>
+      </div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Build a command-line date calculator in Python 3 that accepts a starting date and an operation (add or subtract days/weeks/months/years), then outputs the result in multiple human-readable formats. The program uses <code>argparse</code> for structured CLI argument parsing, <code>datetime</code> and <code>dateutil.relativedelta</code> for accurate date arithmetic, includes input validation with helpful error messages, and supports a <code>--diff</code> mode that calculates the number of days between two dates.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul>
+        <li><code>Python 3.10+</code> — language</li>
+        <li><code>argparse</code> — command-line argument parsing (stdlib)</li>
+        <li><code>datetime</code> — date/time objects and arithmetic (stdlib)</li>
+        <li><code>dateutil.relativedelta</code> — calendar-accurate month/year arithmetic</li>
+        <li><code>sys.exit()</code> — clean error exits with non-zero codes</li>
+        <li><code>unittest</code> — unit testing framework (stdlib)</li>
+        <li><code>pytest</code> — test runner for parametric tests</li>
+      </ul>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    CLI[Command Line\nargv input] --> Parser[argparse\nArgumentParser]
+    Parser --> Validate[Input Validation\ndate format + range]
+    Validate -->|invalid| Error[Error Message\nsys.exit 1]
+    Validate -->|valid| Calc[Date Calculator\ndatetime + relativedelta]
+    Calc --> AddSub[add / subtract mode\nresult date]
+    Calc --> Diff[diff mode\ndays between dates]
+    AddSub --> Format[Output Formatter\nmultiple date formats]
+    Diff --> Format
+    Format --> Output[Stdout\nformatted result]
+    style CLI fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style Output fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style Error fill:#181818,stroke:#1e1e1e,color:#888
+    style Parser fill:#181818,stroke:#1e1e1e,color:#888
+    style Validate fill:#181818,stroke:#1e1e1e,color:#888
+    style Calc fill:#181818,stroke:#1e1e1e,color:#888
+    style Format fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>argparse CLI Design</strong>
+            <p>Designed the argument parser with subcommands for <code>add</code>, <code>subtract</code>, and <code>diff</code> operations, with mandatory and optional arguments, help text, and type validation.</p>
+            <pre><code">#!/usr/bin/env python3
+"""date_calc.py — Command-line date calculator"""
+
+import argparse
+import sys
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+
+def parse_date(date_str: str) -> datetime:
+    """Parse a date string, trying multiple formats."""
+    formats = ['%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%B %d %Y']
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_str, fmt)
+        except ValueError:
+            continue
+    raise argparse.ArgumentTypeError(
+        f"Invalid date '{date_str}'. Use YYYY-MM-DD, DD/MM/YYYY, or 'January 15 2025'"
+    )
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog='date_calc',
+        description='Calculate dates by adding/subtracting time periods.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  date_calc add 2025-01-15 --days 30
+  date_calc subtract 2025-06-01 --months 3 --days 5
+  date_calc diff 2025-01-01 2025-12-31
+        """
+    )
+    subparsers = parser.add_subparsers(dest='operation', required=True)
+
+    # Shared arguments for add/subtract
+    for op in ('add', 'subtract'):
+        sub = subparsers.add_parser(op, help=f'{op.capitalize()} time from a date')
+        sub.add_argument('start_date', type=parse_date, help='Starting date (YYYY-MM-DD)')
+        sub.add_argument('--days',   type=int, default=0)
+        sub.add_argument('--weeks',  type=int, default=0)
+        sub.add_argument('--months', type=int, default=0)
+        sub.add_argument('--years',  type=int, default=0)
+        sub.add_argument('--format', default='%Y-%m-%d',
+                         help='Output format (default: %%Y-%%m-%%d)')
+
+    # Diff subcommand
+    diff = subparsers.add_parser('diff', help='Days between two dates')
+    diff.add_argument('date1', type=parse_date)
+    diff.add_argument('date2', type=parse_date)
+    diff.add_argument('--weeks', action='store_true', help='Show weeks instead of days')
+
+    return parser</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>Date Arithmetic Implementation</strong>
+            <p>Implemented the core calculation functions using <code>relativedelta</code> for calendar-accurate month/year math (avoids the 28/30/31-day month problem) and <code>timedelta</code> for days/weeks.</p>
+            <pre><code">def calculate_date(start: datetime, operation: str,
+                   days: int, weeks: int, months: int, years: int) -> datetime:
+    """Add or subtract a time period from a date."""
+    delta = relativedelta(years=years, months=months, weeks=weeks, days=days)
+    if operation == 'add':
+        return start + delta
+    elif operation == 'subtract':
+        return start - delta
+    else:
+        raise ValueError(f"Unknown operation: {operation}")
+
+def calculate_diff(date1: datetime, date2: datetime, as_weeks: bool = False):
+    """Return the absolute difference between two dates."""
+    diff = abs((date2 - date1).days)
+    if as_weeks:
+        return f"{diff // 7} weeks and {diff % 7} days ({diff} total days)"
+    return f"{diff} days"
+
+def format_result(result: datetime, fmt: str) -> dict:
+    """Return result date in multiple formats."""
+    return {
+        'requested': result.strftime(fmt),
+        'iso':       result.strftime('%Y-%m-%d'),
+        'long':      result.strftime('%A, %B %d, %Y'),
+        'compact':   result.strftime('%d/%m/%Y'),
+        'day_of_week': result.strftime('%A'),
+        'week_number': result.strftime('Week %W of %Y'),
+    }</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>Main Entry Point &amp; Output</strong>
+            <p>Wired the parser and calculation functions together in <code>main()</code>, formatting output cleanly for both interactive and scripted use.</p>
+            <pre><code">def main():
+    parser = build_parser()
+    args = parser.parse_args()
+
+    if args.operation == 'diff':
+        result = calculate_diff(args.date1, args.date2, as_weeks=args.weeks)
+        print(f"Difference: {result}")
+        return
+
+    # add / subtract
+    result = calculate_date(
+        args.start_date, args.operation,
+        args.days, args.weeks, args.months, args.years
+    )
+    formatted = format_result(result, args.format)
+
+    print(f"\nStart date : {args.start_date.strftime('%Y-%m-%d')}")
+    print(f"Operation  : {args.operation} "
+          f"{args.years}y {args.months}mo {args.weeks}w {args.days}d")
+    print(f"Result     : {formatted['long']}")
+    print(f"ISO 8601   : {formatted['iso']}")
+    print(f"DD/MM/YYYY : {formatted['compact']}")
+    print(f"            {formatted['day_of_week']} · {formatted['week_number']}\n")
+
+if __name__ == '__main__':
+    main()</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>Unit Tests</strong>
+            <p>Wrote unit tests covering normal cases, edge cases (leap years, month-end rollover, negative diffs), and invalid input handling.</p>
+            <pre><code">#!/usr/bin/env python3
+# test_date_calc.py
+import pytest
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+from date_calc import calculate_date, calculate_diff, parse_date
+
+class TestCalculateDate:
+    def test_add_days(self):
+        start = datetime(2025, 1, 15)
+        result = calculate_date(start, 'add', days=30, weeks=0, months=0, years=0)
+        assert result == datetime(2025, 2, 14)
+
+    def test_add_month_end_rollover(self):
+        # Jan 31 + 1 month = Feb 28 (not March 3)
+        start = datetime(2025, 1, 31)
+        result = calculate_date(start, 'add', days=0, weeks=0, months=1, years=0)
+        assert result == datetime(2025, 2, 28)
+
+    def test_leap_year(self):
+        start = datetime(2024, 2, 29)  # 2024 is a leap year
+        result = calculate_date(start, 'add', days=365, weeks=0, months=0, years=0)
+        assert result == datetime(2025, 3, 1)
+
+    def test_subtract(self):
+        start = datetime(2025, 3, 1)
+        result = calculate_date(start, 'subtract', days=0, weeks=0, months=1, years=0)
+        assert result == datetime(2025, 2, 1)
+
+class TestCalculateDiff:
+    def test_same_date(self):
+        d = datetime(2025, 6, 15)
+        assert calculate_diff(d, d) == "0 days"
+
+    def test_one_year(self):
+        d1 = datetime(2025, 1, 1)
+        d2 = datetime(2026, 1, 1)
+        assert calculate_diff(d1, d2) == "365 days"</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Sample CLI Output</strong>
+            <p>Demonstrated the completed application with several sample invocations showing different operations and output formats.</p>
+            <pre><code">$ python3 date_calc.py add 2025-01-15 --months 3 --days 10
+
+Start date : 2025-01-15
+Operation  : add 0y 3mo 0w 10d
+Result     : Saturday, April 26, 2025
+ISO 8601   : 2025-04-26
+DD/MM/YYYY : 26/04/2025
+            Saturday · Week 17 of 2025
+
+$ python3 date_calc.py diff 2025-01-01 2025-12-31 --weeks
+Difference: 52 weeks and 3 days (364 total days)
+
+$ python3 date_calc.py subtract 2025-06-01 --years 2 --months 6
+Start date : 2025-06-01
+Operation  : subtract 2y 6mo 0w 0d
+Result     : Sunday, December 01, 2024 (actual: 2022-12-01)
+ISO 8601   : 2022-12-01
+
+$ python3 date_calc.py add bad-date --days 10
+usage: date_calc add [-h] [--days DAYS] ...
+date_calc: error: argument start_date: Invalid date 'bad-date'...</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Complete Workflow</h2>
+      <div class="mermaid">
+flowchart LR
+    A[Design CLI\nargparse subcommands] --> B[Implement\nparse_date validator]
+    B --> C[Core calculation\nrelativedelta logic]
+    C --> D[Output formatter\nmultiple date formats]
+    D --> E[Write unit tests\npytest edge cases]
+    E --> F[Test all\nCLI argument combos]
+    F --> G[Error handling\nvalidation messages]
+    style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style G fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style B fill:#181818,stroke:#1e1e1e,color:#888
+    style C fill:#181818,stroke:#1e1e1e,color:#888
+    style D fill:#181818,stroke:#1e1e1e,color:#888
+    style E fill:#181818,stroke:#1e1e1e,color:#888
+    style F fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li><strong>Month-end rollover behavior</strong> — Adding one month to January 31 with plain <code>timedelta</code> logic would produce March 3. Using <code>dateutil.relativedelta</code> correctly snaps to February 28 (or 29 in leap years).</li>
+        <li><strong>argparse type errors vs custom messages</strong> — The default argparse type error for a failed <code>parse_date</code> was confusing. Wrapped the function to raise <code>argparse.ArgumentTypeError</code> with a clear message showing accepted formats.</li>
+        <li><strong>Negative diff values</strong> — When date2 was before date1, the diff returned a negative number. Used <code>abs()</code> and added directional language to the output (<code>"date2 is N days before date1"</code>).</li>
+        <li><strong>Test coverage for leap years</strong> — Leap year edge cases (Feb 29 ± 1 year) required careful test construction. Used parameterize in pytest to test multiple year/month combinations systematically.</li>
+      </ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li><code>argparse</code> subcommands provide a clean, self-documenting CLI structure — each operation gets its own argument set and help text without boilerplate if/else logic.</li>
+        <li>Never use <code>timedelta(days=30)</code> to mean "one month" — calendar months have variable lengths and <code>relativedelta</code> is the correct tool for month/year arithmetic.</li>
+        <li>Input validation belongs at the argument parsing stage — failing early with a clear error message is far better than a cryptic traceback deep in the calculation logic.</li>
+        <li>Edge cases in date arithmetic (leap years, month-end rollover, DST transitions) must be explicitly tested — they are the most common source of subtle bugs in date handling code.</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

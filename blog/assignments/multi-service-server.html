@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multi-Service Linux Server Build | Assignments | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb">
+      <a href="../../blog/labs/index.html">Labs</a> &rsaquo;
+      <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo;
+      <span>Multi-Service Linux Server Build</span>
+    </nav>
+
+    <div class="page-header">
+      <h1>Multi-Service Linux Server Build</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Linux Server &middot; 2025</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;">
+        <span class="tag">SSH</span><span class="tag">Apache</span><span class="tag">DNS</span><span class="tag">Linux</span>
+      </div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Configure a single Ubuntu Server 22.04 LTS virtual machine to simultaneously host three critical network services: an OpenSSH server for secure remote administration, an Apache2 HTTP server for web content delivery, and a BIND9 DNS server for name resolution. The assignment required full deployment, firewall configuration with UFW, and end-to-end service verification from a separate client machine.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul>
+        <li><code>Ubuntu Server 22.04 LTS</code> — base operating system</li>
+        <li><code>OpenSSH Server</code> — secure shell remote access</li>
+        <li><code>Apache2</code> — HTTP web server</li>
+        <li><code>BIND9</code> — Berkeley Internet Name Domain DNS server</li>
+        <li><code>UFW</code> — Uncomplicated Firewall for port management</li>
+        <li><code>systemctl</code> — service lifecycle management</li>
+        <li><code>dig / nslookup</code> — DNS resolution verification</li>
+        <li><code>curl / wget</code> — HTTP connectivity testing</li>
+        <li><code>VirtualBox</code> — virtualization platform with host-only networking</li>
+      </ul>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    Client[Client Machine\n192.168.56.10] -->|SSH :22| Server
+    Client -->|HTTP :80| Server
+    Client -->|DNS :53| Server
+    Server[Ubuntu Server\n192.168.56.20]
+    Server --> SSH[sshd\nOpenSSH]
+    Server --> Web[apache2\nHTML/Virtual Hosts]
+    Server --> DNS[named\nBIND9 Forward Zone]
+    DNS --> Zone[lab.local zone\nA records]
+    style Client fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style Server fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style SSH fill:#181818,stroke:#1e1e1e,color:#888
+    style Web fill:#181818,stroke:#1e1e1e,color:#888
+    style DNS fill:#181818,stroke:#1e1e1e,color:#888
+    style Zone fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>Base System Preparation &amp; SSH Configuration</strong>
+            <p>Updated the system, installed OpenSSH, hardened the SSH daemon configuration, and set up key-based authentication for the admin user.</p>
+            <pre><code>sudo apt update && sudo apt upgrade -y
+sudo apt install -y openssh-server
+
+# Harden SSH config
+sudo nano /etc/ssh/sshd_config
+# Key settings:
+# PermitRootLogin no
+# PasswordAuthentication no
+# PubkeyAuthentication yes
+# Port 22
+# AllowUsers labadmin
+
+# Generate key pair on client, copy public key to server
+ssh-keygen -t ed25519 -C "lab-admin-key"
+ssh-copy-id labadmin@192.168.56.20
+
+sudo systemctl restart ssh
+sudo systemctl enable ssh
+sudo systemctl status ssh</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>Apache2 Web Server Deployment</strong>
+            <p>Installed Apache2, created a custom virtual host for the lab domain, deployed a test HTML page, and enabled necessary modules.</p>
+            <pre><code>sudo apt install -y apache2
+sudo systemctl enable apache2
+
+# Create virtual host config
+sudo nano /etc/apache2/sites-available/lab.local.conf</code></pre>
+            <pre><code>&lt;VirtualHost *:80&gt;
+    ServerName lab.local
+    ServerAlias www.lab.local
+    DocumentRoot /var/www/lab.local
+    ErrorLog ${APACHE_LOG_DIR}/lab-error.log
+    CustomLog ${APACHE_LOG_DIR}/lab-access.log combined
+&lt;/VirtualHost&gt;</code></pre>
+            <pre><code>sudo mkdir -p /var/www/lab.local
+echo "&lt;h1&gt;Lab Server Online&lt;/h1&gt;" | sudo tee /var/www/lab.local/index.html
+sudo a2ensite lab.local.conf
+sudo a2dissite 000-default.conf
+sudo apache2ctl configtest
+sudo systemctl reload apache2</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>BIND9 DNS Server Configuration</strong>
+            <p>Installed BIND9, created a forward zone for <code>lab.local</code>, added A records for the server hostname and service aliases, and configured the server to listen on its static IP.</p>
+            <pre><code>sudo apt install -y bind9 bind9utils bind9-doc
+
+# Edit named.conf.local to add zone
+sudo nano /etc/bind/named.conf.local</code></pre>
+            <pre><code>zone "lab.local" {
+    type master;
+    file "/etc/bind/zones/db.lab.local";
+};</code></pre>
+            <pre><code>sudo mkdir -p /etc/bind/zones
+sudo cp /etc/bind/db.local /etc/bind/zones/db.lab.local
+sudo nano /etc/bind/zones/db.lab.local</code></pre>
+            <pre><code>; db.lab.local
+$TTL    604800
+@   IN  SOA ns1.lab.local. admin.lab.local. (
+            2025010101  ; Serial
+            604800      ; Refresh
+            86400       ; Retry
+            2419200     ; Expire
+            604800 )    ; Negative TTL
+
+@       IN  NS  ns1.lab.local.
+ns1     IN  A   192.168.56.20
+server  IN  A   192.168.56.20
+www     IN  A   192.168.56.20</code></pre>
+            <pre><code>sudo named-checkconf
+sudo named-checkzone lab.local /etc/bind/zones/db.lab.local
+sudo systemctl enable bind9
+sudo systemctl restart bind9</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>UFW Firewall Rules</strong>
+            <p>Configured UFW to allow only the required service ports and denied all other inbound traffic by default.</p>
+            <pre><code>sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw allow 22/tcp comment 'SSH'
+sudo ufw allow 80/tcp comment 'HTTP'
+sudo ufw allow 53/tcp comment 'DNS TCP'
+sudo ufw allow 53/udp comment 'DNS UDP'
+sudo ufw enable
+sudo ufw status verbose</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>End-to-End Service Verification</strong>
+            <p>Tested all three services from the client machine, confirming SSH login, HTTP response, and DNS resolution all functioned correctly.</p>
+            <pre><code># SSH test
+ssh labadmin@192.168.56.20 "hostname && uptime"
+
+# HTTP test (point DNS at server first)
+curl -H "Host: lab.local" http://192.168.56.20/
+# Expected: &lt;h1&gt;Lab Server Online&lt;/h1&gt;
+
+# DNS test
+dig @192.168.56.20 www.lab.local A
+nslookup server.lab.local 192.168.56.20
+
+# Service status summary
+ssh labadmin@192.168.56.20 "systemctl is-active ssh apache2 bind9"</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Complete Workflow</h2>
+      <div class="mermaid">
+flowchart LR
+    A[Install Ubuntu Server] --> B[Configure Static IP\n192.168.56.20]
+    B --> C[Install &amp; Harden\nOpenSSH]
+    C --> D[Install Apache2\nCreate Virtual Host]
+    D --> E[Install BIND9\nCreate lab.local Zone]
+    E --> F[Configure UFW\nAllow 22/80/53]
+    F --> G[Verify from Client\nSSH + HTTP + DNS]
+    G --> H{All Tests Pass?}
+    H -->|yes| I[Assignment Complete]
+    H -->|no| J[Debug Service\nCheck Logs]
+    J --> G
+    style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style I fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style H fill:#181818,stroke:#1e1e1e,color:#888
+    style J fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li><strong>BIND9 refused to start</strong> — Zone file had a syntax error (missing trailing dot on SOA record). Fixed with <code>named-checkzone</code> which pinpointed the exact line.</li>
+        <li><strong>Apache virtual host not serving content</strong> — Default site was still enabled and overriding the lab.local vhost. Resolved with <code>a2dissite 000-default.conf</code>.</li>
+        <li><strong>DNS queries timing out through UFW</strong> — Initially only opened port 53/tcp. DNS primarily uses UDP; added <code>ufw allow 53/udp</code> to fix.</li>
+        <li><strong>SSH key authentication failing</strong> — Permissions on <code>~/.ssh/authorized_keys</code> were world-readable. Fixed with <code>chmod 600 ~/.ssh/authorized_keys</code>.</li>
+      </ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li>Running multiple services on one server requires careful firewall management — open only required ports per protocol (TCP vs UDP matters for DNS).</li>
+        <li>Always use <code>named-checkconf</code> and <code>named-checkzone</code> before restarting BIND9 — cryptic startup errors are almost always zone file syntax issues.</li>
+        <li>Key-based SSH authentication with <code>PasswordAuthentication no</code> is mandatory for any production or lab system exposed beyond localhost.</li>
+        <li>Apache virtual hosts must be explicitly enabled with <code>a2ensite</code> and the default site disabled to avoid routing conflicts.</li>
+        <li>Methodical service-by-service verification from a client machine is the only reliable way to confirm a multi-service deployment works end-to-end.</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

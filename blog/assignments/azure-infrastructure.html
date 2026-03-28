@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure Infrastructure Deployment | Assignments | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb">
+      <a href="../../blog/labs/index.html">Labs</a> &rsaquo;
+      <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo;
+      <span>Azure Infrastructure Deployment</span>
+    </nav>
+
+    <div class="page-header">
+      <h1>Azure Infrastructure Deployment</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-advanced">Advanced</span>
+        <span class="lab-category">Cloud &middot; 2025</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;">
+        <span class="tag">Azure</span><span class="tag">ARM</span><span class="tag">IaC</span>
+      </div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Deploy a complete Azure infrastructure using ARM (Azure Resource Manager) templates as Infrastructure as Code (IaC). The deployment includes a Virtual Network with three subnets (web, app, data), two Ubuntu Linux VMs in the web tier behind a load balancer, Network Security Groups with layered rules, a Bastion host for secure VM access, Azure Monitor with Log Analytics workspace, and diagnostic settings on all resources. The entire stack deploys from a single ARM template parameterized for reusability across dev, staging, and production environments.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul>
+        <li><code>Azure Resource Manager (ARM) templates</code> — JSON IaC format</li>
+        <li><code>Azure CLI (az deployment)</code> — template deployment</li>
+        <li><code>Azure Virtual Network</code> — network isolation and segmentation</li>
+        <li><code>Azure NSG</code> — network security groups with rule priority system</li>
+        <li><code>Azure Load Balancer (Standard)</code> — web tier high availability</li>
+        <li><code>Azure Bastion</code> — browser-based secure VM access</li>
+        <li><code>Azure Monitor + Log Analytics</code> — metrics and log aggregation</li>
+        <li><code>Azure Disk Encryption</code> — OS and data disk encryption</li>
+        <li><code>ARM template functions</code> — <code>resourceId()</code>, <code>parameters()</code>, <code>variables()</code></li>
+      </ul>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    Internet[Internet] --> LB[Azure Standard\nLoad Balancer]
+    LB --> Web1[web-vm-01\nUbuntu 22.04]
+    LB --> Web2[web-vm-02\nUbuntu 22.04]
+    Bastion[Azure Bastion\nAzureBastionSubnet] -->|HTTPS 443| Web1
+    Bastion -->|HTTPS 443| Web2
+    Web1 --> AppSN[App Subnet\n10.0.2.0/24]
+    Web2 --> AppSN
+    AppSN --> DataSN[Data Subnet\n10.0.3.0/24]
+    Web1 --> Monitor[Log Analytics\nWorkspace]
+    Web2 --> Monitor
+    NSG1[WebNSG\nAllow 80/443 in] --> Web1
+    NSG1 --> Web2
+    style Internet fill:#181818,stroke:#1e1e1e,color:#888
+    style LB fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style Web1 fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style Web2 fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style Bastion fill:#181818,stroke:#1e1e1e,color:#888
+    style AppSN fill:#181818,stroke:#1e1e1e,color:#888
+    style DataSN fill:#181818,stroke:#1e1e1e,color:#888
+    style Monitor fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style NSG1 fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>ARM Template Structure &amp; Parameters</strong>
+            <p>Designed the ARM template with a parameters file for environment-specific values, variables for derived names, and resources for each Azure service.</p>
+            <pre><code">{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environment": {
+      "type": "string",
+      "allowedValues": ["dev", "staging", "prod"],
+      "defaultValue": "dev"
+    },
+    "location": { "type": "string", "defaultValue": "[resourceGroup().location]" },
+    "vmSize":   { "type": "string", "defaultValue": "Standard_B2s" },
+    "adminUsername": { "type": "string" },
+    "adminPublicKey": { "type": "securestring" },
+    "vnetAddressPrefix": { "type": "string", "defaultValue": "10.0.0.0/16" }
+  },
+  "variables": {
+    "vnetName": "[concat('vnet-', parameters('environment'))]",
+    "webSubnet": "10.0.1.0/24",
+    "appSubnet": "10.0.2.0/24",
+    "dataSubnet": "10.0.3.0/24",
+    "bastionSubnet": "10.0.4.0/27",
+    "lbName": "[concat('lb-web-', parameters('environment'))]",
+    "logWorkspaceName": "[concat('law-', parameters('environment'), '-', uniqueString(resourceGroup().id))]"
+  }
+}</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>VNet, Subnets &amp; NSG Resources</strong>
+            <p>Defined the VNet resource with inline subnet declarations and separate NSG resources with security rules. NSG-to-subnet associations use the <code>dependsOn</code> property.</p>
+            <pre><code">{
+  "type": "Microsoft.Network/networkSecurityGroups",
+  "apiVersion": "2023-04-01",
+  "name": "nsg-web",
+  "location": "[parameters('location')]",
+  "properties": {
+    "securityRules": [
+      {
+        "name": "Allow-HTTP",
+        "properties": {
+          "priority": 100,
+          "protocol": "Tcp",
+          "access": "Allow",
+          "direction": "Inbound",
+          "sourceAddressPrefix": "Internet",
+          "sourcePortRange": "*",
+          "destinationAddressPrefix": "VirtualNetwork",
+          "destinationPortRange": "80"
+        }
+      },
+      {
+        "name": "Allow-HTTPS",
+        "properties": {
+          "priority": 110,
+          "protocol": "Tcp",
+          "access": "Allow",
+          "direction": "Inbound",
+          "sourceAddressPrefix": "Internet",
+          "sourcePortRange": "*",
+          "destinationAddressPrefix": "VirtualNetwork",
+          "destinationPortRange": "443"
+        }
+      },
+      {
+        "name": "Deny-All-Inbound",
+        "properties": {
+          "priority": 4096,
+          "protocol": "*",
+          "access": "Deny",
+          "direction": "Inbound",
+          "sourceAddressPrefix": "*",
+          "sourcePortRange": "*",
+          "destinationAddressPrefix": "*",
+          "destinationPortRange": "*"
+        }
+      }
+    ]
+  }
+}</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>Load Balancer &amp; VM Deployment</strong>
+            <p>Configured a Standard Load Balancer with frontend IP, backend pool, health probe, and load balancing rule. Both VMs are added to the backend pool via NIC IP configuration references.</p>
+            <pre><code"># ARM template excerpt for LB (simplified)
+# Full template uses resourceId() to wire all references
+
+# Health probe — HTTP GET /health on port 80
+"probes": [{
+  "name": "http-probe",
+  "properties": {
+    "protocol": "Http",
+    "port": 80,
+    "requestPath": "/health",
+    "intervalInSeconds": 15,
+    "numberOfProbes": 2
+  }
+}],
+
+# Load balancing rule
+"loadBalancingRules": [{
+  "name": "http-rule",
+  "properties": {
+    "frontendIPConfiguration": { "id": "[variables('lbFrontendId')]" },
+    "backendAddressPool":     { "id": "[variables('lbBackendId')]" },
+    "probe":                  { "id": "[variables('lbProbeId')]" },
+    "protocol": "Tcp",
+    "frontendPort": 80,
+    "backendPort": 80,
+    "enableFloatingIP": false,
+    "idleTimeoutInMinutes": 4
+  }
+}]</code></pre>
+            <pre><code"># Deploy the ARM template
+az deployment group create \
+  --resource-group rg-azure-infra-lab \
+  --template-file main.azuredeploy.json \
+  --parameters environment=dev \
+               adminUsername=azureadmin \
+               adminPublicKey="$(cat ~/.ssh/azure_lab.pub)"</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>Azure Monitor &amp; Diagnostic Settings</strong>
+            <p>Created a Log Analytics workspace and enabled diagnostic settings on the VNet, NSGs, Load Balancer, and VMs to forward all logs and metrics to the central workspace.</p>
+            <pre><code"># Create Log Analytics workspace
+az monitor log-analytics workspace create \
+  --resource-group rg-azure-infra-lab \
+  --workspace-name law-dev-lab \
+  --location canadacentral \
+  --sku PerGB2018 \
+  --retention-time 30
+
+LAW_ID=$(az monitor log-analytics workspace show \
+  --resource-group rg-azure-infra-lab \
+  --workspace-name law-dev-lab \
+  --query id -o tsv)
+
+# Enable diagnostic settings on NSG
+NSG_ID=$(az network nsg show --name nsg-web \
+  --resource-group rg-azure-infra-lab --query id -o tsv)
+
+az monitor diagnostic-settings create \
+  --name "diag-nsg-web" \
+  --resource $NSG_ID \
+  --workspace $LAW_ID \
+  --logs '[{"category":"NetworkSecurityGroupEvent","enabled":true},
+           {"category":"NetworkSecurityGroupRuleCounter","enabled":true}]'
+
+# Enable VM diagnostics via Azure Monitor agent
+az vm extension set \
+  --resource-group rg-azure-infra-lab \
+  --vm-name web-vm-01 \
+  --name AzureMonitorLinuxAgent \
+  --publisher Microsoft.Azure.Monitor \
+  --version 1.0</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Bastion &amp; Deployment Verification</strong>
+            <p>Deployed Azure Bastion in the dedicated subnet for browser-based VM access, then ran verification tests on all deployed resources.</p>
+            <pre><code"># Create Bastion (requires AzureBastionSubnet with /27 or larger)
+az network bastion create \
+  --name bastion-lab \
+  --resource-group rg-azure-infra-lab \
+  --vnet-name vnet-dev \
+  --location canadacentral \
+  --sku Basic
+
+# Verify deployment — check all resources exist
+az resource list --resource-group rg-azure-infra-lab \
+  --query "[].{Name:name, Type:type, Location:location}" \
+  --output table
+
+# Verify LB backend pool health
+az network lb show \
+  --resource-group rg-azure-infra-lab \
+  --name lb-web-dev \
+  --query "backendAddressPools[0].backendIPConfigurations[].id" \
+  --output table
+
+# Test HTTP through load balancer
+LB_IP=$(az network public-ip show \
+  --resource-group rg-azure-infra-lab \
+  --name pip-lb-web-dev --query ipAddress -o tsv)
+curl -v http://$LB_IP/</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Complete Workflow</h2>
+      <div class="mermaid">
+flowchart LR
+    A[Design Architecture\nDraw topology] --> B[Write ARM Template\nJSON + parameters]
+    B --> C[az deployment group\nvalidate --template]
+    C --> D[az deployment group\ncreate]
+    D --> E[Verify Resources\naz resource list]
+    E --> F[Enable Diagnostics\nLog Analytics]
+    F --> G[Test Connectivity\ncurl + Bastion SSH]
+    style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style G fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style B fill:#181818,stroke:#1e1e1e,color:#888
+    style C fill:#181818,stroke:#1e1e1e,color:#888
+    style D fill:#181818,stroke:#1e1e1e,color:#888
+    style E fill:#181818,stroke:#1e1e1e,color:#888
+    style F fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li><strong>ARM template deployment failing on NSG dependency</strong> — The VNet resource was referencing the NSG ID before the NSG resource was created. Added explicit <code>dependsOn</code> arrays to enforce correct creation order.</li>
+        <li><strong>Azure Bastion subnet too small</strong> — Bastion requires a <code>/27</code> or larger subnet named exactly <code>AzureBastionSubnet</code>. The initial <code>/29</code> subnet was rejected. Redeployed with a <code>/27</code> CIDR.</li>
+        <li><strong>Load balancer health probe failing</strong> — The VMs didn't have a web server installed at deployment time. The health probe path <code>/health</code> was returning 404. Added a cloud-init script to the VM resource to install and start Apache2 on first boot.</li>
+        <li><strong>Log Analytics workspace not receiving VM logs</strong> — The Azure Monitor Linux Agent extension was deployed but the Data Collection Rule (DCR) was not associated. Created a DCR and associated it with both VMs through the portal.</li>
+      </ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li>ARM templates' <code>dependsOn</code> arrays are critical for resources that reference each other — Azure deploys resources in parallel by default, which causes failures if dependencies aren't explicit.</li>
+        <li>Azure Bastion eliminates the need to expose SSH/RDP ports to the internet — it's the correct zero-trust access pattern for VM management in production environments.</li>
+        <li>Infrastructure as Code enables repeatable, version-controlled deployments — the same ARM template can deploy dev, staging, and prod environments with environment-specific parameter files.</li>
+        <li>Load balancer health probes should point to a dedicated health endpoint, not the root path — this allows for graceful draining of VMs during maintenance without affecting the health check.</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

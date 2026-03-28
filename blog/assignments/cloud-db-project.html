@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Database Cloud Deployment Project | Assignments | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb">
+      <a href="../../blog/labs/index.html">Labs</a> &rsaquo;
+      <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo;
+      <span>Database Cloud Deployment Project</span>
+    </nav>
+
+    <div class="page-header">
+      <h1>Database Cloud Deployment Project</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-advanced">Advanced</span>
+        <span class="lab-category">Databases &middot; 2025</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;">
+        <span class="tag">Azure SQL</span><span class="tag">Cloud</span><span class="tag">Security</span>
+      </div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Design, deploy, and secure an Azure SQL Database for a fictional inventory management system. The project covered relational schema design (normalized to 3NF), Azure SQL Server provisioning, firewall rule configuration, private endpoint setup, Azure Active Directory authentication, row-level security (RLS) implementation, automated backups with geo-redundancy, and performance monitoring with Query Performance Insight. All infrastructure was deployed using Azure CLI commands documented step-by-step.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul>
+        <li><code>Azure SQL Database</code> — managed PaaS relational database</li>
+        <li><code>Azure SQL Server</code> — logical server container</li>
+        <li><code>Azure CLI (az)</code> — command-line provisioning</li>
+        <li><code>Azure Private Endpoint</code> — private network database access</li>
+        <li><code>Azure Active Directory</code> — identity and access management</li>
+        <li><code>T-SQL</code> — schema design, RLS, stored procedures</li>
+        <li><code>Azure Defender for SQL</code> — threat detection and vulnerability assessment</li>
+        <li><code>sqlcmd / Azure Data Studio</code> — database connection and testing</li>
+        <li><code>Azure Monitor / Query Performance Insight</code> — performance analysis</li>
+      </ul>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    App[Application VM\nVNet: 10.1.0.0/16] -->|Private Endpoint\n10.1.1.100| SQL[Azure SQL Database\nInventoryDB]
+    Internet[Public Internet] -->|Firewall DENY\n0.0.0.0/0 blocked| SQL
+    Admin[DBA Workstation\nAAD Auth only] -->|AAD Token| SQL
+    SQL --> Backup[Geo-Redundant\nBackups\nEast US 2]
+    SQL --> Audit[Azure Monitor\nAudit Logs]
+    SQL --> Defender[Azure Defender\nThreat Detection]
+    style App fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style SQL fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style Internet fill:#181818,stroke:#1e1e1e,color:#888
+    style Admin fill:#181818,stroke:#1e1e1e,color:#888
+    style Backup fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style Audit fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style Defender fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>Database Schema Design (3NF)</strong>
+            <p>Designed a normalized inventory schema with five tables: Products, Categories, Suppliers, Inventory, and OrderHistory. Applied primary/foreign keys, constraints, and indexes.</p>
+            <pre><code">-- Schema: InventoryDB
+CREATE TABLE Categories (
+    category_id   INT           IDENTITY(1,1) PRIMARY KEY,
+    name          NVARCHAR(100) NOT NULL UNIQUE,
+    description   NVARCHAR(500)
+);
+
+CREATE TABLE Suppliers (
+    supplier_id   INT           IDENTITY(1,1) PRIMARY KEY,
+    name          NVARCHAR(200) NOT NULL,
+    contact_email NVARCHAR(200),
+    phone         NVARCHAR(20),
+    country       NVARCHAR(100) NOT NULL,
+    CONSTRAINT chk_email CHECK (contact_email LIKE '%@%')
+);
+
+CREATE TABLE Products (
+    product_id    INT           IDENTITY(1,1) PRIMARY KEY,
+    sku           NVARCHAR(50)  NOT NULL UNIQUE,
+    name          NVARCHAR(200) NOT NULL,
+    category_id   INT           NOT NULL REFERENCES Categories(category_id),
+    supplier_id   INT           NOT NULL REFERENCES Suppliers(supplier_id),
+    unit_price    DECIMAL(10,2) NOT NULL CHECK (unit_price &gt;= 0),
+    created_at    DATETIME2     DEFAULT GETUTCDATE()
+);
+
+CREATE TABLE Inventory (
+    inventory_id  INT  IDENTITY(1,1) PRIMARY KEY,
+    product_id    INT  NOT NULL REFERENCES Products(product_id),
+    warehouse     NVARCHAR(100) NOT NULL,
+    quantity      INT           NOT NULL CHECK (quantity &gt;= 0),
+    last_updated  DATETIME2     DEFAULT GETUTCDATE(),
+    CONSTRAINT uq_product_warehouse UNIQUE (product_id, warehouse)
+);
+
+-- Index for frequent inventory lookups by warehouse
+CREATE NONCLUSTERED INDEX IX_Inventory_Warehouse
+    ON Inventory(warehouse) INCLUDE (product_id, quantity);</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>Azure SQL Server &amp; Database Provisioning</strong>
+            <p>Used Azure CLI to provision the logical SQL Server and the database with the General Purpose tier, configured geo-redundant backups, and disabled public network access.</p>
+            <pre><code"># Variables
+RG="rg-inventory-db"
+LOCATION="canadacentral"
+SQL_SERVER="sql-inventory-lab"
+DB_NAME="InventoryDB"
+ADMIN_USER="sqladmin"
+
+# Create resource group
+az group create --name $RG --location $LOCATION
+
+# Create Azure SQL Server
+az sql server create \
+  --name $SQL_SERVER \
+  --resource-group $RG \
+  --location $LOCATION \
+  --admin-user $ADMIN_USER \
+  --admin-password "$(openssl rand -base64 32)"
+
+# Create database — General Purpose, 4 vCores
+az sql db create \
+  --resource-group $RG \
+  --server $SQL_SERVER \
+  --name $DB_NAME \
+  --service-objective GP_Gen5_4 \
+  --backup-storage-redundancy Geo \
+  --zone-redundant false
+
+# Disable public network access
+az sql server update \
+  --name $SQL_SERVER \
+  --resource-group $RG \
+  --set publicNetworkAccess=Disabled</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>Private Endpoint Configuration</strong>
+            <p>Created a private endpoint in the application VNet so the application VM connects to the database over a private IP, bypassing the public internet entirely.</p>
+            <pre><code"># Create Private Endpoint for Azure SQL
+VNET_NAME="vnet-app"
+SUBNET_NAME="snet-db-private"
+PE_NAME="pe-inventory-sql"
+SQL_ID=$(az sql server show --name $SQL_SERVER --resource-group $RG --query id -o tsv)
+
+# Disable private endpoint network policies on subnet
+az network vnet subnet update \
+  --name $SUBNET_NAME \
+  --vnet-name $VNET_NAME \
+  --resource-group $RG \
+  --disable-private-endpoint-network-policies true
+
+# Create private endpoint
+az network private-endpoint create \
+  --name $PE_NAME \
+  --resource-group $RG \
+  --vnet-name $VNET_NAME \
+  --subnet $SUBNET_NAME \
+  --private-connection-resource-id $SQL_ID \
+  --group-id sqlServer \
+  --connection-name "conn-inventory-sql"
+
+# Create Private DNS zone for SQL
+az network private-dns zone create \
+  --resource-group $RG \
+  --name "privatelink.database.windows.net"
+
+az network private-dns link vnet create \
+  --resource-group $RG \
+  --zone-name "privatelink.database.windows.net" \
+  --name "dns-link-inventory" \
+  --virtual-network $VNET_NAME \
+  --registration-enabled false</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>Row-Level Security Implementation</strong>
+            <p>Implemented Row-Level Security (RLS) so warehouse managers can only see inventory records for their assigned warehouse, while the DBA role has full visibility.</p>
+            <pre><code">-- Create application roles
+CREATE ROLE warehouse_manager;
+CREATE ROLE inventory_analyst;
+CREATE ROLE dba_role;
+
+-- Create a filter predicate function
+CREATE FUNCTION dbo.fn_warehouse_filter(@warehouse NVARCHAR(100))
+RETURNS TABLE
+WITH SCHEMABINDING
+AS
+RETURN SELECT 1 AS result
+WHERE @warehouse = USER_NAME()  -- username matches warehouse name
+   OR IS_MEMBER('dba_role') = 1
+   OR IS_MEMBER('inventory_analyst') = 1;
+
+-- Create RLS security policy
+CREATE SECURITY POLICY InventoryFilter
+ADD FILTER PREDICATE dbo.fn_warehouse_filter(warehouse)
+ON dbo.Inventory
+WITH (STATE = ON);
+
+-- Assign user to warehouse role
+-- Example: user 'warehouse_east' can only see EAST warehouse rows
+CREATE USER [warehouse_east@company.com] FROM EXTERNAL PROVIDER;
+ALTER ROLE warehouse_manager ADD MEMBER [warehouse_east@company.com];
+-- The username 'warehouse_east@company.com' maps to warehouse 'warehouse_east'
+-- via the filter predicate</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Azure Defender &amp; Audit Logging</strong>
+            <p>Enabled Azure Defender for SQL for vulnerability scanning and threat detection, configured audit logs to a storage account, and set up alerts for suspicious login activity.</p>
+            <pre><code"># Enable Azure Defender for SQL
+az sql server advanced-threat-protection-setting update \
+  --resource-group $RG \
+  --server $SQL_SERVER \
+  --state Enabled
+
+# Enable audit logging to storage account
+STORAGE_ID=$(az storage account show \
+  --name "stinventoryaudit" \
+  --resource-group $RG --query id -o tsv)
+
+az sql server audit-policy update \
+  --resource-group $RG \
+  --server $SQL_SERVER \
+  --state Enabled \
+  --storage-account "stinventoryaudit" \
+  --retention-days 90
+
+# Verify connectivity from app VM
+sqlcmd -S ${SQL_SERVER}.privatelink.database.windows.net \
+       -d $DB_NAME \
+       -G \  # Use AAD authentication
+       -Q "SELECT @@VERSION; SELECT TOP 5 name FROM sys.tables;"</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Complete Workflow</h2>
+      <div class="mermaid">
+flowchart LR
+    A[Schema Design\n3NF normalization] --> B[Azure SQL Server\naz sql server create]
+    B --> C[Database + Tier\nGP_Gen5_4 + Geo Backup]
+    C --> D[Disable Public\nNetwork Access]
+    D --> E[Private Endpoint\n+ DNS Zone]
+    E --> F[RLS Policy\nRow-Level Security]
+    F --> G[Defender + Audit\nLogging enabled]
+    G --> H[Connect + Test\nsqlcmd via Private EP]
+    style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style H fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style B fill:#181818,stroke:#1e1e1e,color:#888
+    style C fill:#181818,stroke:#1e1e1e,color:#888
+    style D fill:#181818,stroke:#1e1e1e,color:#888
+    style E fill:#181818,stroke:#1e1e1e,color:#888
+    style F fill:#181818,stroke:#1e1e1e,color:#888
+    style G fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li><strong>Private DNS zone not resolving the SQL FQDN</strong> — The private DNS zone was created but not linked to the application VNet. Added the VNet link with <code>az network private-dns link vnet create</code>.</li>
+        <li><strong>RLS filter predicate breaking analyst queries</strong> — The filter function was too restrictive, blocking the <code>inventory_analyst</code> role. Added <code>IS_MEMBER('inventory_analyst') = 1</code> to the predicate to allow read-all access for analysts.</li>
+        <li><strong>Azure Defender vulnerability scan showing false positives</strong> — The scan flagged the admin account name as a finding. Documented as a known lab artifact and added the baseline to suppress it in future scans using the Defender baseline feature.</li>
+        <li><strong>sqlcmd connection timeout through private endpoint</strong> — The NSG on the database subnet was blocking port 1433. Added an inbound rule allowing TCP 1433 from the application subnet CIDR.</li>
+      </ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li>Disabling public network access and routing all database connections through a private endpoint is the correct baseline for any production Azure SQL deployment — the performance cost is minimal and the security gain is substantial.</li>
+        <li>Row-Level Security allows multi-tenant data isolation at the database layer, which is more reliable than application-layer filtering that can be bypassed by bugs or privilege escalation.</li>
+        <li>Azure Private DNS zones require an explicit VNet link — creating the zone alone is not sufficient for private endpoint hostname resolution.</li>
+        <li>Azure Defender for SQL's vulnerability assessment establishes a baseline on first scan; subsequent runs compare against that baseline to surface new findings rather than re-reporting known configurations.</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

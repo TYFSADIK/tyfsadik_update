@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Incident Response Playbook | Assignments | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb">
+      <a href="../../blog/labs/index.html">Labs</a> &rsaquo;
+      <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo;
+      <span>Incident Response Playbook</span>
+    </nav>
+
+    <div class="page-header">
+      <h1>Incident Response Playbook</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-advanced">Advanced</span>
+        <span class="lab-category">Security &middot; 2025</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;">
+        <span class="tag">IR</span><span class="tag">Automation</span><span class="tag">SOAR</span>
+      </div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Design and implement an automated incident response playbook for three common security scenarios: SSH brute-force attack detection and containment, web application log anomaly detection (potential SQL injection), and unauthorized privilege escalation. Each playbook combines detection logic (log parsing + threshold rules), automated containment actions (firewall block, account suspension), evidence collection, and notification. The project demonstrates core SOAR (Security Orchestration, Automation and Response) concepts using Bash scripting and Linux native tools.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul>
+        <li><code>Bash</code> — playbook automation scripting</li>
+        <li><code>auditd + ausearch</code> — kernel-level event detection</li>
+        <li><code>journalctl / grep / awk</code> — log analysis and parsing</li>
+        <li><code>iptables</code> — automated IP blocking during containment</li>
+        <li><code>usermod / passwd -l</code> — account suspension commands</li>
+        <li><code>ss / lsof / ps</code> — live system state collection</li>
+        <li><code>tar / sha256sum</code> — evidence packaging and integrity</li>
+        <li><code>mail / curl</code> — alert notifications</li>
+        <li><code>inotifywait</code> — real-time file system event monitoring</li>
+      </ul>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    Detect[Detection Layer\nLog watchers + thresholds] --> Triage[Triage Script\nConfirm + classify incident]
+    Triage --> PB1[Playbook: SSH\nBrute Force]
+    Triage --> PB2[Playbook: Web\nAnomaly / SQLi]
+    Triage --> PB3[Playbook: Privilege\nEscalation]
+    PB1 --> Contain1[Block IP\niptables -j DROP]
+    PB2 --> Contain2[Block IP + Alert\nApache mod_security]
+    PB3 --> Contain3[Lock Account\nusermod -L]
+    Contain1 --> Collect[Evidence Collection\nLogs + Netstat + Processes]
+    Contain2 --> Collect
+    Contain3 --> Collect
+    Collect --> Notify[Notification\nEmail + Syslog alert]
+    style Detect fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style Triage fill:#181818,stroke:#1e1e1e,color:#888
+    style PB1 fill:#181818,stroke:#1e1e1e,color:#888
+    style PB2 fill:#181818,stroke:#1e1e1e,color:#888
+    style PB3 fill:#181818,stroke:#1e1e1e,color:#888
+    style Collect fill:#181818,stroke:#1e1e1e,color:#888
+    style Notify fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>SSH Brute-Force Detection &amp; Containment Playbook</strong>
+            <p>The playbook monitors <code>/var/log/auth.log</code> for repeated failed password attempts from the same source IP. When threshold exceeded, the IP is immediately blocked with iptables and evidence is collected.</p>
+            <pre><code">#!/usr/bin/env bash
+# /usr/local/ir/playbooks/ssh_bruteforce.sh
+set -euo pipefail
+THRESHOLD=10
+TIMEWINDOW=300  # seconds
+LOGFILE="/var/log/auth.log"
+EVIDENCE_DIR="/var/ir/evidence/$(date +%Y%m%d_%H%M%S)_ssh_bruteforce"
+ALERT_EMAIL="soc@lab.local"
+
+collect_failed_ips() {
+    # Count failures per IP in the last $TIMEWINDOW seconds
+    local cutoff=$(date -d "@$(($(date +%s) - TIMEWINDOW))" '+%b %_d %H:%M:%S')
+    awk -v cutoff="$cutoff" -v threshold="$THRESHOLD" '
+        /Failed password/ {
+            match($0, /from ([0-9.]+)/, arr)
+            count[arr[1]]++
+        }
+        END {
+            for (ip in count)
+                if (count[ip] >= threshold)
+                    print ip
+        }
+    ' "$LOGFILE"
+}
+
+block_ip() {
+    local ip="$1"
+    # Check if already blocked
+    iptables -C INPUT -s "$ip" -j DROP 2>/dev/null && return
+    iptables -I INPUT 1 -s "$ip" -j DROP
+    logger -t IR-PLAYBOOK "CONTAINED: Blocked $ip via iptables (SSH brute force)"
+}
+
+collect_evidence() {
+    local ip="$1"
+    mkdir -p "$EVIDENCE_DIR"
+    # Auth log excerpts
+    grep "$ip" "$LOGFILE" > "$EVIDENCE_DIR/auth_log_excerpt.txt"
+    # Current connections from that IP
+    ss -tnp | grep "$ip" > "$EVIDENCE_DIR/active_connections.txt" 2>/dev/null || true
+    # System state
+    ps aux > "$EVIDENCE_DIR/process_list.txt"
+    who > "$EVIDENCE_DIR/logged_in_users.txt"
+    # Package evidence with hash
+    tar czf "${EVIDENCE_DIR}.tar.gz" "$EVIDENCE_DIR"
+    sha256sum "${EVIDENCE_DIR}.tar.gz" > "${EVIDENCE_DIR}.sha256"
+}
+
+notify() {
+    local ip="$1" count="$2"
+    mail -s "[IR] SSH Brute Force Blocked: $ip ($count attempts)" "$ALERT_EMAIL" <<EOF
+Incident Response Playbook: SSH Brute Force
+
+Attacker IP: $ip
+Failed attempts: $count in last ${TIMEWINDOW}s
+Action taken: IP blocked via iptables
+Evidence: ${EVIDENCE_DIR}.tar.gz
+Timestamp: $(date)
+EOF
+}
+
+# Main execution
+while IFS= read -r ip; do
+    count=$(grep -c "from $ip" "$LOGFILE" || true)
+    echo "Blocking $ip ($count attempts)"
+    block_ip "$ip"
+    collect_evidence "$ip"
+    notify "$ip" "$count"
+done < <(collect_failed_ips)</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>Web Application Anomaly Detection Playbook</strong>
+            <p>Monitors Apache access logs for SQL injection signatures using regex pattern matching. Automatically extracts the attacking IP, logs the attack signature, and adds a temporary firewall block.</p>
+            <pre><code">#!/usr/bin/env bash
+# /usr/local/ir/playbooks/web_anomaly.sh
+APACHE_LOG="/var/log/apache2/access.log"
+SQLI_PATTERNS='(union|select|insert|drop|exec|xp_|0x[0-9a-f]+|--|\/\*|\*\/|char\(|concat\()'
+EVIDENCE_DIR="/var/ir/evidence/$(date +%Y%m%d_%H%M%S)_web_anomaly"
+
+detect_sqli() {
+    grep -iE "$SQLI_PATTERNS" "$APACHE_LOG" | \
+        awk '{print $1}' | sort | uniq -c | sort -rn | \
+        awk '$1 > 5 {print $2}'  # IPs with >5 suspicious requests
+}
+
+while IFS= read -r ip; do
+    mkdir -p "$EVIDENCE_DIR"
+    # Extract matching log lines
+    grep "$ip" "$APACHE_LOG" | grep -iE "$SQLI_PATTERNS" \
+        > "$EVIDENCE_DIR/sqli_attempts_${ip//./_}.txt"
+    # Count attack requests
+    count=$(wc -l < "$EVIDENCE_DIR/sqli_attempts_${ip//./_}.txt")
+    # Block IP
+    iptables -I INPUT 1 -s "$ip" -j DROP
+    logger -t IR-PLAYBOOK "CONTAINED: Web anomaly from $ip ($count requests) — IP blocked"
+    echo "Blocked $ip — $count suspicious web requests"
+done < <(detect_sqli)</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>Privilege Escalation Detection Playbook</strong>
+            <p>Uses <code>ausearch</code> to detect unusual <code>sudo</code> usage by non-privileged accounts or failed su attempts. When triggered, the account is locked and a full audit trail is extracted.</p>
+            <pre><code">#!/usr/bin/env bash
+# /usr/local/ir/playbooks/privesc.sh
+EVIDENCE_DIR="/var/ir/evidence/$(date +%Y%m%d_%H%M%S)_privesc"
+ADMIN_USERS=("labadmin" "ops")
+
+detect_privesc() {
+    # Find users who ran sudo and are NOT in the admin list
+    ausearch -m USER_CMD -ts today 2>/dev/null | \
+        grep -oP 'acct="[^"]+"' | \
+        cut -d'"' -f2 | sort -u | while read -r user; do
+            if [[ ! " ${ADMIN_USERS[*]} " =~ " $user " ]]; then
+                echo "$user"
+            fi
+        done
+}
+
+respond_to_privesc() {
+    local user="$1"
+    mkdir -p "$EVIDENCE_DIR"
+    # Collect audit events for this user
+    ausearch -ua "$user" -ts today > "$EVIDENCE_DIR/audit_${user}.txt" 2>/dev/null
+    # Get current sessions
+    who | grep "^$user" > "$EVIDENCE_DIR/sessions_${user}.txt" || true
+    # Lock the account
+    usermod -L "$user"
+    passwd -e "$user"  # force password change on next login
+    logger -t IR-PLAYBOOK "CONTAINED: Account $user locked (privilege escalation detected)"
+    # Kill active sessions
+    pkill -u "$user" -KILL || true
+    echo "Account $user locked — sessions terminated"
+}
+
+while IFS= read -r user; do
+    respond_to_privesc "$user"
+done < <(detect_privesc)</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>Watchdog / Trigger Daemon</strong>
+            <p>Created a persistent watchdog service using <code>inotifywait</code> and a systemd service to trigger the appropriate playbook when log files change and thresholds are met.</p>
+            <pre><code">#!/usr/bin/env bash
+# /usr/local/ir/watchdog.sh — monitors logs and triggers playbooks
+PLAYBOOK_DIR="/usr/local/ir/playbooks"
+
+# Watch auth.log for SSH events
+inotifywait -m -e modify /var/log/auth.log 2>/dev/null | while read -r; do
+    bash "$PLAYBOOK_DIR/ssh_bruteforce.sh" &
+done &
+
+# Watch apache log for web events
+inotifywait -m -e modify /var/log/apache2/access.log 2>/dev/null | while read -r; do
+    bash "$PLAYBOOK_DIR/web_anomaly.sh" &
+done &
+
+wait</code></pre>
+            <pre><code"># /etc/systemd/system/ir-watchdog.service
+[Unit]
+Description=Incident Response Watchdog
+After=network.target auditd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/ir/watchdog.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Tabletop Testing &amp; Playbook Validation</strong>
+            <p>Simulated each incident scenario in a controlled lab environment to verify detection, containment, and evidence collection worked correctly without false positives on legitimate traffic.</p>
+            <pre><code"># Simulate SSH brute force (from test machine)
+for i in $(seq 1 15); do
+    ssh -o StrictHostKeyChecking=no baduser@192.168.56.20 2>/dev/null || true
+done
+
+# Verify IP was blocked
+sudo iptables -L INPUT -n | grep "$(hostname -I | awk '{print $1}')"
+
+# Simulate SQLi web request
+curl "http://192.168.56.20/?id=1%20UNION%20SELECT%201,2,3--"
+
+# Trigger privilege escalation check
+sudo ausearch -m USER_CMD -ts today | tail -20
+
+# Review IR evidence directory
+ls -lh /var/ir/evidence/
+tar -tzvf /var/ir/evidence/*.tar.gz | head -20</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Complete Workflow</h2>
+      <div class="mermaid">
+flowchart LR
+    A[inotifywait\nLog File Changes] --> B[Detection Script\nPattern Match + Threshold]
+    B --> C{Threshold\nExceeded?}
+    C -->|no| A
+    C -->|yes| D[Triage: Identify\nIncident Type]
+    D --> E[Containment\nBlock IP / Lock Account]
+    E --> F[Evidence Collection\nLogs + State + Hash]
+    F --> G[Notification\nEmail + syslog]
+    G --> H[Analyst Reviews\nEvidence + Unblocks]
+    style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style H fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style B fill:#181818,stroke:#1e1e1e,color:#888
+    style C fill:#181818,stroke:#1e1e1e,color:#888
+    style D fill:#181818,stroke:#1e1e1e,color:#888
+    style E fill:#181818,stroke:#1e1e1e,color:#888
+    style F fill:#181818,stroke:#1e1e1e,color:#888
+    style G fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li><strong>False positives blocking legitimate scanning tools</strong> — The SSH threshold was too low (5 attempts). During testing, a legitimate vulnerability scanner was blocked. Raised threshold to 10 and added the management subnet to an ignore list.</li>
+        <li><strong>Evidence collection script timing out on large logs</strong> — Grepping through a multi-GB auth.log was slow. Changed to use <code>journalctl --since="1 hour ago"</code> for recent entries and tail-based log searches.</li>
+        <li><strong>inotifywait not available by default</strong> — Required installing <code>inotify-tools</code>. Added package installation as a prerequisite check in the setup script.</li>
+        <li><strong>pkill terminating legitimate sessions</strong> — The privilege escalation playbook killed ALL sessions for the user, including legitimate ones. Added a time-window check — only kill sessions started within 10 minutes of the detected event.</li>
+      </ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li>Incident response playbooks must balance speed of response against false positive risk — overly aggressive automation can lock out legitimate users and create its own service disruption.</li>
+        <li>Evidence integrity is non-negotiable — every collected artifact must be hashed with SHA-256 immediately after collection to ensure chain of custody for forensic purposes.</li>
+        <li>SOAR principles apply even with basic Bash scripts — detection, triage, containment, evidence, and notification are the universal phases regardless of tooling complexity.</li>
+        <li>All IR automation must be tested against simulated incidents before production deployment — an untested playbook that fires wrong during a real incident is worse than no automation.</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

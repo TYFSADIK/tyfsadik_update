@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Server Infrastructure Project | Assignments | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb">
+      <a href="../../blog/labs/index.html">Labs</a> &rsaquo;
+      <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo;
+      <span>Server Infrastructure Project</span>
+    </nav>
+
+    <div class="page-header">
+      <h1>Server Infrastructure Project</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-advanced">Advanced</span>
+        <span class="lab-category">Linux Server &middot; 2025</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;">
+        <span class="tag">Linux</span><span class="tag">Infrastructure</span><span class="tag">Networking</span>
+      </div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Design and build a three-server environment using VirtualBox with an internal network: a gateway/router server running iptables NAT, an application server hosting Apache and a MariaDB database, and a monitoring server running Prometheus and Grafana. The project required inter-server communication, centralized user management via NFS-mounted home directories, and a monitoring dashboard displaying CPU, memory, and disk metrics for all nodes.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul>
+        <li><code>Ubuntu Server 22.04</code> — all three nodes</li>
+        <li><code>iptables / nftables</code> — NAT and firewall on gateway node</li>
+        <li><code>Apache2 + PHP</code> — web application server</li>
+        <li><code>MariaDB 10.6</code> — relational database backend</li>
+        <li><code>NFS (nfs-kernel-server)</code> — shared home directories</li>
+        <li><code>Prometheus + Node Exporter</code> — metrics collection</li>
+        <li><code>Grafana</code> — metrics visualization and dashboards</li>
+        <li><code>VirtualBox internal network</code> — isolated lab environment</li>
+        <li><code>rsyslog</code> — centralized log forwarding</li>
+      </ul>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    Internet[Host Machine / Internet] -->|NAT| GW
+    GW[Gateway Server\n10.0.0.1\niptables NAT + UFW]
+    GW -->|internal| APP
+    GW -->|internal| MON
+    APP[App Server\n10.0.0.2\nApache2 + MariaDB]
+    MON[Monitor Server\n10.0.0.3\nPrometheus + Grafana]
+    NFS[NFS Share\n/srv/homes →\nmounted on all nodes]
+    APP --> NFS
+    MON -->|scrape :9100| APP
+    MON -->|scrape :9100| GW
+    style Internet fill:#181818,stroke:#1e1e1e,color:#888
+    style GW fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style APP fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style MON fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style NFS fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>Network Design &amp; Gateway Configuration</strong>
+            <p>Assigned static IPs on the VirtualBox internal network. Configured the gateway server with two NICs (NAT for internet, internal for the lab subnet) and enabled IP forwarding with iptables MASQUERADE.</p>
+            <pre><code># On gateway: /etc/netplan/00-installer-config.yaml
+network:
+  version: 2
+  ethernets:
+    enp0s3:          # NAT adapter (internet)
+      dhcp4: true
+    enp0s8:          # Internal network
+      addresses: [10.0.0.1/24]
+      nameservers:
+        addresses: [8.8.8.8]
+
+sudo netplan apply
+
+# Enable IP forwarding
+echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+
+# NAT rule — masquerade internal subnet out enp0s3
+sudo iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o enp0s3 -j MASQUERADE
+sudo iptables -A FORWARD -i enp0s8 -o enp0s3 -j ACCEPT
+sudo iptables -A FORWARD -i enp0s3 -o enp0s8 -m state --state RELATED,ESTABLISHED -j ACCEPT
+
+# Persist iptables rules
+sudo apt install -y iptables-persistent
+sudo netfilter-persistent save</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>NFS Home Directory Server</strong>
+            <p>Configured the app server as the NFS host for shared home directories. All three nodes mount <code>/srv/homes</code> so users have a consistent home directory across the infrastructure.</p>
+            <pre><code"># On app server — NFS server setup
+sudo apt install -y nfs-kernel-server
+sudo mkdir -p /srv/homes
+sudo chown nobody:nogroup /srv/homes
+
+# Export the share
+echo "/srv/homes  10.0.0.0/24(rw,sync,no_subtree_check,no_root_squash)" \
+  | sudo tee -a /etc/exports
+sudo exportfs -arv
+sudo systemctl enable --now nfs-kernel-server
+
+# On gateway and monitor nodes — mount NFS
+sudo apt install -y nfs-common
+sudo mkdir -p /srv/homes
+echo "10.0.0.2:/srv/homes  /srv/homes  nfs  defaults,_netdev  0  0" \
+  | sudo tee -a /etc/fstab
+sudo mount -a
+df -h /srv/homes</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>Apache2 + MariaDB Application Stack</strong>
+            <p>Deployed a LAMP stack on the app server, created a test database with a web-accessible PHP info page, and locked down MariaDB to localhost only.</p>
+            <pre><code">sudo apt install -y apache2 php libapache2-mod-php php-mysql mariadb-server
+
+# Secure MariaDB
+sudo mysql_secure_installation
+# Remove anon users, disallow root remote login, remove test DB
+
+# Create app database and user
+sudo mysql -u root -p <<'SQL'
+CREATE DATABASE appdb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'appuser'@'localhost' IDENTIFIED BY 'SecurePass123!';
+GRANT ALL PRIVILEGES ON appdb.* TO 'appuser'@'localhost';
+FLUSH PRIVILEGES;
+SQL
+
+# Test PHP-MySQL connection
+cat > /var/www/html/info.php <<'EOF'
+&lt;?php phpinfo(); ?&gt;
+EOF
+
+# Verify from gateway
+curl -s http://10.0.0.2/info.php | grep -i "php version"</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>Prometheus &amp; Node Exporter Deployment</strong>
+            <p>Installed Node Exporter on all three servers and Prometheus + Grafana on the monitoring server. Configured Prometheus scrape jobs and imported a Node Exporter dashboard in Grafana.</p>
+            <pre><code"># Install Node Exporter on ALL nodes (gateway, app, monitor)
+wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
+tar xvf node_exporter-*.tar.gz
+sudo cp node_exporter-*/node_exporter /usr/local/bin/
+
+# Create systemd service
+sudo tee /etc/systemd/system/node_exporter.service &lt;&lt;'EOF'
+[Unit]
+Description=Prometheus Node Exporter
+[Service]
+User=nobody
+ExecStart=/usr/local/bin/node_exporter
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl enable --now node_exporter
+
+# On monitor server: install Prometheus
+wget https://github.com/prometheus/prometheus/releases/download/v2.48.0/prometheus-2.48.0.linux-amd64.tar.gz
+# ... extract and configure
+
+# /etc/prometheus/prometheus.yml
+scrape_configs:
+  - job_name: 'gateway'
+    static_configs:
+      - targets: ['10.0.0.1:9100']
+  - job_name: 'appserver'
+    static_configs:
+      - targets: ['10.0.0.2:9100']
+  - job_name: 'monitor'
+    static_configs:
+      - targets: ['10.0.0.3:9100']</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Grafana Dashboard &amp; Alerting</strong>
+            <p>Installed Grafana, added Prometheus as a data source, imported the official Node Exporter Full dashboard (ID 1860), and configured an alert rule for disk usage above 80%.</p>
+            <pre><code">sudo apt install -y apt-transport-https
+wget -q -O - https://packages.grafana.com/gpg.key | sudo apt-key add -
+echo "deb https://packages.grafana.com/oss/deb stable main" \
+  | sudo tee /etc/apt/sources.list.d/grafana.list
+sudo apt update && sudo apt install -y grafana
+sudo systemctl enable --now grafana-server
+
+# Grafana accessible at http://10.0.0.3:3000
+# Default: admin/admin → change immediately
+
+# Add Prometheus datasource via UI:
+# Configuration → Data Sources → Add → Prometheus
+# URL: http://localhost:9090
+
+# Import dashboard ID 1860 (Node Exporter Full)
+# Dashboards → Import → Enter 1860 → Load → Select Prometheus DS
+
+# Verify all three nodes appear in dashboard dropdowns</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Complete Workflow</h2>
+      <div class="mermaid">
+flowchart LR
+    A[Provision 3 VMs\nAssign static IPs] --> B[Configure Gateway\nNAT + IP Forward]
+    B --> C[Setup NFS\nShared Homes]
+    C --> D[Deploy LAMP\nApp Server]
+    D --> E[Install Node Exporter\nAll Nodes]
+    E --> F[Install Prometheus\nMonitor Server]
+    F --> G[Install Grafana\nDashboard + Alerts]
+    G --> H[Verify All\nServices + Metrics]
+    style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style H fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style B fill:#181818,stroke:#1e1e1e,color:#888
+    style C fill:#181818,stroke:#1e1e1e,color:#888
+    style D fill:#181818,stroke:#1e1e1e,color:#888
+    style E fill:#181818,stroke:#1e1e1e,color:#888
+    style F fill:#181818,stroke:#1e1e1e,color:#888
+    style G fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li><strong>Internal VMs could not reach the internet</strong> — iptables FORWARD chain had no ACCEPT rule for the internal-to-NAT direction. Adding the bidirectional FORWARD rules with connection tracking fixed routing.</li>
+        <li><strong>NFS mounts hanging at boot</strong> — The <code>_netdev</code> option in fstab was missing, causing mount attempts before networking was up. Adding it deferred mounts until the network was available.</li>
+        <li><strong>Prometheus showing all targets as DOWN</strong> — UFW on each node was blocking port 9100. Added <code>ufw allow from 10.0.0.3 to any port 9100</code> on each node to allow scraping only from the monitoring server.</li>
+        <li><strong>Grafana dashboard showing no data</strong> — Prometheus data source URL was set to <code>10.0.0.3:9090</code> (external IP) instead of <code>localhost:9090</code>. Grafana queries Prometheus from the local machine, not across the network.</li>
+      </ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li>Multi-server infrastructure requires careful network planning before touching any configuration — IP addressing, routing, and firewall rules must be designed as a system, not node-by-node.</li>
+        <li>NFS is a simple but effective solution for shared storage in small infrastructure; the <code>_netdev</code> fstab option is critical for network-backed mounts to survive reboots cleanly.</li>
+        <li>Prometheus + Grafana is a powerful open-source observability stack — Node Exporter provides comprehensive host metrics with zero custom instrumentation.</li>
+        <li>Firewall rules on monitoring targets should restrict Prometheus scraping to the monitoring server IP only, not open port 9100 to all sources.</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

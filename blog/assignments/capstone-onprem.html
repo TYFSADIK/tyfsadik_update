@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>On-Premises Infrastructure Project | Assignments | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb">
+      <a href="../../blog/labs/index.html">Labs</a> &rsaquo;
+      <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo;
+      <span>On-Premises Infrastructure Project</span>
+    </nav>
+
+    <div class="page-header">
+      <h1>On-Premises Infrastructure Project</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-advanced">Advanced</span>
+        <span class="lab-category">Capstone &middot; 2025</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;">
+        <span class="tag">Linux</span><span class="tag">Networking</span><span class="tag">Infrastructure</span><span class="tag">DR</span>
+      </div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Design and build a complete on-premises multi-server infrastructure in a virtualized lab environment simulating a small enterprise data center. The project integrates all core skills from the Computer Systems Technology program: a gateway router with VLANs and iptables, primary and replica database servers with automated failover, a web application server behind a HAProxy load balancer, centralized authentication using FreeIPA/LDAP, a monitoring stack (Prometheus + Grafana), automated backup with offsite replication via rsync, and a documented disaster recovery runbook. The infrastructure is designed for scalability, redundancy, and operational resilience.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul>
+        <li><code>Ubuntu Server 22.04 LTS</code> — all nodes (8 VMs total)</li>
+        <li><code>iptables / nftables</code> — gateway firewall and NAT</li>
+        <li><code>HAProxy 2.6</code> — load balancing and health checking</li>
+        <li><code>MariaDB Galera Cluster</code> — synchronous multi-master replication</li>
+        <li><code>FreeIPA</code> — centralized LDAP/Kerberos identity management</li>
+        <li><code>Prometheus + Grafana + Alertmanager</code> — full observability stack</li>
+        <li><code>rsync + SSH</code> — automated backup and offsite replication</li>
+        <li><code>Keepalived (VRRP)</code> — virtual IP for HAProxy high availability</li>
+        <li><code>Ansible</code> — configuration management and DR automation</li>
+      </ul>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    GW[Gateway Router\n10.0.0.1\niptables NAT + VLANs]
+    GW --> LB[HAProxy LB\nVirtual IP: 10.0.1.100\nKeepalived VRRP]
+    LB --> Web1[web-01\n10.0.1.11\nApache+PHP]
+    LB --> Web2[web-02\n10.0.1.12\nApache+PHP]
+    Web1 --> DB[MariaDB Galera\n3-node cluster]
+    Web2 --> DB
+    DB --> DBN1[db-01\n10.0.2.11]
+    DB --> DBN2[db-02\n10.0.2.12]
+    DB --> DBN3[db-03\n10.0.2.13]
+    IPA[FreeIPA\n10.0.3.10\nLDAP+Kerberos] --> Web1
+    IPA --> Web2
+    MON[Monitor\n10.0.4.10\nPrometheus+Grafana]
+    Backup[Backup Server\n10.0.5.10\nrsync target]
+    style GW fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style LB fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style DB fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style IPA fill:#181818,stroke:#1e1e1e,color:#888
+    style MON fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style Backup fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style Web1 fill:#181818,stroke:#1e1e1e,color:#888
+    style Web2 fill:#181818,stroke:#1e1e1e,color:#888
+    style DBN1 fill:#181818,stroke:#1e1e1e,color:#888
+    style DBN2 fill:#181818,stroke:#1e1e1e,color:#888
+    style DBN3 fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>Network Foundation &amp; Gateway Configuration</strong>
+            <p>Built a segmented network with five VLANs (Web, DB, Auth, Monitor, Backup) separated by the gateway VM acting as inter-VLAN router with iptables-based security policy.</p>
+            <pre><code"># Gateway VM: 5 VLANs on a single interface using 802.1Q sub-interfaces
+# /etc/netplan/00-gateway.yaml
+network:
+  version: 2
+  ethernets:
+    enp0s8:
+      dhcp4: false
+  vlans:
+    enp0s8.10:
+      id: 10
+      link: enp0s8
+      addresses: [10.0.1.1/24]   # Web VLAN
+    enp0s8.20:
+      id: 20
+      link: enp0s8
+      addresses: [10.0.2.1/24]   # DB VLAN
+    enp0s8.30:
+      id: 30
+      link: enp0s8
+      addresses: [10.0.3.1/24]   # Auth VLAN
+    enp0s8.40:
+      id: 40
+      link: enp0s8
+      addresses: [10.0.4.1/24]   # Monitor VLAN
+    enp0s8.50:
+      id: 50
+      link: enp0s8
+      addresses: [10.0.5.1/24]   # Backup VLAN
+
+# iptables policy — DB VLAN only accessible from Web VLAN
+iptables -A FORWARD -s 10.0.1.0/24 -d 10.0.2.0/24 -p tcp --dport 3306 -j ACCEPT
+iptables -A FORWARD -s 10.0.2.0/24 -d 10.0.1.0/24 -m conntrack --ctstate ESTABLISHED -j ACCEPT
+iptables -A FORWARD -s 10.0.2.0/24 -d 10.0.1.0/24 -j DROP  # block unsolicited DB→Web</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>MariaDB Galera Cluster (3-Node)</strong>
+            <p>Deployed a three-node Galera synchronous multi-master replication cluster. Any node can accept writes; all nodes remain in sync via wsrep replication protocol.</p>
+            <pre><code"># /etc/mysql/mariadb.conf.d/60-galera.cnf (all 3 nodes)
+[mysqld]
+binlog_format=ROW
+default-storage-engine=innodb
+innodb_autoinc_lock_mode=2
+bind-address=0.0.0.0
+
+# Galera Provider Configuration
+wsrep_on=ON
+wsrep_provider=/usr/lib/galera/libgalera_smm.so
+
+# Galera Cluster Configuration
+wsrep_cluster_name="CapstoneCluster"
+wsrep_cluster_address="gcomm://10.0.2.11,10.0.2.12,10.0.2.13"
+
+# Galera Synchronization Configuration
+wsrep_sst_method=rsync
+
+# Node-specific settings (change per node)
+wsrep_node_address="10.0.2.11"  # This node's IP
+wsrep_node_name="db-01"</code></pre>
+            <pre><code"># Bootstrap first node only
+sudo galera_new_cluster  # on db-01 only
+
+# Start remaining nodes
+sudo systemctl start mariadb  # on db-02, db-03
+
+# Verify cluster
+mysql -u root -e "SHOW STATUS LIKE 'wsrep_cluster_size';"
+# Expected: wsrep_cluster_size = 3
+
+mysql -u root -e "SHOW STATUS LIKE 'wsrep_cluster_status';"
+# Expected: Primary</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>HAProxy Load Balancer with Keepalived VRRP</strong>
+            <p>Configured HAProxy on two nodes with a shared virtual IP managed by Keepalived. If the active HAProxy fails, Keepalived promotes the standby node and the virtual IP migrates automatically.</p>
+            <pre><code"># /etc/haproxy/haproxy.cfg
+global
+    log /dev/log local0
+    maxconn 50000
+    user haproxy
+    group haproxy
+
+defaults
+    log global
+    mode http
+    option httplog
+    timeout connect 5s
+    timeout client 30s
+    timeout server 30s
+
+frontend http-in
+    bind *:80
+    default_backend web-servers
+
+backend web-servers
+    balance roundrobin
+    option httpchk GET /health
+    http-check expect status 200
+    server web-01 10.0.1.11:80 check inter 2s fall 3 rise 2
+    server web-02 10.0.1.12:80 check inter 2s fall 3 rise 2
+
+listen stats
+    bind *:8404
+    stats enable
+    stats uri /stats
+    stats refresh 5s</code></pre>
+            <pre><code"># /etc/keepalived/keepalived.conf (on LB-01, master)
+vrrp_instance VI_1 {
+    state MASTER
+    interface enp0s3
+    virtual_router_id 51
+    priority 150
+    advert_int 1
+    authentication {
+        auth_type PASS
+        auth_pass capstone2025
+    }
+    virtual_ipaddress {
+        10.0.1.100/24
+    }
+    notify_master "/etc/keepalived/notify.sh MASTER"
+    notify_backup "/etc/keepalived/notify.sh BACKUP"
+}</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>Centralized Backup with rsync</strong>
+            <p>Implemented automated daily backups using rsync with SSH, hard-link based incremental backups (rsnapshot-style), and weekly offsite replication. A backup verification script confirms restore integrity.</p>
+            <pre><code">#!/usr/bin/env bash
+# /usr/local/bin/backup_infra.sh
+# Hard-link incremental backup using rsync
+set -euo pipefail
+
+BACKUP_ROOT="/srv/backups"
+DATE=$(date +%Y-%m-%d)
+HOSTS=("10.0.1.11" "10.0.1.12" "10.0.2.11" "10.0.2.12" "10.0.2.13")
+SSH_KEY="/root/.ssh/backup_key"
+RETENTION_DAYS=30
+
+for host in "${HOSTS[@]}"; do
+    HOST_NAME=$(ssh -i $SSH_KEY -o StrictHostKeyChecking=no \
+        backup@$host "hostname")
+    DEST="$BACKUP_ROOT/$HOST_NAME"
+    LAST="$DEST/latest"
+    TODAY="$DEST/$DATE"
+
+    mkdir -p "$TODAY"
+    rsync -az --delete \
+        --link-dest="$LAST" \
+        --exclude={'/proc','/sys','/dev','/tmp','/run'} \
+        -e "ssh -i $SSH_KEY -o StrictHostKeyChecking=no" \
+        "backup@$host:/" \
+        "$TODAY/" \
+        && ln -sfn "$TODAY" "$LAST" \
+        && echo "Backup complete: $HOST_NAME ($DATE)"
+
+    # Remove backups older than retention period
+    find "$DEST" -maxdepth 1 -type d -mtime +$RETENTION_DAYS -exec rm -rf {} \;
+done
+
+# DB dump backup (Galera safe — single-node consistent snapshot)
+mysqldump --all-databases --single-transaction \
+    --host=10.0.2.11 --user=backup --password="$DB_BACKUP_PASS" \
+    | gzip > "$BACKUP_ROOT/mysql-$DATE.sql.gz"</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Disaster Recovery Runbook &amp; Testing</strong>
+            <p>Documented and tested a full DR procedure: simulating db-01 failure, verifying Galera cluster continued with 2 nodes, restoring from backup, and re-joining the recovered node to the cluster.</p>
+            <pre><code"># DR Test: Simulate db-01 failure
+# Step 1: Force-stop db-01 (simulates crash)
+# (On the hypervisor, power off db-01 VM)
+
+# Step 2: Verify cluster continues with 2 nodes
+mysql -h 10.0.2.12 -u root -e "SHOW STATUS LIKE 'wsrep_cluster_size';"
+# Expected: 2 (cluster degraded but operational)
+
+# Step 3: Verify application still serves requests
+curl http://10.0.1.100/  # Through virtual IP
+
+# Step 4: Restore db-01 from backup
+# Boot db-01 VM
+# Restore MySQL data directory from backup server
+rsync -az backup@10.0.5.10:/srv/backups/db-01/latest/var/lib/mysql/ /var/lib/mysql/
+
+# Step 5: Rejoin recovered node to cluster
+# /etc/mysql/mariadb.conf.d/60-galera.cnf
+# wsrep_cluster_address="gcomm://10.0.2.12,10.0.2.13"  # Other 2 nodes only (no self)
+sudo systemctl start mariadb
+
+# Verify db-01 rejoined
+mysql -u root -e "SHOW STATUS LIKE 'wsrep_cluster_size';"
+# Expected: 3
+
+# Update cluster address back to all 3 nodes
+# wsrep_cluster_address="gcomm://10.0.2.11,10.0.2.12,10.0.2.13"
+sudo systemctl reload mariadb</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Complete Workflow</h2>
+      <div class="mermaid">
+flowchart LR
+    A[Network Design\n5 VLANs + Gateway] --> B[Deploy 8 VMs\nAssign IPs]
+    B --> C[Galera Cluster\n3-node DB]
+    C --> D[HAProxy + Keepalived\nVirtual IP HA]
+    D --> E[FreeIPA\nCentralized Auth]
+    E --> F[Prometheus+Grafana\nMonitoring]
+    F --> G[Backup Automation\nrsync + retention]
+    G --> H[DR Test\nFail + Restore + Rejoin]
+    style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style H fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style B fill:#181818,stroke:#1e1e1e,color:#888
+    style C fill:#181818,stroke:#1e1e1e,color:#888
+    style D fill:#181818,stroke:#1e1e1e,color:#888
+    style E fill:#181818,stroke:#1e1e1e,color:#888
+    style F fill:#181818,stroke:#1e1e1e,color:#888
+    style G fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li><strong>Galera cluster split-brain during test failover</strong> — When both remaining nodes lost quorum simultaneously, each thought the other was the primary component and both declared themselves Primary. Fixed by understanding wsrep quorum rules — with 3 nodes, losing 2 simultaneously causes a quorum loss, not a split-brain. Restarted the cluster with <code>galera_new_cluster</code> from the most current node.</li>
+        <li><strong>Keepalived VRRP advertisements blocked by iptables</strong> — The gateway was dropping VRRP packets (protocol 112) between the two LB nodes. Added an explicit ACCEPT rule for VRRP multicast (224.0.0.18).</li>
+        <li><strong>rsync backup consuming too much disk with hard links</strong> — Initially creating full copies instead of hard links because the destination was on a different filesystem than expected. Ensured all backup directories were on the same mount point (<code>ext4</code> partition) so hard-link deduplication worked.</li>
+        <li><strong>FreeIPA enrollment failing on web VMs</strong> — The web VMs' DNS was pointing to the gateway, which wasn't resolving FreeIPA's Kerberos SRV records. Changed web VM DNS to point to FreeIPA server (10.0.3.10) for successful enrollment.</li>
+      </ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li>Galera Cluster requires a minimum of three nodes for automatic quorum — with two nodes, losing one requires manual intervention. Three nodes allow one to fail while the cluster remains operational.</li>
+        <li>Keepalived VRRP provides sub-second failover for virtual IPs, but requires the network to pass VRRP multicast advertisements — firewalls must explicitly permit protocol 112.</li>
+        <li>Hard-link based incremental backups (rsnapshot pattern) provide excellent space efficiency — only changed files consume additional space, while each daily snapshot appears complete.</li>
+        <li>Disaster recovery runbooks are only valuable if they are tested regularly — an untested DR procedure will fail under the pressure of a real incident. Testing revealed several gaps that would have extended recovery time.</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

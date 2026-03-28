@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>System Memory Analyzer | Assignments | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb">
+      <a href="../../blog/labs/index.html">Labs</a> &rsaquo;
+      <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo;
+      <span>System Memory Analyzer</span>
+    </nav>
+
+    <div class="page-header">
+      <h1>System Memory Analyzer</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Python &middot; 2025</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;">
+        <span class="tag">Python</span><span class="tag">/proc</span><span class="tag">argparse</span>
+      </div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Write a Python 3 command-line tool that reads raw memory statistics from <code>/proc/meminfo</code>, parses the key-value data, calculates derived metrics (used memory, free percentage, swap utilization, buffer/cache breakdown), and generates a formatted text or JSON report. The tool supports a <code>--watch</code> mode that samples memory at a specified interval, a <code>--threshold</code> flag that exits with a non-zero code if used memory exceeds a limit (useful in monitoring scripts), and a <code>--json</code> flag for machine-readable output.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul>
+        <li><code>Python 3.10+</code> — language</li>
+        <li><code>/proc/meminfo</code> — Linux kernel memory statistics interface</li>
+        <li><code>argparse</code> — CLI argument parsing (stdlib)</li>
+        <li><code>json</code> — JSON serialization for machine output (stdlib)</li>
+        <li><code>time.sleep()</code> — interval-based sampling in watch mode</li>
+        <li><code>sys.exit()</code> — threshold-based exit codes for monitoring integration</li>
+        <li><code>unittest.mock</code> — patching <code>/proc/meminfo</code> in tests</li>
+        <li><code>dataclasses</code> — typed MemInfo data container</li>
+      </ul>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    ProcFS[/proc/meminfo\nkernel data] --> Reader[parse_meminfo\nkey → kB dict]
+    Reader --> Calc[MemInfo dataclass\ncalculate derived fields]
+    Calc --> Reporter[Report Generator\ntext or JSON]
+    CLI[argparse\n--watch --json --threshold] --> Reporter
+    Reporter -->|text| Screen[Formatted\nText Output]
+    Reporter -->|json| JSON[JSON stdout\nmachine-readable]
+    Reporter -->|threshold breach| Exit1[sys.exit 2\nmonitoring hook]
+    style ProcFS fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style CLI fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style Screen fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style JSON fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style Exit1 fill:#181818,stroke:#1e1e1e,color:#888
+    style Reader fill:#181818,stroke:#1e1e1e,color:#888
+    style Calc fill:#181818,stroke:#1e1e1e,color:#888
+    style Reporter fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>/proc/meminfo Parser</strong>
+            <p>Implemented a parser that reads the raw <code>/proc/meminfo</code> file and returns a dictionary mapping field names to integer values in kibibytes (kB).</p>
+            <pre><code">#!/usr/bin/env python3
+"""mem_analyzer.py — Linux /proc/meminfo parser and reporter"""
+from __future__ import annotations
+import argparse, json, sys, time
+from dataclasses import dataclass, field, asdict
+from pathlib import Path
+from typing import Optional
+
+MEMINFO_PATH = Path('/proc/meminfo')
+
+def parse_meminfo(path: Path = MEMINFO_PATH) -> dict[str, int]:
+    """
+    Parse /proc/meminfo into a dict of {field: value_in_kB}.
+    Example line: 'MemTotal:       32768000 kB'
+    """
+    mem = {}
+    with path.open() as fh:
+        for line in fh:
+            parts = line.split()
+            if len(parts) >= 2:
+                key = parts[0].rstrip(':')
+                try:
+                    mem[key] = int(parts[1])  # value in kB
+                except ValueError:
+                    pass
+    return mem</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>MemInfo Dataclass with Derived Metrics</strong>
+            <p>Created a dataclass to hold all raw and computed memory fields. The <code>__post_init__</code> method calculates derived values like <code>used</code>, <code>available_percent</code>, and swap utilization.</p>
+            <pre><code">@dataclass
+class MemInfo:
+    total_kb:     int
+    free_kb:      int
+    available_kb: int
+    buffers_kb:   int
+    cached_kb:    int
+    swap_total_kb: int
+    swap_free_kb:  int
+    # Derived
+    used_kb:          int = field(init=False)
+    used_percent:     float = field(init=False)
+    available_percent: float = field(init=False)
+    swap_used_kb:     int = field(init=False)
+    swap_used_percent: float = field(init=False)
+
+    def __post_init__(self):
+        # "used" = total - free - buffers - cached (matches 'free' command)
+        self.used_kb = self.total_kb - self.free_kb - self.buffers_kb - self.cached_kb
+        self.used_percent = (self.used_kb / self.total_kb * 100) if self.total_kb else 0.0
+        self.available_percent = (self.available_kb / self.total_kb * 100) if self.total_kb else 0.0
+        self.swap_used_kb = self.swap_total_kb - self.swap_free_kb
+        self.swap_used_percent = (
+            self.swap_used_kb / self.swap_total_kb * 100
+        ) if self.swap_total_kb else 0.0
+
+    @classmethod
+    def from_dict(cls, d: dict[str, int]) -> 'MemInfo':
+        return cls(
+            total_kb=d.get('MemTotal', 0),
+            free_kb=d.get('MemFree', 0),
+            available_kb=d.get('MemAvailable', 0),
+            buffers_kb=d.get('Buffers', 0),
+            cached_kb=d.get('Cached', 0) + d.get('SReclaimable', 0),
+            swap_total_kb=d.get('SwapTotal', 0),
+            swap_free_kb=d.get('SwapFree', 0),
+        )
+
+    def to_mb(self, kb: int) -> float:
+        return kb / 1024
+
+    def to_gb(self, kb: int) -> float:
+        return kb / 1024 / 1024</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>Report Formatters (Text &amp; JSON)</strong>
+            <p>Wrote two report formatters: a human-readable table using f-strings, and a JSON serializer using the dataclass <code>asdict()</code> method.</p>
+            <pre><code">def bar(percent: float, width: int = 30) -> str:
+    """ASCII progress bar."""
+    filled = int(width * percent / 100)
+    return '[' + '#' * filled + '-' * (width - filled) + f'] {percent:5.1f}%'
+
+def format_text_report(m: MemInfo) -> str:
+    lines = [
+        "=" * 50,
+        "  SYSTEM MEMORY REPORT",
+        "=" * 50,
+        f"  Total RAM   : {m.to_gb(m.total_kb):>7.2f} GB",
+        f"  Used        : {m.to_gb(m.used_kb):>7.2f} GB  {bar(m.used_percent)}",
+        f"  Available   : {m.to_gb(m.available_kb):>7.2f} GB  {bar(m.available_percent)}",
+        f"  Buffers     : {m.to_mb(m.buffers_kb):>7.1f} MB",
+        f"  Cache       : {m.to_mb(m.cached_kb):>7.1f} MB",
+        "-" * 50,
+    ]
+    if m.swap_total_kb > 0:
+        lines += [
+            f"  Swap Total  : {m.to_gb(m.swap_total_kb):>7.2f} GB",
+            f"  Swap Used   : {m.to_gb(m.swap_used_kb):>7.2f} GB  {bar(m.swap_used_percent)}",
+        ]
+    else:
+        lines.append("  Swap: not configured")
+    lines.append("=" * 50)
+    return '\n'.join(lines)
+
+def format_json_report(m: MemInfo) -> str:
+    data = asdict(m)
+    data['timestamp'] = time.strftime('%Y-%m-%dT%H:%M:%S')
+    return json.dumps(data, indent=2)</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>argparse CLI + Watch Mode + Threshold</strong>
+            <p>Built the CLI with <code>--watch</code> for continuous sampling, <code>--threshold</code> for alerting, and <code>--json</code> for scripting integration.</p>
+            <pre><code">def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog='mem_analyzer',
+        description='Analyze Linux system memory from /proc/meminfo'
+    )
+    p.add_argument('--json',      action='store_true', help='Output JSON')
+    p.add_argument('--watch',     type=float, metavar='SECONDS',
+                   help='Repeat every N seconds (Ctrl+C to stop)')
+    p.add_argument('--threshold', type=float, metavar='PERCENT',
+                   help='Exit code 2 if used%% exceeds this value')
+    p.add_argument('--meminfo',   type=Path, default=MEMINFO_PATH,
+                   help='Path to meminfo file (default: /proc/meminfo)')
+    return p
+
+def main():
+    args = build_parser().parse_args()
+
+    def run_once():
+        raw = parse_meminfo(args.meminfo)
+        mem = MemInfo.from_dict(raw)
+
+        if args.json:
+            print(format_json_report(mem))
+        else:
+            print(format_text_report(mem))
+
+        if args.threshold is not None and mem.used_percent > args.threshold:
+            print(f"\nWARNING: Memory usage {mem.used_percent:.1f}% exceeds "
+                  f"threshold {args.threshold:.1f}%", file=sys.stderr)
+            sys.exit(2)
+
+    if args.watch:
+        try:
+            while True:
+                run_once()
+                time.sleep(args.watch)
+        except KeyboardInterrupt:
+            print("\nStopped.")
+    else:
+        run_once()
+
+if __name__ == '__main__':
+    main()</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Unit Tests with Mocked /proc/meminfo</strong>
+            <p>Used <code>unittest.mock.patch</code> to feed a synthetic meminfo string to the parser in tests, decoupling the test suite from the actual system memory state.</p>
+            <pre><code">import pytest
+from pathlib import Path
+from unittest.mock import patch, mock_open
+from mem_analyzer import parse_meminfo, MemInfo
+
+FAKE_MEMINFO = """MemTotal:       16384000 kB
+MemFree:         4096000 kB
+MemAvailable:    8192000 kB
+Buffers:          512000 kB
+Cached:          2048000 kB
+SReclaimable:     256000 kB
+SwapTotal:       4096000 kB
+SwapFree:        2048000 kB
+"""
+
+def test_parse_meminfo():
+    with patch('builtins.open', mock_open(read_data=FAKE_MEMINFO)):
+        result = parse_meminfo(Path('/proc/meminfo'))
+    assert result['MemTotal'] == 16384000
+    assert result['SwapFree'] == 2048000
+
+def test_meminfo_used_calculation():
+    raw = {
+        'MemTotal': 16384000, 'MemFree': 4096000, 'MemAvailable': 8192000,
+        'Buffers': 512000, 'Cached': 2048000, 'SReclaimable': 256000,
+        'SwapTotal': 4096000, 'SwapFree': 2048000
+    }
+    m = MemInfo.from_dict(raw)
+    # used = total - free - buffers - (cached + sreclaimable)
+    expected_used = 16384000 - 4096000 - 512000 - (2048000 + 256000)
+    assert m.used_kb == expected_used
+    assert 0 &lt; m.used_percent &lt; 100
+    assert m.swap_used_percent == 50.0</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Complete Workflow</h2>
+      <div class="mermaid">
+flowchart LR
+    A[Study /proc/meminfo\nfield definitions] --> B[parse_meminfo\nreader function]
+    B --> C[MemInfo dataclass\nderived metrics]
+    C --> D[Text + JSON\nformatters]
+    D --> E[argparse CLI\n--watch --json --threshold]
+    E --> F[Unit tests\nmock /proc/meminfo]
+    F --> G[Integration test\nlive system output]
+    style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style G fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style B fill:#181818,stroke:#1e1e1e,color:#888
+    style C fill:#181818,stroke:#1e1e1e,color:#888
+    style D fill:#181818,stroke:#1e1e1e,color:#888
+    style E fill:#181818,stroke:#1e1e1e,color:#888
+    style F fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li><strong>Discrepancy between tool output and <code>free</code> command</strong> — The Linux <code>free</code> command includes <code>SReclaimable</code> in its cached figure. Had to add <code>SReclaimable</code> to the cached total to match the <code>free</code> output exactly.</li>
+        <li><strong>Watch mode leaving terminal in a bad state on interrupt</strong> — <code>KeyboardInterrupt</code> was bubbling past the print statement, leaving partial output. Added a try/except around the watch loop with a clean "Stopped." message.</li>
+        <li><strong>Test failures on systems with no swap</strong> — When <code>SwapTotal = 0</code>, calculating <code>swap_used_percent</code> caused a ZeroDivisionError. Added a conditional: if swap_total is 0, set all swap percentages to 0.0.</li>
+        <li><strong>Dataclass field ordering with <code>field(init=False)</code></strong> — Python dataclasses require fields with defaults (<code>init=False</code>) to appear after fields without defaults. Restructured the class to separate raw (init=True) and derived (init=False) fields.</li>
+      </ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li><code>/proc/meminfo</code> is one of many Linux virtual filesystem interfaces that expose kernel data as plain text — parsing these files directly is how low-level monitoring tools like <code>free</code>, <code>top</code>, and <code>vmstat</code> work internally.</li>
+        <li>Dataclasses with <code>__post_init__</code> are an excellent pattern for data that requires derived fields — the computation is centralized and typed, unlike scattered calculations throughout the code.</li>
+        <li>Exit codes are a contract between programs — using code 2 for threshold violations makes the tool composable with Nagios/Icinga monitoring systems that expect 0 (OK), 1 (WARNING), 2 (CRITICAL).</li>
+        <li>Mocking file I/O in tests decouples unit tests from the runtime environment, making the test suite portable and deterministic across different machines with different memory configurations.</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

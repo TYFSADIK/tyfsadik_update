@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SDN Implementation Project | Assignments | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb">
+      <a href="../../blog/labs/index.html">Labs</a> &rsaquo;
+      <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo;
+      <span>SDN Implementation Project</span>
+    </nav>
+
+    <div class="page-header">
+      <h1>SDN Implementation Project</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-advanced">Advanced</span>
+        <span class="lab-category">Networking &middot; 2025</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;">
+        <span class="tag">SDN</span><span class="tag">OpenFlow</span><span class="tag">Mininet</span>
+      </div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Implement a software-defined network using Mininet as the network emulator and the Ryu SDN controller to program OpenFlow 1.3 flow rules. The project built a custom fat-tree topology, implemented a proactive flow-based forwarding application in Python, configured QoS queues for traffic differentiation, and measured throughput and latency with <code>iperf3</code> and <code>ping</code>. The goal was to demonstrate centralized control-plane management versus traditional distributed routing.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul>
+        <li><code>Mininet 2.3.1</code> — network emulation framework</li>
+        <li><code>Ryu SDN Framework</code> — Python-based OpenFlow controller</li>
+        <li><code>OpenFlow 1.3</code> — southbound API protocol</li>
+        <li><code>Open vSwitch (OVS)</code> — software OpenFlow switch</li>
+        <li><code>Python 3.x</code> — controller application development</li>
+        <li><code>iperf3</code> — bandwidth and latency measurement</li>
+        <li><code>Wireshark / tshark</code> — OpenFlow packet capture and analysis</li>
+        <li><code>Ubuntu 20.04</code> — host OS for Mininet environment</li>
+        <li><code>ovs-ofctl</code> — manual OpenFlow flow table inspection</li>
+      </ul>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    RYU[Ryu Controller\n:6653 OpenFlow] -->|OF 1.3| S1
+    RYU -->|OF 1.3| S2
+    RYU -->|OF 1.3| S3
+    RYU -->|OF 1.3| S4
+    S1[Core Switch\nOVS s1] --> S2[Agg Switch\nOVS s2]
+    S1 --> S3[Agg Switch\nOVS s3]
+    S2 --> H1[Host h1\n10.0.0.1]
+    S2 --> H2[Host h2\n10.0.0.2]
+    S3 --> H3[Host h3\n10.0.0.3]
+    S3 --> H4[Host h4\n10.0.0.4]
+    S4[Edge Switch\nOVS s4] --> S1
+    style RYU fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style S1 fill:#181818,stroke:#1e1e1e,color:#888
+    style S2 fill:#181818,stroke:#1e1e1e,color:#888
+    style S3 fill:#181818,stroke:#1e1e1e,color:#888
+    style S4 fill:#181818,stroke:#1e1e1e,color:#888
+    style H1 fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style H2 fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style H3 fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style H4 fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>Custom Mininet Topology Script</strong>
+            <p>Wrote a Python Mininet topology script to create a two-tier fat-tree with one core switch, two aggregation switches, and four hosts — all connected to Open vSwitch instances running OpenFlow 1.3.</p>
+            <pre><code">#!/usr/bin/env python3
+# topology.py
+from mininet.net import Mininet
+from mininet.node import RemoteController, OVSSwitch
+from mininet.topo import Topo
+from mininet.cli import CLI
+from mininet.log import setLogLevel
+
+class FatTree(Topo):
+    def build(self):
+        # Core switch
+        s1 = self.addSwitch('s1', protocols='OpenFlow13')
+        # Aggregation switches
+        s2 = self.addSwitch('s2', protocols='OpenFlow13')
+        s3 = self.addSwitch('s3', protocols='OpenFlow13')
+        # Hosts
+        h1 = self.addHost('h1', ip='10.0.0.1/24', mac='00:00:00:00:00:01')
+        h2 = self.addHost('h2', ip='10.0.0.2/24', mac='00:00:00:00:00:02')
+        h3 = self.addHost('h3', ip='10.0.0.3/24', mac='00:00:00:00:00:03')
+        h4 = self.addHost('h4', ip='10.0.0.4/24', mac='00:00:00:00:00:04')
+        # Links
+        self.addLink(s1, s2, bw=100)
+        self.addLink(s1, s3, bw=100)
+        self.addLink(s2, h1, bw=10)
+        self.addLink(s2, h2, bw=10)
+        self.addLink(s3, h3, bw=10)
+        self.addLink(s3, h4, bw=10)
+
+if __name__ == '__main__':
+    setLogLevel('info')
+    topo = FatTree()
+    net = Mininet(topo=topo,
+                  controller=RemoteController('c0', ip='127.0.0.1', port=6653),
+                  switch=OVSSwitch)
+    net.start()
+    CLI(net)
+    net.stop()</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>Ryu L2 Forwarding Application</strong>
+            <p>Developed a Ryu application implementing reactive MAC-learning and proactive ARP handling. The controller installs OpenFlow 1.3 flow entries with match fields and actions on packet-in events.</p>
+            <pre><code">#!/usr/bin/env python3
+# l2_switch.py — Ryu OpenFlow 1.3 MAC Learning
+from ryu.base import app_manager
+from ryu.controller import ofp_event
+from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER, set_ev_cls
+from ryu.ofproto import ofproto_v1_3
+from ryu.lib.packet import packet, ethernet, ether_types
+
+class L2Switch(app_manager.RyuApp):
+    OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.mac_to_port = {}  # {dpid: {mac: port}}
+
+    @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
+    def features_handler(self, ev):
+        dp = ev.msg.datapath
+        ofp = dp.ofproto
+        parser = dp.ofproto_parser
+        # Install table-miss entry — send to controller
+        match = parser.OFPMatch()
+        actions = [parser.OFPActionOutput(ofp.OFPP_CONTROLLER, ofp.OFPCML_NO_BUFFER)]
+        self.add_flow(dp, 0, match, actions)
+
+    def add_flow(self, dp, priority, match, actions, idle=0):
+        ofp = dp.ofproto
+        parser = dp.ofproto_parser
+        inst = [parser.OFPInstructionActions(ofp.OFPIT_APPLY_ACTIONS, actions)]
+        mod = parser.OFPFlowMod(datapath=dp, priority=priority,
+                                match=match, instructions=inst,
+                                idle_timeout=idle)
+        dp.send_msg(mod)
+
+    @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
+    def packet_in_handler(self, ev):
+        msg = ev.msg
+        dp = msg.datapath
+        parser = dp.ofproto_parser
+        in_port = msg.match['in_port']
+        pkt = packet.Packet(msg.data)
+        eth = pkt.get_protocol(ethernet.ethernet)
+        if eth.ethertype == ether_types.ETH_TYPE_LLDP:
+            return
+        dst = eth.dst
+        src = eth.src
+        dpid = dp.id
+        self.mac_to_port.setdefault(dpid, {})
+        self.mac_to_port[dpid][src] = in_port
+        out_port = self.mac_to_port[dpid].get(dst, dp.ofproto.OFPP_FLOOD)
+        actions = [parser.OFPActionOutput(out_port)]
+        if out_port != dp.ofproto.OFPP_FLOOD:
+            match = parser.OFPMatch(in_port=in_port, eth_dst=dst, eth_src=src)
+            self.add_flow(dp, 1, match, actions, idle=30)
+        data = msg.data if msg.buffer_id == dp.ofproto.OFP_NO_BUFFER else None
+        out = parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id,
+                                  in_port=in_port, actions=actions, data=data)
+        dp.send_msg(out)</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>Launch Controller &amp; Topology</strong>
+            <p>Started the Ryu controller, launched the Mininet topology, and verified OpenFlow channel establishment between all switches and the controller.</p>
+            <pre><code"># Terminal 1: Start Ryu controller
+ryu-manager --ofp-tcp-listen-port 6653 l2_switch.py &
+
+# Terminal 2: Start Mininet topology
+sudo python3 topology.py
+
+# In Mininet CLI — verify connectivity
+mininet> pingall
+mininet> h1 ping -c 4 h3
+
+# Inspect flow tables on switch s1
+ovs-ofctl -O OpenFlow13 dump-flows s1
+
+# View controller-switch channels
+ovs-vsctl show | grep controller</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>QoS Queue Configuration</strong>
+            <p>Used OVS QoS API to create queues on edge switch ports, differentiating high-priority (minimum 5 Mbps guaranteed) and best-effort traffic using DSCP marks set by the Ryu application.</p>
+            <pre><code"># Create QoS queues on s2 port to h1
+ovs-vsctl set port s2-eth1 qos=@newqos \
+  -- --id=@newqos create QoS type=linux-htb \
+     queues:0=@q0 queues:1=@q1 \
+  -- --id=@q0 create Queue other-config:min-rate=5000000 \
+  -- --id=@q1 create Queue other-config:min-rate=1000000
+
+# Add Ryu flow to mark VoIP-like traffic (dst port 5004) into queue 0
+# (In Ryu app, add high-priority flow with set_queue action)
+ovs-ofctl -O OpenFlow13 add-flow s2 \
+  "priority=10,udp,tp_dst=5004,actions=set_queue:0,output:1"
+
+# Measure bandwidth differentiation
+mininet> h1 iperf3 -s &
+mininet> h2 iperf3 -c 10.0.0.1 -u -b 8M -t 10</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Performance Measurement &amp; Comparison</strong>
+            <p>Benchmarked latency and throughput with the SDN controller versus a simple hub topology (flood all), demonstrating the effect of proactive flow installation on forwarding performance.</p>
+            <pre><code"># Latency comparison (SDN reactive vs proactive)
+mininet> h1 ping -c 100 h4 | tail -2
+# First ping (controller involved): ~5-10ms
+# Subsequent pings (flow installed): ~0.1ms
+
+# Throughput test
+mininet> h1 iperf3 -s -D
+mininet> h3 iperf3 -c 10.0.0.1 -t 30 -P 4
+
+# Capture OpenFlow messages during new flow setup
+sudo tshark -i lo -f "tcp port 6653" -w /tmp/openflow.pcap &
+mininet> h1 ping -c 3 h4
+# Analyze in Wireshark: Packet-In → Flow-Mod → Packet-Out</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Complete Workflow</h2>
+      <div class="mermaid">
+flowchart LR
+    A[Write Mininet\nTopology Script] --> B[Develop Ryu\nL2 App in Python]
+    B --> C[Start Ryu\nController :6653]
+    C --> D[Launch Mininet\nwith RemoteController]
+    D --> E[Verify OF Channel\novs-vsctl show]
+    E --> F[Test Connectivity\npingall]
+    F --> G[Configure QoS\nQueues + Flows]
+    G --> H[Measure Performance\niperf3 + ping]
+    style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style H fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style B fill:#181818,stroke:#1e1e1e,color:#888
+    style C fill:#181818,stroke:#1e1e1e,color:#888
+    style D fill:#181818,stroke:#1e1e1e,color:#888
+    style E fill:#181818,stroke:#1e1e1e,color:#888
+    style F fill:#181818,stroke:#1e1e1e,color:#888
+    style G fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li><strong>Mininet switches not connecting to controller</strong> — The Ryu controller was bound to <code>0.0.0.0</code> but OVS was trying to reach <code>127.0.0.1:6653</code>. Explicitly set <code>controller=RemoteController('c0', ip='127.0.0.1')</code> in the topology and confirmed with <code>ovs-vsctl show</code>.</li>
+        <li><strong>ARP flooding causing duplicate flows</strong> — MAC learning was recording both source and broadcast addresses. Fixed by filtering out non-unicast destination MACs before installing flow entries.</li>
+        <li><strong>QoS queues not affecting traffic</strong> — OVS QoS requires both the queue definition AND a flow rule with <code>set_queue</code> action. Creating queues alone has no effect without matching flow entries.</li>
+        <li><strong>iperf3 failing between hosts</strong> — Mininet assigns the same default gateway to all hosts; inter-host traffic within Mininet doesn't need a gateway. Removed the default route from hosts and used direct IP pings.</li>
+      </ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li>SDN separates control and data planes, enabling centralized policy enforcement that would require complex distributed configurations in traditional networks.</li>
+        <li>Reactive flow installation (controller decides per packet-in) has measurable latency cost for the first packet; proactive flow pre-installation eliminates this at the cost of controller visibility.</li>
+        <li>OpenFlow flow tables use match-action pairs — designing efficient flow tables requires understanding the priority system and avoiding overlapping match conditions.</li>
+        <li>Mininet is an excellent SDN learning tool but requires careful resource management — too many hosts or switches on a single VM causes CPU contention and inaccurate performance measurements.</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

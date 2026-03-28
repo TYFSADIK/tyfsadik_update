@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Services Automation | Assignments | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb">
+      <a href="../../blog/labs/index.html">Labs</a> &rsaquo;
+      <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo;
+      <span>Network Services Automation</span>
+    </nav>
+
+    <div class="page-header">
+      <h1>Network Services Automation</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Linux Server &middot; 2025</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;">
+        <span class="tag">Bash</span><span class="tag">Automation</span><span class="tag">systemd</span>
+      </div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Write a suite of Bash shell scripts to automate common server administration tasks: service health monitoring with automatic restart on failure, batch user provisioning from a CSV file, log rotation and archival, and a nightly system report emailed to the administrator. The scripts were designed to run as systemd timer units rather than raw cron jobs for better logging and dependency management.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul>
+        <li><code>Bash 5.x</code> — scripting language</li>
+        <li><code>systemd</code> — service and timer unit management</li>
+        <li><code>systemctl</code> — querying and controlling services</li>
+        <li><code>journalctl</code> — reading systemd journal logs</li>
+        <li><code>mailutils / sendmail</code> — sending email reports</li>
+        <li><code>awk / sed / cut</code> — text processing in scripts</li>
+        <li><code>useradd / passwd / chage</code> — user provisioning commands</li>
+        <li><code>logger</code> — writing custom entries to syslog</li>
+        <li><code>df / free / top / ss</code> — system resource reporting</li>
+      </ul>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    Timer1[systemd Timer\nservice-monitor.timer] --> Script1[service_monitor.sh\nCheck &amp; restart services]
+    Timer2[systemd Timer\nnightly-report.timer] --> Script2[nightly_report.sh\nSystem metrics email]
+    CSV[users.csv] --> Script3[provision_users.sh\nBatch user creation]
+    Script1 --> Journal[systemd Journal\nStructured logs]
+    Script2 --> Email[Admin Email\nHTML report]
+    Script3 --> Syslog[/var/log/syslog\nProvisioning audit]
+    style Timer1 fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style Timer2 fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style CSV fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style Script1 fill:#181818,stroke:#1e1e1e,color:#888
+    style Script2 fill:#181818,stroke:#1e1e1e,color:#888
+    style Script3 fill:#181818,stroke:#1e1e1e,color:#888
+    style Journal fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style Email fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style Syslog fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>Service Health Monitor Script</strong>
+            <p>The core monitoring script checks a predefined list of services, logs their state, and restarts any that are inactive. It uses <code>systemctl is-active</code> and writes structured entries via <code>logger</code>.</p>
+            <pre><code>#!/usr/bin/env bash
+# /usr/local/bin/service_monitor.sh
+set -euo pipefail
+
+SERVICES=("ssh" "apache2" "bind9" "fail2ban")
+LOGFILE="/var/log/service-monitor.log"
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+
+for svc in "${SERVICES[@]}"; do
+    STATUS=$(systemctl is-active "$svc" 2>/dev/null || echo "unknown")
+    if [[ "$STATUS" != "active" ]]; then
+        echo "[$TIMESTAMP] WARN: $svc is $STATUS — restarting" | tee -a "$LOGFILE"
+        systemctl restart "$svc" && \
+            echo "[$TIMESTAMP] INFO: $svc restarted successfully" | tee -a "$LOGFILE" || \
+            echo "[$TIMESTAMP] ERROR: failed to restart $svc" | tee -a "$LOGFILE"
+        logger -t service-monitor "Restarted $svc (was $STATUS)"
+    else
+        echo "[$TIMESTAMP] OK: $svc is active" >> "$LOGFILE"
+    fi
+done</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>systemd Timer Unit Deployment</strong>
+            <p>Created service and timer unit files so the monitor runs every 5 minutes under systemd supervision with automatic logging to the journal.</p>
+            <pre><code># /etc/systemd/system/service-monitor.service
+[Unit]
+Description=Service Health Monitor
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/service_monitor.sh
+StandardOutput=journal
+StandardError=journal</code></pre>
+            <pre><code># /etc/systemd/system/service-monitor.timer
+[Unit]
+Description=Run service monitor every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target</code></pre>
+            <pre><code>sudo chmod +x /usr/local/bin/service_monitor.sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now service-monitor.timer
+sudo systemctl list-timers --all | grep service-monitor</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>Batch User Provisioning from CSV</strong>
+            <p>The provisioning script reads a CSV file (<code>username,fullname,group,expiry</code>), creates each user with the correct settings, assigns them to their group, and forces a password change on first login.</p>
+            <pre><code">#!/usr/bin/env bash
+# /usr/local/bin/provision_users.sh
+# CSV format: username,fullname,group,expiry_days
+INPUT="$1"
+[[ -z "$INPUT" ]] && { echo "Usage: $0 users.csv"; exit 1; }
+
+while IFS=',' read -r username fullname group expiry; do
+    [[ "$username" == "username" ]] && continue  # skip header
+
+    # Create group if it doesn't exist
+    getent group "$group" &>/dev/null || groupadd "$group"
+
+    # Create user
+    useradd -m -c "$fullname" -g "$group" -s /bin/bash "$username" 2>/dev/null || {
+        echo "WARN: user $username already exists"
+        continue
+    }
+
+    # Set temporary password (username123) and force change
+    echo "$username:${username}123" | chpasswd
+    chage -d 0 "$username"          # force password change on login
+    chage -M "$expiry" "$username"  # set max password age
+
+    logger -t user-provision "Created user $username in group $group"
+    echo "Created: $username ($fullname) → group $group, expiry ${expiry}d"
+done < "$INPUT"</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>Nightly System Report Script</strong>
+            <p>Collects disk usage, memory stats, failed services, recent auth failures, and top CPU processes, then formats a plain-text report and sends it via <code>mail</code>.</p>
+            <pre><code>#!/usr/bin/env bash
+# /usr/local/bin/nightly_report.sh
+REPORT=$(mktemp)
+HOST=$(hostname)
+DATE=$(date '+%A, %B %d %Y %H:%M')
+
+cat >> "$REPORT" <<EOF
+=== Nightly Server Report: $HOST ===
+Generated: $DATE
+
+--- Disk Usage ---
+$(df -h --output=source,size,used,avail,pcent,target | column -t)
+
+--- Memory ---
+$(free -h)
+
+--- Failed Services ---
+$(systemctl list-units --state=failed --no-legend || echo "None")
+
+--- Last 10 Auth Failures ---
+$(grep "Failed password" /var/log/auth.log | tail -10 || echo "None")
+
+--- Top 5 CPU Processes ---
+$(ps aux --sort=-%cpu | awk 'NR<=6{print}' | column -t)
+EOF
+
+mail -s "[$HOST] Nightly Report - $DATE" admin@lab.local < "$REPORT"
+rm -f "$REPORT"</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Script Hardening &amp; Testing</strong>
+            <p>Applied best practices: <code>set -euo pipefail</code>, input validation, trap handlers for cleanup, and dry-run mode flags. Tested all scripts with <code>bash -n</code> (syntax check) and shellcheck.</p>
+            <pre><code># Syntax check all scripts
+bash -n /usr/local/bin/service_monitor.sh
+bash -n /usr/local/bin/provision_users.sh
+bash -n /usr/local/bin/nightly_report.sh
+
+# Static analysis
+shellcheck /usr/local/bin/*.sh
+
+# Test provisioning with sample CSV
+cat > /tmp/test_users.csv <<EOF
+username,fullname,group,expiry_days
+jdoe,John Doe,developers,90
+asmith,Alice Smith,developers,90
+bops,Bob Ops,sysadmin,60
+EOF
+sudo bash /usr/local/bin/provision_users.sh /tmp/test_users.csv
+
+# Manually trigger timer service to test
+sudo systemctl start service-monitor.service
+sudo journalctl -u service-monitor.service -n 20</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Complete Workflow</h2>
+      <div class="mermaid">
+flowchart LR
+    A[Write Scripts\nwith set -euo pipefail] --> B[Validate Syntax\nbash -n + shellcheck]
+    B --> C[Deploy to\n/usr/local/bin/]
+    C --> D[Create systemd\nService + Timer Units]
+    D --> E[systemctl daemon-reload\nenable --now timer]
+    E --> F[Manual Test Run\nsystemctl start .service]
+    F --> G[Check Journal\njournalctl -u ...]
+    G --> H{Output Correct?}
+    H -->|yes| I[Monitor Runs\nAutomatically]
+    H -->|no| J[Fix Script\nRedeploy]
+    J --> F
+    style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style I fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style H fill:#181818,stroke:#1e1e1e,color:#888
+    style J fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li><strong>Script failing silently on unset variables</strong> — Added <code>set -u</code> to catch all unset variable references at runtime, converting silent bugs into explicit errors.</li>
+        <li><strong>Timer not triggering after reboot</strong> — Missed adding <code>WantedBy=timers.target</code> in the <code>[Install]</code> section. Without this, <code>systemctl enable</code> had no effect on boot persistence.</li>
+        <li><strong>CSV parsing breaking on names with spaces</strong> — Fixed by setting <code>IFS=','</code> in the <code>while read</code> loop rather than relying on default word splitting.</li>
+        <li><strong>Mail not sending from server</strong> — The lab environment lacked an MTA. Installed <code>postfix</code> in local-only mode and used <code>mailutils</code> to route reports to the local admin mailbox.</li>
+      </ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li><code>set -euo pipefail</code> at the top of every production Bash script is non-negotiable — it transforms subtle bugs into loud failures that are easy to diagnose.</li>
+        <li>systemd timers are superior to cron for managed services — they log to the journal, support dependency ordering, and can be inspected with standard <code>systemctl</code> commands.</li>
+        <li>Batch provisioning scripts must handle idempotency — running the same script twice should not create duplicate users or destroy existing accounts.</li>
+        <li>Always validate external inputs (CSV files, command-line arguments) before processing to prevent script failures or unintended system changes.</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

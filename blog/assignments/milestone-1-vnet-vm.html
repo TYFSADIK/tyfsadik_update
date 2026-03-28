@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Milestone 1: VNet &amp; VM Setup | Assignments | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb">
+      <a href="../../blog/labs/index.html">Labs</a> &rsaquo;
+      <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo;
+      <span>Milestone 1: VNet &amp; VM Setup</span>
+    </nav>
+
+    <div class="page-header">
+      <h1>Milestone 1: VNet &amp; VM Setup</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Cloud &middot; 2025</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;">
+        <span class="tag">Azure</span><span class="tag">VNet</span><span class="tag">VM</span>
+      </div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Establish the network and compute foundation for a multi-tier Azure environment. This first milestone creates a Virtual Network with three purpose-built subnets (web, app, management), deploys two Ubuntu 22.04 VMs in the web and app tiers with public SSH access restricted to a jump host pattern, assigns static private IPs, configures basic NSG rules, and verifies cross-subnet connectivity. All steps use Azure CLI for reproducibility.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul>
+        <li><code>Azure Virtual Network</code> — isolated network environment</li>
+        <li><code>Azure Subnets</code> — logical network segmentation</li>
+        <li><code>Azure Virtual Machines</code> — Ubuntu 22.04 LTS compute</li>
+        <li><code>Azure Network Interface (NIC)</code> — VM network attachments</li>
+        <li><code>Azure Public IP</code> — internet-facing address for jump host</li>
+        <li><code>Azure NSG</code> — inbound/outbound security rules</li>
+        <li><code>Azure CLI 2.x</code> — command-line resource management</li>
+        <li><code>cloud-init</code> — VM first-boot configuration script</li>
+        <li><code>SSH</code> — VM access and connectivity verification</li>
+      </ul>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    VNet[Azure VNet\n10.10.0.0/16\ncanadacentral]
+    VNet --> WebSN[Web Subnet\n10.10.1.0/24]
+    VNet --> AppSN[App Subnet\n10.10.2.0/24]
+    VNet --> MgmtSN[Mgmt Subnet\n10.10.3.0/24]
+    WebSN --> WebVM[web-vm\n10.10.1.4\nApache2]
+    AppSN --> AppVM[app-vm\n10.10.2.4\nNode.js]
+    MgmtSN --> JumpVM[jump-vm\n10.10.3.4 + Public IP\nSSH Jump Host]
+    JumpVM -->|SSH| WebVM
+    JumpVM -->|SSH| AppVM
+    WebVM -->|HTTP :8080| AppVM
+    style VNet fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style WebVM fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style AppVM fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style JumpVM fill:#181818,stroke:#1e1e1e,color:#888
+    style WebSN fill:#181818,stroke:#1e1e1e,color:#888
+    style AppSN fill:#181818,stroke:#1e1e1e,color:#888
+    style MgmtSN fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>Resource Group &amp; Virtual Network</strong>
+            <p>Created the resource group and VNet with the three subnets in a single CLI command, establishing the network foundation before any compute resources.</p>
+            <pre><code"># Environment variables
+RG="rg-milestone1"
+LOCATION="canadacentral"
+VNET="vnet-lab"
+
+# Create resource group
+az group create --name $RG --location $LOCATION
+
+# Create VNet with address space
+az network vnet create \
+  --resource-group $RG \
+  --name $VNET \
+  --address-prefix 10.10.0.0/16 \
+  --subnet-name snet-web \
+  --subnet-prefix 10.10.1.0/24
+
+# Add remaining subnets
+az network vnet subnet create \
+  --resource-group $RG --vnet-name $VNET \
+  --name snet-app --address-prefix 10.10.2.0/24
+
+az network vnet subnet create \
+  --resource-group $RG --vnet-name $VNET \
+  --name snet-mgmt --address-prefix 10.10.3.0/24
+
+# Verify
+az network vnet show --resource-group $RG --name $VNET \
+  --query "subnets[].{Name:name, Prefix:addressPrefix}" --output table</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>NSG Creation &amp; Rule Configuration</strong>
+            <p>Created NSGs for each subnet tier with appropriate inbound rules: web tier allows HTTP/HTTPS from internet, app tier allows only traffic from web subnet, management allows SSH only from a known IP.</p>
+            <pre><code"># Web NSG — allow HTTP/HTTPS from internet
+az network nsg create --resource-group $RG --name nsg-web
+
+az network nsg rule create --resource-group $RG --nsg-name nsg-web \
+  --name Allow-HTTP --priority 100 --direction Inbound \
+  --protocol Tcp --destination-port-range 80 --access Allow \
+  --source-address-prefix Internet
+
+az network nsg rule create --resource-group $RG --nsg-name nsg-web \
+  --name Allow-HTTPS --priority 110 --direction Inbound \
+  --protocol Tcp --destination-port-range 443 --access Allow \
+  --source-address-prefix Internet
+
+# App NSG — allow only from web subnet
+az network nsg create --resource-group $RG --name nsg-app
+
+az network nsg rule create --resource-group $RG --nsg-name nsg-app \
+  --name Allow-From-Web --priority 100 --direction Inbound \
+  --protocol Tcp --destination-port-range 8080 --access Allow \
+  --source-address-prefix 10.10.1.0/24
+
+# Mgmt NSG — SSH from admin IP only
+az network nsg create --resource-group $RG --name nsg-mgmt
+
+az network nsg rule create --resource-group $RG --nsg-name nsg-mgmt \
+  --name Allow-SSH-Admin --priority 100 --direction Inbound \
+  --protocol Tcp --destination-port-range 22 --access Allow \
+  --source-address-prefix "YOUR_ADMIN_IP/32"
+
+# Associate NSGs with subnets
+for subnet in snet-web:nsg-web snet-app:nsg-app snet-mgmt:nsg-mgmt; do
+    SN="${subnet%%:*}"
+    NSG="${subnet##*:}"
+    az network vnet subnet update --resource-group $RG --vnet-name $VNET \
+      --name $SN --network-security-group $NSG
+done</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>Virtual Machine Deployment</strong>
+            <p>Deployed three VMs with static private IP assignments, the correct subnet placement, and cloud-init scripts to install their respective applications on first boot.</p>
+            <pre><code"># Jump host VM (with public IP, management subnet)
+az network public-ip create --resource-group $RG --name pip-jump --sku Standard
+
+az vm create \
+  --resource-group $RG \
+  --name jump-vm \
+  --image Ubuntu2204 \
+  --size Standard_B1s \
+  --vnet-name $VNET \
+  --subnet snet-mgmt \
+  --nsg nsg-mgmt \
+  --public-ip-address pip-jump \
+  --private-ip-address 10.10.3.4 \
+  --admin-username azureadmin \
+  --ssh-key-values ~/.ssh/azure_lab.pub
+
+# Web VM (no public IP, web subnet)
+az vm create \
+  --resource-group $RG \
+  --name web-vm \
+  --image Ubuntu2204 \
+  --size Standard_B2s \
+  --vnet-name $VNET \
+  --subnet snet-web \
+  --nsg nsg-web \
+  --public-ip-address '""' \
+  --private-ip-address 10.10.1.4 \
+  --admin-username azureadmin \
+  --ssh-key-values ~/.ssh/azure_lab.pub \
+  --custom-data @cloud-init-web.yaml
+
+# App VM (no public IP, app subnet)
+az vm create \
+  --resource-group $RG \
+  --name app-vm \
+  --image Ubuntu2204 \
+  --size Standard_B2s \
+  --vnet-name $VNET \
+  --subnet snet-app \
+  --nsg nsg-app \
+  --public-ip-address '""' \
+  --private-ip-address 10.10.2.4 \
+  --admin-username azureadmin \
+  --ssh-key-values ~/.ssh/azure_lab.pub</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>cloud-init Web Server Bootstrap</strong>
+            <p>Used cloud-init to automatically install Apache2 on the web VM at first boot, eliminating the need for manual post-deployment configuration.</p>
+            <pre><code"># cloud-init-web.yaml
+#cloud-config
+package_update: true
+package_upgrade: false
+packages:
+  - apache2
+  - curl
+
+runcmd:
+  - systemctl enable apache2
+  - systemctl start apache2
+  - echo "&lt;h1&gt;Web VM - $(hostname) - $(date)&lt;/h1&gt;" &gt; /var/www/html/index.html
+  - echo "healthy" &gt; /var/www/html/health
+
+write_files:
+  - path: /etc/motd
+    content: |
+      =================================
+      Azure Lab - Web Tier VM
+      Environment: Milestone 1
+      =================================</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Connectivity Verification</strong>
+            <p>Verified inter-subnet routing, SSH jump host access, and web server response. Confirmed NSG rules were blocking unauthorized access attempts.</p>
+            <pre><code"># Get jump host public IP
+JUMP_IP=$(az network public-ip show --resource-group $RG \
+  --name pip-jump --query ipAddress -o tsv)
+
+# SSH into jump host
+ssh azureadmin@$JUMP_IP
+
+# From jump host — SSH to internal VMs
+ssh -i ~/.ssh/azure_lab azureadmin@10.10.1.4  # web-vm
+ssh -i ~/.ssh/azure_lab azureadmin@10.10.2.4  # app-vm
+
+# From jump host — test web server
+curl -v http://10.10.1.4/
+curl -v http://10.10.1.4/health
+# Expected: "healthy"
+
+# From jump host — test app port NOT accessible from mgmt subnet
+# (NSG app only allows from 10.10.1.0/24)
+curl http://10.10.2.4:8080 --max-time 3
+# Expected: timeout (blocked by NSG)
+
+# From web VM — test app connectivity (allowed)
+ssh azureadmin@10.10.1.4 "curl http://10.10.2.4:8080 --max-time 5"</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Complete Workflow</h2>
+      <div class="mermaid">
+flowchart LR
+    A[az group create\nResource Group] --> B[az network vnet create\n+ 3 subnets]
+    B --> C[az network nsg create\n3 NSGs + rules]
+    C --> D[Associate NSGs\nto subnets]
+    D --> E[az vm create\n3 VMs with cloud-init]
+    E --> F[Verify SSH via\nJump Host]
+    F --> G[Test NSG rules\ncurl between VMs]
+    style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style G fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style B fill:#181818,stroke:#1e1e1e,color:#888
+    style C fill:#181818,stroke:#1e1e1e,color:#888
+    style D fill:#181818,stroke:#1e1e1e,color:#888
+    style E fill:#181818,stroke:#1e1e1e,color:#888
+    style F fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li><strong>VM deployment failing with NSG conflict</strong> — Creating a VM with an existing NSG specified while also having the <code>--nsg</code> parameter point to a different name caused a conflict. Used <code>--nsg ""</code> to avoid auto-creating a new NSG when a pre-configured one is being associated.</li>
+        <li><strong>Static private IP conflicting with DHCP range</strong> — Azure reserves the first four IPs in each subnet (.0-.3). Setting <code>--private-ip-address 10.10.1.1</code> was rejected. Changed to <code>10.10.1.4</code> which is the first usable address.</li>
+        <li><strong>cloud-init not running on first boot</strong> — The <code>--custom-data</code> parameter expects base64-encoded data or a file prefixed with <code>@</code>. Using <code>@cloud-init-web.yaml</code> works correctly.</li>
+        <li><strong>Cross-subnet SSH failing despite NSG allowing it</strong> — Azure has an implicit <code>AllowVnetInBound</code> rule at priority 65000. The inter-VM SSH was actually working, but the local SSH known_hosts was rejecting the connection due to a stale key. Cleared with <code>ssh-keygen -R 10.10.2.4</code>.</li>
+      </ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li>Azure's implicit <code>AllowVnetInBound</code> rule at priority 65000 allows all intra-VNet traffic by default — explicit deny rules at lower priority numbers must be added to restrict cross-subnet traffic.</li>
+        <li>Jump host / bastion patterns are essential for production — never expose SSH directly on application tier VMs to the public internet.</li>
+        <li>cloud-init is the preferred method for VM bootstrapping in Azure — it runs reliably at first boot and eliminates the need for post-deployment manual configuration steps.</li>
+        <li>Static private IP assignment in Azure requires using addresses from .4 onward in each subnet, as Azure reserves .0 (network), .1 (gateway), .2 and .3 (Azure internal services).</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

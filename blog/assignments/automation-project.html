@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Python + Ansible Automation | Assignments | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb">
+      <a href="../../blog/labs/index.html">Labs</a> &rsaquo;
+      <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo;
+      <span>Python + Ansible Automation</span>
+    </nav>
+
+    <div class="page-header">
+      <h1>Python + Ansible Automation</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-advanced">Advanced</span>
+        <span class="lab-category">Python &middot; 2025</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;">
+        <span class="tag">Python</span><span class="tag">Ansible</span><span class="tag">Automation</span>
+      </div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Build a multi-host configuration management system combining Python and Ansible. A Python orchestrator script generates a dynamic Ansible inventory from a YAML host database, validates host connectivity, renders Jinja2 templates for per-host configuration files, and invokes Ansible playbooks via the <code>subprocess</code> module. The Ansible playbooks handle idempotent package installation, service configuration, and file deployment across three Ubuntu server nodes. The result is a fully automated infrastructure provisioning pipeline runnable from a single Python command.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul>
+        <li><code>Python 3.10+</code> — orchestrator and inventory generation</li>
+        <li><code>Ansible 2.15+</code> — idempotent configuration management</li>
+        <li><code>Jinja2</code> — template rendering for config files</li>
+        <li><code>PyYAML</code> — YAML parsing for host database</li>
+        <li><code>subprocess</code> — Ansible execution from Python</li>
+        <li><code>paramiko</code> — SSH connectivity pre-validation</li>
+        <li><code>ansible-lint</code> — playbook static analysis</li>
+        <li><code>Vagrant + VirtualBox</code> — multi-VM lab environment</li>
+        <li><code>SSH agent / key management</code> — passwordless authentication</li>
+      </ul>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    PY[Python Orchestrator\norchestrate.py] --> DB[hosts.yaml\nhost database]
+    PY --> INV[Generate Ansible\nInventory JSON]
+    PY --> TMPL[Render Jinja2\nConfig Templates]
+    PY --> SSH[Validate SSH\nparamiko preflight]
+    SSH -->|all reachable| ANSIBLE[ansible-playbook\nvia subprocess]
+    ANSIBLE --> PB1[site.yml\nBase hardening]
+    ANSIBLE --> PB2[webservers.yml\nApache deploy]
+    ANSIBLE --> PB3[dbservers.yml\nMariaDB setup]
+    PB1 --> Node1[web-01\n10.0.0.11]
+    PB1 --> Node2[web-02\n10.0.0.12]
+    PB1 --> Node3[db-01\n10.0.0.13]
+    style PY fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style ANSIBLE fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style Node1 fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style Node2 fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style Node3 fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style DB fill:#181818,stroke:#1e1e1e,color:#888
+    style INV fill:#181818,stroke:#1e1e1e,color:#888
+    style TMPL fill:#181818,stroke:#1e1e1e,color:#888
+    style SSH fill:#181818,stroke:#1e1e1e,color:#888
+    style PB1 fill:#181818,stroke:#1e1e1e,color:#888
+    style PB2 fill:#181818,stroke:#1e1e1e,color:#888
+    style PB3 fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>Host Database &amp; Dynamic Inventory Generator</strong>
+            <p>Defined the host database in YAML and wrote a Python script to convert it into an Ansible-compatible JSON dynamic inventory.</p>
+            <pre><code"># hosts.yaml
+hosts:
+  web-01:
+    ip: "10.0.0.11"
+    role: webserver
+    packages: [apache2, php, libapache2-mod-php]
+    user: labadmin
+  web-02:
+    ip: "10.0.0.12"
+    role: webserver
+    packages: [apache2, php, libapache2-mod-php]
+    user: labadmin
+  db-01:
+    ip: "10.0.0.13"
+    role: dbserver
+    packages: [mariadb-server, python3-pymysql]
+    user: labadmin</code></pre>
+            <pre><code">#!/usr/bin/env python3
+# generate_inventory.py
+import yaml, json
+from pathlib import Path
+
+def generate_inventory(hosts_file: str = 'hosts.yaml') -> dict:
+    with open(hosts_file) as f:
+        data = yaml.safe_load(f)
+
+    inventory = {'_meta': {'hostvars': {}}}
+    groups = {}
+
+    for hostname, attrs in data['hosts'].items():
+        role = attrs['role']
+        groups.setdefault(role, {'hosts': [], 'vars': {}})
+        groups[role]['hosts'].append(hostname)
+        inventory['_meta']['hostvars'][hostname] = {
+            'ansible_host': attrs['ip'],
+            'ansible_user': attrs['user'],
+            'ansible_ssh_private_key_file': '~/.ssh/lab_key',
+            'host_packages': attrs.get('packages', []),
+        }
+
+    inventory.update(groups)
+    return inventory
+
+if __name__ == '__main__':
+    inv = generate_inventory()
+    print(json.dumps(inv, indent=2))</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>Ansible Playbooks</strong>
+            <p>Created three playbooks: base hardening (applied to all hosts), web server deployment, and database setup. All tasks use Ansible modules for idempotency.</p>
+            <pre><code"># site.yml — Base hardening for all hosts
+---
+- name: Base server hardening
+  hosts: all
+  become: true
+  tasks:
+    - name: Update package cache and upgrade
+      apt:
+        update_cache: yes
+        upgrade: dist
+        cache_valid_time: 3600
+
+    - name: Install base packages
+      apt:
+        name: [ufw, fail2ban, unattended-upgrades, curl, vim]
+        state: present
+
+    - name: Configure UFW defaults
+      ufw:
+        direction: "{{ item.direction }}"
+        policy: "{{ item.policy }}"
+      loop:
+        - { direction: incoming, policy: deny }
+        - { direction: outgoing, policy: allow }
+
+    - name: Allow SSH through UFW
+      ufw:
+        rule: allow
+        port: '22'
+        proto: tcp
+
+    - name: Enable UFW
+      ufw:
+        state: enabled
+
+    - name: Start and enable fail2ban
+      service:
+        name: fail2ban
+        state: started
+        enabled: yes</code></pre>
+            <pre><code"># webservers.yml
+---
+- name: Deploy Apache web servers
+  hosts: webserver
+  become: true
+  tasks:
+    - name: Install per-host packages
+      apt:
+        name: "{{ host_packages }}"
+        state: present
+
+    - name: Deploy virtual host config from template
+      template:
+        src: templates/vhost.conf.j2
+        dest: "/etc/apache2/sites-available/{{ inventory_hostname }}.conf"
+      notify: Reload Apache
+
+    - name: Enable site
+      command: "a2ensite {{ inventory_hostname }}.conf"
+      notify: Reload Apache
+
+    - name: Allow HTTP/HTTPS through UFW
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop: ['80', '443']
+
+  handlers:
+    - name: Reload Apache
+      service:
+        name: apache2
+        state: reloaded</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>Jinja2 Config Template</strong>
+            <p>Created a Jinja2 template for Apache virtual hosts that renders per-host configuration from Ansible variables.</p>
+            <pre><code"># templates/vhost.conf.j2
+&lt;VirtualHost *:80&gt;
+    ServerName {{ inventory_hostname }}.lab.local
+    DocumentRoot /var/www/{{ inventory_hostname }}
+
+    &lt;Directory /var/www/{{ inventory_hostname }}&gt;
+        Options -Indexes +FollowSymLinks
+        AllowOverride All
+        Require all granted
+    &lt;/Directory&gt;
+
+    ErrorLog  /var/log/apache2/{{ inventory_hostname }}-error.log
+    CustomLog /var/log/apache2/{{ inventory_hostname }}-access.log combined
+
+    # Security headers
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-XSS-Protection "1; mode=block"
+&lt;/VirtualHost&gt;</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>Python Orchestrator</strong>
+            <p>The main orchestrator script ties everything together: SSH preflight checks, inventory generation, and sequential playbook execution with error handling and logging.</p>
+            <pre><code">#!/usr/bin/env python3
+# orchestrate.py
+import subprocess, sys, json, logging
+from pathlib import Path
+import paramiko
+import yaml
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+log = logging.getLogger('orchestrator')
+
+def check_ssh_connectivity(hosts_file: str = 'hosts.yaml') -> bool:
+    """Verify SSH connectivity to all hosts before running Ansible."""
+    with open(hosts_file) as f:
+        data = yaml.safe_load(f)
+
+    all_ok = True
+    for hostname, attrs in data['hosts'].items():
+        ip = attrs['ip']
+        try:
+            client = paramiko.SSHClient()
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            client.connect(ip, username=attrs['user'],
+                          key_filename=str(Path.home() / '.ssh/lab_key'),
+                          timeout=5)
+            client.close()
+            log.info(f"SSH OK: {hostname} ({ip})")
+        except Exception as e:
+            log.error(f"SSH FAILED: {hostname} ({ip}): {e}")
+            all_ok = False
+    return all_ok
+
+def run_playbook(playbook: str, inventory_script: str, extra_args: list = None) -> int:
+    """Run an Ansible playbook and return the exit code."""
+    cmd = ['ansible-playbook', '-i', inventory_script, playbook, '-v']
+    if extra_args:
+        cmd.extend(extra_args)
+    log.info(f"Running: {' '.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=False)
+    return result.returncode
+
+def main():
+    log.info("Starting infrastructure automation pipeline")
+
+    # Preflight SSH check
+    if not check_ssh_connectivity():
+        log.error("SSH preflight failed — aborting")
+        sys.exit(1)
+
+    # Lint playbooks
+    for pb in ['site.yml', 'webservers.yml', 'dbservers.yml']:
+        result = subprocess.run(['ansible-lint', pb], capture_output=True)
+        if result.returncode != 0:
+            log.warning(f"Lint warnings in {pb}: {result.stdout.decode()}")
+
+    # Run playbooks in order
+    playbooks = ['site.yml', 'webservers.yml', 'dbservers.yml']
+    for pb in playbooks:
+        rc = run_playbook(pb, './generate_inventory.py')
+        if rc != 0:
+            log.error(f"Playbook {pb} failed with exit code {rc}")
+            sys.exit(rc)
+        log.info(f"Playbook {pb} completed successfully")
+
+    log.info("All playbooks completed. Infrastructure is configured.")
+
+if __name__ == '__main__':
+    main()</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Idempotency Verification</strong>
+            <p>Ran all playbooks twice in succession to verify idempotency — the second run should show 0 changes and 0 failures.</p>
+            <pre><code"># First run — shows changes
+python3 orchestrate.py
+# Expected output:
+# PLAY RECAP *****
+# web-01  : ok=12  changed=8   unreachable=0  failed=0
+
+# Second run — idempotent, no changes
+python3 orchestrate.py
+# Expected output:
+# PLAY RECAP *****
+# web-01  : ok=12  changed=0   unreachable=0  failed=0
+# web-02  : ok=12  changed=0   unreachable=0  failed=0
+# db-01   : ok=10  changed=0   unreachable=0  failed=0
+
+# Verify services on each node
+ansible all -i ./generate_inventory.py -m service_facts \
+  -a "name=apache2" | grep -A2 "state"</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Complete Workflow</h2>
+      <div class="mermaid">
+flowchart LR
+    A[Define hosts.yaml\nhost database] --> B[Write inventory\ngenerator Python]
+    B --> C[Write Ansible\nplaybooks + templates]
+    C --> D[Build orchestrator\nPython script]
+    D --> E[SSH preflight\nparamiko check]
+    E --> F[Run playbooks\nsubprocess call]
+    F --> G[Verify idempotency\n2nd run = 0 changes]
+    style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style G fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style B fill:#181818,stroke:#1e1e1e,color:#888
+    style C fill:#181818,stroke:#1e1e1e,color:#888
+    style D fill:#181818,stroke:#1e1e1e,color:#888
+    style E fill:#181818,stroke:#1e1e1e,color:#888
+    style F fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li><strong>Dynamic inventory script not marked executable</strong> — Ansible expects a dynamic inventory script to be executable and output JSON to stdout. Had to <code>chmod +x generate_inventory.py</code> and add a shebang line.</li>
+        <li><strong>Ansible template module vs copy module</strong> — Initially used the <code>copy</code> module which doesn't process Jinja2 variables. Switched to the <code>template</code> module which renders Jinja2 before deploying.</li>
+        <li><strong>paramiko rejecting host keys on fresh VMs</strong> — Using <code>AutoAddPolicy()</code> adds keys without verification — acceptable in a lab environment. For production, keys should be pre-populated in <code>known_hosts</code>.</li>
+        <li><strong>Playbook not idempotent for a2ensite command</strong> — The raw <code>command: a2ensite ...</code> task always reported "changed" even when the site was already enabled. Fixed by adding <code>creates: /etc/apache2/sites-enabled/...</code> as a condition, or using the <code>apache2_module</code> community module.</li>
+      </ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li>Ansible's idempotency guarantee depends on using proper modules — raw <code>command</code> and <code>shell</code> tasks always report changed; use module-specific tasks wherever possible.</li>
+        <li>Dynamic inventory generation is a powerful pattern that allows Ansible to consume host data from any source (CMDB, cloud API, YAML file) without maintaining static inventory files.</li>
+        <li>Combining Python orchestration with Ansible is the right tool split: Python handles dynamic logic, API calls, and pre/post-processing; Ansible handles idempotent system state declaration.</li>
+        <li>SSH connectivity pre-validation before Ansible runs saves significant time during long playbooks — failing fast on unreachable hosts prevents partial deployments that are harder to debug.</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

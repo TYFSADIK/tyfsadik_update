@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cloud Infrastructure Project | Assignments | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb">
+      <a href="../../blog/labs/index.html">Labs</a> &rsaquo;
+      <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo;
+      <span>Cloud Infrastructure Project</span>
+    </nav>
+
+    <div class="page-header">
+      <h1>Cloud Infrastructure Project</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-advanced">Advanced</span>
+        <span class="lab-category">Capstone &middot; 2025</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;">
+        <span class="tag">Azure</span><span class="tag">AKS</span><span class="tag">DevOps</span><span class="tag">Cloud</span>
+      </div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Design and deploy a complete cloud-native infrastructure on Azure integrating all cloud skills from the program: an Azure Kubernetes Service (AKS) cluster running a containerized web application, a CI/CD pipeline using GitHub Actions that builds, tests, and deploys to AKS on every push to main, Azure Container Registry (ACR) for image storage, Azure SQL Database as the managed backend, Key Vault for secrets management, Azure Front Door for global load balancing and WAF, comprehensive monitoring with Azure Monitor and Container Insights, and Microsoft Defender for Cloud for security posture management. All infrastructure is deployed via Bicep templates.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul>
+        <li><code>Azure Kubernetes Service (AKS)</code> — managed Kubernetes cluster</li>
+        <li><code>Azure Container Registry (ACR)</code> — private container image registry</li>
+        <li><code>Azure SQL Database</code> — managed relational database backend</li>
+        <li><code>Azure Key Vault</code> — secrets, certificates, and key management</li>
+        <li><code>Azure Front Door + WAF</code> — global CDN and web application firewall</li>
+        <li><code>GitHub Actions</code> — CI/CD pipeline automation</li>
+        <li><code>Bicep</code> — Azure-native IaC DSL (ARM template abstraction)</li>
+        <li><code>kubectl</code> — Kubernetes cluster management</li>
+        <li><code>Helm</code> — Kubernetes package manager for NGINX Ingress</li>
+        <li><code>Microsoft Defender for Cloud</code> — cloud security posture management</li>
+      </ul>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    GH[GitHub Repository\napp code + Bicep IaC] -->|push to main| GHA[GitHub Actions\nCI/CD Pipeline]
+    GHA -->|docker build + push| ACR[Azure Container\nRegistry]
+    GHA -->|kubectl apply| AKS[AKS Cluster\n3 system nodes\n+ 2 user nodes]
+    ACR --> AKS
+    AKS --> Ingress[NGINX Ingress\nController]
+    Ingress --> AppPod[App Pods\n3 replicas]
+    AppPod --> KV[Key Vault\nCSI Driver\nDB secrets]
+    AppPod --> SQL[Azure SQL\nPrivate Endpoint]
+    FD[Azure Front Door\n+ WAF Policy] --> Ingress
+    Monitor[Azure Monitor\nContainer Insights] --> AKS
+    Defender[Defender for Cloud\nSecurity Posture] --> AKS
+    style GH fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style AKS fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style GHA fill:#181818,stroke:#1e1e1e,color:#888
+    style ACR fill:#181818,stroke:#1e1e1e,color:#888
+    style Ingress fill:#181818,stroke:#1e1e1e,color:#888
+    style AppPod fill:#181818,stroke:#1e1e1e,color:#888
+    style KV fill:#181818,stroke:#1e1e1e,color:#888
+    style SQL fill:#181818,stroke:#1e1e1e,color:#888
+    style FD fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style Monitor fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style Defender fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>AKS Cluster &amp; ACR Deployment via Bicep</strong>
+            <p>Wrote a Bicep template to deploy the AKS cluster with system and user node pools, attach ACR with the <code>acrPull</code> role, enable Workload Identity for pod-level AAD authentication, and enable Container Insights for monitoring.</p>
+            <pre><code">// aks.bicep
+param clusterName string = 'aks-capstone'
+param location string = resourceGroup().location
+param nodeVmSize string = 'Standard_D2s_v3'
+param acrName string = 'acrcapstone${uniqueString(resourceGroup().id)}'
+
+resource acr 'Microsoft.ContainerRegistry/registries@2023-01-01-preview' = {
+  name: acrName
+  location: location
+  sku: { name: 'Standard' }
+  properties: { adminUserEnabled: false }
+}
+
+resource aks 'Microsoft.ContainerService/managedClusters@2023-07-01' = {
+  name: clusterName
+  location: location
+  identity: { type: 'SystemAssigned' }
+  properties: {
+    kubernetesVersion: '1.28'
+    enableRBAC: true
+    dnsPrefix: clusterName
+    agentPoolProfiles: [
+      {
+        name: 'system'
+        count: 3
+        vmSize: nodeVmSize
+        mode: 'System'
+        osDiskSizeGB: 50
+      }
+      {
+        name: 'user'
+        count: 2
+        vmSize: nodeVmSize
+        mode: 'User'
+      }
+    ]
+    addonProfiles: {
+      omsagent: {
+        enabled: true
+        config: { logAnalyticsWorkspaceResourceID: logWorkspace.id }
+      }
+    }
+    oidcIssuerProfile: { enabled: true }
+    securityProfile: { workloadIdentity: { enabled: true } }
+  }
+}
+
+// Grant AKS system identity acrPull on ACR
+resource acrRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(acr.id, aks.identity.principalId, 'acrPull')
+  scope: acr
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
+    principalId: aks.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}</code></pre>
+            <pre><code"># Deploy Bicep template
+az deployment group create \
+  --resource-group rg-capstone-cloud \
+  --template-file aks.bicep \
+  --parameters nodeVmSize=Standard_D2s_v3
+
+# Get credentials
+az aks get-credentials \
+  --resource-group rg-capstone-cloud \
+  --name aks-capstone
+kubectl get nodes</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>Key Vault CSI Driver &amp; Secrets Injection</strong>
+            <p>Installed the Secrets Store CSI Driver with Azure Key Vault provider, created a managed identity for the pods, and configured a SecretProviderClass to mount database credentials as files inside application pods.</p>
+            <pre><code"># Install Secrets Store CSI Driver via Helm
+helm repo add secrets-store-csi-driver https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts
+helm install csi-secrets-store secrets-store-csi-driver/secrets-store-csi-driver \
+  --namespace kube-system \
+  --set syncSecret.enabled=true
+
+# Install Azure Key Vault provider
+helm repo add csi-secrets-store-provider-azure \
+  https://azure.github.io/secrets-store-csi-driver-provider-azure/charts
+helm install akv-provider csi-secrets-store-provider-azure/csi-secrets-store-provider-azure \
+  --namespace kube-system</code></pre>
+            <pre><code">## SecretProviderClass manifest
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: azure-kvs
+  namespace: app
+spec:
+  provider: azure
+  parameters:
+    usePodIdentity: "false"
+    useVMManagedIdentity: "false"
+    clientID: "${WORKLOAD_IDENTITY_CLIENT_ID}"
+    keyvaultName: kv-capstone-lab
+    tenantId: "${AZURE_TENANT_ID}"
+    objects: |
+      array:
+        - |
+          objectName: db-connection-string
+          objectType: secret
+          objectVersion: ""
+        - |
+          objectName: app-secret-key
+          objectType: secret
+  secretObjects:
+    - secretName: app-secrets
+      type: Opaque
+      data:
+        - objectName: db-connection-string
+          key: DB_CONNECTION_STRING</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>GitHub Actions CI/CD Pipeline</strong>
+            <p>Created a GitHub Actions workflow that triggers on push to main: builds and pushes the Docker image to ACR, runs security scanning with Trivy, then deploys to AKS using a rolling update strategy.</p>
+            <pre><code"># .github/workflows/deploy.yml
+name: Build and Deploy to AKS
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: acrcapstoneLAB.azurecr.io
+  IMAGE_NAME: capstone-app
+  AKS_CLUSTER: aks-capstone
+  RESOURCE_GROUP: rg-capstone-cloud
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Login to ACR
+        run: az acr login --name acrcapstoneLAB
+
+      - name: Build and push Docker image
+        run: |
+          docker build -t $REGISTRY/$IMAGE_NAME:${{ github.sha }} .
+          docker push $REGISTRY/$IMAGE_NAME:${{ github.sha }}
+
+      - name: Run Trivy security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+
+      - name: Upload Trivy scan to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: trivy-results.sarif
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v1
+        with: { creds: '${{ secrets.AZURE_CREDENTIALS }}' }
+
+      - uses: azure/aks-set-context@v3
+        with:
+          resource-group: ${{ env.RESOURCE_GROUP }}
+          cluster-name: ${{ env.AKS_CLUSTER }}
+
+      - name: Deploy to AKS
+        run: |
+          kubectl set image deployment/capstone-app \
+            app=$REGISTRY/$IMAGE_NAME:${{ github.sha }} \
+            --namespace app
+          kubectl rollout status deployment/capstone-app \
+            --namespace app --timeout=5m</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>NGINX Ingress &amp; Azure Front Door + WAF</strong>
+            <p>Deployed NGINX Ingress Controller via Helm, created Ingress resources for the application, and configured Azure Front Door as the global entry point with a WAF policy in Prevention mode.</p>
+            <pre><code"># Deploy NGINX Ingress Controller
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm install ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx --create-namespace \
+  --set controller.service.type=LoadBalancer \
+  --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz</code></pre>
+            <pre><code">## Kubernetes Ingress manifest
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: capstone-ingress
+  namespace: app
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: app.capstone.lab
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: capstone-app-svc
+                port: { number: 80 }</code></pre>
+            <pre><code"># Azure Front Door WAF Policy (Prevention mode)
+az network front-door waf-policy create \
+  --resource-group rg-capstone-cloud \
+  --name wafCapstoneLab \
+  --mode Prevention \
+  --redirect-url https://app.capstone.lab/blocked
+
+# Add managed ruleset (OWASP 3.2)
+az network front-door waf-policy managed-rules add \
+  --policy-name wafCapstoneLab \
+  --resource-group rg-capstone-cloud \
+  --type DefaultRuleSet \
+  --version 1.0</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Monitoring, Security Posture &amp; Verification</strong>
+            <p>Enabled Container Insights for pod-level metrics, created alert rules for pod restart count and CPU/memory limits, and reviewed Defender for Cloud recommendations to achieve a security score above 80%.</p>
+            <pre><code"># Verify Container Insights is collecting data
+kubectl get pods -n kube-system | grep omsagent
+
+# KQL query — container restarts in last 24h
+# (Run in Log Analytics workspace)
+# KubePodInventory
+# | where TimeGenerated > ago(24h)
+# | where ContainerLastStatus == "Error"
+# | summarize RestartCount=sum(ContainerRestartCount) by Name, Namespace
+# | order by RestartCount desc
+
+# Create alert for pod OOMKill events
+az monitor metrics alert create \
+  --resource-group rg-capstone-cloud \
+  --name alert-aks-oom \
+  --description "Pod OOM killed" \
+  --scopes $(az aks show --resource-group rg-capstone-cloud \
+    --name aks-capstone --query id -o tsv) \
+  --condition "count kube_pod_container_status_last_terminated_reason == 1" \
+  --window-size 5m \
+  --evaluation-frequency 1m \
+  --severity 1
+
+# Defender for Cloud — review recommendations
+az security assessment list \
+  --query "[?properties.status.code=='Unhealthy']
+    .{Name:displayName, Severity:properties.metadata.severity}" \
+  --output table
+
+# Final deployment test
+kubectl get pods -n app
+kubectl get ingress -n app
+INGRESS_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+curl -H "Host: app.capstone.lab" http://$INGRESS_IP/health</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Complete Workflow</h2>
+      <div class="mermaid">
+flowchart LR
+    A[Bicep IaC\nAKS + ACR + SQL + KV] --> B[Deploy Infrastructure\naz deployment group create]
+    B --> C[Configure Secrets\nKey Vault CSI Driver]
+    C --> D[Deploy App\nKubernetes manifests]
+    D --> E[Setup CI/CD\nGitHub Actions pipeline]
+    E --> F[Azure Front Door\n+ WAF Policy]
+    F --> G[Container Insights\n+ Defender for Cloud]
+    G --> H[Verify Pipeline\nPush → Build → Deploy]
+    style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style H fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style B fill:#181818,stroke:#1e1e1e,color:#888
+    style C fill:#181818,stroke:#1e1e1e,color:#888
+    style D fill:#181818,stroke:#1e1e1e,color:#888
+    style E fill:#181818,stroke:#1e1e1e,color:#888
+    style F fill:#181818,stroke:#1e1e1e,color:#888
+    style G fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li><strong>GitHub Actions failing to push to ACR</strong> — The service principal credentials in GitHub Secrets were missing the <code>acrPush</code> role. Added the role assignment: <code>az role assignment create --role AcrPush --assignee $SP_ID --scope $ACR_ID</code>.</li>
+        <li><strong>Key Vault CSI Driver pods failing to mount secrets</strong> — The Workload Identity federated credential was configured for the wrong namespace. The service account and its federation must be in the same namespace as the pods consuming the secrets.</li>
+        <li><strong>AKS pods not pulling images from ACR</strong> — The AKS system-assigned identity needed the <code>acrPull</code> role on ACR. This is typically done at cluster creation time in Bicep; missing it causes <code>ImagePullBackOff</code> errors on all pods.</li>
+        <li><strong>Azure Front Door WAF blocking legitimate API requests</strong> — The managed OWASP ruleset flagged API payloads containing JSON with certain patterns. Tuned the WAF by creating exclusions for the specific fields and request types that triggered false positives, then switched to Prevention mode.</li>
+      </ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li>Workload Identity in AKS provides pod-level AAD identity without storing credentials — it is the modern, secure way to authenticate pods to Azure services, replacing pod-managed identities and service principal credential files.</li>
+        <li>CI/CD pipelines should include container image security scanning (Trivy/Snyk) as a blocking step before deployment — pushing vulnerable images to production is worse than a failed deployment.</li>
+        <li>Azure Front Door WAF requires careful tuning in Detection mode before switching to Prevention — managed rulesets generate false positives on legitimate API traffic that must be exclusion-listed first.</li>
+        <li>The combination of Bicep + GitHub Actions + Azure represents a complete cloud-native DevOps pipeline — infrastructure and application deployments are version-controlled, automated, and reproducible from a single repository.</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

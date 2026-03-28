@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Milestone 2: Full Environment | Assignments | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb">
+      <a href="../../blog/labs/index.html">Labs</a> &rsaquo;
+      <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo;
+      <span>Milestone 2: Full Environment</span>
+    </nav>
+
+    <div class="page-header">
+      <h1>Milestone 2: Full Environment</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-advanced">Advanced</span>
+        <span class="lab-category">Cloud &middot; 2025</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;">
+        <span class="tag">Azure</span><span class="tag">NSG</span><span class="tag">Monitor</span>
+      </div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Expand the Milestone 1 foundation into a production-ready environment by adding hardened NSG rule sets, custom route tables for forced-tunneling traffic inspection, Azure Monitor alerts with action groups, cost management budgets, Azure Policy assignments for compliance enforcement, and a complete VNet peering setup for a secondary disaster recovery VNet. All configuration changes are tracked and deployable via Azure CLI scripts committed to version control.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul>
+        <li><code>Azure NSG Flow Logs</code> — traffic visibility for all subnet flows</li>
+        <li><code>Azure Route Tables</code> — custom routing for traffic inspection</li>
+        <li><code>Azure Monitor Alerts</code> — metric and log-based alerting</li>
+        <li><code>Azure Action Groups</code> — alert notification channels</li>
+        <li><code>Azure Cost Management + Budgets</code> — spend visibility and alerts</li>
+        <li><code>Azure Policy</code> — governance and compliance enforcement</li>
+        <li><code>VNet Peering</code> — cross-VNet private routing</li>
+        <li><code>Azure Network Watcher</code> — flow logs and topology visualization</li>
+        <li><code>Log Analytics KQL</code> — query language for log analysis</li>
+      </ul>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    PrimaryVNet[Primary VNet\n10.10.0.0/16\ncanadacentral] -->|VNet Peering| DRVNet[DR VNet\n10.20.0.0/16\neastus2]
+    PrimaryVNet --> WebSN[Web Subnet\n+ Route Table]
+    PrimaryVNet --> AppSN[App Subnet\n+ Route Table]
+    RouteTable[Route Table\n0.0.0.0/0 → Firewall VM] --> WebSN
+    RouteTable --> AppSN
+    FirewallVM[NVA / Firewall VM\n10.10.4.4\nInspects egress] --> Internet
+    Monitor[Azure Monitor\nAlert Rules] --> ActionGrp[Action Group\nEmail + SMS]
+    FlowLogs[NSG Flow Logs\n→ Storage Account\n→ Log Analytics] --> Monitor
+    Budget[Cost Budget\n$50/month alert] --> ActionGrp
+    Policy[Azure Policy\nAllowed VM SKUs\nRequired Tags] --> PrimaryVNet
+    style PrimaryVNet fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style DRVNet fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style Monitor fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style ActionGrp fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style FlowLogs fill:#181818,stroke:#1e1e1e,color:#888
+    style RouteTable fill:#181818,stroke:#1e1e1e,color:#888
+    style FirewallVM fill:#181818,stroke:#1e1e1e,color:#888
+    style Budget fill:#181818,stroke:#1e1e1e,color:#888
+    style Policy fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>NSG Flow Logs &amp; Network Watcher</strong>
+            <p>Enabled NSG Flow Logs version 2 for all subnets to capture all allowed and denied traffic flows, storing to a storage account with retention and forwarding to Log Analytics for query.</p>
+            <pre><code"># Enable Network Watcher in region
+az network watcher configure \
+  --resource-group NetworkWatcherRG \
+  --locations canadacentral \
+  --enabled true
+
+# Create storage account for flow logs
+az storage account create \
+  --name "stflowlogs$(openssl rand -hex 4)" \
+  --resource-group $RG \
+  --location $LOCATION \
+  --sku Standard_LRS \
+  --kind StorageV2
+
+STORAGE_ID=$(az storage account show --name stflowlogsXXXX \
+  --resource-group $RG --query id -o tsv)
+LAW_ID=$(az monitor log-analytics workspace show \
+  --resource-group $RG --workspace-name law-lab \
+  --query id -o tsv)
+
+# Enable flow logs for web NSG (version 2 includes traffic analytics)
+az network watcher flow-log create \
+  --resource-group NetworkWatcherRG \
+  --name flowlog-nsg-web \
+  --nsg /subscriptions/$SUB_ID/resourceGroups/$RG/providers/Microsoft.Network/networkSecurityGroups/nsg-web \
+  --storage-account $STORAGE_ID \
+  --workspace $LAW_ID \
+  --traffic-analytics true \
+  --interval 10 \
+  --retention 30 \
+  --format JSON \
+  --log-version 2</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>Custom Route Table for Egress Inspection</strong>
+            <p>Created a custom route table that routes all outbound internet traffic from web and app subnets through a network virtual appliance (firewall VM) for inspection, overriding the default internet route.</p>
+            <pre><code"># Create route table
+az network route-table create \
+  --resource-group $RG \
+  --name rt-webapp-egress \
+  --location $LOCATION \
+  --disable-bgp-route-propagation false
+
+# Route all internet traffic to NVA firewall VM
+az network route-table route create \
+  --resource-group $RG \
+  --route-table-name rt-webapp-egress \
+  --name default-to-nva \
+  --address-prefix 0.0.0.0/0 \
+  --next-hop-type VirtualAppliance \
+  --next-hop-ip-address 10.10.4.4
+
+# Also route RFC1918 inter-subnet through NVA for inspection
+az network route-table route create \
+  --resource-group $RG \
+  --route-table-name rt-webapp-egress \
+  --name app-subnet-via-nva \
+  --address-prefix 10.10.2.0/24 \
+  --next-hop-type VirtualAppliance \
+  --next-hop-ip-address 10.10.4.4
+
+# Associate with web and app subnets
+az network vnet subnet update \
+  --resource-group $RG --vnet-name vnet-lab \
+  --name snet-web \
+  --route-table rt-webapp-egress
+
+az network vnet subnet update \
+  --resource-group $RG --vnet-name vnet-lab \
+  --name snet-app \
+  --route-table rt-webapp-egress</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>Azure Monitor Alerts &amp; Action Groups</strong>
+            <p>Created an Action Group for notifications and metric alert rules for CPU, available memory, and disk usage thresholds on the web VMs.</p>
+            <pre><code"># Create Action Group
+az monitor action-group create \
+  --resource-group $RG \
+  --name ag-lab-alerts \
+  --short-name labAlerts \
+  --action email lab-admin taki@tyfsadik.org
+
+# CPU alert — trigger if > 85% for 5 minutes
+VM_ID=$(az vm show --resource-group $RG --name web-vm --query id -o tsv)
+AG_ID=$(az monitor action-group show --resource-group $RG \
+  --name ag-lab-alerts --query id -o tsv)
+
+az monitor metrics alert create \
+  --resource-group $RG \
+  --name alert-web-vm-cpu \
+  --description "Web VM CPU above 85%" \
+  --scopes $VM_ID \
+  --condition "avg Percentage CPU > 85" \
+  --window-size 5m \
+  --evaluation-frequency 1m \
+  --severity 2 \
+  --action $AG_ID
+
+# Available memory alert (< 512 MB)
+az monitor metrics alert create \
+  --resource-group $RG \
+  --name alert-web-vm-memory \
+  --description "Web VM available memory below 512MB" \
+  --scopes $VM_ID \
+  --condition "avg Available Memory Bytes < 536870912" \
+  --window-size 5m \
+  --evaluation-frequency 1m \
+  --severity 2 \
+  --action $AG_ID</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>Cost Budget &amp; Azure Policy</strong>
+            <p>Set up a monthly cost budget with email alerts at 80% and 100% thresholds, and applied Azure Policy to restrict VM sizes to approved SKUs and enforce required resource tags.</p>
+            <pre><code"># Create monthly cost budget
+az consumption budget create \
+  --resource-group $RG \
+  --budget-name budget-lab-monthly \
+  --amount 50 \
+  --time-grain Monthly \
+  --start-date "$(date +%Y-%m-01)" \
+  --end-date "2026-12-31" \
+  --notifications '[
+    {"enabled":true,"operator":"GreaterThan","threshold":80,
+     "contactEmails":["taki@tyfsadik.org"],"contactRoles":["Owner"]},
+    {"enabled":true,"operator":"GreaterThan","threshold":100,
+     "contactEmails":["taki@tyfsadik.org"],"contactRoles":["Owner"]}
+  ]'
+
+# Assign "Allowed virtual machine SKUs" policy
+az policy assignment create \
+  --name "allowed-vm-skus" \
+  --display-name "Allowed VM SKUs" \
+  --policy "/providers/Microsoft.Authorization/policyDefinitions/cccc23c7-8427-4f53-ad12-b6a63eb452b3" \
+  --scope "/subscriptions/$SUB_ID/resourceGroups/$RG" \
+  --params '{"listOfAllowedSKUs": {"value": ["Standard_B1s","Standard_B2s","Standard_B4ms"]}}'
+
+# Enforce required tags policy
+az policy assignment create \
+  --name "require-environment-tag" \
+  --display-name "Require Environment Tag" \
+  --policy "/providers/Microsoft.Authorization/policyDefinitions/871b6d14-10aa-478d-b590-94f262ecfa99" \
+  --scope "/subscriptions/$SUB_ID/resourceGroups/$RG" \
+  --params '{"tagName":{"value":"Environment"}}'</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>VNet Peering for DR &amp; Log Query Verification</strong>
+            <p>Created a secondary DR VNet in East US 2 and established bidirectional peering with the primary VNet. Ran KQL queries in Log Analytics to verify flow logs were populating correctly.</p>
+            <pre><code"># Create DR VNet in East US 2
+az network vnet create \
+  --resource-group $RG \
+  --name vnet-dr \
+  --address-prefix 10.20.0.0/16 \
+  --location eastus2
+
+# Establish bidirectional peering
+PRIMARY_ID=$(az network vnet show --resource-group $RG \
+  --name vnet-lab --query id -o tsv)
+DR_ID=$(az network vnet show --resource-group $RG \
+  --name vnet-dr --query id -o tsv)
+
+az network vnet peering create \
+  --name peer-primary-to-dr \
+  --resource-group $RG \
+  --vnet-name vnet-lab \
+  --remote-vnet $DR_ID \
+  --allow-vnet-access
+
+az network vnet peering create \
+  --name peer-dr-to-primary \
+  --resource-group $RG \
+  --vnet-name vnet-dr \
+  --remote-vnet $PRIMARY_ID \
+  --allow-vnet-access
+
+# KQL query — check flow logs in Log Analytics
+# Run in Log Analytics workspace query editor:
+# AzureNetworkAnalytics_CL
+# | where SubType_s == "FlowLog"
+# | where TimeGenerated > ago(1h)
+# | summarize FlowCount = count() by NSGName_s, FlowDirection_s
+# | order by FlowCount desc</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Complete Workflow</h2>
+      <div class="mermaid">
+flowchart LR
+    A[Enable NSG Flow\nLogs + Network Watcher] --> B[Custom Route Table\nEgress via NVA]
+    B --> C[Azure Monitor\nAlerts + Action Groups]
+    C --> D[Cost Budget\n80%/100% alerts]
+    D --> E[Azure Policy\nSKU + Tag enforcement]
+    E --> F[VNet Peering\nPrimary ↔ DR]
+    F --> G[KQL Queries\nVerify Log Analytics]
+    style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style G fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style B fill:#181818,stroke:#1e1e1e,color:#888
+    style C fill:#181818,stroke:#1e1e1e,color:#888
+    style D fill:#181818,stroke:#1e1e1e,color:#888
+    style E fill:#181818,stroke:#1e1e1e,color:#888
+    style F fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li><strong>Route table causing internet connectivity loss on web VMs</strong> — Routing all traffic to the NVA while the NVA didn't have IP forwarding enabled caused a black hole. Had to enable <code>Enable IP forwarding</code> on the NVA NIC and configure iptables FORWARD rules on the VM.</li>
+        <li><strong>NSG Flow Logs not appearing in Log Analytics</strong> — Traffic Analytics has a 60-minute delay before data appears. Also confirmed the Log Analytics workspace was in the same region as the Network Watcher to avoid cross-region data transfer costs.</li>
+        <li><strong>Azure Policy blocking test VMs with non-approved SKUs</strong> — The policy assignment was set to <code>Deny</code> mode immediately. Changed to <code>Audit</code> mode first to inventory non-compliant resources before enforcing.</li>
+        <li><strong>VNet peering not allowing traffic across peered VNets</strong> — The peering was created but <code>AllowForwardedTraffic</code> was not enabled. Updated both peering connections to allow forwarded traffic for the route table to function correctly across peered VNets.</li>
+      </ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li>Azure Policy in Audit mode first is the correct approach for governance adoption — enforcing Deny mode before an inventory assessment creates operational disruptions.</li>
+        <li>NSG Flow Logs provide full traffic visibility but have a 60-minute latency for Traffic Analytics aggregations — they are not suitable for real-time alerting but excellent for forensic analysis.</li>
+        <li>Custom route tables with NVA next-hops require IP forwarding enabled both on the Azure NIC level (Azure portal setting) AND at the OS level (sysctl net.ipv4.ip_forward=1).</li>
+        <li>Cost budgets should be set at 70-80% threshold rather than 100% — by the time you reach 100%, there's no opportunity to intervene before overspend occurs.</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

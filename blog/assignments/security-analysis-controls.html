@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Security Analysis &amp; Controls | Assignments | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb">
+      <a href="../../blog/labs/index.html">Labs</a> &rsaquo;
+      <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo;
+      <span>Security Analysis &amp; Controls</span>
+    </nav>
+
+    <div class="page-header">
+      <h1>Security Analysis &amp; Controls</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Security &middot; 2025</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;">
+        <span class="tag">Threat Modeling</span><span class="tag">Firewall</span><span class="tag">NSG</span>
+      </div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Conduct a structured threat assessment on a provided network topology representing a small business with a DMZ, internal LAN, and cloud-hosted application tier. Using the STRIDE threat model, identify attack vectors, rate risks using a likelihood-impact matrix, and implement compensating controls including Linux firewall rules (iptables/UFW), Azure Network Security Group rules, fail2ban configuration, and a hardened SSH policy. Document all findings in a structured security report.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul>
+        <li><code>STRIDE threat modeling</code> — Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege</li>
+        <li><code>iptables / UFW</code> — Linux host-based firewall</li>
+        <li><code>Azure NSG</code> — cloud-layer network security groups</li>
+        <li><code>fail2ban</code> — automated brute-force protection</li>
+        <li><code>Nmap</code> — port scanning and service enumeration</li>
+        <li><code>Lynis</code> — Linux security audit tool</li>
+        <li><code>OpenVAS / Greenbone</code> — vulnerability scanning</li>
+        <li><code>auditd</code> — Linux kernel audit framework</li>
+        <li><code>CIS Benchmarks</code> — security hardening reference</li>
+      </ul>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    Internet[Internet\nUntrusted Zone] -->|TCP 80/443| DMZ
+    Internet -->|SSH brute force| SSH_Risk[SSH Exposure Risk]
+    DMZ[DMZ\nWeb Server\n172.16.1.10] -->|filtered| LAN
+    LAN[Internal LAN\n192.168.1.0/24] --> DB[Database Server\n192.168.1.50]
+    LAN --> FW[Linux Firewall\niptables + fail2ban]
+    FW --> Internet
+    SSH_Risk --> FW
+    DB --> AUDIT[auditd\nDB Access Logging]
+    style Internet fill:#181818,stroke:#1e1e1e,color:#888
+    style DMZ fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style LAN fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style DB fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style FW fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style SSH_Risk fill:#181818,stroke:#1e1e1e,color:#888
+    style AUDIT fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>STRIDE Threat Identification</strong>
+            <p>Applied STRIDE to each system component, documenting threat descriptions, affected assets, and initial risk ratings before any controls were in place.</p>
+            <pre><code"># Threat register excerpt (documented in spreadsheet)
+# Asset: Web Server (DMZ)
+# S — Spoofing:    Attacker impersonates legitimate user via session hijacking
+# T — Tampering:  Defacement via web application vulnerability (SQLi/RCE)
+# R — Repudiation: No access logging configured on web server
+# I — Info Disc:  Directory listing enabled, exposes file structure
+# D — DoS:        No rate limiting; susceptible to HTTP flood
+# E — EoP:        Running Apache as root increases blast radius
+
+# Asset: SSH Service (Firewall/Servers)
+# S — Spoofing:   Password authentication enables credential stuffing
+# D — DoS:        Unlimited login attempts exhaust connection table</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>Reconnaissance &amp; Vulnerability Scan</strong>
+            <p>Used Nmap to enumerate open ports and services on the target topology, and Lynis to audit the Linux configuration against CIS benchmarks.</p>
+            <pre><code"># Full port scan of web server
+nmap -sV -sC -p- --min-rate 1000 172.16.1.10 -oN scan_webserver.txt
+
+# OS detection and script scan
+nmap -A -T4 192.168.1.50
+
+# Linux security audit with Lynis
+sudo lynis audit system --quick
+# Review: /var/log/lynis.log
+# Key findings: world-writable files, no password aging, no auditd
+
+# Check for listening services
+ss -tlnp
+# Identify: Apache, sshd, mysqld, rpcbind (unexpected)</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>Firewall Hardening with iptables</strong>
+            <p>Replaced the permissive default policy with a deny-all baseline, adding explicit rules for each required service. Applied connection tracking to statefully permit established sessions.</p>
+            <pre><code"># Flush existing rules and set deny-all defaults
+sudo iptables -F
+sudo iptables -X
+sudo iptables -P INPUT DROP
+sudo iptables -P FORWARD DROP
+sudo iptables -P OUTPUT ACCEPT
+
+# Allow loopback
+sudo iptables -A INPUT -i lo -j ACCEPT
+
+# Allow established/related connections
+sudo iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+# Allow SSH only from management subnet
+sudo iptables -A INPUT -p tcp --dport 22 -s 192.168.1.0/24 -j ACCEPT
+
+# Allow HTTP/HTTPS to DMZ web server
+sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+
+# Log dropped packets
+sudo iptables -A INPUT -j LOG --log-prefix "IPT-DROP: " --log-level 4
+
+# Persist
+sudo iptables-save | sudo tee /etc/iptables/rules.v4</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>fail2ban Brute-Force Protection</strong>
+            <p>Configured fail2ban with custom jails for SSH, Apache, and a custom application log pattern. Set ban thresholds appropriate for the environment.</p>
+            <pre><code"># /etc/fail2ban/jail.local
+[DEFAULT]
+bantime  = 3600
+findtime = 600
+maxretry = 5
+banaction = iptables-multiport
+
+[sshd]
+enabled  = true
+port     = 22
+filter   = sshd
+logpath  = /var/log/auth.log
+maxretry = 3
+bantime  = 86400
+
+[apache-auth]
+enabled  = true
+port     = http,https
+filter   = apache-auth
+logpath  = /var/log/apache2/error.log
+maxretry = 5
+
+sudo systemctl enable --now fail2ban
+sudo fail2ban-client status
+sudo fail2ban-client status sshd</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>auditd &amp; SSH Hardening</strong>
+            <p>Enabled the Linux audit daemon with rules to log privilege escalation, file access in sensitive directories, and all authentication events. Hardened SSH to use only ed25519 keys and modern ciphers.</p>
+            <pre><code"># auditd rules — /etc/audit/rules.d/hardening.rules
+-w /etc/passwd -p wa -k identity
+-w /etc/shadow -p wa -k identity
+-w /etc/sudoers -p wa -k sudoers
+-a always,exit -F arch=b64 -S execve -F euid=0 -k root_commands
+-w /var/log/auth.log -p rwa -k auth_log
+
+sudo auditctl -R /etc/audit/rules.d/hardening.rules
+sudo systemctl restart auditd
+sudo ausearch -k identity | tail -20
+
+# SSH hardening — /etc/ssh/sshd_config
+Protocol 2
+PermitRootLogin no
+PasswordAuthentication no
+PubkeyAuthentication yes
+KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org
+Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com
+MACs hmac-sha2-512-etm@openssh.com
+LoginGraceTime 30
+MaxAuthTries 3
+ClientAliveInterval 300
+ClientAliveCountMax 2
+
+sudo sshd -t  # validate config
+sudo systemctl restart ssh</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Complete Workflow</h2>
+      <div class="mermaid">
+flowchart LR
+    A[STRIDE Threat\nModeling] --> B[Nmap + Lynis\nReconnaissance]
+    B --> C[Risk Rating\nLikelihood × Impact]
+    C --> D[iptables\nDeny-All + Explicit Rules]
+    D --> E[fail2ban\nBrute-Force Protection]
+    E --> F[auditd Rules\nAudit Logging]
+    F --> G[SSH Hardening\nKey-Only + Modern Ciphers]
+    G --> H[Re-scan to Verify\nControl Effectiveness]
+    style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style H fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style B fill:#181818,stroke:#1e1e1e,color:#888
+    style C fill:#181818,stroke:#1e1e1e,color:#888
+    style D fill:#181818,stroke:#1e1e1e,color:#888
+    style E fill:#181818,stroke:#1e1e1e,color:#888
+    style F fill:#181818,stroke:#1e1e1e,color:#888
+    style G fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li><strong>iptables rules not surviving reboots</strong> — Rules are in-memory only by default. Installed <code>iptables-persistent</code> and used <code>netfilter-persistent save</code> to persist rules to <code>/etc/iptables/rules.v4</code>.</li>
+        <li><strong>fail2ban banning legitimate admin IP</strong> — Initial config had no <code>ignoreip</code> setting. Added the management subnet to the <code>[DEFAULT]</code> ignore list in jail.local to prevent lockout.</li>
+        <li><strong>auditd generating excessive log volume</strong> — The <code>-a always,exit -S execve</code> rule captured every single process execution. Narrowed to <code>-F euid=0</code> to audit only root-level command execution.</li>
+        <li><strong>Post-hardening SSH connection refused</strong> — The new cipher list excluded the algorithm the management workstation's older OpenSSH client was using. Added one compatible modern cipher to allow the admin workstation to connect.</li>
+      </ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li>STRIDE is most effective when applied per-component, not per-system — each asset has a different threat profile that requires targeted controls.</li>
+        <li>Deny-all firewall policies with explicit allow rules are significantly more secure than permit-all with explicit deny — the attack surface is minimized by default.</li>
+        <li>fail2ban requires an <code>ignoreip</code> configuration for all management networks — getting locked out of a production server by your own security tool is a real operational risk.</li>
+        <li>auditd rules need careful tuning between coverage and log volume — over-auditing creates noise that obscures genuine security events during analysis.</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>
