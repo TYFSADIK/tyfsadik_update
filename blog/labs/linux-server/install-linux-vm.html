@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Installing Linux VM | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Installing Linux VM</span></nav>
+    <div class="page-header">
+      <h1>Installing Linux VM</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-beginner">Beginner</span>
+        <span class="lab-category">Linux Server</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">VirtualBox</span><span class="tag">VMware</span><span class="tag">ISO</span><span class="tag">installer</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Install a Linux distribution (Ubuntu Server / Debian) inside a virtual machine, configure basic settings, and prepare it for server use.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>VirtualBox</code></li><li><code>VMware</code></li><li><code>ISO</code></li><li><code>installer</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>vboxmanage createvm --name 'UbuntuServer'</code></div><div class='command'><code>mount ISO in VM settings</code></div><div class='command'><code>systemctl set-default multi-user.target</code></div><div class='command'><code>sudo apt update && sudo apt upgrade -y</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    A[Download ISO] --> B[Create VM\nRAM: 2GB+ Disk: 20GB+]
+    B --> C[Attach ISO\nas boot device]
+    C --> D[Boot VM\nfrom ISO]
+    D --> E[Run installer\nPartition disk]
+    E --> F[Set hostname\nCreate user]
+    F --> G[Install bootloader\nGRUB to disk]
+    G --> H[Reboot\nRemove ISO]
+    H --> I[Post-install\nconfiguration]
+    style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style I fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Create the Virtual Machine</strong>
+        <p>Open VirtualBox/VMware and create a new VM with at least 2GB RAM, 2 CPU cores, and 20GB disk.</p>
+        <pre><code># VirtualBox CLI alternative
+vboxmanage createvm --name 'LabServer' --ostype Ubuntu_64 --register
+vboxmanage modifyvm 'LabServer' --memory 2048 --cpus 2
+vboxmanage createhd --filename ~/VMs/LabServer.vdi --size 20480
+vboxmanage storagectl 'LabServer' --name SATA --add sata
+vboxmanage storageattach 'LabServer' --storagectl SATA --port 0 --device 0 --type hdd --medium ~/VMs/LabServer.vdi</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Run the Installer</strong>
+        <p>Boot from the ISO, select language/region, partition the disk (LVM recommended), and create the initial user.</p>
+        <pre><code># During installation choose:
+# - Language: English
+# - Keyboard: your layout
+# - Partitioning: Guided LVM (entire disk)
+# - Hostname: labserver01
+# - Username: your username
+# - Software: OpenSSH Server (check this!)</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Post-Installation Steps</strong>
+        <p>Update the system, verify SSH is running, and configure the network.</p>
+        <pre><code>sudo apt update && sudo apt upgrade -y
+sudo systemctl status ssh
+hostname && uname -r
+ip addr show
+
+# Disable root login over SSH
+sudo sed -i 's/PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+sudo systemctl restart ssh</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <div class="step-body">
+        <strong>Install Guest Additions (VirtualBox)</strong>
+        <p>Guest additions improve performance and enable shared folders, clipboard, and dynamic screen resize.</p>
+        <pre><code>sudo apt install -y dkms linux-headers-$(uname -r) build-essential
+# In VirtualBox menu: Devices → Insert Guest Additions CD
+sudo mount /dev/cdrom /mnt
+sudo /mnt/VBoxLinuxAdditions.run
+sudo reboot</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>VM hangs on boot — check if virtualization (VT-x/AMD-V) is enabled in BIOS</li><li>Installer fails to detect disk — check storage controller type (SATA vs NVMe)</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>LVM during installation enables easy disk expansion later</li><li>Enable SSH during install — saves time configuring it post-install</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

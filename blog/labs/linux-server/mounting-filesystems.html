@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mounting & Filesystem Management | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Mounting & Filesystem Management</span></nav>
+    <div class="page-header">
+      <h1>Mounting & Filesystem Management</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Linux Server</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">mount</span><span class="tag">umount</span><span class="tag">fstab</span><span class="tag">blkid</span><span class="tag">df</span><span class="tag">du</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Mount filesystems manually and persistently via /etc/fstab, understand filesystem types, and manage disk space.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>mount</code></li><li><code>umount</code></li><li><code>fstab</code></li><li><code>blkid</code></li><li><code>df</code></li><li><code>du</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>mount -t ext4 /dev/sdb1 /mnt/data</code></div><div class='command'><code>blkid /dev/sdb1</code></div><div class='command'><code>df -hT</code></div><div class='command'><code>du -sh /var/*</code></div><div class='command'><code>mount -a</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+sequenceDiagram
+    participant A as Admin
+    participant K as Kernel
+    participant VFS as VFS Layer
+    participant FS as Filesystem Driver
+    participant D as Block Device
+    A->>K: mount /dev/sdb1 /mnt/data
+    K->>D: Read superblock
+    D-->>K: Filesystem metadata
+    K->>FS: Load ext4 driver
+    FS->>VFS: Register mount point
+    VFS-->>A: /mnt/data accessible
+    Note over A,D: All file ops go through VFS → FS driver → device
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Manual Mount</strong>
+        <p>Mount a filesystem to a directory. Changes are temporary (lost on reboot).</p>
+        <pre><code># Mount ext4 partition
+sudo mount -t ext4 /dev/sdb1 /mnt/data
+
+# Mount with options
+sudo mount -o ro,noexec /dev/sdb1 /mnt/data  # read-only
+sudo mount -o remount,rw /mnt/data            # remount rw
+
+# View mounted filesystems
+mount | grep sdb
+df -hT</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Persistent Mounts via /etc/fstab</strong>
+        <p>fstab entries survive reboots. Always use UUID, never /dev/sdX names.</p>
+        <pre><code># Get UUID
+blkid /dev/sdb1
+# UUID=abc123...
+
+# Add to /etc/fstab:
+# UUID=abc123 /data ext4 defaults 0 2
+
+# Test fstab without rebooting
+sudo mount -a
+
+# fstab fields:
+# device  mountpoint  fstype  options  dump  pass</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Disk Space Management</strong>
+        <p>Monitor disk usage and find what's consuming space.</p>
+        <pre><code>df -h            # filesystem usage
+df -hT           # include filesystem type
+
+# Find large directories
+du -sh /var/*    # dirs in /var
+du -sh /* 2>/dev/null | sort -rh | head
+
+# Find large files
+find / -type f -size +100M 2>/dev/null | sort -k5 -rn</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>Wrong UUID in fstab causes boot failure — use emergency mode to fix</li><li>mount -a skips entries with noauto option</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>nofail option in fstab prevents boot failure if device is absent (good for USB)</li><li>pass field 2 enables fsck check on boot — set 0 to disable for non-root</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

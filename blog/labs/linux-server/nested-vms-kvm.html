@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Creating Nested VMs with KVM | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Creating Nested VMs with KVM</span></nav>
+    <div class="page-header">
+      <h1>Creating Nested VMs with KVM</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-advanced">Advanced</span>
+        <span class="lab-category">Linux Server</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">KVM</span><span class="tag">qemu</span><span class="tag">libvirt</span><span class="tag">virsh</span><span class="tag">virt-manager</span><span class="tag">virt-install</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Install the KVM hypervisor stack on Linux, create and manage virtual machines using virsh and virt-install, and understand the libvirt architecture.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>KVM</code></li><li><code>qemu</code></li><li><code>libvirt</code></li><li><code>virsh</code></li><li><code>virt-manager</code></li><li><code>virt-install</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>egrep -c '(vmx|svm)' /proc/cpuinfo</code></div><div class='command'><code>apt install qemu-kvm libvirt-daemon-system</code></div><div class='command'><code>virsh list --all</code></div><div class='command'><code>virt-install --name vm1 --memory 1024 --disk size=10</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+graph TD
+    HOST[Host Machine] --> KVM[KVM Kernel Module]
+    KVM --> QEMU[QEMU Emulator]
+    QEMU --> LV[libvirt daemon]
+    LV --> VM1[VM 1]
+    LV --> VM2[VM 2]
+    LV --> VM3[VM 3]
+    LV --> API[API / virsh / virt-manager]
+    style HOST fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style LV fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+    style API fill:#1a1a2e,stroke:#ffd700,color:#ffd700
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Verify CPU Support</strong>
+        <p>KVM requires hardware virtualization extensions. Check before installing.</p>
+        <pre><code># Count virtualization-capable CPUs
+egrep -c '(vmx|svm)' /proc/cpuinfo  # >0 means supported
+
+# More detail
+lscpu | grep Virtualization
+kvm-ok  # ubuntu: apt install cpu-checker</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Install KVM Stack</strong>
+        <p>Install QEMU, KVM, libvirt, and management tools.</p>
+        <pre><code>sudo apt install -y \
+  qemu-kvm libvirt-daemon-system \
+  libvirt-clients bridge-utils \
+  virt-manager virtinst
+
+# Add user to libvirt group
+sudo usermod -aG libvirt $USER
+newgrp libvirt
+
+# Start and enable libvirt
+sudo systemctl enable --now libvirtd</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Create a VM with virt-install</strong>
+        <p>Use virt-install to create a VM from an ISO.</p>
+        <pre><code>sudo virt-install \
+  --name testvm \
+  --ram 1024 \
+  --vcpus 1 \
+  --disk size=10 \
+  --location /path/to/ubuntu.iso \
+  --os-variant ubuntu22.04 \
+  --network default \
+  --graphics none \
+  --extra-args 'console=ttyS0'</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <div class="step-body">
+        <strong>Manage VMs with virsh</strong>
+        <p>virsh is the command-line interface to libvirt.</p>
+        <pre><code>virsh list --all           # list all VMs
+virsh start testvm         # start VM
+virsh shutdown testvm      # graceful stop
+virsh destroy testvm       # force stop
+virsh console testvm       # serial console
+virsh snapshot-create-as testvm snap1
+virsh snapshot-revert testvm snap1
+virsh undefine testvm --remove-all-storage</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>Nested virtualization requires enabling in host BIOS and VMware/VBox settings</li><li>Permission denied to virsh — user not in libvirt group, relogin required</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Use snapshots before major changes — virsh snapshot-create-as is instant</li><li>virt-manager provides a GUI when a desktop is available</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

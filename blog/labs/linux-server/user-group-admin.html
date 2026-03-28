@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User & Group Administration | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>User & Group Administration</span></nav>
+    <div class="page-header">
+      <h1>User & Group Administration</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Linux Server</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">useradd</span><span class="tag">usermod</span><span class="tag">groupadd</span><span class="tag">passwd</span><span class="tag">chage</span><span class="tag">visudo</span><span class="tag">/etc/passwd</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Create and manage user accounts and groups, configure password policies, and set up sudo access on a Linux server.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>useradd</code></li><li><code>usermod</code></li><li><code>groupadd</code></li><li><code>passwd</code></li><li><code>chage</code></li><li><code>visudo</code></li><li><code>/etc/passwd</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>useradd -m -s /bin/bash -G sudo alice</code></div><div class='command'><code>usermod -aG docker bob</code></div><div class='command'><code>chage -l alice</code></div><div class='command'><code>visudo</code></div><div class='command'><code>passwd --expire alice</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+graph TD
+    subgraph /etc/passwd
+      P[alice:x:1001:1001:Alice:/home/alice:/bin/bash]
+    end
+    subgraph /etc/shadow
+      S[alice:$6$hash...:19000:0:99999:7:::] 
+    end
+    subgraph /etc/group
+      G[sudo:x:27:alice,bob]
+      G2[docker:x:999:bob]
+    end
+    P -->|UID/GID| S
+    P -->|primary group| G
+    style P fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style S fill:#1a1a2e,stroke:#ff4444,color:#ff4444
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Create Users</strong>
+        <p>useradd creates the account. adduser (Debian/Ubuntu) is the more interactive wrapper.</p>
+        <pre><code># Create user with home dir and bash
+sudo useradd -m -s /bin/bash alice
+sudo passwd alice
+
+# Debian/Ubuntu interactive version
+sudo adduser alice
+
+# Create system user (no home, no login)
+sudo useradd -r -s /usr/sbin/nologin appuser</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Manage Groups</strong>
+        <p>Add users to supplementary groups. Use -a (append) with -G to avoid removing existing group memberships.</p>
+        <pre><code>sudo groupadd developers
+
+# Add to supplementary group (MUST use -a)
+sudo usermod -aG sudo alice
+sudo usermod -aG docker,developers bob
+
+# Verify
+groups alice
+id bob</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Password Policy</strong>
+        <p>Set password expiry and complexity requirements.</p>
+        <pre><code># Force password change on next login
+sudo passwd --expire alice
+
+# View password aging info
+sudo chage -l alice
+
+# Set max age 90 days, warn 7 days before
+sudo chage -M 90 -W 7 alice
+
+# Lock/unlock account
+sudo passwd -l alice  # lock
+sudo passwd -u alice  # unlock</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <div class="step-body">
+        <strong>sudo Configuration</strong>
+        <p>Grant specific sudo privileges using visudo (never edit /etc/sudoers directly).</p>
+        <pre><code>sudo visudo
+# Add lines:
+alice ALL=(ALL:ALL) ALL           # full sudo
+bob ALL=(ALL) NOPASSWD: /bin/ls   # specific command
+%developers ALL=(ALL) /usr/bin/apt  # group
+
+# Or drop a file in:
+sudo visudo -f /etc/sudoers.d/alice</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>usermod -G without -a replaces all supplementary groups</li><li>Never edit /etc/sudoers directly — visudo validates syntax</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>/etc/sudoers.d/ allows modular sudo config without editing the main file</li><li>Lock accounts with passwd -l rather than deleting — preserves UID for file ownership</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

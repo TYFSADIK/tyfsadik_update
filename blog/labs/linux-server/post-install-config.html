@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Post-Installation Configuration | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Post-Installation Configuration</span></nav>
+    <div class="page-header">
+      <h1>Post-Installation Configuration</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-beginner">Beginner</span>
+        <span class="lab-category">Linux Server</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">apt</span><span class="tag">nmcli</span><span class="tag">useradd</span><span class="tag">ufw</span><span class="tag">ssh</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Perform essential post-installation tasks on a fresh Linux server: networking, user setup, package management, and security hardening.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>apt</code></li><li><code>nmcli</code></li><li><code>useradd</code></li><li><code>ufw</code></li><li><code>ssh</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>hostnamectl set-hostname server01</code></div><div class='command'><code>nmcli con mod eth0 ipv4.method manual</code></div><div class='command'><code>useradd -m -s /bin/bash admin</code></div><div class='command'><code>ufw allow ssh && ufw enable</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart LR
+    subgraph Network
+      A[Set static IP] --> B[Configure DNS]
+      B --> C[Test connectivity]
+    end
+    subgraph Users
+      D[Create admin user] --> E[Add to sudo group]
+      E --> F[Setup SSH keys]
+    end
+    subgraph Security
+      G[Enable firewall] --> H[Disable root SSH]
+      H --> I[Auto-updates]
+    end
+    Network --> Users --> Security
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Set Hostname & Network</strong>
+        <p>Give the server a proper hostname and configure static IP addressing.</p>
+        <pre><code># Set hostname
+hostnamectl set-hostname labserver01
+
+# Configure static IP with nmcli
+nmcli con mod 'Wired connection 1' \
+  ipv4.method manual \
+  ipv4.addresses '192.168.1.100/24' \
+  ipv4.gateway '192.168.1.1' \
+  ipv4.dns '1.1.1.1,8.8.8.8'
+nmcli con up 'Wired connection 1'</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Create Users & Groups</strong>
+        <p>Create an admin user with sudo access.</p>
+        <pre><code>sudo useradd -m -s /bin/bash -G sudo adminuser
+sudo passwd adminuser
+
+# Or on Debian/Ubuntu
+sudo adduser adminuser
+sudo usermod -aG sudo adminuser
+
+# Verify
+groups adminuser
+sudo -l -U adminuser</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Basic Firewall</strong>
+        <p>Enable ufw and allow only needed services.</p>
+        <pre><code>sudo apt install -y ufw
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw allow ssh
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw enable
+sudo ufw status verbose</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <div class="step-body">
+        <strong>Automatic Security Updates</strong>
+        <p>Configure unattended-upgrades to automatically install security patches.</p>
+        <pre><code>sudo apt install -y unattended-upgrades
+sudo dpkg-reconfigure --priority=low unattended-upgrades
+# Verify config
+cat /etc/apt/apt.conf.d/50unattended-upgrades | grep -v '^//'</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>UFW rules are not persistent without ufw enable</li><li>nmcli changes require con up to take effect</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Run full update immediately after fresh install</li><li>Create a non-root admin user before disabling root SSH access</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

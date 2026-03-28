@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Backup & Recovery Strategies | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Backup & Recovery Strategies</span></nav>
+    <div class="page-header">
+      <h1>Backup & Recovery Strategies</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Linux Server</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">tar</span><span class="tag">rsync</span><span class="tag">cron</span><span class="tag">dd</span><span class="tag">duplicati</span><span class="tag">3-2-1 rule</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Implement backup strategies using tar and rsync, automate backups with cron, test restores, and understand backup best practices.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>tar</code></li><li><code>rsync</code></li><li><code>cron</code></li><li><code>dd</code></li><li><code>duplicati</code></li><li><code>3-2-1 rule</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>tar -czf backup.tar.gz /etc</code></div><div class='command'><code>rsync -avz --delete src/ dest/</code></div><div class='command'><code>dd if=/dev/sda of=disk.img bs=4M</code></div><div class='command'><code>crontab -e → 0 2 * * * /usr/local/bin/backup.sh</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    subgraph 3-2-1 Strategy
+      DATA[Production Data] --> C1[Copy 1\nLocal Backup]
+      DATA --> C2[Copy 2\nExternal Drive]
+      DATA --> C3[Copy 3\nOffsite/Cloud]
+    end
+    subgraph Backup Types
+      FULL[Full Backup\nAll data] 
+      INC[Incremental\nChanges since last]
+      DIFF[Differential\nChanges since full]
+    end
+    style DATA fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style C3 fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>tar — Archive & Compress</strong>
+        <p>tar creates archives. Combine with gzip (z) or bzip2 (j) for compression.</p>
+        <pre><code># Create compressed archive
+tar -czf /backup/etc_$(date +%Y%m%d).tar.gz /etc
+
+# Extract to specific directory
+tar -xzf backup.tar.gz -C /restore/
+
+# List contents without extracting
+tar -tzf backup.tar.gz | head
+
+# Create and verify
+tar -czf backup.tar.gz /data && tar -tzf backup.tar.gz > /dev/null && echo 'OK'</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>rsync — Incremental Sync</strong>
+        <p>rsync only transfers changed data, making it ideal for large directory trees.</p>
+        <pre><code># Sync with verbose progress
+rsync -avz --progress /data/ /backup/data/
+
+# Mirror: delete files removed from source
+rsync -avz --delete /data/ /backup/data/
+
+# Remote backup over SSH
+rsync -avz --delete /data/ user@backup-server:/backup/data/
+
+# Dry run to preview
+rsync -avzn --delete /data/ /backup/data/</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Automate with Cron</strong>
+        <p>Schedule backups with cron. Redirect output to a log file.</p>
+        <pre><code># /usr/local/bin/backup.sh
+#!/bin/bash
+DATE=$(date +%Y-%m-%d)
+LOG=/var/log/backup.log
+echo "[$DATE] Starting backup" >> $LOG
+rsync -avz --delete /data/ /backup/data/ >> $LOG 2>&1
+echo "[$DATE] Done. Exit: $?" >> $LOG
+
+# crontab -e
+0 2 * * * /usr/local/bin/backup.sh
+0 3 * * 0 tar -czf /backup/weekly_$(date +%Y%m%d).tar.gz /etc</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <div class="step-body">
+        <strong>Test Your Restores</strong>
+        <p>A backup never tested is not a backup. Practice restoring to a different location.</p>
+        <pre><code># Restore single file
+tar -xzf backup.tar.gz -C /tmp/restore/ etc/nginx/nginx.conf
+
+# Verify restored file
+diff /etc/nginx/nginx.conf /tmp/restore/etc/nginx/nginx.conf
+
+# Full restore test
+mkdir /tmp/restore_test
+tar -xzf backup.tar.gz -C /tmp/restore_test/
+ls -la /tmp/restore_test/</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>Backup without testing restore is useless — schedule restore drills quarterly</li><li>rsync --delete will delete destination files not in source — always dry-run first</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>3-2-1 rule: 3 copies, 2 media types, 1 offsite</li><li>Log backup exit codes — silently failing backups are common</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

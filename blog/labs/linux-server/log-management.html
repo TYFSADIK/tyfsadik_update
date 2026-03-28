@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Log Management & Analysis | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Log Management & Analysis</span></nav>
+    <div class="page-header">
+      <h1>Log Management & Analysis</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Linux Server</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">journalctl</span><span class="tag">rsyslog</span><span class="tag">logrotate</span><span class="tag">tail</span><span class="tag">/var/log/</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Navigate and analyze Linux system logs using journalctl and traditional log files, configure log rotation, and build alerting from log analysis.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>journalctl</code></li><li><code>rsyslog</code></li><li><code>logrotate</code></li><li><code>tail</code></li><li><code>/var/log/</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>journalctl -u service -n 100</code></div><div class='command'><code>tail -f /var/log/auth.log</code></div><div class='command'><code>grep 'Failed password' /var/log/auth.log | awk '{print $11}' | sort | uniq -c</code></div><div class='command'><code>logrotate -d /etc/logrotate.conf</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+graph TD
+    APP[Application] -->|writes| SYSLOG[rsyslog/syslog-ng]
+    APP2[Systemd Service] -->|via journald| JOURNAL[systemd journal]
+    SYSLOG --> AUTH[/var/log/auth.log]
+    SYSLOG --> SYS[/var/log/syslog]
+    SYSLOG --> NGINX[/var/log/nginx/]
+    JOURNAL --> JOURNAL_DB[/run/log/journal/\nbinary DB]
+    AUTH --> ROTATE[logrotate]
+    SYS --> ROTATE
+    ROTATE --> COMPRESSED[*.gz archives]
+    style JOURNAL_DB fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style ROTATE fill:#1a1a2e,stroke:#ffd700,color:#ffd700
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Key Log Files</strong>
+        <p>Know where different types of events are logged.</p>
+        <pre><code>/var/log/syslog         # general system messages
+/var/log/auth.log       # authentication (SSH, sudo)
+/var/log/kern.log       # kernel messages
+/var/log/nginx/         # web server
+/var/log/apt/           # package installs
+
+# Real-time monitoring
+tail -f /var/log/auth.log
+tail -f /var/log/syslog</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>journalctl</strong>
+        <p>journalctl queries the systemd binary journal.</p>
+        <pre><code>journalctl                        # all logs (oldest first)
+journalctl -r                     # reverse (newest first)
+journalctl -f                     # follow live
+journalctl -u ssh -n 50           # 50 lines for ssh service
+journalctl --since '2 hours ago'
+journalctl --since '2024-01-01' --until '2024-01-02'
+journalctl -p err                 # errors and above
+journalctl _UID=1001              # specific user</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Log Analysis One-Liners</strong>
+        <p>Combine grep, awk, sort, and uniq to extract insights.</p>
+        <pre><code># Failed SSH attempts
+grep 'Failed password' /var/log/auth.log | \
+  awk '{print $11}' | sort | uniq -c | sort -rn | head
+
+# Top IPs hitting nginx
+awk '{print $1}' /var/log/nginx/access.log | sort | uniq -c | sort -rn | head
+
+# HTTP 4xx/5xx errors
+grep -E '" [45][0-9]{2} ' /var/log/nginx/access.log | awk '{print $9}' | sort | uniq -c</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <div class="step-body">
+        <strong>Log Rotation</strong>
+        <p>logrotate prevents logs from filling the disk.</p>
+        <pre><code># View config
+cat /etc/logrotate.conf
+ls /etc/logrotate.d/
+
+# Example: /etc/logrotate.d/myapp
+/var/log/myapp/*.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    postrotate
+        systemctl reload myapp
+    endscript
+}
+
+# Test without executing
+logrotate -d /etc/logrotate.conf</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>journalctl output is in UTC by default — use --utc or localtime config</li><li>logrotate postrotate script errors silently fail</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Send critical logs to a remote syslog server for security — local logs can be tampered with</li><li>journald stores compressed binary logs — significantly smaller than plain text</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

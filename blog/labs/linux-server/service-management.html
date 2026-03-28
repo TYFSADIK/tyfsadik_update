@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Service Management with systemd | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Service Management with systemd</span></nav>
+    <div class="page-header">
+      <h1>Service Management with systemd</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Linux Server</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">systemctl</span><span class="tag">journalctl</span><span class="tag">unit files</span><span class="tag">/etc/systemd/system/</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Manage system services using systemctl, create custom unit files, and investigate service logs with journalctl.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>systemctl</code></li><li><code>journalctl</code></li><li><code>unit files</code></li><li><code>/etc/systemd/system/</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>systemctl status nginx</code></div><div class='command'><code>systemctl enable --now nginx</code></div><div class='command'><code>journalctl -u nginx -n 50</code></div><div class='command'><code>systemctl list-units --failed</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+stateDiagram-v2
+    [*] --> Inactive: unit file exists
+    Inactive --> Active: systemctl start
+    Active --> Inactive: systemctl stop
+    Active --> Reloading: systemctl reload
+    Reloading --> Active: reload complete
+    Active --> Failed: process crashes
+    Failed --> Active: systemctl restart
+    Inactive --> Enabled: systemctl enable
+    Enabled --> Active: boot
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Basic Service Control</strong>
+        <p>Start, stop, restart, and check the status of services.</p>
+        <pre><code>sudo systemctl start nginx
+sudo systemctl stop nginx
+sudo systemctl restart nginx
+sudo systemctl reload nginx    # reload config without stopping
+sudo systemctl status nginx
+sudo systemctl enable nginx    # start at boot
+sudo systemctl disable nginx
+sudo systemctl is-active nginx</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>View Logs with journalctl</strong>
+        <p>journalctl provides structured logs from all systemd services.</p>
+        <pre><code>journalctl -u nginx              # all nginx logs
+journalctl -u nginx -n 50        # last 50 lines
+journalctl -u nginx -f           # follow (tail -f)
+journalctl -u nginx --since '1 hour ago'
+journalctl -p err -u nginx       # errors only
+journalctl --disk-usage          # log storage size</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Create a Custom Unit File</strong>
+        <p>Write a systemd service unit file to manage a custom application.</p>
+        <pre><code># /etc/systemd/system/myapp.service
+[Unit]
+Description=My Custom App
+After=network.target
+
+[Service]
+Type=simple
+User=appuser
+WorkingDirectory=/opt/myapp
+ExecStart=/opt/myapp/myapp --config /etc/myapp.conf
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+
+# Load and start:
+sudo systemctl daemon-reload
+sudo systemctl enable --now myapp</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>Forgetting daemon-reload after editing unit files — systemd uses stale config</li><li>Unit file syntax errors silently prevent service from starting — check with systemctl status</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>systemctl list-units --failed shows all broken services at a glance</li><li>After=network.target ensures network is up before your service starts</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

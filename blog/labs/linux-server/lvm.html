@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Logical Volume Management | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Logical Volume Management</span></nav>
+    <div class="page-header">
+      <h1>Logical Volume Management</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-advanced">Advanced</span>
+        <span class="lab-category">Linux Server</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">pvcreate</span><span class="tag">vgcreate</span><span class="tag">lvcreate</span><span class="tag">lvextend</span><span class="tag">resize2fs</span><span class="tag">pvdisplay</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Create and manage LVM physical volumes, volume groups, and logical volumes. Extend an online filesystem without downtime.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>pvcreate</code></li><li><code>vgcreate</code></li><li><code>lvcreate</code></li><li><code>lvextend</code></li><li><code>resize2fs</code></li><li><code>pvdisplay</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>pvcreate /dev/sdb</code></div><div class='command'><code>vgcreate vg0 /dev/sdb</code></div><div class='command'><code>lvcreate -L 10G -n lv_data vg0</code></div><div class='command'><code>lvextend -L +5G /dev/vg0/lv_data</code></div><div class='command'><code>resize2fs /dev/vg0/lv_data</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+graph LR
+    subgraph Physical Layer
+      PV1[/dev/sdb\nPV] 
+      PV2[/dev/sdc\nPV]
+    end
+    subgraph Logical Layer
+      PV1 --> VG[vg0\nVolume Group\n30GB pool]
+      PV2 --> VG
+      VG --> LV1[lv_root\n15GB]
+      VG --> LV2[lv_data\n10GB]
+      VG --> FREE[5GB free]
+    end
+    subgraph Filesystems
+      LV1 --> FS1[ext4\n/]
+      LV2 --> FS2[ext4\n/data]
+    end
+    style VG fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Create Physical Volume</strong>
+        <p>Initialize a disk or partition as an LVM physical volume.</p>
+        <pre><code># Initialize disk as PV
+sudo pvcreate /dev/sdb
+sudo pvdisplay /dev/sdb
+sudo pvs   # brief summary</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Create Volume Group</strong>
+        <p>A volume group pools one or more PVs into a storage pool.</p>
+        <pre><code>sudo vgcreate vg0 /dev/sdb
+# Add second disk to existing VG
+sudo vgextend vg0 /dev/sdc
+sudo vgdisplay vg0
+sudo vgs</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Create and Use Logical Volumes</strong>
+        <p>Create logical volumes from the VG pool, format them, and mount.</p>
+        <pre><code>sudo lvcreate -L 10G -n lv_data vg0
+sudo mkfs.ext4 /dev/vg0/lv_data
+sudo mkdir /data
+sudo mount /dev/vg0/lv_data /data
+
+# Persist in fstab
+echo '/dev/vg0/lv_data /data ext4 defaults 0 2' | sudo tee -a /etc/fstab</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <div class="step-body">
+        <strong>Extend Online (Zero Downtime)</strong>
+        <p>Grow a filesystem while it is mounted and in use.</p>
+        <pre><code># Extend LV by 5GB
+sudo lvextend -L +5G /dev/vg0/lv_data
+# Grow filesystem to fill LV
+sudo resize2fs /dev/vg0/lv_data  # ext4
+# For XFS:
+sudo xfs_growfs /data
+
+# Verify
+df -h /data</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>resize2fs only works on ext2/3/4 — XFS uses xfs_growfs</li><li>Shrinking LVM requires unmounting and offline resize2fs — risky without backup</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>LVM snapshots use copy-on-write — perfect for pre-maintenance backups</li><li>PE size determines minimum allocation granularity</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

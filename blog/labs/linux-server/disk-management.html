@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Disk Management & Partitioning | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Disk Management & Partitioning</span></nav>
+    <div class="page-header">
+      <h1>Disk Management & Partitioning</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Linux Server</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">fdisk</span><span class="tag">parted</span><span class="tag">gdisk</span><span class="tag">lsblk</span><span class="tag">mkfs</span><span class="tag">blkid</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Identify disks, create and manage partitions using fdisk and parted, format with filesystems, and understand MBR vs GPT partition tables.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>fdisk</code></li><li><code>parted</code></li><li><code>gdisk</code></li><li><code>lsblk</code></li><li><code>mkfs</code></li><li><code>blkid</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>lsblk -f</code></div><div class='command'><code>fdisk /dev/sdb</code></div><div class='command'><code>parted /dev/sdb print</code></div><div class='command'><code>mkfs.ext4 /dev/sdb1</code></div><div class='command'><code>blkid /dev/sdb1</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+graph TD
+    DISK[Physical Disk /dev/sdb] --> PT{Partition Table}
+    PT -->|MBR/DOS| PART1[/dev/sdb1\nprimary]
+    PT -->|MBR/DOS| PART2[/dev/sdb2\nprimary]
+    PT -->|GPT| PARTP1[/dev/sdb1]
+    PT -->|GPT| PARTP2[/dev/sdb2]
+    PART1 --> FS1[ext4 filesystem]
+    PART2 --> FS2[swap]
+    FS1 --> MOUNT[/mnt/data]
+    style DISK fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style FS1 fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Identify Disks</strong>
+        <p>Always identify disks correctly before partitioning — wrong disk = data loss.</p>
+        <pre><code>lsblk                # block device tree
+lsblk -f             # show filesystems
+fdisk -l             # list all disks + partitions
+df -hT               # mounted filesystems
+ls -la /dev/disk/by-id/  # stable device names</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Partition with fdisk</strong>
+        <p>fdisk is the traditional MBR partition tool. Changes are only written when you type w.</p>
+        <pre><code>sudo fdisk /dev/sdb
+# Interactive commands:
+m   – help
+p   – print current table
+n   – new partition
+  p   – primary
+  1   – partition number
+  (enter) – first sector default
+  +10G – size
+t   – change type (82=swap, 83=Linux)
+w   – write and exit
+# Apply:
+partprobe /dev/sdb</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Format Partitions</strong>
+        <p>Create a filesystem on the partition. Common types: ext4 (general), xfs (performance), swap.</p>
+        <pre><code>sudo mkfs.ext4 /dev/sdb1      # ext4
+sudo mkfs.xfs /dev/sdb2       # XFS
+sudo mkswap /dev/sdb3         # swap
+sudo swapon /dev/sdb3         # activate swap
+
+# Verify
+blkid /dev/sdb1
+lsblk -f</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <div class="step-body">
+        <strong>GPT with parted</strong>
+        <p>parted supports GPT and is better for disks larger than 2TB.</p>
+        <pre><code>sudo parted /dev/sdb
+(parted) mklabel gpt
+(parted) mkpart primary ext4 1MiB 10GiB
+(parted) mkpart primary linux-swap 10GiB 12GiB
+(parted) print
+(parted) quit</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>fdisk -l may show stale partition table — run partprobe after changes</li><li>mkfs overwrites any existing data on the partition</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Use GPT for all new disks — MBR is limited to 2TB and 4 primary partitions</li><li>blkid and lsblk -f show UUID — use UUID in /etc/fstab, never /dev/sdX names</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cron Jobs & Task Scheduling | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Cron Jobs & Task Scheduling</span></nav>
+    <div class="page-header">
+      <h1>Cron Jobs & Task Scheduling</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-beginner">Beginner</span>
+        <span class="lab-category">Linux Server</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">cron</span><span class="tag">crontab</span><span class="tag">at</span><span class="tag">systemd timers</span><span class="tag">anacron</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Schedule recurring tasks with cron, one-time jobs with at, and understand the difference between cron and systemd timers.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>cron</code></li><li><code>crontab</code></li><li><code>at</code></li><li><code>systemd timers</code></li><li><code>anacron</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>crontab -e</code></div><div class='command'><code>crontab -l</code></div><div class='command'><code>at 3pm tomorrow</code></div><div class='command'><code>systemctl list-timers</code></div><div class='command'><code>run-parts /etc/cron.daily</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+graph TD
+    FIELD[Cron Field Order] --> M[Minute\n0-59]
+    M --> H[Hour\n0-23]
+    H --> D[Day of Month\n1-31]
+    D --> MO[Month\n1-12]
+    MO --> W[Day of Week\n0-7\n0+7=Sunday]
+    W --> CMD[Command]
+    EXAMPLE[0 2 * * 1] --> MEANING[Every Monday\nat 2:00 AM]
+    style FIELD fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style MEANING fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>crontab Syntax</strong>
+        <p>Five time fields followed by the command. * means every value. Use crontab.guru online to verify expressions.</p>
+        <pre><code># m  h  dom  mon  dow  command
+0    2   *    *    *    /usr/local/bin/backup.sh
+*/5  *   *    *    *    /usr/local/bin/check.sh
+0    9   *    *    1-5  /usr/local/bin/report.sh
+30   23  *    *    0    /usr/local/bin/weekly.sh
+
+# Edit current user's crontab
+crontab -e
+# List
+crontab -l
+# Edit another user's
+sudo crontab -u www-data -e</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>cron Environment</strong>
+        <p>cron runs with a minimal PATH — always use absolute paths in cron scripts.</p>
+        <pre><code># Capture cron output to a log
+0 2 * * * /usr/local/bin/backup.sh >> /var/log/backup.log 2>&1
+
+# Set PATH in crontab (at the top)
+PATH=/usr/local/bin:/usr/bin:/bin
+MAILTO=admin@domain.com
+
+# Or in the script itself
+#!/bin/bash
+export PATH=/usr/local/bin:/usr/bin:/bin</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>at — One-Time Jobs</strong>
+        <p>at schedules a command to run once at a specific time.</p>
+        <pre><code># Schedule
+echo 'systemctl restart nginx' | at 3am
+at 9:30 tomorrow < script.sh
+at 'now + 1 hour' << 'EOF'
+  backup.sh
+EOF
+
+# Manage
+atq          # list pending jobs
+atrm 3       # remove job #3</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <div class="step-body">
+        <strong>systemd Timers</strong>
+        <p>systemd timers are more powerful than cron — they log to journald and support calendar expressions.</p>
+        <pre><code># Create timer unit: /etc/systemd/system/backup.timer
+[Unit]
+Description=Daily backup
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+
+sudo systemctl enable --now backup.timer
+systemctl list-timers</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>cron MAILTO= (empty) suppresses email when no SMTP is configured</li><li>Scripts working in shell but failing in cron — usually PATH or env variable issue</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Always redirect cron output to a log file — silent failures are dangerous</li><li>Persistent=true in systemd timers runs missed jobs after downtime</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>
