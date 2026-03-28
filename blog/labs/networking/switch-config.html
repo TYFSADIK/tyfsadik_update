@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Switch Configuration | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>Switch Configuration</span></nav>
+    <div class="page-header">
+      <h1>Switch Configuration</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Networking</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Cisco IOS</span><span class="tag">STP</span><span class="tag">MAC table</span><span class="tag">PortFast</span><span class="tag">BPDU Guard</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Configure managed switch basics: VLANs, Spanning Tree Protocol, port security, and EtherChannel.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>Cisco IOS</code></li><li><code>STP</code></li><li><code>MAC table</code></li><li><code>PortFast</code></li><li><code>BPDU Guard</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>show spanning-tree</code></div><div class='command'><code>spanning-tree portfast</code></div><div class='command'><code>spanning-tree bpduguard enable</code></div><div class='command'><code>show mac address-table</code></div><div class='command'><code>channel-group 1 mode active</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+stateDiagram-v2
+    [*] --> Blocking: Port starts
+    Blocking --> Listening: Root port or Designated
+    Listening --> Learning: 15 sec forward delay
+    Learning --> Forwarding: 15 sec forward delay
+    Forwarding --> Blocking: Topology change
+    Blocking --> Disabled: Admin shutdown
+    note right of Blocking: STP prevents loops\nby blocking redundant paths
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Spanning Tree Protocol</strong>
+        <p>STP prevents Layer 2 loops by blocking redundant paths and electing a Root Bridge.</p>
+        <pre><code>show spanning-tree
+show spanning-tree vlan 10
+
+! Set bridge priority (lower = more likely root)
+conf t
+spanning-tree vlan 10 priority 4096
+
+! Force this switch as root
+spanning-tree vlan 10 root primary</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>PortFast and BPDU Guard</strong>
+        <p>PortFast skips STP convergence on access ports. BPDU Guard shuts the port if a switch connects.</p>
+        <pre><code>! On access ports only
+interface Fa0/1
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+
+! Global (all access ports)
+spanning-tree portfast default
+spanning-tree portfast bpduguard default</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Port Security</strong>
+        <p>Limit MAC addresses per port to prevent unauthorized device connection.</p>
+        <pre><code>interface Fa0/1
+ switchport mode access
+ switchport port-security
+ switchport port-security maximum 1
+ switchport port-security mac-address sticky
+ switchport port-security violation shutdown
+
+show port-security interface Fa0/1</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <div class="step-body">
+        <strong>EtherChannel (LACP)</strong>
+        <p>Bundle multiple physical links into one logical link for increased bandwidth and redundancy.</p>
+        <pre><code>! On both switches
+interface range Gi0/1-2
+ channel-group 1 mode active  ! LACP
+
+interface Port-channel1
+ switchport mode trunk
+
+show etherchannel summary</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>PortFast on trunk ports causes temporary broadcast storms during topology change</li><li>BPDU Guard violation error-disables the port — must manually recover</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>STP convergence takes 30-50 seconds — PortFast eliminates this on access ports</li><li>EtherChannel requires identical config on both ends</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VLAN Configuration | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>VLAN Configuration</span></nav>
+    <div class="page-header">
+      <h1>VLAN Configuration</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Networking</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Cisco IOS</span><span class="tag">802.1Q</span><span class="tag">trunk</span><span class="tag">access ports</span><span class="tag">ip link</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Create and configure VLANs on a managed switch, configure trunk and access ports, and create VLAN subinterfaces on Linux.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>Cisco IOS</code></li><li><code>802.1Q</code></li><li><code>trunk</code></li><li><code>access ports</code></li><li><code>ip link</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>vlan 10</code></div><div class='command'><code>switchport access vlan 10</code></div><div class='command'><code>switchport mode trunk</code></div><div class='command'><code>ip link add link eth0 name eth0.10 type vlan id 10</code></div><div class='command'><code>ip addr add 10.10.0.1/24 dev eth0.10</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+graph LR
+    subgraph Switch
+      TR[Trunk Port\nAll VLANs] --> SW[Switching Fabric]
+      SW --> AP1[Access Port\nVLAN 10]
+      SW --> AP2[Access Port\nVLAN 20]
+      SW --> AP3[Access Port\nVLAN 30]
+    end
+    AP1 --> PC1[PC - VLAN 10\nHR]
+    AP2 --> PC2[PC - VLAN 20\nEngineering]
+    AP3 --> PC3[Printer - VLAN 30\nPrinters]
+    TR --> RTR[Router/Firewall]
+    style SW fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Create VLANs on a Switch (Cisco IOS)</strong>
+        <p>Create VLANs in the VLAN database and assign access ports.</p>
+        <pre><code>! On Cisco switch
+conf t
+vlan 10
+ name HR
+vlan 20
+ name Engineering
+vlan 30
+ name Printers
+exit
+
+! Assign access port
+interface Fa0/1
+ switchport mode access
+ switchport access vlan 10</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Configure Trunk Ports</strong>
+        <p>Trunk ports carry multiple VLANs between switches and to routers.</p>
+        <pre><code>interface Gi0/1
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20,30
+
+! Verify
+show interfaces trunk
+show vlan brief</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Linux VLAN Subinterfaces</strong>
+        <p>Create 802.1Q VLAN subinterfaces on a Linux host connected to a trunk port.</p>
+        <pre><code># Load 8021q module
+sudo modprobe 8021q
+
+# Create VLAN 10 subinterface
+ip link add link eth0 name eth0.10 type vlan id 10
+ip link set eth0.10 up
+ip addr add 10.10.0.1/24 dev eth0.10
+
+# Create VLAN 20
+ip link add link eth0 name eth0.20 type vlan id 20
+ip link set eth0.20 up
+ip addr add 10.20.0.1/24 dev eth0.20</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <div class="step-body">
+        <strong>Verify VLAN Isolation</strong>
+        <p>Confirm hosts on different VLANs cannot communicate without routing.</p>
+        <pre><code># From VLAN 10 host
+ping 10.10.0.2   # same VLAN — should work
+ping 10.20.0.2   # different VLAN — should FAIL
+
+# Capture traffic to verify tagging
+tcpdump -i eth0 -e 'vlan'
+
+# Cisco verification
+show mac address-table
+show vlan brief</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>Native VLAN mismatch between trunk ports causes untagged traffic issues</li><li>Forgetting to trunk-allow a VLAN blocks it across the link</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>VLANs provide Layer 2 isolation without physical cabling changes</li><li>Access ports strip VLAN tags — hosts see untagged frames</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

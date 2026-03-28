@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Subnetting & CIDR | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>Subnetting & CIDR</span></nav>
+    <div class="page-header">
+      <h1>Subnetting & CIDR</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Networking</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">ipcalc</span><span class="tag">sipcalc</span><span class="tag">subnetting math</span><span class="tag">VLSM</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Calculate subnets manually, use VLSM to efficiently allocate address space, and apply subnetting to real network design problems.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>ipcalc</code></li><li><code>sipcalc</code></li><li><code>subnetting math</code></li><li><code>VLSM</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>ipcalc 192.168.10.0/26</code></div><div class='command'><code>sipcalc 10.0.0.0/8</code></div><div class='command'><code>python3 -c 'import ipaddress; n=ipaddress.ip_network("192.168.1.0/25"); print(list(n.hosts())[:5])'</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+graph TD
+    BLOCK[192.168.1.0/24\n256 addresses] --> S1[192.168.1.0/26\n64 addr - HQ]
+    BLOCK --> S2[192.168.1.64/26\n64 addr - Branch]
+    BLOCK --> S3[192.168.1.128/27\n32 addr - DMZ]
+    BLOCK --> S4[192.168.1.160/27\n32 addr - Mgmt]
+    BLOCK --> S5[192.168.1.192/26\n64 addr - Reserved]
+    style BLOCK fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style S1 fill:#181818,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Subnet Calculations</strong>
+        <p>Learn the formula: hosts = 2^(32-prefix) - 2. Practice with common prefixes.</p>
+        <pre><code># Common prefix sizes:
+/24 = 256 addr, 254 usable
+/25 = 128 addr, 126 usable
+/26 = 64  addr, 62 usable
+/27 = 32  addr, 30 usable
+/28 = 16  addr, 14 usable
+/30 = 4   addr, 2 usable (point-to-point links)
+/32 = host route
+
+ipcalc 192.168.10.0/26    # detailed breakdown</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>VLSM — Variable Length Subnet Masking</strong>
+        <p>Allocate subnet sizes based on actual needs to avoid address waste.</p>
+        <pre><code># Given: 10.0.0.0/24, design for:
+# HQ: 50 hosts  → need /26 (62 usable)
+# Branch: 25 hosts → need /27 (30 usable)
+# Server: 10 hosts → need /28 (14 usable)
+# WAN link: 2 hosts → need /30
+
+# Allocate from largest to smallest:
+# 10.0.0.0/26  ← HQ (50 hosts)
+# 10.0.0.64/27 ← Branch
+# 10.0.0.96/28 ← Server
+# 10.0.0.112/30 ← WAN</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Python for Subnet Math</strong>
+        <p>Use Python's ipaddress module for programmatic subnet calculation.</p>
+        <pre><code>python3
+import ipaddress
+
+n = ipaddress.ip_network('192.168.1.0/24')
+print(f'Network: {n.network_address}')
+print(f'Broadcast: {n.broadcast_address}')
+print(f'Hosts: {n.num_addresses - 2}')
+
+# Subnets of size /26
+for s in n.subnets(new_prefix=26):
+    print(s, '-', list(s.hosts())[0], 'to', list(s.hosts())[-1])</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>Off-by-one: subtract 2 (network + broadcast) from total addresses for usable</li><li>Overlapping subnets cause routing ambiguity — check with ipcalc</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Always allocate from largest subnet to smallest to avoid gaps</li><li>A /30 wastes 2 addresses — /31 works for point-to-point per RFC 3021</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

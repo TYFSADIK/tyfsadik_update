@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Router Configuration | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>Router Configuration</span></nav>
+    <div class="page-header">
+      <h1>Router Configuration</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Networking</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Cisco IOS</span><span class="tag">static routes</span><span class="tag">inter-VLAN routing</span><span class="tag">router-on-a-stick</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Configure a Cisco router with interfaces, static routes, and router-on-a-stick for inter-VLAN routing.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>Cisco IOS</code></li><li><code>static routes</code></li><li><code>inter-VLAN routing</code></li><li><code>router-on-a-stick</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>ip address 192.168.1.1 255.255.255.0</code></div><div class='command'><code>ip route 10.0.0.0 255.0.0.0 192.168.1.2</code></div><div class='command'><code>interface Gi0/0.10</code></div><div class='command'><code>encapsulation dot1Q 10</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+graph LR
+    subgraph Router
+      G0[Gi0/0\n192.168.1.1/24] 
+      G1[Gi0/1\n10.0.0.1/24]
+      G0V10[Gi0/0.10\n10.10.0.1/24]
+      G0V20[Gi0/0.20\n10.20.0.1/24]
+    end
+    G0 <--> SW1[Switch/LAN]
+    G1 <--> SW2[WAN/ISP]
+    G0V10 -.->|VLAN10| SW1
+    G0V20 -.->|VLAN20| SW1
+    style Router fill:#1a1a2e,stroke:#00d4ff
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Configure Physical Interfaces</strong>
+        <p>Assign IP addresses to interfaces and bring them up.</p>
+        <pre><code>Router(config)# interface GigabitEthernet0/0
+Router(config-if)# ip address 192.168.1.1 255.255.255.0
+Router(config-if)# no shutdown
+Router(config-if)# description LAN_INTERFACE
+
+Router# show interfaces GigabitEthernet0/0
+Router# show ip interface brief</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Static Routes</strong>
+        <p>Configure static routes to reach networks beyond directly connected interfaces.</p>
+        <pre><code>! Route to 10.0.0.0/8 via 192.168.1.2
+ip route 10.0.0.0 255.0.0.0 192.168.1.2
+! Default route
+ip route 0.0.0.0 0.0.0.0 192.168.1.254
+
+show ip route
+show ip route static</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Router-on-a-Stick (Inter-VLAN)</strong>
+        <p>Use subinterfaces on a single trunk link to route between VLANs.</p>
+        <pre><code>interface Gi0/0.10
+ encapsulation dot1Q 10
+ ip address 10.10.0.1 255.255.255.0
+ description VLAN10_HR
+
+interface Gi0/0.20
+ encapsulation dot1Q 20
+ ip address 10.20.0.1 255.255.255.0
+ description VLAN20_ENG
+
+! Hosts set default gateway to subinterface IP</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>Interface stays down without no shutdown</li><li>Default route (0.0.0.0/0) via unreachable gateway causes black hole</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Router-on-a-stick creates a single point of failure — L3 switch is better for production</li><li>show ip route shows routing table with codes: C=connected, S=static, R=RIP</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SDN Controllers | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>SDN Controllers</span></nav>
+    <div class="page-header">
+      <h1>SDN Controllers</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-advanced">Advanced</span>
+        <span class="lab-category">Networking</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Ryu</span><span class="tag">POX</span><span class="tag">ONOS</span><span class="tag">REST API</span><span class="tag">northbound</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Deploy a Ryu SDN controller, implement a learning switch application, and interact with the REST API to query topology and flows.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>Ryu</code></li><li><code>POX</code></li><li><code>ONOS</code></li><li><code>REST API</code></li><li><code>northbound</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>ryu-manager simple_switch_13.py</code></div><div class='command'><code>curl http://localhost:8080/v1.0/topology/switches</code></div><div class='command'><code>mn --controller remote,ip=127.0.0.1</code></div><div class='command'><code>ryu-manager --observe-links ryu.app.ofctl_rest ryu.app.rest_topology</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+graph LR
+    subgraph Northbound
+      REST[REST API\n:8080] --> APP[Ryu App\nPython]
+      APP --> OF[OpenFlow\nEngine]
+    end
+    subgraph Southbound
+      OF -->|OpenFlow 1.3| SW1[OVS Switch 1]
+      OF -->|OpenFlow 1.3| SW2[OVS Switch 2]
+    end
+    subgraph Mininet
+      SW1 <--> H1[h1]
+      SW2 <--> H2[h2]
+      SW1 <--> SW2
+    end
+    style APP fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style REST fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Install Ryu</strong>
+        <p>Install the Ryu SDN controller and its dependencies.</p>
+        <pre><code>sudo apt install python3-pip
+pip3 install ryu
+
+# Verify
+ryu-manager --version
+
+# List built-in apps
+ls $(python3 -c 'import ryu; print(ryu.__path__[0])')/app/</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Run a Learning Switch</strong>
+        <p>The simple_switch_13.py app implements a Layer 2 learning switch.</p>
+        <pre><code># Terminal 1: Start controller
+ryu-manager ryu.app.simple_switch_13
+
+# Terminal 2: Start Mininet connected to controller
+sudo mn --controller remote,ip=127.0.0.1 --switch ovsk,protocols=OpenFlow13
+
+# Test in Mininet
+mininet> pingall
+mininet> h1 ping -c5 h2</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>REST API</strong>
+        <p>Ryu provides a REST API for querying topology and managing flows.</p>
+        <pre><code># Start with REST + topology apps
+ryu-manager \
+  ryu.app.ofctl_rest \
+  ryu.app.rest_topology \
+  ryu.app.simple_switch_13 \
+  --observe-links
+
+# Query topology
+curl http://localhost:8080/v1.0/topology/switches | python3 -m json.tool
+curl http://localhost:8080/v1.0/topology/links
+
+# Query flows
+curl http://localhost:8080/stats/flow/1  # switch dpid=1</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>Ryu REST API only available when ofctl_rest app is loaded</li><li>Mininet must use --protocols=OpenFlow13 to match controller version</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Ryu apps are simple Python classes that handle OpenFlow events</li><li>REST topology API requires --observe-links flag for LLDP discovery</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

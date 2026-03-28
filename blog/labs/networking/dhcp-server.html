@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DHCP Server Configuration | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>DHCP Server Configuration</span></nav>
+    <div class="page-header">
+      <h1>DHCP Server Configuration</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Networking</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">isc-dhcp-server</span><span class="tag">dhcpd.conf</span><span class="tag">DORA process</span><span class="tag">static leases</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Install and configure a DHCP server, define scopes, configure static leases, and understand the DORA discovery process.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>isc-dhcp-server</code></li><li><code>dhcpd.conf</code></li><li><code>DORA process</code></li><li><code>static leases</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>apt install isc-dhcp-server</code></div><div class='command'><code>systemctl start isc-dhcp-server</code></div><div class='command'><code>dhcp-lease-list</code></div><div class='command'><code>journalctl -u isc-dhcp-server</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+sequenceDiagram
+    participant C as Client
+    participant S as DHCP Server
+    C->>+S: DISCOVER (broadcast)
+    Note over C: No IP yet, src: 0.0.0.0
+    S-->>-C: OFFER (unicast/broadcast)
+    Note over S: Offers 192.168.1.50
+    C->>+S: REQUEST (broadcast)
+    Note over C: Accepts the offer
+    S-->>-C: ACK (unicast)
+    Note over S: Confirms lease
+    C->>C: Configure interface
+    Note over C: Now has 192.168.1.50/24
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Install & Configure</strong>
+        <p>Configure the DHCP server with subnet, range, and options.</p>
+        <pre><code>sudo apt install -y isc-dhcp-server
+
+# /etc/dhcp/dhcpd.conf
+default-lease-time 86400;
+max-lease-time 604800;
+
+subnet 192.168.1.0 netmask 255.255.255.0 {
+  range 192.168.1.100 192.168.1.200;
+  option routers 192.168.1.1;
+  option domain-name-servers 1.1.1.1, 8.8.8.8;
+  option domain-name "lab.local";
+}</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Static Leases (Reservations)</strong>
+        <p>Assign a specific IP to a device based on its MAC address.</p>
+        <pre><code># In dhcpd.conf
+host printer {
+  hardware ethernet 00:1A:2B:3C:4D:5E;
+  fixed-address 192.168.1.20;
+}
+
+host server01 {
+  hardware ethernet AA:BB:CC:DD:EE:FF;
+  fixed-address 192.168.1.10;
+}</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Test & Monitor</strong>
+        <p>Verify the server starts and leases are being issued.</p>
+        <pre><code># Set listening interface
+# /etc/default/isc-dhcp-server:
+# INTERFACESv4="eth0"
+
+sudo systemctl restart isc-dhcp-server
+sudo systemctl status isc-dhcp-server
+
+# View active leases
+cat /var/lib/dhcpd/dhcpd.leases
+dhcp-lease-list
+
+# Watch logs
+journalctl -u isc-dhcp-server -f</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>Two DHCP servers on same subnet cause conflicts — ensure only one is active</li><li>Wrong interface in /etc/default/isc-dhcp-server prevents server from binding</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Set lease time based on network size — short leases for large dynamic networks</li><li>DHCP relay agent (ip helper-address on Cisco) allows serving multiple subnets from one server</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenFlow Protocol | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>OpenFlow Protocol</span></nav>
+    <div class="page-header">
+      <h1>OpenFlow Protocol</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-advanced">Advanced</span>
+        <span class="lab-category">Networking</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">OpenFlow</span><span class="tag">OVS</span><span class="tag">flow tables</span><span class="tag">match-action</span><span class="tag">ovs-ofctl</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Understand OpenFlow flow tables, install flow entries manually using ovs-ofctl, and observe how packets are matched and forwarded.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>OpenFlow</code></li><li><code>OVS</code></li><li><code>flow tables</code></li><li><code>match-action</code></li><li><code>ovs-ofctl</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>ovs-vsctl show</code></div><div class='command'><code>ovs-ofctl dump-flows br0</code></div><div class='command'><code>ovs-ofctl add-flow br0 'priority=100,ip,nw_dst=10.0.0.2,actions=output:2'</code></div><div class='command'><code>ovs-ofctl del-flows br0</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    PKT[Packet arrives\nat switch port] --> TBLE{Table 0\nFlow Table}
+    TBLE -->|Match entry| ACTION[Execute Actions\noutput / drop / mod]
+    TBLE -->|Table-miss| CTRL[Send to Controller\nPACKET_IN]
+    CTRL -->|Controller replies| FLOW[Install FLOW_MOD\nin flow table]
+    FLOW --> ACTION
+    ACTION --> OUT[Forwarded\nout port]
+    style CTRL fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style TBLE fill:#1a1a2e,stroke:#ffd700,color:#ffd700
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Open vSwitch Basics</strong>
+        <p>OVS is a production-quality software switch that supports OpenFlow.</p>
+        <pre><code># Install
+sudo apt install openvswitch-switch
+
+# Create a bridge
+ovs-vsctl add-br br0
+ovs-vsctl add-port br0 eth1
+ovs-vsctl show
+
+# Connect to controller
+ovs-vsctl set-controller br0 tcp:127.0.0.1:6633</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Inspect and Add Flow Entries</strong>
+        <p>Flow entries have match fields and actions.</p>
+        <pre><code># View flow table
+ovs-ofctl dump-flows br0
+
+# Add flow: forward IP to 10.0.0.2 out port 2
+ovs-ofctl add-flow br0 \
+  'priority=100,ip,nw_dst=10.0.0.2,actions=output:2'
+
+# Add flow: flood ARP
+ovs-ofctl add-flow br0 \
+  'priority=200,arp,actions=flood'
+
+# Drop traffic from a source
+ovs-ofctl add-flow br0 \
+  'priority=500,ip,nw_src=10.0.0.99,actions=drop'</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Timeouts and Statistics</strong>
+        <p>Flow entries can have idle and hard timeouts. Monitor match counts.</p>
+        <pre><code># Add flow with timeout
+ovs-ofctl add-flow br0 \
+  'priority=100,ip,idle_timeout=30,hard_timeout=120,actions=output:2'
+
+# View statistics (match counts)
+ovs-ofctl dump-flows br0
+
+# Port statistics
+ovs-ofctl dump-ports br0</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>Table-miss flows must be configured — without one, unmatched packets are dropped</li><li>Flow priority determines match precedence — higher number = higher priority</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Each flow entry consumes TCAM space in hardware switches — keep tables lean</li><li>ovs-ofctl dump-ports shows per-port packet/byte counters</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

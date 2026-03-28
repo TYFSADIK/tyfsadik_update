@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quality of Service | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>Quality of Service</span></nav>
+    <div class="page-header">
+      <h1>Quality of Service</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-advanced">Advanced</span>
+        <span class="lab-category">Networking</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">DSCP</span><span class="tag">traffic shaping</span><span class="tag">tc</span><span class="tag">queuing disciplines</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Understand QoS concepts, classify traffic, and configure basic traffic shaping on Linux using tc.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>DSCP</code></li><li><code>traffic shaping</code></li><li><code>tc</code></li><li><code>queuing disciplines</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>tc qdisc add dev eth0 root tbf rate 100mbit</code></div><div class='command'><code>tc qdisc show dev eth0</code></div><div class='command'><code>tc class add dev eth0 parent 1: classid 1:1 htb rate 50mbit</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    TRAFFIC[All Traffic] --> CLASS{Classification\nDSCP / Port / Protocol}
+    CLASS -->|VoIP\nDSCP EF| Q1[Priority Queue\nLow latency]
+    CLASS -->|Video\nDSCP AF41| Q2[Bandwidth Guaranteed\nQueue]
+    CLASS -->|Data\nDSCP BE| Q3[Best Effort\nQueue]
+    CLASS -->|Bulk/Backup\nDSCP CS1| Q4[Scavenger\nQueue]
+    Q1 --> OUT[Egress\nInterface]
+    Q2 --> OUT
+    Q3 --> OUT
+    Q4 --> OUT
+    style CLASS fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style Q1 fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>QoS Concepts</strong>
+        <p>QoS prioritizes traffic to ensure latency-sensitive applications (VoIP, video) get bandwidth over bulk traffic.</p>
+        <pre><code># DSCP marking values:
+# EF (46)  - Expedited Forwarding (VoIP)
+# AF41(34) - Assured Forwarding (Video)
+# CS3 (24) - Call Signaling
+# BE (0)   - Best Effort (default)
+# CS1 (8)  - Scavenger (background)</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Linux Traffic Control (tc)</strong>
+        <p>Linux tc implements queuing disciplines (qdiscs) for traffic shaping.</p>
+        <pre><code># Simple rate limiter (token bucket filter)
+tc qdisc add dev eth0 root tbf \
+  rate 100mbit burst 10mb latency 50ms
+
+# View current qdiscs
+tc qdisc show dev eth0
+
+# Remove
+tc qdisc del dev eth0 root</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>HTB — Hierarchical Token Bucket</strong>
+        <p>HTB allows bandwidth allocation with guaranteed minimums and shared maximums.</p>
+        <pre><code># Root qdisc
+tc qdisc add dev eth0 root handle 1: htb default 30
+# Parent class
+tc class add dev eth0 parent 1: classid 1:1 htb rate 100mbit
+# VoIP: guaranteed 10mbit
+tc class add dev eth0 parent 1:1 classid 1:10 htb rate 10mbit ceil 100mbit prio 1
+# Data: best effort
+tc class add dev eth0 parent 1:1 classid 1:30 htb rate 10mbit ceil 100mbit prio 3</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>tc configuration is not persistent — use /etc/network/interfaces or systemd unit</li><li>HTB configuration is complex — start with simple tbf for basic rate limiting</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Mark traffic at ingress — remarking at egress is less effective</li><li>VoIP needs low latency (< 150ms) AND low jitter (< 30ms) — prioritize both</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

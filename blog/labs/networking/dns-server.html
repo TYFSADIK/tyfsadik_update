@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DNS Server Configuration | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>DNS Server Configuration</span></nav>
+    <div class="page-header">
+      <h1>DNS Server Configuration</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Networking</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">BIND9</span><span class="tag">named</span><span class="tag">zones</span><span class="tag">forward zone</span><span class="tag">reverse zone</span><span class="tag">dig</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Install BIND9, create forward and reverse zone files, configure resolution, and troubleshoot with dig and nslookup.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>BIND9</code></li><li><code>named</code></li><li><code>zones</code></li><li><code>forward zone</code></li><li><code>reverse zone</code></li><li><code>dig</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>apt install bind9</code></div><div class='command'><code>named-checkconf</code></div><div class='command'><code>named-checkzone lab.local /etc/bind/db.lab.local</code></div><div class='command'><code>dig @localhost lab.local</code></div><div class='command'><code>dig -x 192.168.1.10</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+sequenceDiagram
+    participant C as Client
+    participant R as Resolver\n(stub)
+    participant B as BIND9 Server
+    participant ROOT as Root Hints
+    C->>R: Resolve www.lab.local
+    R->>B: Query www.lab.local
+    B->>B: Check local zone file
+    B-->>R: 192.168.1.50 (authoritative)
+    R-->>C: 192.168.1.50
+    Note over B: If external domain,\nB queries root hints → iterative resolution
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Install and Configure BIND9</strong>
+        <p>Install BIND9 and configure the named.conf options.</p>
+        <pre><code>sudo apt install -y bind9 bind9utils dnsutils
+
+# /etc/bind/named.conf.options
+options {
+  directory "/var/cache/bind";
+  recursion yes;
+  allow-query { localhost; 192.168.1.0/24; };
+  forwarders { 1.1.1.1; 8.8.8.8; };
+  dnssec-validation auto;
+};</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Create Forward Zone</strong>
+        <p>A forward zone maps hostnames to IP addresses.</p>
+        <pre><code># /etc/bind/named.conf.local
+zone "lab.local" {
+  type master;
+  file "/etc/bind/db.lab.local";
+};
+
+# /etc/bind/db.lab.local
+$TTL 86400
+@ IN SOA ns1.lab.local. admin.lab.local. (
+  2024010101 ; Serial
+  3600       ; Refresh
+  900        ; Retry
+  604800     ; Expire
+  86400 )    ; Negative TTL
+
+@ IN NS ns1.lab.local.
+ns1   IN A 192.168.1.1
+www   IN A 192.168.1.50
+mail  IN A 192.168.1.51
+mail  IN MX 10 mail.lab.local.</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Create Reverse Zone</strong>
+        <p>Reverse zones map IPs to hostnames (PTR records).</p>
+        <pre><code># /etc/bind/named.conf.local
+zone "1.168.192.in-addr.arpa" {
+  type master;
+  file "/etc/bind/db.192.168.1";
+};
+
+# /etc/bind/db.192.168.1
+$TTL 86400
+@ IN SOA ns1.lab.local. admin.lab.local. (
+  2024010101 3600 900 604800 86400)
+@ IN NS ns1.lab.local.
+1  IN PTR ns1.lab.local.
+50 IN PTR www.lab.local.
+51 IN PTR mail.lab.local.</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <div class="step-body">
+        <strong>Test & Verify</strong>
+        <p>Use named-check tools and dig to verify the configuration.</p>
+        <pre><code># Validate config and zone files
+sudo named-checkconf
+sudo named-checkzone lab.local /etc/bind/db.lab.local
+sudo named-checkzone 1.168.192.in-addr.arpa /etc/bind/db.192.168.1
+
+sudo systemctl restart bind9
+
+# Test queries
+dig @localhost lab.local NS
+dig @localhost www.lab.local A
+dig @localhost -x 192.168.1.50
+nslookup www.lab.local 127.0.0.1</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>Serial number must be incremented on every zone change or secondaries won't update</li><li>named-checkzone reports errors that would silently prevent zone loading</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Start named with -g in foreground to see startup errors: named -g -u bind</li><li>Allow-recursion should not be open to 0.0.0.0/0 — prevents DNS amplification attacks</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

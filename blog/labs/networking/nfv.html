@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Function Virtualization | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>Network Function Virtualization</span></nav>
+    <div class="page-header">
+      <h1>Network Function Virtualization</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-advanced">Advanced</span>
+        <span class="lab-category">Networking</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">NFV</span><span class="tag">VNF</span><span class="tag">network namespaces</span><span class="tag">HAProxy</span><span class="tag">virtual functions</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Understand NFV concepts, implement network service chaining with Linux network namespaces, and deploy a software load balancer as a VNF.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>NFV</code></li><li><code>VNF</code></li><li><code>network namespaces</code></li><li><code>HAProxy</code></li><li><code>virtual functions</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>ip netns add ns1</code></div><div class='command'><code>ip netns exec ns1 ping 8.8.8.8</code></div><div class='command'><code>ip link add veth0 type veth peer name veth1</code></div><div class='command'><code>haproxy -f /etc/haproxy/haproxy.cfg</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+graph LR
+    subgraph NFV Infrastructure
+      VIM[VIM\nOpenStack/Azure] --> VM1[VNF: Firewall]
+      VM1 --> VM2[VNF: Load Balancer]
+      VM2 --> VM3[VNF: IDS/IPS]
+    end
+    subgraph Traditional
+      HW1[Physical Firewall] --> HW2[Physical LB]
+      HW2 --> HW3[Physical IDS]
+    end
+    VIM -.->|replaces| HW1
+    style VIM fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style VM1 fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Network Namespaces as VNFs</strong>
+        <p>Linux network namespaces are isolated network stacks — the foundation of containers and VNFs.</p>
+        <pre><code># Create namespace
+ip netns add firewall
+ip netns add backend
+
+# Create veth pair (virtual Ethernet)
+ip link add veth-fw type veth peer name veth-fw-ns
+ip link set veth-fw-ns netns firewall
+
+# Configure inside namespace
+ip netns exec firewall ip addr add 10.0.1.1/24 dev veth-fw-ns
+ip netns exec firewall ip link set veth-fw-ns up
+ip netns exec firewall ip link set lo up</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Deploy HAProxy as Load Balancer VNF</strong>
+        <p>Run HAProxy inside a namespace as a virtual load balancer function.</p>
+        <pre><code>sudo apt install haproxy
+
+# /etc/haproxy/haproxy.cfg
+frontend web
+  bind *:80
+  default_backend servers
+
+backend servers
+  balance roundrobin
+  server s1 192.168.1.10:80 check
+  server s2 192.168.1.11:80 check
+
+sudo haproxy -f /etc/haproxy/haproxy.cfg -c  # check config
+sudo systemctl start haproxy</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Service Function Chaining</strong>
+        <p>Chain network functions so traffic flows through each VNF in sequence.</p>
+        <pre><code># Chain: Client → Firewall NS → LB NS → Backend
+# Create namespaces and veth pairs
+ip netns add lb
+ip link add veth-lb1 type veth peer name veth-lb1-ns
+ip link set veth-lb1-ns netns lb
+
+# Enable routing between namespaces
+ip netns exec firewall sysctl -w net.ipv4.ip_forward=1
+
+# Add iptables rules in firewall namespace
+ip netns exec firewall iptables -A FORWARD -j ACCEPT</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>veth pairs are always created in pairs — one end per namespace</li><li>Forgetting ip link set lo up inside namespace causes localhost failures</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Network namespaces underpin Docker networking — each container gets its own namespace</li><li>NFV reduces hardware costs and enables rapid service deployment</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

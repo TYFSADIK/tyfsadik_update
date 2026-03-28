@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Static Network Configuration | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>Static Network Configuration</span></nav>
+    <div class="page-header">
+      <h1>Static Network Configuration</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-beginner">Beginner</span>
+        <span class="lab-category">Networking</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">ip</span><span class="tag">nmcli</span><span class="tag">netplan</span><span class="tag">ifconfig</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Configure static IP addresses, default gateways, and DNS servers on Linux using ip commands and persistent configuration tools.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>ip</code></li><li><code>nmcli</code></li><li><code>netplan</code></li><li><code>ifconfig</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>ip addr add 192.168.1.10/24 dev eth0</code></div><div class='command'><code>ip route add default via 192.168.1.1</code></div><div class='command'><code>nmcli con mod eth0 ipv4.addresses 192.168.1.10/24</code></div><div class='command'><code>nmcli con up eth0</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart LR
+    CONFIG[Static IP Config] --> IP[IP Address\n192.168.1.10/24]
+    CONFIG --> GW[Default Gateway\n192.168.1.1]
+    CONFIG --> DNS[DNS Servers\n1.1.1.1, 8.8.8.8]
+    IP --> NIC[Network Interface\neth0]
+    GW --> RT[Routing Table]
+    DNS --> RES[Name Resolution]
+    style CONFIG fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style NIC fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Temporary Configuration with ip</strong>
+        <p>ip commands take effect immediately but are lost on reboot.</p>
+        <pre><code># Add IP address
+ip addr add 192.168.1.10/24 dev eth0
+# Remove IP
+ip addr del 192.168.1.10/24 dev eth0
+# Add default route
+ip route add default via 192.168.1.1
+# Verify
+ip addr show eth0
+ip route show</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Persistent via netplan (Ubuntu 18+)</strong>
+        <p>Edit the YAML file in /etc/netplan/ for permanent configuration.</p>
+        <pre><code># /etc/netplan/01-netcfg.yaml
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth0:
+      dhcp4: no
+      addresses: [192.168.1.10/24]
+      gateway4: 192.168.1.1
+      nameservers:
+        addresses: [1.1.1.1, 8.8.8.8]
+
+sudo netplan apply</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Persistent via nmcli (RHEL/CentOS/Fedora)</strong>
+        <p>NetworkManager CLI for persistent configuration.</p>
+        <pre><code>nmcli con mod eth0 ipv4.method manual \
+  ipv4.addresses '192.168.1.10/24' \
+  ipv4.gateway '192.168.1.1' \
+  ipv4.dns '1.1.1.1'
+nmcli con up eth0</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <div class="step-body">
+        <strong>Verify Connectivity</strong>
+        <p>Test layer by layer after configuring.</p>
+        <pre><code>ip addr show             # check IP assigned
+ip route show            # check routes
+ping -c4 192.168.1.1     # ping gateway
+ping -c4 8.8.8.8         # ping internet
+ping -c4 google.com      # test DNS resolution
+traceroute google.com    # trace path</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>ip commands are not persistent — use netplan/nmcli for permanent config</li><li>netplan apply with syntax errors kills network — test with netplan try first</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Use netplan try — it auto-reverts if you don't confirm within 120 seconds</li><li>Always test DNS resolution (ping hostname) separately from IP connectivity</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

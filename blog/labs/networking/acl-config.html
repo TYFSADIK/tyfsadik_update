@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Access Control Lists | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>Access Control Lists</span></nav>
+    <div class="page-header">
+      <h1>Access Control Lists</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Networking</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">ACL</span><span class="tag">Cisco IOS</span><span class="tag">standard ACL</span><span class="tag">extended ACL</span><span class="tag">ip access-list</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Create standard and extended ACLs to filter network traffic, apply them to interfaces, and understand ACL processing order.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>ACL</code></li><li><code>Cisco IOS</code></li><li><code>standard ACL</code></li><li><code>extended ACL</code></li><li><code>ip access-list</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>access-list 10 permit 192.168.1.0 0.0.0.255</code></div><div class='command'><code>ip access-list extended BLOCK_TELNET</code></div><div class='command'><code>access-list 100 deny tcp any any eq 23</code></div><div class='command'><code>show ip access-lists</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    PKT[Packet arrives] --> ACL{ACL applied\nto interface?}
+    ACL -->|No| FWD[Forward normally]
+    ACL -->|Yes, inbound| RULES[Check rules\ntop to bottom]
+    RULES -->|First match PERMIT| FWD
+    RULES -->|First match DENY| DROP[Drop packet]
+    RULES -->|No match| IMPLICIT[Implicit deny\nall dropped]
+    style RULES fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style DROP fill:#1a1a2e,stroke:#ff4444,color:#ff4444
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Standard ACLs (filter by source IP only)</strong>
+        <p>Standard ACLs only match on source IP. Apply close to destination.</p>
+        <pre><code>! Permit 192.168.1.0/24, deny rest
+access-list 10 permit 192.168.1.0 0.0.0.255
+! (implicit deny all)
+
+! Apply to interface
+interface Gi0/1
+ ip access-group 10 out
+
+show ip access-lists 10</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Extended ACLs (src+dst IP, protocol, port)</strong>
+        <p>Extended ACLs match on source, destination, protocol, and ports. Apply close to source.</p>
+        <pre><code>! Block Telnet (port 23) from any source
+ip access-list extended BLOCK_TELNET
+ deny tcp any any eq 23
+ permit ip any any
+
+! Permit only HTTP/HTTPS to server
+ip access-list extended WEB_ONLY
+ permit tcp any host 10.0.0.5 eq 80
+ permit tcp any host 10.0.0.5 eq 443
+ deny ip any any log
+
+interface Gi0/0
+ ip access-group WEB_ONLY in</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>ACL Wildcards</strong>
+        <p>Wildcard masks are inverse subnet masks. 0=must match, 255=don't care.</p>
+        <pre><code>! Match 192.168.1.0/24
+! Subnet:   255.255.255.0
+! Wildcard: 0.0.0.255
+
+! Match any host: 0.0.0.0 255.255.255.255
+! Match one host: 192.168.1.5 0.0.0.0
+! Match /16:      10.10.0.0 0.0.255.255</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>ACLs are processed top-down — first match wins, put specific rules before general</li><li>Adding rules to a numbered ACL resequences automatically in IOS</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Standard ACLs near destination, extended ACLs near source</li><li>show ip access-lists shows match counters — use to verify rules are hitting</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>
