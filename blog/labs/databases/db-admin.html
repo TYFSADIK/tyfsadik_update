@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Database Administration | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/databases/index.html">Databases</a> &rsaquo; <span>Database Administration</span></nav>
+    <div class="page-header">
+      <h1>Database Administration</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Databases</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">users</span><span class="tag">GRANT</span><span class="tag">REVOKE</span><span class="tag">SHOW PROCESSLIST</span><span class="tag">pg_stat_activity</span><span class="tag">EXPLAIN</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Perform DBA tasks: create users with least-privilege access, monitor queries, and kill long-running sessions.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>users</code></li><li><code>GRANT</code></li><li><code>REVOKE</code></li><li><code>SHOW PROCESSLIST</code></li><li><code>pg_stat_activity</code></li><li><code>EXPLAIN</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>CREATE USER 'app'@'%' IDENTIFIED BY 'pass';</code></div><div class='command'><code>GRANT SELECT,INSERT ON db.* TO 'app'@'%';</code></div><div class='command'><code>SHOW PROCESSLIST;</code></div><div class='command'><code>SELECT * FROM pg_stat_activity;</code></div><div class='command'><code>KILL QUERY 42;</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+sequenceDiagram
+    participant DBA as DBA
+    participant DB as Database
+    participant APP as Application User
+    DBA->>DB: CREATE USER app@'%'
+    DBA->>DB: GRANT SELECT,INSERT ON mydb.*
+    APP->>DB: Connect as 'app'
+    DB->>APP: Access granted (limited)
+    APP->>DB: SELECT * FROM users
+    DB->>APP: Results
+    APP->>DB: DROP TABLE  
+    DB->>APP: Permission denied
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>User Management</strong>
+        <p>Create users with minimal necessary privileges.</p>
+        <pre><code>-- MySQL
+CREATE USER 'webapp'@'10.0.0.%' IDENTIFIED BY 'strongpassword';
+GRANT SELECT, INSERT, UPDATE ON appdb.* TO 'webapp'@'10.0.0.%';
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR 'webapp'@'10.0.0.%';
+
+-- PostgreSQL
+CREATE USER webapp WITH PASSWORD 'strongpassword';
+GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO webapp;</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Monitor and Kill Queries</strong>
+        <p>Find and terminate long-running or blocking queries.</p>
+        <pre><code>-- MySQL
+SHOW PROCESSLIST;
+SHOW FULL PROCESSLIST;
+KILL QUERY 42;    -- kill query, keep connection
+KILL 42;          -- kill connection
+
+-- PostgreSQL
+SELECT pid, now()-query_start AS duration, query
+FROM pg_stat_activity
+WHERE state='active' ORDER BY duration DESC;
+
+SELECT pg_cancel_backend(pid);  -- cancel query
+SELECT pg_terminate_backend(pid); -- terminate connection</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>GRANT ALL PRIVILEGES is almost never appropriate for application users</li><li>Killing a connection mid-transaction causes rollback</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Principle of least privilege: grant only the specific operations the app needs</li><li>Create separate users per application — never share database credentials</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>
