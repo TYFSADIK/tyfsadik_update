@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proxmox Homelab | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link active">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Infrastructure</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Proxmox Homelab</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Proxmox Homelab</h1>
+      <p class="subtitle">Full virtualization infrastructure for testing and development</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2025</span>
+      <span class="meta-category">Infrastructure</span>
+      <a class="meta-link" href="https://github.com/TYFSADIK/my_proxmox" target="_blank" rel="noopener">GitHub &nearr;</a>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        This project is a bare-metal <strong>Proxmox VE</strong> hypervisor deployment that serves as the
+        foundation for every other self-hosted service in the stack. Proxmox VE combines
+        <strong>KVM</strong> full virtualization and <strong>LXC</strong> container technology on a single
+        platform managed through a polished web UI. The server runs on commodity x86-64 hardware with a
+        <strong>ZFS mirror</strong> storage pool providing data integrity, transparent checksumming, and
+        instant copy-on-write snapshots.
+      </p>
+      <p>
+        The network topology uses <strong>Linux bridge interfaces</strong> with <strong>VLAN-aware</strong>
+        configuration, allowing VMs and containers to be isolated into separate broadcast domains without
+        purchasing managed switches. Automated backups run nightly via <code>vzdump</code> with zstd
+        compression, and cloud-init VM templates enable rapid provisioning of new guests in under a
+        minute. Ansible playbooks automate post-provisioning hardening so every new VM is immediately
+        ready to receive a service. This single server currently hosts the DNS resolver, email server,
+        Nextcloud instance, Immich photo server, and the search engine.
+      </p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid">
+graph TD
+  BM["Bare Metal Host\nx86-64 Hardware"]
+  BM --> PVE["Proxmox VE 8\nHypervisor + Web UI"]
+
+  PVE --> KVM["KVM Virtual Machines"]
+  PVE --> LXC["LXC Containers"]
+  PVE --> ZFS["ZFS Storage Pool\n(mirror: sdb + sdc)"]
+  PVE --> NET["Network Bridges\nvmbr0 / vmbr1"]
+
+  KVM --> VM1["Debian 12 VM\ndev / staging"]
+  KVM --> VM2["Ubuntu 22.04 VM\ntesting"]
+  KVM --> VM3["Windows 11 VM\ncompatibility testing"]
+
+  LXC --> CT1["DNS Container\nPi-hole + Unbound"]
+  LXC --> CT2["Mail Container\nPostfix + Dovecot"]
+  LXC --> CT3["App Containers\nNextcloud / Immich"]
+  LXC --> CT4["Proxy Container\nNginx"]
+
+  ZFS --> DS1[("local-zfs\nVM disks")]
+  ZFS --> DS2[("tank/backups\nvzdump archives")]
+
+  NET --> VLAN10["VLAN 10\nManagement"]
+  NET --> VLAN20["VLAN 20\nServices"]
+
+style BM fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style PVE fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style KVM fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style LXC fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style ZFS fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style NET fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style VM1 fill:#181818,stroke:#1e1e1e,color:#888
+style VM2 fill:#181818,stroke:#1e1e1e,color:#888
+style VM3 fill:#181818,stroke:#1e1e1e,color:#888
+style CT1 fill:#181818,stroke:#1e1e1e,color:#888
+style CT2 fill:#181818,stroke:#1e1e1e,color:#888
+style CT3 fill:#181818,stroke:#1e1e1e,color:#888
+style CT4 fill:#181818,stroke:#1e1e1e,color:#888
+style DS1 fill:#181818,stroke:#1e1e1e,color:#888
+style DS2 fill:#181818,stroke:#1e1e1e,color:#888
+style VLAN10 fill:#181818,stroke:#1e1e1e,color:#888
+style VLAN20 fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="tech-stack">
+      <h2>Tech Stack</h2>
+      <ul>
+        <li><strong>Proxmox VE 8</strong> &mdash; open-source hypervisor platform built on Debian</li>
+        <li><strong>KVM / QEMU</strong> &mdash; full hardware virtualization for Windows and mixed-OS VMs</li>
+        <li><strong>LXC</strong> &mdash; lightweight Linux containers sharing the host kernel</li>
+        <li><strong>ZFS</strong> &mdash; copy-on-write filesystem with mirror RAID, checksums, and snapshots</li>
+        <li><strong>Linux Bridges / VLAN</strong> &mdash; software-defined networking with VLAN-aware bridges</li>
+        <li><strong>Ansible</strong> &mdash; idempotent playbooks for guest provisioning and hardening</li>
+        <li><strong>vzdump</strong> &mdash; Proxmox native backup tool with zstd compression and rotation</li>
+      </ul>
+    </section>
+
+    <section id="build-process">
+      <h2>Build Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h3>Install Proxmox VE on Bare Metal</h3>
+            <p>
+              The Proxmox VE ISO is written to a USB drive and booted on the target machine. During
+              installation, ZFS RAID-1 is selected so the OS itself is mirrored across two drives. The
+              management IP, gateway, and hostname are configured at this stage. After first boot, the
+              enterprise apt repository is replaced with the no-subscription community repository to
+              avoid paid-tier update errors.
+            </p>
+            <pre><code># Write ISO to USB from another machine
+dd if=proxmox-ve_8.2-1.iso of=/dev/sdX bs=4M status=progress conv=fdatasync
+
+# After first boot: switch to community repository
+echo "deb http://download.proxmox.com/debian/pve bookworm pve-no-subscription" \
+  > /etc/apt/sources.list.d/pve-community.list
+
+# Disable enterprise repo
+rm /etc/apt/sources.list.d/pve-enterprise.list
+
+apt update && apt full-upgrade -y
+reboot</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h3>Configure ZFS Storage Pool</h3>
+            <p>
+              Additional data drives are formed into a ZFS mirror pool named <code>tank</code> for
+              redundant VM and backup storage. ZFS ARC memory usage is capped to prevent it from
+              consuming all available RAM and causing OOM kills in guest VMs. Two datasets are created
+              with separate mount points.
+            </p>
+            <pre><code># Create ZFS mirror pool across two data drives
+zpool create -f tank mirror /dev/sdb /dev/sdc
+
+# Create datasets
+zfs create tank/vmdisks
+zfs create tank/backups
+
+# Cap ARC at 4 GB (tune to ~25% of total RAM)
+echo "options zfs zfs_arc_max=4294967296" > /etc/modprobe.d/zfs.conf
+update-initramfs -u
+
+# Verify pool health
+zpool status tank
+zfs list -r tank</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h3>Set Up Network Bridges and VLANs</h3>
+            <p>
+              <code>vmbr0</code> bridges the physical NIC for internet-routed traffic.
+              <code>vmbr1</code> is a VLAN-aware internal bridge for inter-VM communication, enabling
+              each VM port to carry a VLAN tag set from the Proxmox web UI without requiring external
+              managed switch configuration.
+            </p>
+            <pre><code># /etc/network/interfaces
+auto lo
+iface lo inet loopback
+
+auto enp3s0
+iface enp3s0 inet manual
+
+auto vmbr0
+iface vmbr0 inet static
+    address 192.168.1.10/24
+    gateway 192.168.1.1
+    bridge-ports enp3s0
+    bridge-stp off
+    bridge-fd 0
+
+auto vmbr1
+iface vmbr1 inet manual
+    bridge-ports none
+    bridge-stp off
+    bridge-fd 0
+    bridge-vlan-aware yes
+    bridge-vids 2-4094
+
+# Apply without reboot
+ifreload -a</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <h3>Create VM and LXC Templates</h3>
+            <p>
+              A Debian 12 cloud-init VM template is built from the official generic cloud image.
+              This template includes cloud-init drive attachment so that SSH keys and hostname are
+              injected on first boot. LXC container templates are downloaded from the Proxmox template
+              repository for fast container provisioning.
+            </p>
+            <pre><code># Download Debian 12 cloud image
+wget https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2
+
+# Create template VM (ID 9000)
+qm create 9000 --name debian-12-tmpl --memory 2048 --cores 2 \
+  --net0 virtio,bridge=vmbr0 --scsihw virtio-scsi-pci
+qm importdisk 9000 debian-12-genericcloud-amd64.qcow2 local-zfs
+qm set 9000 --scsi0 local-zfs:vm-9000-disk-0 --boot c --bootdisk scsi0
+qm set 9000 --ide2 local-zfs:cloudinit --serial0 socket --vga serial0
+qm set 9000 --sshkey ~/.ssh/id_ed25519.pub --ciuser admin
+qm template 9000
+
+# Download and list LXC templates
+pveam update
+pveam download local debian-12-standard_12.7-1_amd64.tar.zst</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <h3>Configure Automated Backups</h3>
+            <p>
+              Backup jobs are configured via <code>/etc/pve/jobs.cfg</code> and exposed in the Proxmox
+              web UI under Datacenter &rarr; Backup. Backups run nightly at 02:00 using zstd compression
+              in snapshot mode (no downtime). The maxfiles value of 7 enforces a weekly rolling
+              retention window.
+            </p>
+            <pre><code># /etc/pve/jobs.cfg (managed by Proxmox)
+vzdump: job-nightly
+    schedule 0 2 * * *
+    storage tank/backups
+    compress zstd
+    mode snapshot
+    maxfiles 7
+    all 1
+
+# Manual backup of a specific guest
+vzdump 101 --storage tank/backups --compress zstd --mode snapshot
+
+# List existing backup archives
+pvesm list tank/backups
+
+# Restore from backup
+qmrestore /mnt/pve/tank/dump/vzdump-qemu-101-*.vma.zst 200 --storage local-zfs</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">6</div>
+          <div class="step-body">
+            <h3>Deploy Services as LXC Containers</h3>
+            <p>
+              Services are provisioned as unprivileged LXC containers cloned from the Debian template.
+              Each container receives a static IP on <code>vmbr1</code> with an appropriate VLAN tag.
+              An Ansible playbook runs immediately after creation to install Docker, configure the
+              firewall, and bring up the service compose stack.
+            </p>
+            <pre><code># Create unprivileged LXC container for DNS service
+pct create 101 local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst \
+    --hostname dns-server \
+    --cores 1 --memory 512 --swap 512 \
+    --net0 name=eth0,bridge=vmbr1,ip=192.168.20.2/24,gw=192.168.20.1,tag=20 \
+    --storage local-zfs --rootfs local-zfs:8 \
+    --unprivileged 1 --features keyctl=1,nesting=1 \
+    --start 1
+
+# Run Ansible provisioning playbook
+ansible-playbook -i inventory/homelab.yml playbooks/provision-lxc.yml \
+    --limit dns-server --tags docker,hardening</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Data Flow</h2>
+      <div class="mermaid">
+flowchart TD
+  A["Select Template\nVM or LXC"] --> B["Clone / Create Guest\nqm clone or pct create"]
+  B --> C["Set Resources\nCPU, RAM, disk size"]
+  C --> D["Assign VLAN Tag\nvmbr1 + tag ID"]
+  D --> E["First Boot\npct start or qm start"]
+  E --> F["Cloud-init Runs\nSSH key, hostname inject"]
+  F --> G["Ansible Playbook\nhardening + Docker install"]
+  G --> H["Deploy Service Stack\ndocker compose up -d"]
+  H --> I["Nightly Backup\nvzdump to tank/backups"]
+  I --> J["ZFS Snapshot\nauto-snapshot or manual"]
+
+style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style B fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style C fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style D fill:#181818,stroke:#1e1e1e,color:#888
+style E fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style F fill:#181818,stroke:#1e1e1e,color:#888
+style G fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style H fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style I fill:#181818,stroke:#1e1e1e,color:#888
+style J fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li>
+          <strong>ZFS ARC consuming all available RAM:</strong> By default ZFS ARC expands to fill roughly
+          half of system RAM and does not release it under normal memory pressure, causing OOM kills in
+          guest VMs. Resolved by setting <code>zfs_arc_max=4294967296</code> in
+          <code>/etc/modprobe.d/zfs.conf</code> and regenerating the initramfs with
+          <code>update-initramfs -u</code>.
+        </li>
+        <li>
+          <strong>VLAN tagging not working on guest VMs:</strong> VMs assigned VLAN tags still communicated
+          across all VLANs. The issue was that <code>vmbr1</code> lacked the
+          <code>bridge-vlan-aware yes</code> option. After adding it and running
+          <code>ifreload -a</code>, VLAN isolation functioned correctly.
+        </li>
+        <li>
+          <strong>LXC containers unable to run Docker:</strong> Unprivileged LXC containers block nested
+          container runtimes due to missing kernel capabilities. Resolved by setting
+          <code>features: keyctl=1,nesting=1</code> in the container configuration and selecting the
+          overlay storage driver.
+        </li>
+        <li>
+          <strong>Cloud-init not injecting SSH keys:</strong> The cloud-init drive was attached but
+          user data was not set before templating. Fixed with
+          <code>qm set 9000 --sshkey ~/.ssh/id_ed25519.pub --ciuser admin</code> before converting
+          the VM to a template.
+        </li>
+      </ul>
+    </section>
+
+    <section id="learnings">
+      <h2>What I Learned</h2>
+      <ul>
+        <li>KVM vs LXC trade-offs: full isolation overhead vs shared-kernel efficiency</li>
+        <li>ZFS architecture: datasets, datasets inheritance, ARC tuning, and scrub schedules</li>
+        <li>Linux bridge networking, VLAN-aware bridge configuration, and traffic isolation</li>
+        <li>Cloud-init for automated VM customization at first boot</li>
+        <li>Proxmox backup strategies: snapshot vs suspend vs stop modes, retention policies</li>
+        <li>Ansible inventory management and idempotent playbook design for homelab automation</li>
+      </ul>
+    </section>
+
+    <div class="tags">
+      <span class="tag">Proxmox</span>
+      <span class="tag">KVM</span>
+      <span class="tag">LXC</span>
+      <span class="tag">ZFS</span>
+      <span class="tag">Virtualization</span>
+      <span class="tag">Homelab</span>
+    </div>
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

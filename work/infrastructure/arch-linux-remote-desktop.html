@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arch Linux Remote Desktop via WSL2 | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link active">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Infrastructure</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Arch Linux Remote Desktop via WSL2</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Arch Linux Remote Desktop via WSL2</h1>
+      <p class="subtitle">Full XFCE desktop through WSL2 without router changes &mdash; GitHub &starf;5</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2025</span>
+      <span class="meta-category">Infrastructure</span>
+      <a class="meta-link" href="https://github.com/TYFSADIK/Arch-Linux-Remote-Desktop-WSL2" target="_blank" rel="noopener">GitHub &nearr;</a>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        This project is a complete guide and automation script set for running a full
+        <strong>Arch Linux with XFCE4</strong> graphical desktop inside <strong>WSL2</strong> on
+        Windows 11, accessible remotely via <strong>RDP</strong> from any device &mdash; without
+        modifying router settings or opening any firewall ports. This is the key differentiator:
+        instead of port-forwarding RDP (port 3389) through the router (which is often impossible on
+        restricted networks, dorms, or corporate environments), the RDP traffic is tunneled outward
+        through <strong>Cloudflare Tunnel</strong>.
+      </p>
+      <p>
+        The architecture works by running <code>xrdp</code> inside the WSL2 Arch Linux environment
+        on the standard RDP port, then running a <code>cloudflared</code> tunnel daemon that creates
+        an encrypted outbound connection to Cloudflare's edge network. Remote clients connect to the
+        Cloudflare-assigned hostname using any standard RDP client, and the traffic is routed through
+        the tunnel to xrdp. No inbound ports, no static IP required, no router access needed.
+        The project earned 5 GitHub stars from users who found the router-free approach useful.
+      </p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid">
+graph LR
+  subgraph WinHost["Windows 11 Host"]
+    WSL2["WSL2 Hypervisor\n(Hyper-V based)"]
+  end
+
+  subgraph WSL2VM["WSL2 VM (Arch Linux)"]
+    ARCH["Arch Linux\nkernel + userspace"]
+    XFCE["XFCE4 Desktop\n(X11 session)"]
+    XRDP["xrdp + xorgxrdp\n:3389 (localhost)"]
+    CFD["cloudflared\ntunnel daemon"]
+  end
+
+  subgraph CloudflareNet["Cloudflare Network"]
+    CFE["Cloudflare Edge\nTunnel endpoint"]
+  end
+
+  subgraph Remote["Remote Client"]
+    RDP["RDP Client\n(Windows / macOS / Linux)"]
+  end
+
+  WSL2 --> ARCH
+  ARCH --> XFCE
+  ARCH --> XRDP
+  ARCH --> CFD
+  CFD -->|"outbound TLS\ntunnel"| CFE
+  RDP -->|"RDP over HTTPS"| CFE
+  CFE -->|"tunnel"| CFD
+  CFD -->|"localhost:3389"| XRDP
+  XRDP --> XFCE
+
+style WSL2 fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style ARCH fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style XFCE fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style XRDP fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style CFD fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style CFE fill:#181818,stroke:#1e1e1e,color:#888
+style RDP fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style WSL2VM fill:#181818,stroke:#1e1e1e,color:#888
+style WinHost fill:#181818,stroke:#1e1e1e,color:#888
+style CloudflareNet fill:#181818,stroke:#1e1e1e,color:#888
+style Remote fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="tech-stack">
+      <h2>Tech Stack</h2>
+      <ul>
+        <li><strong>Arch Linux</strong> &mdash; rolling-release Linux distribution running inside WSL2</li>
+        <li><strong>WSL2</strong> &mdash; Windows Subsystem for Linux 2, Hyper-V-based VM layer in Windows 11</li>
+        <li><strong>XFCE4</strong> &mdash; lightweight GTK desktop environment for the graphical session</li>
+        <li><strong>xrdp + xorgxrdp</strong> &mdash; open-source RDP server for Linux, compiled from AUR</li>
+        <li><strong>Cloudflare Tunnel (cloudflared)</strong> &mdash; outbound tunnel daemon, eliminates need for port forwarding</li>
+        <li><strong>Windows 11</strong> &mdash; host OS with WSL2 and Hyper-V enabled</li>
+        <li><strong>pacman / yay</strong> &mdash; Arch package manager and AUR helper</li>
+      </ul>
+    </section>
+
+    <section id="build-process">
+      <h2>Build Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h3>Install Arch Linux in WSL2</h3>
+            <p>
+              WSL2 does not ship with Arch Linux by default, so it is installed from a bootstrap
+              tarball. The Arch Linux WSL bootstrap tarball is imported using
+              <code>wsl --import</code>. Alternatively, the ArchWSL package from the Microsoft
+              Store can be used. After import, the distribution is set as default and a non-root
+              user is created.
+            </p>
+            <pre><code"># In PowerShell (as Administrator):
+# Enable WSL2 (if not already)
+wsl --install
+wsl --set-default-version 2
+
+# Download Arch Linux bootstrap tarball
+# from https://archlinux.org/download/
+# Then import it:
+wsl --import Arch C:\WSL\Arch .\archlinux-bootstrap-x86_64.tar.zst
+
+# Launch Arch and do initial setup
+wsl -d Arch
+
+# Inside Arch:
+pacman-key --init
+pacman-key --populate archlinux
+pacman -Syu --noconfirm
+
+# Create user
+useradd -m -G wheel -s /bin/bash yourusername
+passwd yourusername
+echo "%wheel ALL=(ALL) ALL" >> /etc/sudoers</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h3>Install XFCE4 Desktop Environment</h3>
+            <p>
+              XFCE4 and its additional utilities are installed via pacman. The
+              <code>xfce4-goodies</code> meta-package includes terminal, file manager,
+              panel plugins, and screensaver. Fonts and the GTK theme are also installed
+              for a complete desktop experience over RDP.
+            </p>
+            <pre><code">pacman -S xfce4 xfce4-goodies \
+    xorg-server xorg-xinit \
+    ttf-dejavu ttf-liberation \
+    gtk3 adwaita-icon-theme \
+    dbus --noconfirm
+
+# Verify XFCE components are installed
+pacman -Qs xfce4 | grep "local/"</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h3>Install xrdp and xorgxrdp from AUR</h3>
+            <p>
+              <code>xrdp</code> is the RDP server and <code>xorgxrdp</code> provides the
+              Xorg video driver module that xrdp uses for hardware-accelerated rendering.
+              Both are available in the AUR (Arch User Repository) and must be compiled from
+              source. The <code>yay</code> AUR helper is installed first.
+            </p>
+            <pre><code"># Install yay AUR helper (run as non-root user)
+pacman -S git base-devel --noconfirm
+git clone https://aur.archlinux.org/yay.git /tmp/yay
+cd /tmp/yay && makepkg -si --noconfirm
+
+# Install xrdp and xorgxrdp from AUR
+yay -S xrdp xorgxrdp --noconfirm
+
+# These packages compile from source - takes 10-20 minutes
+# Verify installation
+xrdp --version</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <h3>Configure .xsession for XFCE4</h3>
+            <p>
+              When xrdp starts a session, it reads <code>~/.xsession</code> to know which
+              desktop environment to launch. Without this file, xrdp launches a blank session
+              or fails with a black screen. The file must be executable and contain the correct
+              start command.
+            </p>
+            <pre><code"># Create the .xsession file for your user
+echo "startxfce4" > ~/.xsession
+chmod +x ~/.xsession
+
+# Also create a system-wide fallback
+sudo bash -c 'echo "startxfce4" > /etc/xrdp/startwm.sh'
+sudo chmod +x /etc/xrdp/startwm.sh
+
+# Verify the file content and permissions
+cat ~/.xsession
+ls -la ~/.xsession</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <h3>Enable systemd and Start xrdp</h3>
+            <p>
+              WSL2 does not run systemd by default. It must be enabled in
+              <code>/etc/wsl.conf</code> so that <code>systemctl</code> works. After enabling
+              systemd and restarting the WSL2 instance, xrdp is enabled and started as a
+              systemd service.
+            </p>
+            <pre><code"># /etc/wsl.conf
+[boot]
+systemd=true
+
+# Save the file, then restart WSL2 from PowerShell:
+# wsl --shutdown
+# wsl -d Arch
+
+# Back inside Arch, start xrdp
+sudo systemctl enable xrdp xrdp-sesman
+sudo systemctl start xrdp xrdp-sesman
+sudo systemctl status xrdp
+
+# Confirm xrdp is listening on port 3389
+ss -tlnp | grep 3389</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">6</div>
+          <div class="step-body">
+            <h3>Install cloudflared and Create Tunnel</h3>
+            <p>
+              The <code>cloudflared</code> daemon is installed and authenticated with a
+              Cloudflare account. A named tunnel is created for the RDP service. The tunnel
+              config routes TCP traffic on the tunnel URL to <code>localhost:3389</code> inside
+              the WSL2 VM. The tunnel is started as a systemd service so it reconnects after
+              WSL2 restarts.
+            </p>
+            <pre><code"># Install cloudflared (AUR)
+yay -S cloudflared --noconfirm
+
+# Authenticate with Cloudflare (opens browser)
+cloudflared tunnel login
+
+# Create a named tunnel
+cloudflared tunnel create rdp-tunnel
+
+# Create tunnel config
+mkdir -p ~/.cloudflared
+cat > ~/.cloudflared/config.yml << 'EOF'
+tunnel: rdp-tunnel
+credentials-file: /home/yourusername/.cloudflared/<TUNNEL-ID>.json
+
+ingress:
+  - service: rdp://localhost:3389
+EOF
+
+# Start the tunnel
+cloudflared tunnel run rdp-tunnel
+
+# Or run as systemd service
+cloudflared service install
+systemctl enable cloudflared
+systemctl start cloudflared
+
+# Get the tunnel hostname (e.g. rdp-tunnel.tyfsadik.org)
+cloudflared tunnel info rdp-tunnel</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">7</div>
+          <div class="step-body">
+            <h3>Connect RDP Client to Tunnel URL</h3>
+            <p>
+              Any RDP client can connect to the Cloudflare tunnel URL. On Windows, the built-in
+              Remote Desktop Connection app is used. On macOS, the Microsoft Remote Desktop app
+              from the App Store works. The tunnel URL is used as the hostname; no port number
+              or VPN is needed.
+            </p>
+            <pre><code"># On the remote machine (Windows):
+# Open Remote Desktop Connection (mstsc)
+# Computer: rdp-tunnel.tyfsadik.org
+# Username: yourusername
+# Connect and enter your Linux password
+
+# On macOS:
+# Open Microsoft Remote Desktop app
+# Add PC > PC name: rdp-tunnel.tyfsadik.org
+
+# On Linux (using rdesktop or freerdp):
+xfreerdp /v:rdp-tunnel.tyfsadik.org /u:yourusername /p:yourpassword /dynamic-resolution</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Request Flow</h2>
+      <div class="mermaid">
+sequenceDiagram
+  participant RC as RDP Client (remote)
+  participant CFE as Cloudflare Edge
+  participant CFD as cloudflared daemon
+  participant XRDP as xrdp :3389
+  participant XFCE as XFCE4 Session
+
+  RC->>CFE: RDP connect to tunnel hostname (HTTPS)
+  CFE->>CFD: route through outbound tunnel
+  CFD->>XRDP: TCP connect localhost:3389
+  XRDP->>XRDP: read ~/.xsession
+  XRDP->>XFCE: spawn startxfce4
+  XFCE-->>XRDP: X11 display frames
+  XRDP-->>CFD: RDP encoded frames
+  CFD-->>CFE: tunnel stream
+  CFE-->>RC: display frames
+  Note over RC,XFCE: Bidirectional: keyboard/mouse input travels the same path in reverse
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li>
+          <strong>xrdp black screen on connect:</strong> The most common issue with xrdp on Linux is
+          connecting successfully but seeing only a black screen. This is caused by the
+          <code>~/.xsession</code> file being absent, empty, or not executable. Resolved by creating
+          the file with <code>echo "startxfce4" > ~/.xsession && chmod +x ~/.xsession</code> and
+          ensuring the file belongs to the correct user account.
+        </li>
+        <li>
+          <strong>systemd not available in WSL2 by default:</strong> Before enabling systemd,
+          <code>systemctl</code> commands returned errors and xrdp could not be managed as a service.
+          Resolved by adding <code>[boot] systemd=true</code> to <code>/etc/wsl.conf</code> and
+          running <code>wsl --shutdown</code> from PowerShell to restart the WSL2 instance with
+          systemd as PID 1.
+        </li>
+        <li>
+          <strong>xorgxrdp AUR compilation failures:</strong> Building xorgxrdp from the AUR required
+          specific Xorg development headers that were not pulled in automatically. Resolved by
+          installing <code>xorg-server-devel</code> and <code>xorgproto</code> before running
+          the AUR build, and ensuring <code>base-devel</code> was fully installed.
+        </li>
+        <li>
+          <strong>Cloudflare Tunnel not reconnecting after WSL2 restart:</strong> The cloudflared
+          process terminated when WSL2 was shut down and did not restart automatically. Resolved by
+          running <code>cloudflared service install</code> to register it as a systemd service, which
+          then starts automatically when WSL2 boots with systemd enabled.
+        </li>
+      </ul>
+    </section>
+
+    <section id="learnings">
+      <h2>What I Learned</h2>
+      <ul>
+        <li>WSL2 internals: Hyper-V-based VM, network bridge, and the role of <code>wsl.conf</code></li>
+        <li>xrdp session lifecycle: <code>xsession</code> file, display allocation, and xorgxrdp module loading</li>
+        <li>Cloudflare Tunnel architecture: outbound-only tunnels, credential files, and ingress routing</li>
+        <li>AUR package compilation: makepkg, PKGBUILD review, and dependency resolution</li>
+        <li>systemd in WSL2: enabling it, service unit management, and boot sequence changes</li>
+        <li>Remote desktop protocol fundamentals: session negotiation, display encoding, and input forwarding</li>
+      </ul>
+    </section>
+
+    <div class="tags">
+      <span class="tag">Arch Linux</span>
+      <span class="tag">WSL2</span>
+      <span class="tag">XFCE4</span>
+      <span class="tag">xrdp</span>
+      <span class="tag">RDP</span>
+      <span class="tag">Remote Desktop</span>
+      <span class="tag">Cloudflare Tunnel</span>
+      <span class="tag">Windows</span>
+    </div>
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

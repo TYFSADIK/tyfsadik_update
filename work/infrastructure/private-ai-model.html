@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Private AI Model | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link active">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Infrastructure</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Private AI Model</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Private AI Model</h1>
+      <p class="subtitle">Self-hosted LLM with integrated web search &mdash; ai.tyfsadik.org</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2026</span>
+      <span class="meta-category">Infrastructure</span>
+      <a class="meta-link" href="https://ai.tyfsadik.org" target="_blank" rel="noopener">Live Demo &nearr;</a>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        This project is a fully self-hosted large language model stack running at
+        <a href="https://ai.tyfsadik.org" target="_blank" rel="noopener">ai.tyfsadik.org</a>.
+        At the core is <strong>Ollama</strong> serving <strong>Mistral 7B</strong> at the Q4_K_M quantization
+        level, chosen for the optimal balance between inference speed and output quality on CPU-only hardware.
+        The frontend is <strong>Open WebUI</strong>, a full-featured chat interface that supports conversation
+        history, model switching, and system prompt configuration. <strong>SearXNG</strong> is integrated as a
+        web search backend, allowing the model to retrieve and cite live information without routing any queries
+        through external cloud APIs.
+      </p>
+      <p>
+        The entire stack is containerized with Docker Compose and sits behind an <strong>Nginx</strong> reverse
+        proxy with <strong>Let's Encrypt</strong> SSL. No data ever leaves the local network for inference &mdash;
+        the only outbound traffic is SearXNG fetching search engine results, which it does without exposing any
+        user identity. This setup eliminates OpenAI subscription costs, preserves full data privacy, and keeps
+        model weights under local control.
+      </p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid">
+graph LR
+  subgraph Internet["Internet"]
+    U["User Browser"]
+  end
+
+  subgraph Edge["Edge Layer"]
+    NG["Nginx<br/>Reverse Proxy<br/>:443 SSL"]
+    LE["Let's Encrypt<br/>Certificate"]
+    LE -- renews --> NG
+  end
+
+  subgraph DockerNet["Docker Network (ai-net)"]
+    OW["Open WebUI<br/>:3000"]
+    OL["Ollama<br/>:11434"]
+    SX["SearXNG<br/>:8080"]
+  end
+
+  subgraph Storage["Persistent Volumes"]
+    MV[("Models Volume<br/>mistral:7b-q4_K_M")]
+    WD[("WebUI Data<br/>chats / settings")]
+  end
+
+  U -->|"HTTPS :443"| NG
+  NG -->|"proxy_pass"| OW
+  OW -->|"Generate"| OL
+  OW -->|"Search"| SX
+  SX -->|"Fetch results"| Internet
+  OL --- MV
+  OW --- WD
+
+style U fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style NG fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style LE fill:#181818,stroke:#1e1e1e,color:#888
+style OW fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style OL fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style SX fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style MV fill:#181818,stroke:#1e1e1e,color:#888
+style WD fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="tech-stack">
+      <h2>Tech Stack</h2>
+      <ul>
+        <li><strong>Ollama</strong> &mdash; local LLM runtime, handles model loading and inference API</li>
+        <li><strong>Mistral 7B (Q4_K_M)</strong> &mdash; 4-bit quantized model, ~4.1 GB VRAM/RAM footprint</li>
+        <li><strong>Open WebUI</strong> &mdash; full-featured chat UI with history, model switcher, system prompts</li>
+        <li><strong>SearXNG</strong> &mdash; self-hosted meta-search engine, provides web context to the LLM</li>
+        <li><strong>Docker &amp; Docker Compose</strong> &mdash; container runtime and orchestration</li>
+        <li><strong>Nginx</strong> &mdash; reverse proxy, CORS headers, SSL termination</li>
+        <li><strong>Let's Encrypt / Certbot</strong> &mdash; automated TLS certificate provisioning and renewal</li>
+        <li><strong>Linux (Debian 12)</strong> &mdash; host operating system</li>
+      </ul>
+    </section>
+
+    <section id="build-process">
+      <h2>Build Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h3>Install Ollama and Pull Model</h3>
+            <p>
+              Ollama is installed via its official install script, which sets up the binary and a systemd
+              service. After installation, the Mistral 7B model at Q4_K_M quantization is pulled from the
+              Ollama model registry. This quantization level reduces the model to approximately 4.1 GB while
+              keeping perplexity within acceptable bounds for general use.
+            </p>
+            <pre><code># Install Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Verify service is running
+systemctl status ollama
+
+# Pull Mistral 7B at Q4_K_M quantization
+ollama pull mistral:7b-instruct-q4_K_M
+
+# Test inference locally
+ollama run mistral:7b-instruct-q4_K_M "Hello, world"</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h3>Deploy Open WebUI</h3>
+            <p>
+              Open WebUI is deployed as a Docker container. The <code>--add-host</code> flag is required so
+              that the container can reach Ollama running on the host (not inside Docker). A named volume
+              persists conversation history and user settings across container restarts.
+            </p>
+            <pre><code>docker run -d \
+  -p 3000:8080 \
+  --add-host=host.docker.internal:host-gateway \
+  -v open-webui:/app/backend/data \
+  -e OLLAMA_BASE_URL=http://host.docker.internal:11434 \
+  --name open-webui \
+  --restart always \
+  ghcr.io/open-webui/open-webui:main</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h3>Deploy SearXNG via Docker Compose</h3>
+            <p>
+              SearXNG is cloned from its official Docker configuration repository. The
+              <code>settings.yml</code> file is edited to generate a unique secret key, disable search
+              tracking, and enable preferred search engines. The service is started on port 8080.
+            </p>
+            <pre><code>git clone https://github.com/searxng/searxng-docker.git
+cd searxng-docker
+
+# Generate secret key and configure
+sed -i "s|ultrasecretkey|$(openssl rand -hex 32)|g" searxng/settings.yml
+
+# Disable rate limit for local use
+# Edit searxng/settings.yml: server.limiter: false
+
+docker compose up -d
+
+# Verify SearXNG is responding
+curl http://localhost:8080/search?q=test&format=json</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <h3>Configure Nginx Reverse Proxy</h3>
+            <p>
+              Nginx is configured to proxy requests for <code>ai.tyfsadik.org</code> to the Open WebUI
+              container. CORS headers are added to allow the WebUI JavaScript to call the SearXNG API from
+              the browser context. WebSocket support is enabled for real-time streaming responses.
+            </p>
+            <pre><code>server {
+    listen 80;
+    server_name ai.tyfsadik.org;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+
+        # CORS for SearXNG integration
+        add_header Access-Control-Allow-Origin "https://ai.tyfsadik.org" always;
+        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Content-Type, Authorization" always;
+    }
+}</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <h3>Provision SSL Certificate</h3>
+            <p>
+              Certbot provisions a Let's Encrypt certificate and automatically modifies the Nginx config to
+              redirect HTTP to HTTPS and serve on port 443. A cron job (installed by certbot) handles
+              automatic renewal every 60 days.
+            </p>
+            <pre><code>apt install certbot python3-certbot-nginx -y
+
+certbot --nginx -d ai.tyfsadik.org
+
+# Verify auto-renewal timer
+systemctl status certbot.timer
+
+# Test renewal dry run
+certbot renew --dry-run</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">6</div>
+          <div class="step-body">
+            <h3>Connect Open WebUI to SearXNG</h3>
+            <p>
+              In the Open WebUI admin panel, navigate to <em>Settings &rarr; Web Search</em> and set the
+              SearXNG URL to the local container address. This enables the model to perform web searches
+              inline during conversations. The integration uses SearXNG's JSON API endpoint.
+            </p>
+            <pre><code># SearXNG JSON API endpoint for Open WebUI:
+# http://localhost:8080/search?q={query}&format=json
+
+# Test the integration endpoint
+curl "http://localhost:8080/search?q=current+date&format=json" | jq '.results[0]'
+
+# In Open WebUI: Settings > Web Search
+# Web Search Engine: SearXNG
+# SearXNG Query URL: http://localhost:8080/search?q=&lt;query&gt;&format=json</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Request Flow</h2>
+      <div class="mermaid">
+sequenceDiagram
+  participant U as User Browser
+  participant NG as Nginx
+  participant OW as Open WebUI
+  participant OL as Ollama
+  participant SX as SearXNG
+  participant WB as Web Backends
+
+  U->>NG: HTTPS POST /api/chat
+  NG->>OW: proxy_pass (HTTP)
+  OW->>SX: GET /search?q=&lt;query&gt;&format=json
+  SX->>WB: parallel requests (Google, Bing, DDG)
+  WB-->>SX: raw results
+  SX-->>OW: merged JSON results
+  OW->>OL: POST /api/generate (prompt + search context)
+  OL-->>OW: streaming token response
+  OW-->>NG: SSE stream
+  NG-->>U: streamed response
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li>
+          <strong>CPU inference latency:</strong> Running Mistral 7B at full precision on a CPU produced
+          3&ndash;5 tokens/sec, making conversations frustrating. Switching to Q4_K_M quantization cut
+          model size from ~14 GB to ~4.1 GB and raised throughput to 12&ndash;18 tokens/sec with no
+          perceptible drop in response quality for conversational tasks.
+        </li>
+        <li>
+          <strong>CORS errors between WebUI and SearXNG:</strong> When Open WebUI's JavaScript attempted
+          to hit the SearXNG JSON endpoint directly, browsers blocked the cross-origin request. Resolved
+          by routing all SearXNG traffic through a dedicated <code>/search</code> location block in Nginx,
+          which adds the correct <code>Access-Control-Allow-Origin</code> headers.
+        </li>
+        <li>
+          <strong>Ollama not reachable from Docker container:</strong> Open WebUI running inside Docker
+          could not reach Ollama on the host by default. Fixed by passing
+          <code>--add-host=host.docker.internal:host-gateway</code> at container startup and setting
+          <code>OLLAMA_BASE_URL=http://host.docker.internal:11434</code>.
+        </li>
+        <li>
+          <strong>Streaming response timeouts:</strong> Long model outputs caused Nginx to drop connections
+          before the response completed. Resolved by setting <code>proxy_read_timeout 300s</code> and
+          <code>proxy_send_timeout 300s</code> in the Nginx location block.
+        </li>
+      </ul>
+    </section>
+
+    <section id="learnings">
+      <h2>What I Learned</h2>
+      <ul>
+        <li>LLM quantization formats (GGUF, Q4_K_M, Q8) and their RAM/quality trade-offs</li>
+        <li>Nginx reverse proxy configuration for WebSocket and SSE streaming</li>
+        <li>Docker host networking and inter-container communication patterns</li>
+        <li>SearXNG engine configuration, rate limiting, and JSON API usage</li>
+        <li>Let's Encrypt certificate management and automated renewal with systemd timers</li>
+        <li>The practical difference between RAG (retrieval-augmented generation) and simple web-search injection</li>
+      </ul>
+    </section>
+
+    <div class="tags">
+      <span class="tag">AI</span>
+      <span class="tag">Ollama</span>
+      <span class="tag">Docker</span>
+      <span class="tag">Nginx</span>
+      <span class="tag">Linux</span>
+      <span class="tag">Privacy</span>
+      <span class="tag">LLM</span>
+      <span class="tag">SearXNG</span>
+    </div>
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

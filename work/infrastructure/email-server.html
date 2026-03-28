@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Private Email Server | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link active">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Infrastructure</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Private Email Server</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Private Email Server</h1>
+      <p class="subtitle">Self-hosted SMTP/IMAP with custom domain @tyfsadik.org</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2025</span>
+      <span class="meta-category">Infrastructure</span>
+      <a class="meta-link" href="https://github.com/TYFSADIK/email_server" target="_blank" rel="noopener">GitHub &nearr;</a>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        This project is a fully self-hosted email infrastructure using <strong>Postfix</strong> as the
+        SMTP server and <strong>Dovecot</strong> for IMAP/POP3 access, deployed on a VPS with the custom
+        domain <code>tyfsadik.org</code>. The goal was to eliminate reliance on Gmail or Proton while
+        maintaining full deliverability to major providers.
+      </p>
+      <p>
+        Deliverability is achieved through a complete set of DNS-based email authentication records:
+        <strong>DKIM</strong> (DomainKeys Identified Mail) signs every outbound message with an RSA
+        key, <strong>SPF</strong> (Sender Policy Framework) authorizes the server's IP, and
+        <strong>DMARC</strong> enforces policy alignment and provides aggregate reporting. TLS is
+        enforced on all connections via Let's Encrypt certificates. The configuration scored 10/10 on
+        mail-tester.com and successfully delivers to Gmail, Outlook, and Yahoo inboxes without hitting
+        spam folders.
+      </p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid">
+graph LR
+  subgraph Inbound["Inbound Mail"]
+    IN["Internet\n(sender MTA)"] -->|"port 25 MX lookup"| PF["Postfix SMTP\nport 25"]
+    PF -->|"LMTP delivery"| DV["Dovecot\nMailbox Store"]
+  end
+
+  subgraph Outbound["Outbound Mail"]
+    MC["Mail Client\n(Thunderbird/mobile)"] -->|"IMAP :993"| DV
+    MC -->|"SMTP submission\n:587 STARTTLS"| PF
+    PF -->|"OpenDKIM signs"| DK["DKIM Milter"]
+    DK -->|"signed + TLS"| OUT["Recipient MX\n(Gmail, Outlook...)"]
+  end
+
+  subgraph DNS["DNS Records (tyfsadik.org)"]
+    MX_R["MX record\nmail.tyfsadik.org"]
+    SPF_R["SPF TXT\nv=spf1 ip4:x.x.x.x -all"]
+    DKIM_R["DKIM TXT\nmail._domainkey"]
+    DMARC_R["DMARC TXT\n_dmarc policy"]
+    PTR_R["PTR record\nreverse DNS"]
+  end
+
+style PF fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style DV fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style DK fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style MC fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style IN fill:#181818,stroke:#1e1e1e,color:#888
+style OUT fill:#181818,stroke:#1e1e1e,color:#888
+style MX_R fill:#181818,stroke:#1e1e1e,color:#888
+style SPF_R fill:#181818,stroke:#1e1e1e,color:#888
+style DKIM_R fill:#181818,stroke:#1e1e1e,color:#888
+style DMARC_R fill:#181818,stroke:#1e1e1e,color:#888
+style PTR_R fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="tech-stack">
+      <h2>Tech Stack</h2>
+      <ul>
+        <li><strong>Postfix</strong> &mdash; MTA handling SMTP reception (port 25) and submission (port 587)</li>
+        <li><strong>Dovecot</strong> &mdash; IMAP/POP3 server with Maildir storage and SASL authentication</li>
+        <li><strong>OpenDKIM</strong> &mdash; DKIM signing milter integrated with Postfix</li>
+        <li><strong>SPF / DMARC</strong> &mdash; DNS TXT records for sender authorization and policy enforcement</li>
+        <li><strong>Let's Encrypt / Certbot</strong> &mdash; TLS certificates for SMTP and IMAP</li>
+        <li><strong>Linux (Debian 12)</strong> &mdash; VPS host operating system</li>
+        <li><strong>Thunderbird / mobile clients</strong> &mdash; IMAP clients for reading and sending mail</li>
+      </ul>
+    </section>
+
+    <section id="build-process">
+      <h2>Build Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h3>Install and Configure Postfix</h3>
+            <p>
+              Postfix is installed from apt and configured for internet site operation. The
+              <code>main.cf</code> file sets the hostname, domain, mailbox format (Maildir),
+              and enables SASL authentication for the submission port. The
+              <code>master.cf</code> file activates the submission service on port 587 with
+              mandatory STARTTLS.
+            </p>
+            <pre><code">apt install postfix -y
+# Select "Internet Site" during setup, set domain to tyfsadik.org
+
+# /etc/postfix/main.cf key settings:
+myhostname = mail.tyfsadik.org
+mydomain = tyfsadik.org
+myorigin = $mydomain
+inet_interfaces = all
+mydestination = $myhostname, localhost.$mydomain, $mydomain
+home_mailbox = Maildir/
+smtpd_tls_cert_file = /etc/letsencrypt/live/mail.tyfsadik.org/fullchain.pem
+smtpd_tls_key_file  = /etc/letsencrypt/live/mail.tyfsadik.org/privkey.pem
+smtpd_use_tls = yes
+smtpd_tls_security_level = may
+smtpd_sasl_auth_enable = yes
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = private/auth
+
+# Enable submission port in /etc/postfix/master.cf:
+submission inet n - y - - smtpd
+  -o syslog_name=postfix/submission
+  -o smtpd_tls_security_level=encrypt
+  -o smtpd_sasl_auth_enable=yes
+  -o smtpd_recipient_restrictions=permit_sasl_authenticated,reject
+
+systemctl restart postfix</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h3>Configure Dovecot IMAP</h3>
+            <p>
+              Dovecot is configured to use Maildir storage, authenticate against system users,
+              provide IMAP on port 993 with SSL, and expose a SASL socket that Postfix uses for
+              submission authentication. Three key config files are modified.
+            </p>
+            <pre><code">apt install dovecot-core dovecot-imapd -y
+
+# /etc/dovecot/conf.d/10-mail.conf
+mail_location = maildir:~/Maildir
+
+# /etc/dovecot/conf.d/10-auth.conf
+disable_plaintext_auth = yes
+auth_mechanisms = plain login
+
+# /etc/dovecot/conf.d/10-ssl.conf
+ssl = required
+ssl_cert = </etc/letsencrypt/live/mail.tyfsadik.org/fullchain.pem
+ssl_key = </etc/letsencrypt/live/mail.tyfsadik.org/privkey.pem
+
+# /etc/dovecot/conf.d/10-master.conf (SASL socket for Postfix)
+service auth {
+  unix_listener /var/spool/postfix/private/auth {
+    mode = 0660
+    user = postfix
+    group = postfix
+  }
+}
+
+systemctl restart dovecot</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h3>Provision TLS with Let's Encrypt</h3>
+            <p>
+              TLS certificates are provisioned for <code>mail.tyfsadik.org</code> using certbot in
+              standalone mode (since Nginx is not running on this server). A deploy hook restarts
+              Postfix and Dovecot automatically on renewal so they pick up the refreshed certificate.
+            </p>
+            <pre><code">apt install certbot -y
+
+certbot certonly --standalone \
+  -d mail.tyfsadik.org \
+  --agree-tos --email taki@tyfsadik.org
+
+# /etc/letsencrypt/renewal-hooks/deploy/restart-mail.sh
+#!/bin/bash
+systemctl restart postfix dovecot
+
+chmod +x /etc/letsencrypt/renewal-hooks/deploy/restart-mail.sh
+
+# Test renewal
+certbot renew --dry-run</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <h3>Configure OpenDKIM</h3>
+            <p>
+              OpenDKIM is installed, a 2048-bit RSA signing key is generated for the
+              <code>mail</code> selector, and the public key is published as a DNS TXT record.
+              Postfix is connected to the OpenDKIM milter so every outbound message is signed
+              before delivery.
+            </p>
+            <pre><code">apt install opendkim opendkim-tools -y
+
+# Generate key pair
+mkdir -p /etc/opendkim/keys/tyfsadik.org
+opendkim-genkey -s mail -d tyfsadik.org \
+  -D /etc/opendkim/keys/tyfsadik.org/
+chown opendkim:opendkim /etc/opendkim/keys/tyfsadik.org/mail.private
+
+# /etc/opendkim.conf (key settings)
+Domain                  tyfsadik.org
+KeyFile                 /etc/opendkim/keys/tyfsadik.org/mail.private
+Selector                mail
+Socket                  inet:12301@localhost
+
+# /etc/postfix/main.cf (add milter)
+milter_protocol = 6
+milter_default_action = accept
+smtpd_milters = inet:localhost:12301
+non_smtpd_milters = $smtpd_milters
+
+# Publish the DNS TXT record from:
+cat /etc/opendkim/keys/tyfsadik.org/mail.txt
+
+systemctl enable opendkim && systemctl restart opendkim postfix</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <h3>Add SPF and DMARC DNS Records</h3>
+            <p>
+              SPF, DMARC, and MX records are added in the DNS control panel for
+              <code>tyfsadik.org</code>. The PTR (reverse DNS) record is set at the VPS provider
+              to match the mail hostname, which is critical for avoiding spam classification.
+            </p>
+            <pre><code"># DNS records to add in domain registrar / DNS panel:
+
+# MX record
+tyfsadik.org.      IN  MX  10  mail.tyfsadik.org.
+
+# A record for mail subdomain
+mail.tyfsadik.org. IN  A   x.x.x.x
+
+# SPF TXT (authorize only this server's IP)
+tyfsadik.org.      IN  TXT "v=spf1 ip4:x.x.x.x -all"
+
+# DKIM TXT (copy public key from mail.txt)
+mail._domainkey.tyfsadik.org. IN TXT "v=DKIM1; k=rsa; p=MIIBIj..."
+
+# DMARC TXT (report only first, then reject)
+_dmarc.tyfsadik.org. IN TXT "v=DMARC1; p=reject; rua=mailto:taki@tyfsadik.org"
+
+# PTR record (set at VPS provider control panel)
+x.x.x.x  -->  mail.tyfsadik.org</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">6</div>
+          <div class="step-body">
+            <h3>Test with mail-tester.com and swaks</h3>
+            <p>
+              The full email stack is tested by sending a test message to a mail-tester.com address
+              and reviewing the score. Swaks is used for command-line SMTP testing to verify SASL
+              authentication, TLS negotiation, and DKIM signing without a mail client.
+            </p>
+            <pre><code">apt install swaks -y
+
+# Send a test email via the submission port with auth
+swaks --to test@mail-tester.com \
+  --from taki@tyfsadik.org \
+  --server mail.tyfsadik.org:587 \
+  --auth LOGIN \
+  --auth-user taki@tyfsadik.org \
+  --auth-password 'yourpassword' \
+  --tls
+
+# Verify DKIM header in received message
+# Look for: DKIM-Signature: v=1; a=rsa-sha256; d=tyfsadik.org; s=mail;
+
+# Check mail logs for delivery status
+tail -f /var/log/mail.log</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Request Flow</h2>
+      <div class="mermaid">
+sequenceDiagram
+  participant MC as Mail Client
+  participant PF as Postfix :587
+  participant DK as OpenDKIM milter
+  participant RMX as Recipient MX
+  participant DV as Dovecot IMAP
+
+  MC->>PF: SMTP EHLO + STARTTLS
+  PF-->>MC: 250 OK (TLS negotiated)
+  MC->>PF: AUTH LOGIN (SASL)
+  PF->>DV: verify credentials via SASL socket
+  DV-->>PF: authenticated OK
+  MC->>PF: send message (DATA)
+  PF->>DK: pass to milter
+  DK-->>PF: DKIM-Signature header added
+  PF->>RMX: SMTP delivery (TLS + signed)
+  RMX-->>PF: 250 OK queued
+  Note over MC,DV: Reading mail
+  MC->>DV: IMAP CONNECT :993 TLS
+  DV-->>MC: folder list + messages
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li>
+          <strong>Mail landing in spam at Gmail:</strong> Initial deliveries scored 7/10 on
+          mail-tester.com due to a missing PTR record. The VPS provider's reverse DNS panel was
+          used to set the PTR for the server's IP to <code>mail.tyfsadik.org</code>. After that
+          change, the score reached 10/10 and Gmail inbox delivery was consistent.
+        </li>
+        <li>
+          <strong>Dovecot SSL certificate permission errors:</strong> Postfix could not read the
+          Let's Encrypt private key because its process runs as the <code>postfix</code> user, which
+          lacked read access to the <code>/etc/letsencrypt/live/</code> directory. Resolved by adding
+          the <code>postfix</code> user to the <code>ssl-cert</code> group and adjusting the cert
+          directory permissions with <code>chmod 750</code>.
+        </li>
+        <li>
+          <strong>DKIM signing failing silently:</strong> Messages were sent without DKIM headers
+          because the milter socket was not accessible to Postfix. Fixed by changing the milter
+          socket from a Unix socket to a TCP socket (<code>inet:12301@localhost</code>) which is
+          accessible regardless of socket file permissions.
+        </li>
+        <li>
+          <strong>Port 25 blocked by VPS provider:</strong> Many VPS providers block outbound port 25
+          by default to prevent spam. Resolved by submitting a ticket to the provider to unblock
+          port 25 for the server IP after demonstrating legitimate email server configuration.
+        </li>
+      </ul>
+    </section>
+
+    <section id="learnings">
+      <h2>What I Learned</h2>
+      <ul>
+        <li>SMTP protocol flow: EHLO, STARTTLS, AUTH, DATA, and QUIT sequence</li>
+        <li>Email authentication stack: SPF authorization, DKIM cryptographic signing, DMARC policy enforcement</li>
+        <li>PTR record importance for SMTP reputation and inbox delivery</li>
+        <li>Postfix queue management, delivery logs, and bounce handling</li>
+        <li>Dovecot SASL integration with Postfix for submission authentication</li>
+        <li>TLS certificate lifecycle management for non-Nginx services using deploy hooks</li>
+      </ul>
+    </section>
+
+    <div class="tags">
+      <span class="tag">Postfix</span>
+      <span class="tag">Dovecot</span>
+      <span class="tag">DKIM</span>
+      <span class="tag">Email</span>
+      <span class="tag">Linux</span>
+      <span class="tag">Privacy</span>
+      <span class="tag">Self-Hosted</span>
+    </div>
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

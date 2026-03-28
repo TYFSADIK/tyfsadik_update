@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Public Search Engine | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link active">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Infrastructure</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Public Search Engine</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Public Search Engine</h1>
+      <p class="subtitle">Privacy-respecting meta-search engine &mdash; search.tyfsadik.org</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2024</span>
+      <span class="meta-category">Infrastructure</span>
+      <a class="meta-link" href="https://search.tyfsadik.org" target="_blank" rel="noopener">Live Demo &nearr;</a>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        This project is a publicly accessible <strong>SearXNG</strong> instance running at
+        <a href="https://search.tyfsadik.org" target="_blank" rel="noopener">search.tyfsadik.org</a>.
+        SearXNG is a privacy-respecting meta-search engine that aggregates results from Google,
+        Bing, DuckDuckGo, Wikipedia, GitHub, and other backends in parallel, then deduplicates
+        and ranks them &mdash; without exposing any user identity or search history to those engines.
+        No account is required, no cookies are set, and no queries are logged.
+      </p>
+      <p>
+        The instance is configured with a custom dark theme and deployed behind Nginx with
+        <strong>rate limiting</strong> to prevent abuse from automated scrapers or bots. Redis
+        provides result caching to reduce redundant outbound queries and improve response times
+        for popular searches. The deployment uses the official <code>searxng-docker</code>
+        repository as a base, with custom <code>settings.yml</code> modifications to enable
+        preferred engines, disable tracking, and tune the result ranking.
+      </p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid">
+graph TD
+  subgraph Users["User Layer"]
+    BR["Browser Query"]
+  end
+
+  subgraph Proxy["Proxy Layer"]
+    NG["Nginx\nrate limiting + SSL\n:443"]
+  end
+
+  subgraph SearXNG["SearXNG Container"]
+    AGG["Result Aggregator"]
+    RNK["Result Ranker\n+ Deduplicator"]
+  end
+
+  subgraph Cache["Cache Layer"]
+    RD[("Redis\nresult cache")]
+  end
+
+  subgraph Backends["Search Backends (parallel)"]
+    G["Google"]
+    B["Bing"]
+    DDG["DuckDuckGo"]
+    WK["Wikipedia"]
+    GH["GitHub"]
+  end
+
+  BR -->|"HTTPS query"| NG
+  NG -->|"limit_req_zone\nproxy_pass"| AGG
+  AGG <-->|"cache check"| RD
+  AGG -->|"parallel fetch"| G
+  AGG -->|"parallel fetch"| B
+  AGG -->|"parallel fetch"| DDG
+  AGG -->|"parallel fetch"| WK
+  AGG -->|"parallel fetch"| GH
+  G -->|"results"| RNK
+  B -->|"results"| RNK
+  DDG -->|"results"| RNK
+  WK -->|"results"| RNK
+  GH -->|"results"| RNK
+  RNK -->|"merged results"| NG
+  NG -->|"response"| BR
+
+style BR fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style NG fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style AGG fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style RNK fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style RD fill:#181818,stroke:#1e1e1e,color:#888
+style G fill:#181818,stroke:#1e1e1e,color:#888
+style B fill:#181818,stroke:#1e1e1e,color:#888
+style DDG fill:#181818,stroke:#1e1e1e,color:#888
+style WK fill:#181818,stroke:#1e1e1e,color:#888
+style GH fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="tech-stack">
+      <h2>Tech Stack</h2>
+      <ul>
+        <li><strong>SearXNG</strong> &mdash; open-source meta-search engine with pluggable backends</li>
+        <li><strong>Docker &amp; Docker Compose</strong> &mdash; containerized deployment via searxng-docker</li>
+        <li><strong>Nginx</strong> &mdash; reverse proxy with <code>limit_req_zone</code> rate limiting and SSL</li>
+        <li><strong>Redis</strong> &mdash; result caching and rate limit state for SearXNG</li>
+        <li><strong>Let's Encrypt / Certbot</strong> &mdash; TLS certificate for search.tyfsadik.org</li>
+        <li><strong>Linux (Debian)</strong> &mdash; host operating system</li>
+      </ul>
+    </section>
+
+    <section id="build-process">
+      <h2>Build Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h3>Clone searxng-docker and Configure settings.yml</h3>
+            <p>
+              The official <code>searxng-docker</code> repository provides a pre-built compose
+              file with Nginx, SearXNG, and Redis. The <code>settings.yml</code> file is edited
+              before first launch to set the instance name, generate a secret key, and configure
+              engine preferences.
+            </p>
+            <pre><code">git clone https://github.com/searxng/searxng-docker.git
+cd searxng-docker
+
+# Generate a unique secret key
+SECRET_KEY=$(openssl rand -hex 32)
+
+# Edit searxng/settings.yml
+# Set: general.instance_name, server.secret_key
+sed -i "s/ultrasecretkey/$SECRET_KEY/g" searxng/settings.yml
+
+cat searxng/settings.yml | grep secret_key</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h3>Configure Engines and Disable Tracking</h3>
+            <p>
+              The <code>settings.yml</code> file is edited to enable the preferred engine set,
+              disable SearXNG's built-in rate limiter (since Nginx handles it), disable usage
+              statistics collection, and turn off the image proxy (which adds latency).
+              Engine timeouts are set conservatively to prevent slow backends from blocking
+              the response.
+            </p>
+            <pre><code"># searxng/settings.yml key settings:
+general:
+  instance_name: "search.tyfsadik.org"
+  debug: false
+
+server:
+  secret_key: "..."
+  limiter: false          # Nginx handles rate limiting
+  image_proxy: false
+
+search:
+  safe_search: 0
+  autocomplete: "google"
+
+# Enable specific engines (excerpt):
+engines:
+  - name: google
+    engine: google
+    timeout: 3.0
+    weight: 2
+  - name: bing
+    engine: bing
+    timeout: 3.0
+  - name: duckduckgo
+    engine: duckduckgo
+    timeout: 3.0
+  - name: wikipedia
+    engine: wikipedia
+    timeout: 2.0
+  - name: github
+    engine: github
+    timeout: 3.0</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h3>Start the Stack</h3>
+            <p>
+              The full stack (SearXNG + Redis + Nginx) is started with Docker Compose. The
+              pre-built <code>docker-compose.yaml</code> from the searxng-docker repo already
+              includes all three services with correct inter-service networking.
+            </p>
+            <pre><code">docker compose up -d
+
+# Check all containers are up
+docker compose ps
+
+# Test SearXNG is responding locally
+curl "http://localhost:8080/search?q=test&format=json" | jq '.results | length'
+
+# Check Redis is connected
+docker compose logs searxng | grep -i redis</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <h3>Nginx Config with Rate Limiting</h3>
+            <p>
+              The Nginx configuration uses <code>limit_req_zone</code> to restrict each IP to
+              10 requests per minute for the search endpoint. A separate zone with a higher limit
+              is applied to static assets. This prevents bot scraping while keeping the service
+              usable for legitimate users.
+            </p>
+            <pre><code"># /etc/nginx/nginx.conf (http block)
+limit_req_zone $binary_remote_addr zone=searxng_search:10m rate=10r/m;
+limit_req_zone $binary_remote_addr zone=searxng_static:10m rate=60r/m;
+
+# /etc/nginx/sites-available/search.tyfsadik.org
+server {
+    listen 443 ssl;
+    server_name search.tyfsadik.org;
+
+    ssl_certificate /etc/letsencrypt/live/search.tyfsadik.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/search.tyfsadik.org/privkey.pem;
+
+    location /search {
+        limit_req zone=searxng_search burst=5 nodelay;
+        limit_req_status 429;
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location / {
+        limit_req zone=searxng_static burst=20;
+        proxy_pass http://localhost:8080;
+    }
+}</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <h3>Apply Custom Dark Theme</h3>
+            <p>
+              SearXNG supports custom CSS via a theme file. A dark theme based on the existing
+              simple theme is created by overriding CSS variables in a custom stylesheet file
+              that is bind-mounted into the container's theme directory.
+            </p>
+            <pre><code"># searxng/static/themes/simple/css/searxng.min.css (custom overrides)
+# Create custom.css and add to bind mount in compose file
+
+# In searxng/settings.yml:
+ui:
+  default_theme: simple
+  theme_args:
+    simple_style: dark
+
+# Or override via a custom CSS file:
+# services.searxng.volumes in docker-compose.yaml:
+# - ./searxng/custom.css:/usr/local/searxng/searx/static/themes/simple/css/custom.css
+
+# Verify theme is applied
+curl https://search.tyfsadik.org | grep "dark"</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">6</div>
+          <div class="step-body">
+            <h3>Provision SSL Certificate</h3>
+            <p>
+              Certbot with the Nginx plugin provisions the Let's Encrypt certificate and
+              automatically modifies the Nginx server block to add SSL directives and the
+              HTTP-to-HTTPS redirect.
+            </p>
+            <pre><code">apt install certbot python3-certbot-nginx -y
+
+certbot --nginx -d search.tyfsadik.org \
+  --agree-tos --email taki@tyfsadik.org
+
+# Verify HTTPS is working
+curl -I https://search.tyfsadik.org
+# Expected: HTTP/2 200
+
+# Check certificate expiry
+echo | openssl s_client -connect search.tyfsadik.org:443 2>/dev/null \
+  | openssl x509 -noout -dates</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Request Flow</h2>
+      <div class="mermaid">
+sequenceDiagram
+  participant U as User Browser
+  participant NG as Nginx
+  participant SX as SearXNG
+  participant RD as Redis Cache
+  participant BE as Search Backends
+
+  U->>NG: GET /search?q=query HTTPS
+  NG->>NG: rate limit check (10r/m per IP)
+  NG->>SX: proxy_pass query
+  SX->>RD: check cache for query hash
+  alt Cache hit
+    RD-->>SX: cached results
+    SX-->>NG: results (fast)
+    NG-->>U: merged HTML/JSON
+  else Cache miss
+    SX->>BE: parallel requests to all enabled engines
+    BE-->>SX: raw results per engine
+    SX->>SX: deduplicate + rank by score
+    SX->>RD: cache results (TTL 10 min)
+    SX-->>NG: merged ranked results
+    NG-->>U: response page
+  end
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li>
+          <strong>Some engines rate-limiting the SearXNG IP:</strong> Google and Bing occasionally
+          returned CAPTCHA challenges or empty results after frequent requests from the same server IP.
+          Resolved by setting conservative engine timeouts (3 seconds), marking engines as
+          <code>disabled</code> when they return persistent errors, and relying on DuckDuckGo and
+          Brave Search as fallback engines that are less aggressive with bot detection.
+        </li>
+        <li>
+          <strong>High resource usage from concurrent searches:</strong> Each search spawns multiple
+          outbound HTTP requests in parallel, and with several users searching simultaneously the
+          Python worker count became a bottleneck. Tuned by adjusting the
+          <code>server.workers</code> setting in <code>settings.yml</code> from the default of 4
+          to 2 on the constrained server, reducing memory usage while maintaining acceptable
+          response times.
+        </li>
+        <li>
+          <strong>Bot traffic overwhelming the instance:</strong> Shortly after the instance was
+          indexed by search engines, automated scrapers began sending hundreds of requests per minute.
+          The Nginx <code>limit_req_zone</code> rate limiter reduced this to manageable levels,
+          and returning HTTP 429 to violators causes well-behaved bots to back off.
+        </li>
+        <li>
+          <strong>Redis connection refused on first start:</strong> SearXNG started before Redis
+          was ready, causing connection errors in the logs. Fixed by adding
+          <code>depends_on: redis</code> with a <code>condition: service_healthy</code> health
+          check in the compose file.
+        </li>
+      </ul>
+    </section>
+
+    <section id="learnings">
+      <h2>What I Learned</h2>
+      <ul>
+        <li>Nginx <code>limit_req_zone</code> rate limiting: zones, burst allowance, and nodelay semantics</li>
+        <li>SearXNG engine configuration: timeout tuning, weight scoring, and engine disabling</li>
+        <li>Redis result caching strategies and TTL selection for search result freshness</li>
+        <li>Meta-search architecture: parallel fan-out requests, result deduplication by URL hash</li>
+        <li>Bot mitigation strategies: rate limiting, HTTP 429 responses, and Nginx access logging analysis</li>
+        <li>Docker Compose service health checks and dependency ordering</li>
+      </ul>
+    </section>
+
+    <div class="tags">
+      <span class="tag">SearXNG</span>
+      <span class="tag">Docker</span>
+      <span class="tag">Nginx</span>
+      <span class="tag">Privacy</span>
+      <span class="tag">Search</span>
+      <span class="tag">Open Source</span>
+      <span class="tag">Self-Hosted</span>
+    </div>
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

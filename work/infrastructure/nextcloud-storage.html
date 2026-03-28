@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Self-Hosted Cloud Storage | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link active">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Infrastructure</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Self-Hosted Cloud Storage</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Self-Hosted Cloud Storage</h1>
+      <p class="subtitle">Private Nextcloud replacing Google Drive &mdash; cloud.tyfsadik.org</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2025</span>
+      <span class="meta-category">Infrastructure</span>
+      <a class="meta-link" href="https://cloud.tyfsadik.org" target="_blank" rel="noopener">Live Demo &nearr;</a>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        This project is a self-hosted <strong>Nextcloud</strong> instance deployed at
+        <a href="https://cloud.tyfsadik.org" target="_blank" rel="noopener">cloud.tyfsadik.org</a>
+        that fully replaces Google Drive for file storage and synchronization. Nextcloud provides
+        desktop sync clients for Linux and Windows, a mobile app for iOS and Android, and a web
+        interface accessible from any browser.
+      </p>
+      <p>
+        The stack runs on Docker Compose with <strong>MariaDB</strong> as the relational backend for
+        file metadata, <strong>Redis</strong> for in-memory caching and file-locking, and
+        <strong>Nginx</strong> as the SSL-terminating reverse proxy. Files are stored on a dedicated
+        Docker volume mounted from a ZFS dataset on the Proxmox host, giving snapshot-based backups
+        for free. The deployment supports large file uploads up to 10 GB via chunked upload, and
+        Redis caching reduces database queries for frequently accessed metadata, keeping the web UI
+        responsive.
+      </p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid">
+graph TD
+  subgraph Clients["Client Layer"]
+    DA["Desktop App\nLinux / Windows"]
+    MA["Mobile App\niOS / Android"]
+    WB["Web Browser"]
+  end
+
+  subgraph Proxy["Proxy Layer"]
+    NG["Nginx\n:443 SSL / TLS"]
+  end
+
+  subgraph App["Application Layer"]
+    NC["Nextcloud\nPHP-FPM :9000"]
+    RD["Redis\n:6379 cache + lock"]
+  end
+
+  subgraph Data["Data Layer"]
+    DB[("MariaDB\n:3306 metadata")]
+    FV[("Files Volume\nZFS dataset")]
+  end
+
+  DA -->|"WebDAV HTTPS"| NG
+  MA -->|"HTTPS sync"| NG
+  WB -->|"HTTPS :443"| NG
+  NG -->|"fastcgi_pass"| NC
+  NC <-->|"queries"| DB
+  NC <-->|"cache / lock"| RD
+  NC -->|"read/write"| FV
+
+style DA fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style MA fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style WB fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style NG fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style NC fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style RD fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style DB fill:#181818,stroke:#1e1e1e,color:#888
+style FV fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="tech-stack">
+      <h2>Tech Stack</h2>
+      <ul>
+        <li><strong>Nextcloud</strong> &mdash; open-source file hosting with sync clients and web UI</li>
+        <li><strong>MariaDB</strong> &mdash; relational database for file metadata, shares, and users</li>
+        <li><strong>Redis</strong> &mdash; in-memory cache for APCu emulation and file-locking backend</li>
+        <li><strong>Nginx</strong> &mdash; reverse proxy with WebDAV support and large upload config</li>
+        <li><strong>Docker &amp; Docker Compose</strong> &mdash; container orchestration</li>
+        <li><strong>Let's Encrypt / Certbot</strong> &mdash; TLS certificate for cloud.tyfsadik.org</li>
+        <li><strong>ZFS</strong> &mdash; underlying storage with snapshots for backup of the files volume</li>
+      </ul>
+    </section>
+
+    <section id="build-process">
+      <h2>Build Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h3>Write docker-compose.yml</h3>
+            <p>
+              The compose file defines four services: Nextcloud (PHP-FPM), MariaDB, Redis, and Nginx.
+              Named volumes are defined for the files data, MariaDB data, and Nginx config. All
+              services are placed on a shared internal network, and only Nginx exposes ports 80 and 443
+              to the host.
+            </p>
+            <pre><code">version: "3.8"
+services:
+  db:
+    image: mariadb:10.11
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: nextcloud
+      MYSQL_USER: ncuser
+      MYSQL_PASSWORD: ncpass
+    volumes:
+      - db_data:/var/lib/mysql
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  app:
+    image: nextcloud:28-fpm-alpine
+    restart: unless-stopped
+    depends_on: [db, redis]
+    environment:
+      MYSQL_HOST: db
+      MYSQL_DATABASE: nextcloud
+      MYSQL_USER: ncuser
+      MYSQL_PASSWORD: ncpass
+      REDIS_HOST: redis
+      NEXTCLOUD_TRUSTED_DOMAINS: cloud.tyfsadik.org
+    volumes:
+      - nc_data:/var/www/html
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - nc_data:/var/www/html:ro
+      - ./certs:/etc/letsencrypt:ro
+
+volumes:
+  db_data:
+  nc_data:</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h3>Nginx Config with Large File Upload Support</h3>
+            <p>
+              The Nginx configuration proxies PHP requests to the Nextcloud FPM container and raises
+              the upload body size limit to support large file uploads. WebDAV methods are enabled
+              for the sync clients. Headers required by Nextcloud (X-Frame-Options, X-Content-Type)
+              are added for security compliance.
+            </p>
+            <pre><code"># nginx.conf (server block excerpt)
+server {
+    listen 443 ssl;
+    server_name cloud.tyfsadik.org;
+
+    ssl_certificate /etc/letsencrypt/live/cloud.tyfsadik.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/cloud.tyfsadik.org/privkey.pem;
+
+    # Large file upload support
+    client_max_body_size 10G;
+    client_body_timeout 300s;
+    fastcgi_read_timeout 300s;
+
+    root /var/www/html;
+    index index.php;
+
+    location ~ \.php$ {
+        fastcgi_pass app:9000;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    }
+
+    # Nextcloud required headers
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options SAMEORIGIN always;
+}</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h3>Provision SSL Certificate</h3>
+            <p>
+              Certbot is run in webroot mode so it can validate domain ownership through the running
+              Nginx container without stopping the server. The certificate is stored on the host and
+              bind-mounted into the Nginx container.
+            </p>
+            <pre><code">apt install certbot -y
+
+# Use webroot mode (Nginx handles /.well-known/acme-challenge)
+certbot certonly --webroot \
+  -w /var/lib/docker/volumes/nextcloud_nc_data/_data \
+  -d cloud.tyfsadik.org \
+  --agree-tos --email taki@tyfsadik.org
+
+# Renew hook to reload Nginx
+echo '#!/bin/bash
+docker exec nextcloud-nginx-1 nginx -s reload' \
+  > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <h3>Nextcloud Initial Setup</h3>
+            <p>
+              After bringing the stack up, the Nextcloud installer is run via the web UI or
+              <code>occ</code> CLI to create the admin account and confirm the database connection.
+              Trusted domains are set so Nextcloud accepts requests from the public hostname.
+            </p>
+            <pre><code">docker compose up -d
+
+# Run setup via CLI (recommended for automation)
+docker exec --user www-data nextcloud-app-1 php occ maintenance:install \
+  --database mysql \
+  --database-host db \
+  --database-name nextcloud \
+  --database-user ncuser \
+  --database-pass ncpass \
+  --admin-user admin \
+  --admin-pass changeme \
+  --data-dir /var/www/html/data
+
+# Add trusted domain
+docker exec --user www-data nextcloud-app-1 php occ \
+  config:system:set trusted_domains 1 --value=cloud.tyfsadik.org</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <h3>Install Sync Clients on Devices</h3>
+            <p>
+              The official Nextcloud desktop client is installed on Linux and Windows machines.
+              On mobile, the Nextcloud app is installed from the App Store / Play Store. Each client
+              is pointed to <code>https://cloud.tyfsadik.org</code> with the admin credentials.
+              Selective folder sync keeps only relevant directories synchronized locally.
+            </p>
+            <pre><code"># Linux desktop client (Debian/Ubuntu)
+sudo apt install nextcloud-desktop
+
+# Or AppImage from official releases:
+wget https://github.com/nextcloud-releases/desktop/releases/latest/download/Nextcloud-x.x.x-x86_64.AppImage
+chmod +x Nextcloud-*.AppImage && ./Nextcloud-*.AppImage
+
+# Verify sync via CLI
+nextcloudcmd -u admin -p pass /local/sync/folder https://cloud.tyfsadik.org</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">6</div>
+          <div class="step-body">
+            <h3>Configure Redis for Memory Caching</h3>
+            <p>
+              Redis is configured as both the APCu memory cache and the file-locking backend in
+              Nextcloud's <code>config.php</code>. This eliminates database-level file locks and
+              significantly improves performance when multiple clients sync simultaneously.
+            </p>
+            <pre><code"># Add to /var/www/html/config/config.php
+# (edit inside the app container or on the bind-mounted config volume)
+
+'memcache.local' => '\OC\Memcache\Redis',
+'memcache.locking' => '\OC\Memcache\Redis',
+'redis' => [
+    'host' => 'redis',
+    'port' => 6379,
+    'timeout' => 0.0,
+],
+
+# Apply config and run maintenance repair
+docker exec --user www-data nextcloud-app-1 php occ maintenance:repair
+docker exec --user www-data nextcloud-app-1 php occ db:add-missing-indices</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Data Flow</h2>
+      <div class="mermaid">
+flowchart TD
+  A["Desktop Client\nfile change detected"] -->|"WebDAV HTTPS"| B["Nginx :443\nSSL termination"]
+  B -->|"fastcgi_pass :9000"| C["Nextcloud PHP-FPM"]
+  C -->|"chunked upload\n(10 MB chunks)"| D["Files Volume\n/var/www/html/data"]
+  C -->|"metadata write\n(path, size, etag)"| E[("MariaDB")]
+  C -->|"lock file\nduring write"| F[("Redis")]
+  F -->|"lock released"| C
+  C -->|"propagate change"| G["Other Sync Clients\nmobile / web"]
+
+style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style B fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style C fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style D fill:#181818,stroke:#1e1e1e,color:#888
+style E fill:#181818,stroke:#1e1e1e,color:#888
+style F fill:#181818,stroke:#1e1e1e,color:#888
+style G fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li>
+          <strong>Slow sync for large files:</strong> Syncing multi-gigabyte files stalled because the
+          default PHP upload limits (<code>upload_max_filesize = 2M</code>) rejected the request.
+          Resolved by setting <code>client_max_body_size 10G</code> in Nginx and configuring chunked
+          uploads in Nextcloud so files are split into 10 MB pieces that each satisfy the PHP limit.
+        </li>
+        <li>
+          <strong>Redis session locking causing timeout errors:</strong> During multi-client sync bursts,
+          file operations blocked waiting for Redis locks to expire. Fixed by setting
+          <code>memcache.locking</code> to the Redis backend in <code>config.php</code>, which uses
+          Redis atomic operations rather than slow database row locks.
+        </li>
+        <li>
+          <strong>Nextcloud security scan warnings:</strong> The Nextcloud admin panel security scan
+          flagged missing HTTP headers and a missing <code>.well-known</code> redirect. Resolved by
+          adding <code>Strict-Transport-Security</code>, <code>X-Frame-Options</code>, and
+          <code>X-Content-Type-Options</code> headers in Nginx, and adding rewrite rules for
+          <code>/.well-known/carddav</code> and <code>/.well-known/caldav</code>.
+        </li>
+        <li>
+          <strong>MariaDB running out of connections under load:</strong> The default MariaDB
+          <code>max_connections=150</code> was exhausted during large sync operations. Increased to 300
+          and added connection pooling via the Nextcloud <code>dbdriveroptions</code> config.
+        </li>
+      </ul>
+    </section>
+
+    <section id="learnings">
+      <h2>What I Learned</h2>
+      <ul>
+        <li>PHP-FPM and Nginx FastCGI integration for PHP applications</li>
+        <li>WebDAV protocol for file synchronization and its HTTP method extensions</li>
+        <li>Redis as a distributed lock manager and cache layer in web applications</li>
+        <li>MariaDB performance tuning: connection limits, query cache, InnoDB buffer pool</li>
+        <li>Nextcloud <code>occ</code> CLI for administration, upgrades, and maintenance tasks</li>
+        <li>Chunked file upload mechanisms and how clients negotiate upload resumption</li>
+      </ul>
+    </section>
+
+    <div class="tags">
+      <span class="tag">Nextcloud</span>
+      <span class="tag">Docker</span>
+      <span class="tag">MariaDB</span>
+      <span class="tag">Nginx</span>
+      <span class="tag">Cloud Storage</span>
+      <span class="tag">Privacy</span>
+      <span class="tag">Self-Hosted</span>
+    </div>
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

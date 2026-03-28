@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Self-Hosted Photo Server | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link active">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Infrastructure</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Self-Hosted Photo Server</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Self-Hosted Photo Server</h1>
+      <p class="subtitle">Personal photo management with ML face recognition &mdash; photo.tyfsadik.org</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2025</span>
+      <span class="meta-category">Infrastructure</span>
+      <a class="meta-link" href="https://photo.tyfsadik.org" target="_blank" rel="noopener">Live Demo &nearr;</a>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        This project is a self-hosted <strong>Immich</strong> instance deployed at
+        <a href="https://photo.tyfsadik.org" target="_blank" rel="noopener">photo.tyfsadik.org</a>
+        that provides Google Photos-equivalent functionality with full data ownership. Immich handles
+        automatic mobile photo backup, timeline browsing, album organization, and search. The ML
+        microservices container runs face recognition, object detection, and CLIP-based semantic
+        search, enabling queries like "beach sunset" without any tagging.
+      </p>
+      <p>
+        The stack runs on Docker Compose with <strong>PostgreSQL</strong> as the metadata database
+        (with the pgvecto.rs extension for vector similarity search used by the ML features),
+        <strong>Redis</strong> for job queuing, and a dedicated <strong>microservices container</strong>
+        that runs the Python-based ML workloads separately from the main server process. Files are
+        stored on a local volume backed by the Proxmox ZFS dataset. The mobile app enables background
+        backup over Wi-Fi, keeping the photo library current without any manual steps.
+      </p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid">
+graph LR
+  subgraph Clients["Clients"]
+    MOB["Mobile App\niOS / Android"]
+    WEB["Web Browser"]
+  end
+
+  subgraph Services["Docker Services"]
+    NG["Nginx\n:443 SSL"]
+    IS["Immich Server\n:3001"]
+    MS["Immich Microservices\nML worker"]
+    ML["ML Models\nface / CLIP / object"]
+  end
+
+  subgraph Data["Data Layer"]
+    PG[("PostgreSQL\n+ pgvecto.rs")]
+    RD[("Redis\njob queue")]
+    PV[("Photos Volume\noriginal + thumbs")]
+  end
+
+  MOB -->|"HTTPS backup"| NG
+  WEB -->|"HTTPS :443"| NG
+  NG -->|"proxy_pass"| IS
+  IS -->|"enqueue ML jobs"| RD
+  RD -->|"dequeue"| MS
+  MS --> ML
+  MS -->|"vectors + labels"| PG
+  IS <-->|"metadata queries"| PG
+  IS -->|"read/write files"| PV
+  MS -->|"read originals"| PV
+
+style MOB fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style WEB fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style NG fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style IS fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style MS fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style ML fill:#181818,stroke:#1e1e1e,color:#888
+style PG fill:#181818,stroke:#1e1e1e,color:#888
+style RD fill:#181818,stroke:#1e1e1e,color:#888
+style PV fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="tech-stack">
+      <h2>Tech Stack</h2>
+      <ul>
+        <li><strong>Immich</strong> &mdash; self-hosted Google Photos alternative with mobile backup</li>
+        <li><strong>PostgreSQL + pgvecto.rs</strong> &mdash; metadata store with vector similarity search for ML</li>
+        <li><strong>Redis</strong> &mdash; job queue for background ML processing tasks</li>
+        <li><strong>Immich microservices</strong> &mdash; Python ML container for face recognition and object detection</li>
+        <li><strong>Docker &amp; Docker Compose</strong> &mdash; service orchestration</li>
+        <li><strong>Nginx</strong> &mdash; SSL reverse proxy for photo.tyfsadik.org</li>
+        <li><strong>Let's Encrypt</strong> &mdash; TLS certificate management</li>
+      </ul>
+    </section>
+
+    <section id="build-process">
+      <h2>Build Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h3>Download Immich docker-compose.yml and .env</h3>
+            <p>
+              Immich provides an official Docker Compose file that defines all required services.
+              The <code>.env</code> file contains the upload location path, database credentials,
+              and version pin. These are the only two files needed to get a working stack.
+            </p>
+            <pre><code">mkdir immich && cd immich
+
+# Download official compose file and env template
+wget -O docker-compose.yml \
+  https://github.com/immich-app/immich/releases/latest/download/docker-compose.yml
+wget -O .env \
+  https://github.com/immich-app/immich/releases/latest/download/example.env
+
+# Review what services are defined
+cat docker-compose.yml | grep "^  [a-z]" | grep ":"</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h3>Configure UPLOAD_LOCATION and Credentials in .env</h3>
+            <p>
+              The <code>.env</code> file is edited to set the upload path to the ZFS-backed volume
+              mount point, and strong random passwords are generated for the database. The
+              <code>IMMICH_VERSION</code> is pinned to a specific release for reproducibility.
+            </p>
+            <pre><code"># .env configuration
+UPLOAD_LOCATION=/mnt/photos/immich
+DB_DATA_LOCATION=/mnt/photos/postgres
+
+# Generate secure password
+DB_PASSWORD=$(openssl rand -hex 32)
+echo "DB_PASSWORD=$DB_PASSWORD" >> .env
+
+DB_USERNAME=immich
+DB_DATABASE_NAME=immich
+
+# Pin to a specific release (check releases page for latest)
+IMMICH_VERSION=v1.106.4
+
+# Redis (default, no password needed for local-only)
+REDIS_HOSTNAME=immich_redis</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h3>Start the Stack</h3>
+            <p>
+              The full stack is brought up with Docker Compose. First startup takes several minutes
+              as Docker pulls the images (server, microservices, PostgreSQL, Redis). The ML models
+              are downloaded on first use when the microservices container starts processing a photo.
+            </p>
+            <pre><code">docker compose up -d
+
+# Watch startup logs
+docker compose logs -f
+
+# Verify all containers are healthy
+docker compose ps
+
+# Check the server is responding
+curl http://localhost:3001/api/server-info/ping
+# Expected: {"res":"pong"}</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <h3>Nginx Reverse Proxy Configuration</h3>
+            <p>
+              Nginx is configured to proxy photo.tyfsadik.org to the Immich server container.
+              The <code>client_max_body_size</code> is set generously to support large video file
+              uploads. WebSocket connections are proxied for real-time upload progress updates.
+            </p>
+            <pre><code"># /etc/nginx/sites-available/photo.tyfsadik.org
+server {
+    listen 80;
+    server_name photo.tyfsadik.org;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name photo.tyfsadik.org;
+
+    ssl_certificate /etc/letsencrypt/live/photo.tyfsadik.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/photo.tyfsadik.org/privkey.pem;
+
+    client_max_body_size 50G;
+
+    location / {
+        proxy_pass http://localhost:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+    }
+}
+
+ln -s /etc/nginx/sites-available/photo.tyfsadik.org /etc/nginx/sites-enabled/
+nginx -t && systemctl reload nginx</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <h3>Provision SSL Certificate</h3>
+            <p>
+              Certbot provisions the Let's Encrypt certificate and modifies the Nginx config to
+              redirect HTTP to HTTPS. A systemd timer handles automatic renewal 30 days before
+              expiry.
+            </p>
+            <pre><code">apt install certbot python3-certbot-nginx -y
+
+certbot --nginx -d photo.tyfsadik.org \
+  --agree-tos --email taki@tyfsadik.org
+
+# Verify auto-renewal is configured
+systemctl status certbot.timer
+
+# Test renewal without actually renewing
+certbot renew --dry-run</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">6</div>
+          <div class="step-body">
+            <h3>Install Mobile App and Enable Auto-Backup</h3>
+            <p>
+              The Immich mobile app is installed from the App Store or Play Store. The server URL
+              is set to <code>https://photo.tyfsadik.org</code>. Auto-backup is configured to run
+              over Wi-Fi only, with background sync enabled. For existing photo libraries, a bulk
+              import job is run via the Immich web interface to scan the upload directory.
+            </p>
+            <pre><code"># For bulk importing an existing photo directory
+# Upload files to the UPLOAD_LOCATION directly, then trigger scan:
+docker exec -it immich_server \
+  node /usr/src/app/dist/cli/index.js upload --yes \
+  /usr/src/app/upload/library
+
+# Or trigger library scan via the web UI:
+# Administration > Jobs > Library > Scan All
+
+# Monitor ML processing jobs
+docker compose logs -f immich_microservices | grep "Running job"</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Request Flow</h2>
+      <div class="mermaid">
+sequenceDiagram
+  participant MOB as Mobile App
+  participant NG as Nginx
+  participant IS as Immich Server
+  participant RD as Redis Queue
+  participant MS as ML Microservices
+  participant PG as PostgreSQL
+  participant PV as Photos Volume
+
+  MOB->>NG: HTTPS POST /api/asset/upload
+  NG->>IS: proxy upload
+  IS->>PV: write original file
+  IS->>PG: insert asset record (path, hash, metadata)
+  IS->>RD: enqueue ML jobs (face detect, CLIP encode)
+  IS-->>MOB: 201 Created (asset ID)
+  RD-->>MS: dequeue face detection job
+  MS->>PV: read original file
+  MS->>MS: run face recognition model
+  MS->>PG: store face vectors + bounding boxes
+  RD-->>MS: dequeue CLIP encode job
+  MS->>MS: generate semantic embedding
+  MS->>PG: store clip_embeddings vector
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li>
+          <strong>ML microservices consuming too much RAM:</strong> The face recognition and CLIP
+          models together consumed over 4 GB of RAM on a server with 8 GB total, leaving insufficient
+          memory for PostgreSQL and the main server. Resolved by adding Docker resource constraints
+          (<code>mem_limit: 2g</code>) in the compose file and configuring the ML service to unload
+          models from memory after a period of inactivity using the <code>MODEL_TTL</code> environment
+          variable.
+        </li>
+        <li>
+          <strong>Large initial library import taking days:</strong> Importing 30,000 existing photos
+          via the mobile app one by one was impractical. Used the Immich CLI bulk import utility to
+          copy files directly to the upload location and trigger a library scan, processing the entire
+          backlog as a batch job overnight.
+        </li>
+        <li>
+          <strong>PostgreSQL pgvecto.rs extension not found:</strong> The official Immich PostgreSQL
+          image includes pgvecto.rs, but a custom image was initially used that lacked it. Switched
+          back to the official <code>ghcr.io/immich-app/postgres</code> image which bundles all
+          required extensions.
+        </li>
+        <li>
+          <strong>Video thumbnails not generating:</strong> The microservices container failed to
+          generate video thumbnails because FFmpeg was not installed in a custom image variant.
+          The official Immich server image includes FFmpeg, resolving the issue after switching
+          back to the canonical image tag.
+        </li>
+      </ul>
+    </section>
+
+    <section id="learnings">
+      <h2>What I Learned</h2>
+      <ul>
+        <li>Docker Compose multi-service architectures with health checks and dependency ordering</li>
+        <li>PostgreSQL vector extensions (pgvecto.rs) and their use in ML-powered search</li>
+        <li>Redis job queue patterns for decoupling ML processing from the request path</li>
+        <li>Docker resource constraints (mem_limit, cpus) for shared low-resource servers</li>
+        <li>ML model lifecycle management: lazy loading, TTL-based unloading, warm vs cold inference</li>
+        <li>Mobile app background sync behavior and Wi-Fi-only backup configuration</li>
+      </ul>
+    </section>
+
+    <div class="tags">
+      <span class="tag">Immich</span>
+      <span class="tag">Docker</span>
+      <span class="tag">PostgreSQL</span>
+      <span class="tag">Machine Learning</span>
+      <span class="tag">Photos</span>
+      <span class="tag">Privacy</span>
+      <span class="tag">Self-Hosted</span>
+    </div>
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Public Wiki Server | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link active">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Infrastructure</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Public Wiki Server</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Public Wiki Server</h1>
+      <p class="subtitle">Full Wikipedia mirror for restricted regions &mdash; wiki.tyfsadik.org</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2024</span>
+      <span class="meta-category">Infrastructure</span>
+      <a class="meta-link" href="https://wiki.tyfsadik.org" target="_blank" rel="noopener">Live Demo &nearr;</a>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        This project serves a complete, compressed Wikipedia mirror at
+        <a href="https://wiki.tyfsadik.org" target="_blank" rel="noopener">wiki.tyfsadik.org</a>
+        using <strong>Kiwix</strong>. Kiwix serves content from <strong>ZIM files</strong> &mdash; a
+        custom compressed archive format designed for offline encyclopedias. A single Wikipedia ZIM
+        file contains the full text and images of the English Wikipedia (~90 GB) in a format that
+        Kiwix can serve article-by-article with full-text search, without unpacking the archive.
+      </p>
+      <p>
+        The primary purpose is to provide Wikipedia access to users in countries where the site is
+        restricted or intermittently blocked. The Kiwix server requires no JavaScript from external
+        sources, no CDN dependencies, and makes no outbound network requests during operation &mdash;
+        every response is served entirely from the local ZIM file. The stack is intentionally minimal:
+        a single <code>kiwix-serve</code> process behind an Nginx reverse proxy with Let's Encrypt SSL.
+        No database, no dynamic backend, no user tracking.
+      </p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid">
+graph LR
+  U["User Browser\n(any region)"]
+  NG["Nginx\n:443 SSL termination"]
+  KS["kiwix-serve\n:8080"]
+  ZIM[("ZIM File\nWikipedia EN\n~90 GB")]
+  VOL[("Dedicated\nStorage Volume")]
+
+  U -->|"HTTPS request\nwiki.tyfsadik.org"| NG
+  NG -->|"proxy_pass :8080"| KS
+  KS -->|"mmap read\n(random access)"| ZIM
+  ZIM --- VOL
+  KS -->|"article HTML\n+ assets"| NG
+  NG -->|"response\n(no external deps)"| U
+
+style U fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style NG fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style KS fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style ZIM fill:#181818,stroke:#1e1e1e,color:#888
+style VOL fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <section id="tech-stack">
+      <h2>Tech Stack</h2>
+      <ul>
+        <li><strong>Kiwix / kiwix-serve</strong> &mdash; ZIM file HTTP server with full-text search</li>
+        <li><strong>ZIM format</strong> &mdash; compressed archive for offline Wikipedia content</li>
+        <li><strong>Nginx</strong> &mdash; reverse proxy, SSL termination, access logging</li>
+        <li><strong>Let's Encrypt / Certbot</strong> &mdash; TLS certificate for wiki.tyfsadik.org</li>
+        <li><strong>systemd</strong> &mdash; service unit for kiwix-serve auto-start and restart</li>
+        <li><strong>Linux (Debian)</strong> &mdash; host operating system</li>
+        <li><strong>aria2c</strong> &mdash; resumable multi-connection download for the 90 GB ZIM file</li>
+      </ul>
+    </section>
+
+    <section id="build-process">
+      <h2>Build Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h3>Install kiwix-tools</h3>
+            <p>
+              The kiwix-tools package provides <code>kiwix-serve</code> (the HTTP server) and
+              <code>kiwix-manage</code> (library management). On Debian, the package is available
+              in the standard repository. Alternatively, a static binary is downloaded from the
+              Kiwix releases page for systems where the packaged version is outdated.
+            </p>
+            <pre><code">apt install kiwix-tools -y
+
+# Verify installation
+kiwix-serve --version
+
+# If package version is too old, use static binary:
+wget https://download.kiwix.org/release/kiwix-tools/kiwix-tools_linux-x86_64.tar.gz
+tar xf kiwix-tools_linux-x86_64.tar.gz
+mv kiwix-tools_linux-x86_64/kiwix-serve /usr/local/bin/
+chmod +x /usr/local/bin/kiwix-serve</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h3>Download Wikipedia ZIM File</h3>
+            <p>
+              The Wikipedia ZIM file is downloaded from the Kiwix library. Due to its size (~90 GB),
+              <code>aria2c</code> is used for resumable multi-connection download. The
+              <code>kiwix-manage</code> tool creates a library XML file that <code>kiwix-serve</code>
+              reads to locate the ZIM.
+            </p>
+            <pre><code">apt install aria2 -y
+
+mkdir -p /var/lib/kiwix
+
+# Download with aria2c: 4 connections, resumable
+aria2c -x 4 -c -d /var/lib/kiwix \
+  https://download.kiwix.org/zim/wikipedia/wikipedia_en_all_maxi_2024-12.zim
+
+# Verify file integrity
+ls -lh /var/lib/kiwix/wikipedia_en_all_maxi_2024-12.zim
+
+# Create Kiwix library
+kiwix-manage /var/lib/kiwix/library.xml add \
+  /var/lib/kiwix/wikipedia_en_all_maxi_2024-12.zim
+
+cat /var/lib/kiwix/library.xml</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h3>Create systemd Service for kiwix-serve</h3>
+            <p>
+              A systemd service unit ensures kiwix-serve starts on boot, restarts automatically on
+              failure, and runs as an unprivileged user. The service is configured to listen on
+              port 8080 (localhost only) and serve from the library XML file.
+            </p>
+            <pre><code"># /etc/systemd/system/kiwix-serve.service
+[Unit]
+Description=Kiwix ZIM HTTP Server
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+ExecStart=/usr/local/bin/kiwix-serve \
+    --library /var/lib/kiwix/library.xml \
+    --port 8080 \
+    --address 127.0.0.1 \
+    --threads 4
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+
+# Enable and start
+systemctl daemon-reload
+systemctl enable kiwix-serve
+systemctl start kiwix-serve
+systemctl status kiwix-serve</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <h3>Nginx Reverse Proxy Configuration</h3>
+            <p>
+              Nginx proxies requests from <code>wiki.tyfsadik.org</code> to kiwix-serve on
+              localhost port 8080. The proxy timeout is set high enough to accommodate
+              full-text search queries, which can take several seconds on large ZIM files.
+            </p>
+            <pre><code"># /etc/nginx/sites-available/wiki.tyfsadik.org
+server {
+    listen 80;
+    server_name wiki.tyfsadik.org;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name wiki.tyfsadik.org;
+
+    ssl_certificate /etc/letsencrypt/live/wiki.tyfsadik.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/wiki.tyfsadik.org/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 60s;
+    }
+}
+
+ln -s /etc/nginx/sites-available/wiki.tyfsadik.org /etc/nginx/sites-enabled/
+nginx -t && systemctl reload nginx</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <h3>Provision SSL Certificate</h3>
+            <p>
+              Certbot provisions the Let's Encrypt certificate using the Nginx plugin, which also
+              handles the HTTP-to-HTTPS redirect configuration automatically. The certificate
+              auto-renews via a systemd timer.
+            </p>
+            <pre><code">apt install certbot python3-certbot-nginx -y
+
+certbot --nginx -d wiki.tyfsadik.org \
+  --agree-tos --email taki@tyfsadik.org
+
+# Confirm HTTPS is serving correctly
+curl -IL https://wiki.tyfsadik.org
+# Expected: HTTP/2 200
+
+# Verify the cert details
+certbot certificates</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">6</div>
+          <div class="step-body">
+            <h3>Test Article Access and Search</h3>
+            <p>
+              Article access and full-text search are tested directly against the kiwix-serve
+              endpoint and through the Nginx proxy. The kiwix-serve API exposes a search endpoint
+              that returns JSON, which can be tested with curl.
+            </p>
+            <pre><code"># Test direct access to kiwix-serve
+curl http://127.0.0.1:8080/
+
+# Test article access (URL is ZIM-internal path)
+curl http://127.0.0.1:8080/wikipedia_en_all_maxi_2024-12/A/Python_(programming_language) \
+  | grep "<title>"
+
+# Test full-text search API
+curl "http://127.0.0.1:8080/search?books=wikipedia_en_all_maxi_2024-12&lang=&pattern=linux" \
+  | head -50
+
+# Verify through Nginx proxy
+curl https://wiki.tyfsadik.org/ | grep "Kiwix"
+
+# Monitor kiwix-serve logs
+journalctl -u kiwix-serve -f</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Data Flow</h2>
+      <div class="mermaid">
+flowchart TD
+  A["User requests\narticle or search"] --> B["Nginx :443\nSSL termination"]
+  B --> C["kiwix-serve :8080\nparse request URL"]
+  C --> D{"Request type"}
+  D -->|"Article page"| E["mmap ZIM file\nseek to article offset"]
+  D -->|"Search query"| F["Full-text index\n(built into ZIM)"]
+  E --> G["Decompress article\n(zstd / lzma)"]
+  F --> H["Return article list\n(JSON)"]
+  G --> I["Serve HTML + assets\n(images, CSS inline)"]
+  H --> I
+  I --> B
+  B --> J["User sees page\n(no external requests)"]
+
+style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style B fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style C fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style D fill:#181818,stroke:#1e1e1e,color:#888
+style E fill:#181818,stroke:#1e1e1e,color:#888
+style F fill:#181818,stroke:#1e1e1e,color:#888
+style G fill:#181818,stroke:#1e1e1e,color:#888
+style H fill:#181818,stroke:#1e1e1e,color:#888
+style I fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style J fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li>
+          <strong>ZIM file download size and reliability:</strong> The 90 GB Wikipedia ZIM file took
+          over 12 hours to download on a typical VPS connection, and an interrupted download would
+          require starting over. Solved by using <code>aria2c</code> with the <code>-c</code> flag
+          (continue interrupted downloads) and <code>-x 4</code> (4 parallel connections), which
+          reduced total download time and allowed resuming after connection drops.
+        </li>
+        <li>
+          <strong>Memory pressure from mmap on low-RAM server:</strong> kiwix-serve uses memory-mapped
+          I/O to access the ZIM file, which can cause the kernel to use most available memory for the
+          page cache. On a 4 GB RAM server this left little memory for Nginx and the OS. Tuned by
+          reducing <code>--threads</code> from the default 8 to 4, which reduced the number of
+          simultaneous mmap operations and kept memory usage within acceptable bounds.
+        </li>
+        <li>
+          <strong>kiwix-serve not starting after system reboot:</strong> The systemd unit was not
+          enabled, so it started manually but not on boot. Resolved by running
+          <code>systemctl enable kiwix-serve</code>, which creates the symlink in the appropriate
+          <code>wants</code> directory.
+        </li>
+        <li>
+          <strong>Full-text search returning no results for some queries:</strong> Kiwix full-text
+          search is case-sensitive by default for exact article title matching. Users expecting
+          Google-style fuzzy search were confused. Added a note to the landing page explaining the
+          search behavior and linking to the ZIM file's built-in search page.
+        </li>
+      </ul>
+    </section>
+
+    <section id="learnings">
+      <h2>What I Learned</h2>
+      <ul>
+        <li>ZIM file format: structure, article offsets, embedded full-text index, and compression</li>
+        <li>Memory-mapped file I/O and its interaction with the Linux kernel page cache</li>
+        <li>systemd service unit design for long-running single-binary services</li>
+        <li>aria2c multi-connection resumable downloading for large files</li>
+        <li>Serving static content without any database or dynamic backend at scale</li>
+        <li>Access considerations for users in internet-restricted regions</li>
+      </ul>
+    </section>
+
+    <div class="tags">
+      <span class="tag">Kiwix</span>
+      <span class="tag">Linux</span>
+      <span class="tag">Nginx</span>
+      <span class="tag">Wikipedia</span>
+      <span class="tag">Privacy</span>
+      <span class="tag">Open Access</span>
+      <span class="tag">Self-Hosted</span>
+    </div>
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>
