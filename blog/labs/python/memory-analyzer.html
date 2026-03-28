@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Memory Usage Analyzer | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/python/index.html">Python</a> &rsaquo; <span>Memory Usage Analyzer</span></nav>
+    <div class="page-header">
+      <h1>Memory Usage Analyzer</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Python</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">/proc/meminfo</span><span class="tag">tracemalloc</span><span class="tag">psutil</span><span class="tag">argparse</span><span class="tag">tabulate</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Build a command-line memory analyzer that parses /proc/meminfo, profiles Python object allocations, and generates reports.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>/proc/meminfo</code></li><li><code>tracemalloc</code></li><li><code>psutil</code></li><li><code>argparse</code></li><li><code>tabulate</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>tracemalloc.start()</code></div><div class='command'><code>psutil.Process().memory_info().rss</code></div><div class='command'><code>open('/proc/meminfo')</code></div><div class='command'><code>sys.getsizeof(obj)</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    SCRIPT[memory_analyzer.py\n--report --top 10] --> PROC[Parse /proc/meminfo\nSystem RAM stats]
+    SCRIPT --> PSUTIL_M[psutil.Process\nProcess RSS/VMS]
+    SCRIPT --> TRACE[tracemalloc\nPython allocations]
+    PROC --> TABLE[Formatted\nReport Table]
+    PSUTIL_M --> TABLE
+    TRACE --> TABLE
+    TABLE --> OUTPUT[stdout / file]
+    style SCRIPT fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style TABLE fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Parse /proc/meminfo</strong>
+        <p>Read system memory statistics from the Linux virtual filesystem.</p>
+        <pre><code>def parse_meminfo():
+    mem = {}
+    with open('/proc/meminfo') as f:
+        for line in f:
+            key, val = line.split(':', 1)
+            mem[key.strip()] = int(val.split()[0])  # kB
+    return mem
+
+info = parse_meminfo()
+total = info['MemTotal'] // 1024
+free = info['MemFree'] // 1024
+avail = info['MemAvailable'] // 1024
+print(f'Total: {total} MB, Available: {avail} MB')</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Profile Python Allocations</strong>
+        <p>Use tracemalloc to find what's consuming memory.</p>
+        <pre><code>import tracemalloc
+
+tracemalloc.start()
+
+# Code to profile
+big_list = [x**2 for x in range(100000)]
+
+snapshot = tracemalloc.take_snapshot()
+top_stats = snapshot.statistics('lineno')
+
+for stat in top_stats[:5]:
+    print(stat)</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Full CLI Tool</strong>
+        <p>Combine both sources into a CLI with argparse.</p>
+        <pre><code>#!/usr/bin/env python3
+import argparse, psutil, tracemalloc
+
+def main():
+    parser = argparse.ArgumentParser(description='Memory usage analyzer')
+    parser.add_argument('--top', type=int, default=5)
+    parser.add_argument('--output', default='-', help='file or - for stdout')
+    args = parser.parse_args()
+
+    proc = psutil.Process()
+    mem = proc.memory_info()
+    print(f'RSS: {mem.rss//1024//1024} MB')
+    print(f'VMS: {mem.vms//1024//1024} MB')
+
+if __name__ == '__main__':
+    main()</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>tracemalloc overhead is significant — don't leave it running in production</li><li>/proc/meminfo values are in kB — always convert for display</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>sys.getsizeof() only counts the object itself, not referenced objects</li><li>Use objgraph for a visual breakdown of object references</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>System Administration Scripts | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/python/index.html">Python</a> &rsaquo; <span>System Administration Scripts</span></nav>
+    <div class="page-header">
+      <h1>System Administration Scripts</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Python</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">subprocess</span><span class="tag">psutil</span><span class="tag">os</span><span class="tag">shutil</span><span class="tag">argparse</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Write Python scripts to automate system administration tasks: disk monitoring, process management, and service checks.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>subprocess</code></li><li><code>psutil</code></li><li><code>os</code></li><li><code>shutil</code></li><li><code>argparse</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>subprocess.run(['systemctl','status','nginx'], capture_output=True)</code></div><div class='command'><code>psutil.disk_usage('/')</code></div><div class='command'><code>shutil.disk_usage('/')</code></div><div class='command'><code>os.path.exists('/etc/nginx')</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    SCRIPT[Python Sysadmin Script] --> OS[os module\nfilesystem ops]
+    SCRIPT --> SUBPROC[subprocess\nrun shell commands]
+    SCRIPT --> PSUTIL[psutil\nprocess + system info]
+    SCRIPT --> SHUTIL[shutil\nfile operations]
+    OS --> REPORT[Generate\nReport / Alert]
+    SUBPROC --> REPORT
+    PSUTIL --> REPORT
+    SHUTIL --> REPORT
+    style SCRIPT fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>subprocess — Run Commands</strong>
+        <p>Execute system commands and capture output.</p>
+        <pre><code>import subprocess
+
+# Run command, capture output
+result = subprocess.run(
+    ['systemctl', 'status', 'nginx'],
+    capture_output=True, text=True
+)
+print(result.stdout)
+print(result.returncode)  # 0 = success
+
+# Raise exception on non-zero exit
+subprocess.run(['apt', 'update'], check=True)
+
+# Shell command (avoid with user input — injection risk)
+out = subprocess.getoutput('df -h')</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>psutil — System Monitoring</strong>
+        <p>Monitor CPU, memory, disk, and processes.</p>
+        <pre><code>import psutil
+
+# CPU
+print(f'CPU: {psutil.cpu_percent(interval=1)}%')
+
+# Memory
+mem = psutil.virtual_memory()
+print(f'RAM: {mem.percent}% used ({mem.used//1024//1024} MB)')
+
+# Disk
+disk = psutil.disk_usage('/')
+print(f'Disk: {disk.percent}% used')
+
+# Alert if disk > 80%
+if disk.percent > 80:
+    print('ALERT: disk usage critical')</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Health Check Script</strong>
+        <p>Combine subprocess and psutil for a system health report.</p>
+        <pre><code>#!/usr/bin/env python3
+import psutil, subprocess, json
+from datetime import datetime
+
+def check_service(name):
+    r = subprocess.run(['systemctl','is-active',name], capture_output=True, text=True)
+    return r.stdout.strip() == 'active'
+
+report = {
+    'timestamp': datetime.now().isoformat(),
+    'cpu_pct': psutil.cpu_percent(1),
+    'mem_pct': psutil.virtual_memory().percent,
+    'disk_pct': psutil.disk_usage('/').percent,
+    'services': {
+        'nginx': check_service('nginx'),
+        'ssh': check_service('ssh'),
+    }
+}
+print(json.dumps(report, indent=2))</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>subprocess with shell=True + user input is a command injection vulnerability</li><li>psutil requires installation (pip install psutil) — not in stdlib</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Always use list form for subprocess.run() — never shell=True with user data</li><li>subprocess.check_output() is a convenient shorthand for capturing stdout</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>
