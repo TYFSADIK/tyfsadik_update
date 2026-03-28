@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Depot Gato | TYFSADIK</title>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link active">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+
+<main class="page-content">
+  <div class="container">
+
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Games</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Depot Gato</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Depot Gato</h1>
+      <p class="subtitle">2D tower defense game with wave spawning, placement mechanics, and pixel art</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2024</span>
+      <span class="meta-category">Game Development</span>
+      <a class="meta-link" href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub &nearr;</a>
+    </div>
+
+    <!-- Overview -->
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        Depot Gato is a 2D tower defense game built in Godot 4 using GDScript. Waves of enemies follow a navigation path toward a central depot, and the player places cat-themed towers along buildable tiles to intercept and eliminate them before they arrive. The project was built from scratch to explore Godot's scene composition model, signal-based decoupled architecture, and NavigationAgent2D-driven pathfinding.
+      </p>
+      <p>
+        Core systems include a wave spawning manager driven by configurable WaveData resources, three distinct tower types with independent attack ranges and damage profiles, enemy pathfinding via <code>NavigationAgent2D</code> with a live HP bar and animated states, a currency economy that rewards kills and gates tower placement, and a central <code>GameState</code> autoload singleton that brokers win and lose conditions through Godot signals.
+      </p>
+    </section>
+
+    <!-- Tech Stack -->
+    <section id="tech-stack">
+      <h2>Tech Stack</h2>
+      <ul>
+        <li><strong>Godot 4</strong> &mdash; game engine, scene tree, physics layers, CanvasLayer UI</li>
+        <li><strong>GDScript</strong> &mdash; all game logic: towers, enemies, wave manager, game state</li>
+        <li><strong>NavigationAgent2D</strong> &mdash; dynamic pathfinding and steering for enemies</li>
+        <li><strong>TileMap</strong> &mdash; path tiles and buildable zones; grid snapping for tower placement</li>
+        <li><strong>Area2D</strong> &mdash; tower detection radius; projectile hit detection</li>
+        <li><strong>AnimationPlayer</strong> &mdash; enemy walk, hurt, and death animations</li>
+        <li><strong>Aseprite</strong> &mdash; pixel art sprite sheets, exported as PNG sprite atlases</li>
+        <li><strong>Git</strong> &mdash; version control</li>
+      </ul>
+    </section>
+
+    <!-- Architecture Diagram -->
+    <section id="architecture">
+      <h2>Scene &amp; System Architecture</h2>
+      <p>
+        The game is structured around Godot's composable scene tree. The root <code>Main.tscn</code> owns the TileMap, the HUD CanvasLayer, and the WaveManager node. Each gameplay entity (enemies and towers) is a self-contained scene instanced at runtime. A <code>GameState</code> autoload singleton acts as a shared data bus — no node directly queries another node's state; instead, all components emit and subscribe to signals.
+      </p>
+      <div class="mermaid">
+graph TD
+    A["Main.tscn (Root)"]:::primary
+
+    A --> B["HUD.tscn (CanvasLayer)"]:::secondary
+    B --> B1["Currency Label"]:::secondary
+    B --> B2["Lives Label"]:::secondary
+    B --> B3["Wave Counter"]:::secondary
+    B --> B4["Tower Palette"]:::secondary
+
+    A --> C["TileMap"]:::secondary
+    C --> C1["Path Tiles (layer 0)"]:::secondary
+    C --> C2["Buildable Tiles (layer 1)"]:::secondary
+
+    A --> D["WaveManager.gd"]:::primary
+    D --> E["Enemy.tscn (instanced per spawn)"]:::primary
+    E --> E1["NavigationAgent2D"]:::secondary
+    E --> E2["HP ProgressBar"]:::secondary
+    E --> E3["AnimationPlayer"]:::secondary
+    E --> E4["Enemy.gd"]:::secondary
+
+    A --> F["Tower Variants"]:::primary
+    F --> F1["BasicTower.tscn"]:::success
+    F --> F2["SniperTower.tscn"]:::success
+    F --> F3["SplashTower.tscn"]:::success
+
+    subgraph Systems
+        G["TowerPlacement.gd"]:::primary
+        H["Tower.gd (base)"]:::primary
+        I["Enemy.gd"]:::primary
+        J["GameState.gd (autoload)"]:::primary
+    end
+
+    G -->|"check buildable tile"| C2
+    G -->|"deduct currency"| J
+    G -->|"instance tower scene"| F
+
+    H -->|"Area2D detects enemies"| E
+    H -->|"select nearest target"| I
+    H -->|"fire Projectile"| K["Projectile.tscn"]:::secondary
+
+    I -->|"follow navigation path"| E1
+    I -->|"on reach depot"| J
+
+    J -->|"tracks lives, currency, wave"| B
+    J -->|"emits game_over / victory"| A
+
+classDef primary fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+classDef secondary fill:#181818,stroke:#1e1e1e,color:#888
+classDef success fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <!-- Build Process -->
+    <section id="build-process">
+      <h2>Build Process</h2>
+      <ol class="steps">
+
+        <li class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <h3>Project Setup and Physics Layers</h3>
+            <p>
+              Created a new Godot 4 project with a 2D scene root. Configured three named physics collision layers in Project Settings: Layer 1 for enemies, Layer 2 for towers, and Layer 3 for projectiles. This separation ensures that <code>Area2D</code> nodes on towers only detect the enemy layer, preventing false collision signals. Set pixel art import defaults globally: Filter set to Nearest, mipmaps disabled, and Snap 2D Transforms to Pixel enabled under Rendering settings to eliminate sub-pixel blurring on scaled sprites.
+            </p>
+          </div>
+        </li>
+
+        <li class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <h3>TileMap and NavigationRegion2D Pathfinding</h3>
+            <p>
+              Designed the TileMap with two layers: a path layer (tiles enemies traverse) and a buildable layer (tiles where towers may be placed). Added a <code>NavigationRegion2D</code> node covering the path layer and baked the navigation mesh. A known pitfall here is that <code>NavigationRegion2D.bake_navigation_polygon()</code> must be deferred to the next frame after the scene is fully loaded — calling it on <code>_ready()</code> directly caused enemies to spawn before the mesh was valid, placing them inside walls. The fix: <code>call_deferred("_bake_nav")</code>.
+            </p>
+          </div>
+        </li>
+
+        <li class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <h3>Enemy Scene</h3>
+            <p>
+              Each enemy is a <code>CharacterBody2D</code> scene with three child nodes: a <code>NavigationAgent2D</code> for steering, a <code>ProgressBar</code> positioned above the sprite for the HP bar, and an <code>AnimationPlayer</code> with three named animations — <em>walk</em>, <em>hurt</em>, and <em>death</em>. The <code>Enemy.gd</code> script calls <code>navigation_agent.get_next_path_position()</code> each physics frame and drives movement with <code>move_and_slide()</code>. On reaching the depot (checked via <code>NavigationAgent2D.is_navigation_finished()</code>), the script emits a <code>reached_depot</code> signal caught by <code>GameState.gd</code>.
+            </p>
+          </div>
+        </li>
+
+        <li class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <h3>Tower System</h3>
+            <p>
+              <code>Tower.gd</code> is a base script inherited by all three tower variants. Each tower has an <code>Area2D</code> child sized to its detection radius; the <code>body_entered</code> and <code>body_exited</code> signals maintain a live <code>targets_in_range: Array</code>. A <code>Timer</code> node fires on the attack cooldown interval; the handler selects the first valid target with <code>is_instance_valid(target) and not target.is_queued_for_deletion()</code>, then instances a <code>Projectile.tscn</code> at a <code>Marker2D</code> spawn point with velocity aimed at the target's position. BasicTower has the shortest range and fastest fire rate; SniperTower has maximum range and high single-target damage; SplashTower uses an <code>Area2D</code> on the projectile itself to hit all enemies within an explosion radius on impact.
+            </p>
+          </div>
+        </li>
+
+        <li class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <h3>Wave Manager</h3>
+            <p>
+              Wave data is stored as <code>WaveData</code> resources — custom Godot <code>Resource</code> subclasses with exported fields: an array of dictionaries specifying enemy scene path, count, and spawn interval. <code>WaveManager.gd</code> iterates through the current wave's entries using a spawn <code>Timer</code>. When all enemies in a wave are dead (tracked by a counter decremented via the <code>enemy_died</code> signal), the manager emits <code>wave_complete</code>. If no more waves remain, it emits <code>victory</code>; otherwise it pauses briefly and begins the next wave. This resource-driven approach makes adding new waves a data-only change without touching code.
+            </p>
+          </div>
+        </li>
+
+        <li class="step">
+          <div class="step-num">06</div>
+          <div class="step-body">
+            <h3>UI and HUD</h3>
+            <p>
+              The HUD is a separate <code>CanvasLayer</code> scene instanced under Main. It holds four <code>Label</code> nodes (currency, lives, wave number, next-wave countdown) and a tower placement palette built from <code>TextureButton</code> nodes. Labels are updated exclusively through <code>GameState</code> signals — <code>currency_changed(new_val)</code>, <code>lives_changed(new_val)</code>, <code>wave_changed(wave_num)</code> — so the HUD has zero direct references to gameplay nodes. Clicking a palette button sets a selected tower type variable in <code>TowerPlacement.gd</code>, which then listens for mouse input on unbuildable vs. buildable cells.
+            </p>
+          </div>
+        </li>
+
+      </ol>
+    </section>
+
+    <!-- Game Loop Workflow -->
+    <section id="workflow">
+      <h2>Game Loop Workflow</h2>
+      <p>
+        The following diagram traces the runtime flow of a single round: from the player placing a tower through enemy spawning, combat resolution, and terminal win/lose branching.
+      </p>
+      <div class="mermaid">
+flowchart TD
+    P["Player clicks buildable tile"]:::primary
+    PC{"TowerPlacement:\nenough currency?"}:::primary
+    PD["Deduct cost\nInstance Tower scene"]:::success
+    PE["Show: insufficient funds"]:::secondary
+
+    W["WaveManager Timer fires"]:::primary
+    WS["Spawn Enemy at start node"]:::primary
+    WN["Enemy navigates path via\nNavigationAgent2D"]:::primary
+
+    TA{"Tower Area2D:\nenemy in range?"}:::primary
+    TF["Tower targets enemy\nfire Projectile"]:::success
+    PH{"Projectile hits Enemy"}:::primary
+    HD["Deal damage\nreduce Enemy HP"]:::primary
+    EK{"HP <= 0?"}:::primary
+    ED["Enemy dies\nPlayer gains currency"]:::success
+    EC["Enemy continues on path"]:::secondary
+
+    ER{"Enemy reaches Depot?"}:::primary
+    EL["Deduct life from GameState"]:::secondary
+    GL{"Lives == 0?"}:::primary
+    GO["Emit game_over signal\nShow Game Over screen"]:::secondary
+
+    WD{"All wave enemies dead?"}:::primary
+    LW{"Last wave?"}:::primary
+    NW["Start next wave"]:::primary
+    VC["Emit victory signal\nShow Victory screen"]:::success
+
+    P --> PC
+    PC -->|Yes| PD
+    PC -->|No| PE
+    PD --> TA
+
+    W --> WS --> WN --> TA
+
+    TA -->|Yes| TF --> PH --> HD --> EK
+    TA -->|No| WN
+
+    EK -->|Yes| ED --> WD
+    EK -->|No| EC --> ER
+
+    ER -->|Yes| EL --> GL
+    ER -->|No| TA
+
+    GL -->|Yes| GO
+    GL -->|No| WD
+
+    WD -->|Yes| LW
+    WD -->|No| WN
+
+    LW -->|No| NW --> W
+    LW -->|Yes| VC
+
+classDef primary fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+classDef secondary fill:#181818,stroke:#1e1e1e,color:#888
+classDef success fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+      </div>
+    </section>
+
+    <!-- Enemy State Machine -->
+    <section id="enemy-states">
+      <h2>Enemy State Machine</h2>
+      <p>
+        Each enemy instance transitions through four states managed in <code>Enemy.gd</code>. The state variable gates which <code>AnimationPlayer</code> track plays and whether movement logic runs each physics frame.
+      </p>
+      <div class="mermaid">
+stateDiagram-v2
+    [*] --> Idle : scene instantiated
+    Idle --> Walking : navigation path set\n(on spawn)
+    Walking --> Attacking : reached depot\nor in attack range
+    Walking --> Dead : HP &lt;= 0\n(projectile hit)
+    Attacking --> Dead : HP &lt;= 0
+    Dead --> [*] : queue_free()\nenemy removed
+      </div>
+      <p>
+        In the <strong>Idle</strong> state the enemy waits for <code>NavigationAgent2D.set_target_position()</code> to be called by WaveManager immediately after spawning. Once the path is ready the state flips to <strong>Walking</strong> and the walk animation loops. <strong>Attacking</strong> is entered if the enemy reaches the depot node or steps into a melee-range trigger (reserved for a melee enemy variant). <strong>Dead</strong> plays the death animation and then calls <code>queue_free()</code>, which is caught by WaveManager's enemy counter to track wave completion.
+      </p>
+    </section>
+
+    <!-- Challenges -->
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li>
+          <strong>NavigationAgent2D jitter at path corners.</strong> Enemies visibly oscillated when rounding tight corners because the agent re-targeted the same waypoint on alternating frames. Fixed by increasing both <code>path_desired_distance</code> and <code>target_desired_distance</code> on the agent — giving the steering system a wider acceptance radius so it advances to the next waypoint cleanly.
+        </li>
+        <li>
+          <strong>Towers targeting enemies about to die.</strong> When two towers selected the same low-HP enemy simultaneously, one projectile was wasted on a body already queued for deletion. Solved by wrapping all target reads in <code>is_instance_valid(target) and not target.is_queued_for_deletion()</code> before firing, and clearing the target slot when an enemy emits its <code>died</code> signal.
+        </li>
+        <li>
+          <strong>Pixel art appearing blurry after scaling.</strong> Godot 4's default texture filter is Linear, which interpolates between pixels and softens low-resolution sprites. Fixed globally by setting the project-wide texture import default to Filter: Nearest and enabling Rendering &gt; 2D &gt; Snap 2D Transforms to Pixel, which locks sprite positions to whole pixel coordinates and eliminates sub-pixel shimmer during movement.
+        </li>
+        <li>
+          <strong>Enemies spawning inside walls after navigation bake.</strong> Calling <code>NavigationRegion2D.bake_navigation_polygon()</code> synchronously in <code>_ready()</code> completed before the TileMap nodes had fully initialized their collision shapes for the frame. Solved with <code>call_deferred("_bake_nav")</code> so the bake runs at the start of the next frame after all nodes are settled, ensuring enemies always spawn on a valid navigation mesh.
+        </li>
+      </ul>
+    </section>
+
+    <!-- What I Learned -->
+    <section id="learnings">
+      <h2>What I Learned</h2>
+      <ul>
+        <li><strong>Godot 4 scene composition</strong> &mdash; designing reusable, self-contained scenes and instancing them at runtime vs. placing them statically in the editor tree.</li>
+        <li><strong>NavigationAgent2D pathfinding and steering</strong> &mdash; baking navigation meshes, setting target positions, reading next path positions per physics frame, and tuning desired-distance thresholds.</li>
+        <li><strong>Signal-based decoupled architecture</strong> &mdash; emitting named signals from gameplay nodes and subscribing in the HUD and game state manager, so no node holds a hard reference to another's internal state.</li>
+        <li><strong>Autoload singletons for shared state</strong> &mdash; using Godot's autoload system to create a globally accessible <code>GameState</code> that owns lives, currency, and wave data without coupling scene nodes to each other.</li>
+        <li><strong>Pixel art workflow from Aseprite to Godot</strong> &mdash; authoring animations in Aseprite, exporting sprite sheets with JSON metadata, and configuring Godot's SpriteFrames resource to map sheet regions to named animation tracks.</li>
+        <li><strong>Tower defense game loop fundamentals</strong> &mdash; balancing economy (kill reward vs. tower cost), tuning attack cooldown and range per tower class, and designing wave data to create escalating difficulty without hardcoding values.</li>
+      </ul>
+    </section>
+
+    <!-- Tags -->
+    <section>
+      <div class="tags">
+        <span class="tag">Godot 4</span>
+        <span class="tag">GDScript</span>
+        <span class="tag">Tower Defense</span>
+        <span class="tag">Pixel Art</span>
+        <span class="tag">Game Development</span>
+        <span class="tag">NavigationAgent2D</span>
+        <span class="tag">2D Game</span>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>
