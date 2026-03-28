@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Firewall Configuration (firewalld) | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Firewall Configuration (firewalld)</span></nav>
+    <div class="page-header">
+      <h1>Firewall Configuration (firewalld)</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Security</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">firewalld</span><span class="tag">firewall-cmd</span><span class="tag">zones</span><span class="tag">services</span><span class="tag">rich rules</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Manage host firewall with firewalld using zones and services for a more structured approach than raw iptables.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>firewalld</code></li><li><code>firewall-cmd</code></li><li><code>zones</code></li><li><code>services</code></li><li><code>rich rules</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>firewall-cmd --list-all</code></div><div class='command'><code>firewall-cmd --permanent --add-service=http</code></div><div class='command'><code>firewall-cmd --reload</code></div><div class='command'><code>firewall-cmd --get-active-zones</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+graph TD
+    subgraph firewalld Zones
+      TRUSTED[trusted\nAll accepted]
+      HOME[home\nSelected accepted]
+      PUBLIC[public\nSSH + DHCP]
+      WORK[work\nMore services]
+      DROP[drop\nAll rejected]
+    end
+    NIC1[eth0\nLAN] -->|assigned to| HOME
+    NIC2[eth1\nWAN] -->|assigned to| PUBLIC
+    style PUBLIC fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style DROP fill:#1a1a2e,stroke:#ff4444,color:#ff4444
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Zone Management</strong>
+        <p>Assign interfaces to zones and configure allowed services.</p>
+        <pre><code># View zones and active interfaces
+firewall-cmd --get-active-zones
+firewall-cmd --list-all --zone=public
+
+# Assign interface to zone
+firewall-cmd --permanent --zone=public --change-interface=eth1
+
+# Allow services
+firewall-cmd --permanent --zone=public --add-service=http
+firewall-cmd --permanent --zone=public --add-service=https
+firewall-cmd --permanent --zone=public --add-port=8080/tcp
+firewall-cmd --reload</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Rich Rules</strong>
+        <p>Write complex rules with source/destination matching.</p>
+        <pre><code># Allow from specific subnet
+firewall-cmd --permanent --zone=public --add-rich-rule=\
+  'rule family=ipv4 source address=192.168.1.0/24 service name=ssh accept'
+
+# Rate limit SSH
+firewall-cmd --permanent --add-rich-rule=\
+  'rule service name=ssh limit value=3/m accept'
+
+firewall-cmd --reload</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>firewalld --add-service only works with services defined in /usr/lib/firewalld/services/</li><li>Forgetting --permanent means rules are lost after reload</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>--permanent without --reload doesn't take effect immediately</li><li>Custom services: copy a .xml from /usr/lib/firewalld/services/ to /etc/firewalld/services/</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

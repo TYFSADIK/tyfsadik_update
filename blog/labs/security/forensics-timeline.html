@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forensics Timeline Creation | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Forensics Timeline Creation</span></nav>
+    <div class="page-header">
+      <h1>Forensics Timeline Creation</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-advanced">Advanced</span>
+        <span class="lab-category">Security</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">log2timeline</span><span class="tag">plaso</span><span class="tag">mactime</span><span class="tag">timesketch</span><span class="tag">Gantt chart</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Build a comprehensive forensic timeline by correlating filesystem, log, and artifact timestamps.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>log2timeline</code></li><li><code>plaso</code></li><li><code>mactime</code></li><li><code>timesketch</code></li><li><code>Gantt chart</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>log2timeline.py /evidence/timeline.plaso /image.dd</code></div><div class='command'><code>psort.py /evidence/timeline.plaso -o l2tcsv > output.csv</code></div><div class='command'><code>mactime -b body.txt</code></div><div class='command'><code>timesketch_importer.py</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+gantt
+    title Incident Timeline Reconstruction
+    dateFormat YYYY-MM-DD HH:mm
+    section Attacker Activity
+    Initial compromise    :crit, a1, 2024-01-15 02:00, 30m
+    Lateral movement      :crit, a2, 2024-01-15 03:00, 2h
+    Data exfiltration     :crit, a3, 2024-01-15 05:30, 1h
+    section System Events
+    Failed SSH attempts   :b1, 2024-01-15 01:45, 15m
+    Successful SSH login  :b2, 2024-01-15 02:00, 5m
+    Unusual process start :b3, 2024-01-15 02:10, 5m
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Log2Timeline</strong>
+        <p>Extract all timestamps from a disk image.</p>
+        <pre><code># Install
+pip3 install plaso
+
+# Extract timeline
+log2timeline.py /evidence/timeline.plaso /dev/sdb
+# Or from image
+log2timeline.py /evidence/timeline.plaso /evidence/disk.dd
+
+# Filter and export
+psort.py /evidence/timeline.plaso \
+  -o l2tcsv \
+  -w /evidence/timeline.csv \
+  -z UTC</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Filesystem Mactime</strong>
+        <p>Use TSK mactime for a faster filesystem-only timeline.</p>
+        <pre><code># Generate bodyfile from image
+fls -r -m / /evidence/disk.dd > /evidence/body.txt
+
+# Generate mactime timeline
+mactime -b /evidence/body.txt \
+  -d -z UTC \
+  -p /evidence/passwd \
+  -g /evidence/group \
+  > /evidence/fstimeline.csv</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Correlate Events</strong>
+        <p>Filter timeline around suspected incident window.</p>
+        <pre><code># Filter CSV to incident window
+awk -F, '$1 >= "2024-01-15 02:00" && $1 <= "2024-01-15 06:00"' timeline.csv
+
+# Pivot on specific user
+grep 'alice' timeline.csv
+
+# Correlate with auth logs
+grep '2024-01-15T02' /var/log/auth.log</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>Timezone inconsistencies in multi-source timelines corrupt analysis — normalize to UTC</li><li>Large disk images take hours to process with log2timeline</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Timeline is the foundation of all forensic narrative — invest time getting it right</li><li>Attacker-modified timestamps (timestomping) are visible as anomalies in MACB analysis</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

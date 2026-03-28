@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dead Box Forensics | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Dead Box Forensics</span></nav>
+    <div class="page-header">
+      <h1>Dead Box Forensics</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-advanced">Advanced</span>
+        <span class="lab-category">Security</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Autopsy</span><span class="tag">dd</span><span class="tag">sha256sum</span><span class="tag">The Sleuth Kit</span><span class="tag">write blocker</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Image a powered-off disk, verify integrity with hashing, and perform filesystem analysis using Autopsy and TSK tools.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>Autopsy</code></li><li><code>dd</code></li><li><code>sha256sum</code></li><li><code>The Sleuth Kit</code></li><li><code>write blocker</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>dd if=/dev/sda of=/evidence/disk.dd bs=4M conv=noerror,sync</code></div><div class='command'><code>sha256sum /evidence/disk.dd > /evidence/disk.dd.sha256</code></div><div class='command'><code>autopsy</code></div><div class='command'><code>fls -r -m / disk.dd</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    SCENE[Evidence Drive] --> BLOCK[Write Blocker\nhardware or software]
+    BLOCK --> IMAGE[Create Forensic Image\ndd / dcfldd / FTK Imager]
+    IMAGE --> HASH[Generate Hash\nMD5 + SHA256]
+    HASH --> VERIFY[Verify Hash Matches\nchain of custody]
+    VERIFY --> ANALYSIS[Mount Read-Only\nAutopsy / TSK analysis]
+    ANALYSIS --> REPORT[Report Findings]
+    style BLOCK fill:#1a1a2e,stroke:#ff4444,color:#ff4444
+    style HASH fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Create Forensic Image</strong>
+        <p>Image the disk and record the hash immediately.</p>
+        <pre><code># Image with hash verification
+sudo dcfldd if=/dev/sdb of=/evidence/disk.dd \
+  bs=4M conv=noerror,sync \
+  hashwindow=1G hashlog=/evidence/hash.log
+
+# Or with dd + separate hash
+sudo dd if=/dev/sdb of=/evidence/disk.dd bs=4M conv=noerror,sync
+sha256sum /evidence/disk.dd > /evidence/disk.dd.sha256</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Mount and Analyse</strong>
+        <p>Mount the image read-only for safe analysis.</p>
+        <pre><code># Mount read-only
+sudo mount -o ro,loop,noexec /evidence/disk.dd /mnt/evidence
+
+# TSK: list files including deleted
+fls -r -m / /evidence/disk.dd > /evidence/bodyfile.txt
+
+# TSK: generate timeline
+mactime -b /evidence/bodyfile.txt -d > /evidence/timeline.csv</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Autopsy GUI Analysis</strong>
+        <p>Use Autopsy for graphical file analysis.</p>
+        <pre><code>sudo autopsy
+# Open browser: http://localhost:9999/autopsy
+# Create new case
+# Add disk image
+# Run ingest modules: hash set lookup, keyword search, file type analysis</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>Never analyse original media — always work from a verified image copy</li><li>Hash must be computed immediately after imaging — before any analysis</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>MD5 is no longer cryptographically secure — use SHA-256 for court-admissible evidence</li><li>Deleted files are recoverable until blocks are overwritten — image promptly</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

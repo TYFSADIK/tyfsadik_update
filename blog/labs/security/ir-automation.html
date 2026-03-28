@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Incident Response Automation | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Incident Response Automation</span></nav>
+    <div class="page-header">
+      <h1>Incident Response Automation</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-advanced">Advanced</span>
+        <span class="lab-category">Security</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Python</span><span class="tag">SOAR</span><span class="tag">TheHive</span><span class="tag">Cortex</span><span class="tag">webhook</span><span class="tag">Ansible</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Automate incident response tasks with Python scripts, integrate with ticketing systems, and understand SOAR platforms.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>Python</code></li><li><code>SOAR</code></li><li><code>TheHive</code></li><li><code>Cortex</code></li><li><code>webhook</code></li><li><code>Ansible</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>python3 ir_triage.py --host 192.168.1.50</code></div><div class='command'><code>curl -X POST https://thehive:9000/api/alert -H 'Authorization: Bearer TOKEN'</code></div><div class='command'><code>ansible-playbook isolate_host.yml</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+flowchart TD
+    ALERT[SIEM Alert\nSplunk/AlienVault] -->|webhook| SOAR[SOAR Platform]
+    SOAR --> TRIAGE[Auto-Triage\nenrich IOCs]
+    TRIAGE --> SCORE{Risk Score}
+    SCORE -->|Low| CLOSE[Auto-close\nFalse Positive]
+    SCORE -->|Medium| TICKET[Create Ticket\nTheHive]
+    SCORE -->|High| ISOLATE[Auto-Isolate Host\n+ Page Analyst]
+    TICKET --> ANALYST[Analyst Reviews]
+    ISOLATE --> ANALYST
+    style SOAR fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+    style ISOLATE fill:#1a1a2e,stroke:#ff4444,color:#ff4444
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Python Triage Script</strong>
+        <p>Automate initial evidence collection.</p>
+        <pre><code>#!/usr/bin/env python3
+# ir_triage.py — collect volatile data
+import subprocess, datetime, argparse, json
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--host', required=True)
+args = parser.parse_args()
+
+timestamp = datetime.datetime.utcnow().isoformat()
+collections = {
+    'timestamp': timestamp,
+    'target': args.host,
+    'connections': subprocess.getoutput('ss -tunp'),
+    'processes': subprocess.getoutput('ps auxf'),
+    'users': subprocess.getoutput('last -n 20'),
+}
+print(json.dumps(collections, indent=2))</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>TheHive API Integration</strong>
+        <p>Create incidents automatically from detection events.</p>
+        <pre><code>import requests
+
+hive_url = 'http://localhost:9000'
+headers = {'Authorization': 'Bearer YOUR_TOKEN', 'Content-Type': 'application/json'}
+
+alert = {
+    'title': 'Failed SSH brute force',
+    'description': '50+ failed logins from 1.2.3.4',
+    'type': 'external',
+    'source': 'fail2ban',
+    'sourceRef': 'fail2ban-001',
+    'severity': 2,
+    'tags': ['ssh', 'brute-force']
+}
+resp = requests.post(f'{hive_url}/api/alert', json=alert, headers=headers)
+print(resp.json())</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>Automated containment can cause false positive service outages — require human approval for destructive actions</li><li>API keys in scripts — use environment variables or vault, never hardcode</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Start with enrichment automation before response automation — safer</li><li>Document automated actions in the incident ticket — audit trail is essential</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

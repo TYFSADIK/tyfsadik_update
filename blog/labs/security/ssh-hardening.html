@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SSH Hardening | TYFSADIK</title>
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+
+    <nav class="breadcrumb"><a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>SSH Hardening</span></nav>
+    <div class="page-header">
+      <h1>SSH Hardening</h1>
+      <div class="lab-meta">
+        <span class="difficulty difficulty-intermediate">Intermediate</span>
+        <span class="lab-category">Security</span>
+      </div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">sshd_config</span><span class="tag">fail2ban</span><span class="tag">ssh-keygen</span><span class="tag">ed25519</span><span class="tag">AllowUsers</span></div>
+    </div>
+
+    <section id="objective">
+      <h2>Objective</h2>
+      <p>Harden SSH by disabling password auth, restricting access, changing the port, and deploying fail2ban against brute-force.</p>
+    </section>
+
+    <section id="tools">
+      <h2>Tools &amp; Technologies</h2>
+      <ul><li><code>sshd_config</code></li><li><code>fail2ban</code></li><li><code>ssh-keygen</code></li><li><code>ed25519</code></li><li><code>AllowUsers</code></li></ul>
+    </section>
+
+    <section id="commands">
+      <h2>Key Commands</h2>
+      <div class="command-block"><div class='command'><code>ssh-keygen -t ed25519 -a 100</code></div><div class='command'><code>sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config</code></div><div class='command'><code>systemctl restart sshd</code></div><div class='command'><code>fail2ban-client status sshd</code></div></div>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture Overview</h2>
+      <div class="mermaid">
+sequenceDiagram
+    participant A as Attacker
+    participant F as fail2ban
+    participant S as sshd
+    participant K as Key Auth
+    A->>S: Password auth attempt 1
+    S-->>A: Failed
+    A->>S: Attempt 2
+    A->>S: Attempt 3
+    S->>F: 3 failures logged
+    F->>F: Add iptables REJECT rule
+    A->>S: Attempt 4 (blocked)
+    S--xA: Connection refused
+    Note over K: Key auth bypasses all this
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Step-by-Step Process</h2>
+      <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-body">
+        <strong>Key-Based Authentication</strong>
+        <p>Generate ED25519 key pair and configure server to require keys.</p>
+        <pre><code># On client
+ssh-keygen -t ed25519 -a 100 -C 'taki@lab'
+ssh-copy-id user@server
+# Or manual:
+cat ~/.ssh/id_ed25519.pub | ssh user@server 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys'</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-body">
+        <strong>Harden sshd_config</strong>
+        <p>Disable password auth, root login, and restrict users.</p>
+        <pre><code># /etc/ssh/sshd_config
+Port 2222
+PermitRootLogin no
+PasswordAuthentication no
+PubkeyAuthentication yes
+AllowUsers alice bob
+MaxAuthTries 3
+ClientAliveInterval 300
+ClientAliveCountMax 2
+X11Forwarding no
+
+sudo sshd -t  # test config
+sudo systemctl restart sshd</code></pre>
+        
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-body">
+        <strong>Install fail2ban</strong>
+        <p>Block IPs after repeated failed authentication attempts.</p>
+        <pre><code>sudo apt install fail2ban
+
+# /etc/fail2ban/jail.local
+[sshd]
+enabled = true
+port = 2222
+maxretry = 3
+bantime = 3600
+findtime = 600
+
+sudo systemctl enable --now fail2ban
+fail2ban-client status sshd</code></pre>
+        
+      </div>
+    </div>
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul><li>Changing port and disabling password auth before installing key locks you out</li><li>fail2ban ban on localhost during testing — whitelist yourself first: ignoreip = 127.0.0.1</li></ul>
+    </section>
+
+    <section id="takeaways">
+      <h2>Key Takeaways</h2>
+      <ul><li>Use AllowUsers to whitelist — any other user cannot log in even with valid key</li><li>Port change requires updating ~/.ssh/config on clients: Port 2222</li></ul>
+    </section>
+
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>
