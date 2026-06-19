@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure VM Configuration | Deploy, cloud-init &amp; Access</title>
+  <meta name="description" content="Deploy and configure an Azure VM with the CLI, cloud-init, and key-based SSH. Launch a secured, reproducible cloud server in minutes.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/cloud-azure/azure-vm-config.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Azure VM Configuration with cloud-init",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-03-07",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "Azure CLI, cloud-init",
+    "articleSection": "Cloud"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/cloud-azure/index.html">Cloud &amp; Azure</a> &rsaquo; <span>Azure VM Configuration</span></nav>
+    <div class="page-header"><h1>Azure VM Configuration with cloud-init and Key-Based SSH</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Cloud</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">az vm</span><span class="tag">cloud-init</span><span class="tag">SSH keys</span><span class="tag">managed disk</span></div>
+    </div>
+
+    <section><p class="lead">You will deploy an Azure VM into your VNet, bootstrap it with cloud-init, and access it via key-based SSH only. By the end you will have a secured, reproducible cloud server configured at first boot.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Deploy a VM with SSH-key authentication.</li>
+        <li>Bootstrap packages and config with cloud-init.</li>
+        <li>Restrict inbound access to your IP only.</li>
+        <li><strong>Time:</strong> ~2 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> a VNet and the Azure CLI.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Azure VM deployment with cloud-init bootstrap">
+graph LR
+  CLI[az vm create] --> VM[Azure VM in subnet]
+  Init[cloud-init.yaml] -->|first boot| VM
+  You[You] -->|SSH key only| VM
+  NSG[NSG: your IP] --> VM
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> a VNet/subnet (from the VNet lab), the Azure CLI, and an SSH keypair.</p>
+      <p><strong>Before you begin:</strong> note your public IP to scope SSH access.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Write a cloud-init file</strong>
+<pre><code class="language-bash"># cloud-init.yaml
+#cloud-config
+package_update: true
+packages: [nginx]
+runcmd:
+  - systemctl enable --now nginx</code></pre>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Deploy the VM with key auth and cloud-init</strong>
+          <div class="command-block" data-copy><div class="command"><code>az vm create -n web01 --image Ubuntu2204 --vnet-name vnet-a --subnet web --admin-username taki --ssh-key-values ~/.ssh/id_ed25519.pub --custom-data cloud-init.yaml</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Restrict SSH to your IP</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az vm open-port -n web01 --port 22 --priority 100 &amp;&amp; az network nsg rule update -g tyf-rg --nsg-name web01NSG -n open-port-22 --source-address-prefixes 203.0.113.10/32</span></div>
+            <div class="terminal-output">"sourceAddressPrefix": "203.0.113.10/32"</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="VM config progress">
+graph LR
+  A[01 cloud-init] -->|done| B[02 Deploy VM]
+  B -->|done| C[03 Scope SSH]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>ssh taki@$(az vm show -d -n web01 --query publicIps -o tsv) 'systemctl is-active nginx'</code></div></div>
+      <p>You should connect with your key (no password) and see <code>active</code>, proving cloud-init bootstrapped the server.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>cloud-init did not run:</strong> check <code>/var/log/cloud-init-output.log</code> on the VM.</li>
+        <li><strong>SSH times out:</strong> confirm the NSG allows port 22 from your current IP.</li>
+        <li><strong>Password prompt:</strong> deploy with <code>--ssh-key-values</code>, not <code>--admin-password</code>.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Tighten traffic further with <a href="nsg-route-tables.html">NSGs &amp; Route Tables</a>.</li>
+        <li>Harden the OS with <a href="../security/ssh-hardening.html">SSH Hardening</a>.</li>
+        <li>Replace imperative creation with <a href="arm-templates.html">ARM templates</a>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Deployed a cloud VM bootstrapped automatically at first boot.</li>
+        <li>Enforced key-only SSH with no password authentication.</li>
+        <li>Restricted inbound SSH to a single source IP.</li>
+        <li>Verified the service end to end over SSH.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="vnet-deployment.html">Virtual Network Deployment</a></li>
+        <li><a href="nsg-route-tables.html">NSGs &amp; Route Tables</a></li>
+        <li><a href="../security/ssh-hardening.html">SSH Hardening</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

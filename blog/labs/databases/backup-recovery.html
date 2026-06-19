@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Database Backup &amp; Recovery | pg_dump &amp; PITR</title>
+  <meta name="description" content="Implement logical and physical backups with pg_dump and WAL-based PITR. Verified restores to meet a tested RPO and RTO target.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/databases/backup-recovery.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Database Backup and Recovery with pg_dump and PITR",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-04-01",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "PostgreSQL 16, pg_dump, WAL archiving",
+    "articleSection": "Databases"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/databases/index.html">Databases</a> &rsaquo; <span>Backup &amp; Recovery</span></nav>
+    <div class="page-header"><h1>Database Backup and Recovery with pg_dump and Point-in-Time Recovery</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Databases</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">pg_dump</span><span class="tag">WAL</span><span class="tag">PITR</span><span class="tag">RPO/RTO</span></div>
+    </div>
+
+    <section><p class="lead">I implemented both logical backups with pg_dump and physical point-in-time recovery via WAL archiving, then tested restores against defined RPO and RTO targets. A backup is only real once its restore is verified, so every backup type was exercised end to end.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Backups exist to be restored. This lab pairs logical dumps (portable, slow) with WAL-based PITR (granular, fast recovery to a timestamp), defining recovery point and recovery time objectives and proving them with actual restores.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>PostgreSQL 16 with WAL archiving configured.</li>
+        <li>Backup storage separate from the data volume.</li>
+        <li>Defined RPO/RTO targets to validate against.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Backup and PITR recovery flow">
+flowchart LR
+  B[Base backup] --> W[WAL archive stream]
+  W --> R[Restore base]
+  R --> P[Replay WAL to timestamp]
+  P --> V[Verified database]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Logical backup with pg_dump</h3>
+      <div class="command-block"><div class="command"><code>pg_dump -Fc appdb -f /backups/appdb-$(date +%F).dump</code></div></div>
+      <h3>2. Base backup for PITR</h3>
+      <div class="command-block"><div class="command"><code>pg_basebackup -D /backups/base -Fp -Xs -P</code></div></div>
+      <h3>3. Restore and verify</h3>
+      <div class="command-block"><div class="command"><code>pg_restore -d appdb_test /backups/appdb-2026-06-17.dump &amp;&amp; psql appdb_test -c "SELECT count(*) FROM orders;"</code></div></div>
+<pre><code class="language-bash"> count
+-------
+ 81234</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Restore to a scratch database and to a specific point in time, then compare row counts and checksums against the source. Pass criteria: restores complete within the RTO, data loss stays within the RPO, and verification queries match expected values.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Untested backups:</strong> schedule periodic restore drills; an unverified backup is a guess.</li>
+        <li><strong>WAL gap:</strong> ensure continuous archiving; a missing segment breaks PITR.</li>
+        <li><strong>Slow restore:</strong> parallelize with <code>pg_restore -j</code> on multi-core hosts.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Verified restores for both logical dumps and WAL-based PITR.</li>
+        <li>Met the defined RTO on test restores from cold backup.</li>
+        <li>Kept potential data loss within the RPO via continuous WAL archiving.</li>
+        <li>Validated restored data with row-count and checksum checks.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="database-admin.html">Database Administration</a></li>
+        <li><a href="../linux-server/backup-recovery.html">Linux Backup &amp; Recovery</a></li>
+        <li><a href="../../../work/infrastructure/data-sovereignty-stack.html">Data Sovereignty Stack</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

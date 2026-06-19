@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SDN Controllers | Ryu, ONOS &amp; REST APIs</title>
+  <meta name="description" content="Deploy SDN controllers (Ryu/ONOS) and program flows via Python apps and REST. Centralized forwarding logic across a Mininet fabric.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/sdn-controllers.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "SDN Controllers: Ryu, ONOS, and REST Programmability",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-04-22",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "Ryu, ONOS, OpenFlow 1.3, Python",
+    "articleSection": "Networking"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>SDN Controllers</span></nav>
+    <div class="page-header"><h1>SDN Controllers: Programming Flows with Ryu and ONOS</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Networking</span><span class="lab-time">~6 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Ryu</span><span class="tag">ONOS</span><span class="tag">REST API</span><span class="tag">OpenFlow</span></div>
+    </div>
+
+    <section><p class="lead">I deployed Ryu and ONOS controllers and programmed forwarding behaviour through a Python application and the northbound REST API. Centralizing logic in the controller replaced per-switch configuration with one programmable control point for the whole fabric.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>The controller is the brain of an SDN fabric. This lab writes a Ryu app that reacts to packet-in events and pushes flows, then drives ONOS through REST, demonstrating both event-driven and declarative control models on the topology from the SDN concepts lab.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Ryu and/or ONOS installed; Mininet with OVS switches.</li>
+        <li>Python 3 for the Ryu app; curl for ONOS REST.</li>
+        <li>OpenFlow 1.3 connectivity on port 6653.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Controller pushing flows to switches">
+flowchart TB
+  A[Ryu/ONOS App] --> Ctl[Controller core]
+  Ctl -->|packet-in| A
+  Ctl -->|flow-mod| S1[OVS s1]
+  Ctl -->|flow-mod| S2[OVS s2]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Run a Ryu learning-switch app</h3>
+      <div class="command-block"><div class="command"><code>ryu-manager ryu.app.simple_switch_13 --ofp-tcp-listen-port 6653</code></div></div>
+      <h3>2. Push a flow via the ONOS REST API</h3>
+      <div class="command-block"><div class="command"><code>curl -u onos:rocks -X POST http://127.0.0.1:8181/onos/v1/flows/of:0000000000000001 -d @flow.json</code></div></div>
+      <h3>3. Verify devices and flows are managed</h3>
+      <div class="command-block"><div class="command"><code>curl -s -u onos:rocks http://127.0.0.1:8181/onos/v1/devices | jq '.devices[].id'</code></div></div>
+<pre><code class="language-bash">"of:0000000000000001"
+"of:0000000000000002"</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Run <code>pingall</code> in Mininet and confirm the controller installs flows reactively (Ryu) or that REST-pushed flows appear in the switch (ONOS). Pass criteria: full reachability driven by controller-installed flows, visible in dump-flows.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>App not receiving events:</strong> confirm switches connect on 6653 and speak OpenFlow 1.3.</li>
+        <li><strong>ONOS REST 401:</strong> use the correct credentials and enable required apps (openflow, fwd).</li>
+        <li><strong>Flows not applied:</strong> validate the JSON deviceId and selector/treatment fields.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Centralized forwarding logic for a multi-switch fabric in one controller.</li>
+        <li>Programmed flows via both event-driven Python and declarative REST.</li>
+        <li>Achieved full fabric reachability driven entirely by controller flows.</li>
+        <li>Replaced per-switch config with a single programmable control point.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="openflow-protocol.html">OpenFlow Protocol</a></li>
+        <li><a href="sdn-concepts.html">SDN Concepts</a></li>
+        <li><a href="network-function-virtualization.html">Network Function Virtualization</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

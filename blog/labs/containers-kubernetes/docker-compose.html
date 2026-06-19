@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Docker Compose | Declarative Multi-Service Stacks</title>
+  <meta name="description" content="Define and run multi-service apps with Docker Compose: services, networks, volumes, and healthchecks. Bring up a full stack with one command.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/containers-kubernetes/docker-compose.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Declarative Multi-Service Stacks with Docker Compose",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-02-09",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "Docker Compose v2",
+    "articleSection": "Containers"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Docker Compose</span></nav>
+    <div class="page-header"><h1>Docker Compose: Bring Up a Full Stack with One Command</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Containers</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">compose</span><span class="tag">services</span><span class="tag">healthcheck</span><span class="tag">depends_on</span></div>
+    </div>
+
+    <section><p class="lead">You will describe a web + database + cache stack in a single Compose file and launch it with one command. By the end you will have reproducible, ordered startup with health checks instead of fragile manual docker run sequences.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Define services, networks, and volumes declaratively.</li>
+        <li>Order startup with depends_on and healthchecks.</li>
+        <li>Manage the stack lifecycle with compose commands.</li>
+        <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> Docker Compose v2.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Compose stack of web, db, and cache">
+graph LR
+  C[compose.yaml] -->|docker compose up| Stack
+  subgraph Stack
+    Web[web] --> DB[(db)]
+    Web --> Cache[(redis)]
+  end
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> Docker Compose v2 (<code>docker compose version</code>).</p>
+      <p><strong>Before you begin:</strong> create a project directory for the compose file.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Write the compose file</strong>
+          <p>Declaring services with a healthcheck and depends_on guarantees the DB is ready before the web app starts.</p>
+<pre><code class="language-bash"># compose.yaml
+services:
+  db:
+    image: postgres:16
+    environment: { POSTGRES_PASSWORD: secret }
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+  web:
+    image: nginx:stable
+    depends_on:
+      db: { condition: service_healthy }
+    ports: ["8080:80"]</code></pre>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Bring the stack up</strong>
+          <div class="command-block" data-copy><div class="command"><code>docker compose up -d</code></div><div class="note">Creates the network, volumes, and starts services in dependency order.</div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Check status and logs</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker compose ps</span></div>
+            <div class="terminal-output">NAME      SERVICE  STATUS                 PORTS
+proj-db   db       Up (healthy)
+proj-web  web      Up                     0.0.0.0:8080-&gt;80/tcp</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Compose progress">
+graph LR
+  A[01 Write compose] -->|done| B[02 up -d]
+  B -->|done| C[03 ps + logs]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080 &amp;&amp; docker compose down</code></div></div>
+      <p>You should see <code>200</code>, then a clean teardown. If so, your whole stack is reproducible from one file.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>web starts before db is ready:</strong> use a healthcheck with <code>condition: service_healthy</code>.</li>
+        <li><strong>Old containers conflict:</strong> run <code>docker compose down</code> before re-creating.</li>
+        <li><strong>Env not applied:</strong> confirm a <code>.env</code> file or environment keys are present.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Split prod/dev with compose override files.</li>
+        <li>Promote the stack to Kubernetes in <a href="multi-container-apps.html">Multi-Container Applications</a>.</li>
+        <li>Add the build + deploy to <a href="../devops/cicd-pipeline.html">CI/CD</a>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Launched a 3-service stack with a single command.</li>
+        <li>Guaranteed startup order with healthchecks and depends_on.</li>
+        <li>Made the environment reproducible from one declarative file.</li>
+        <li>Verified the app and a clean teardown.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="container-networking.html">Container Networking</a></li>
+        <li><a href="multi-container-apps.html">Multi-Container Applications</a></li>
+        <li><a href="kubernetes-basics.html">Kubernetes Basics</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

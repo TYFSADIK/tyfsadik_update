@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Milestone 2: Full Environment | Azure Assignment</title>
+  <meta name="description" content="Azure milestone 2: extend the foundation into a multi-tier environment with app/data subnets, NSGs, a load balancer, and monitoring.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/assignments/milestone-2-full-env.html">
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Azure Milestone 2: Full Multi-Tier Environment",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-04-16",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "Azure CLI, Load Balancer, NSG, Monitor",
+    "articleSection": "Assignments"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../index.html">Home</a> &rsaquo; <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo; <span>Milestone 2: Full Environment</span></nav>
+    <div class="page-header"><h1>Azure Milestone 2: Full Multi-Tier Environment</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Cloud &middot; 2025</span><span class="lab-time">~10 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Load Balancer</span><span class="tag">subnets</span><span class="tag">NSG</span><span class="tag">Monitor</span></div>
+    </div>
+
+    <section><p class="lead">You will extend milestone 1 into a complete multi-tier environment: web, app, and data subnets behind a load balancer, secured with NSGs and observed with Azure Monitor. By the end you will have a production-shaped topology.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Add app and data subnets with scoped NSGs.</li>
+        <li>Front the web tier with a load balancer.</li>
+        <li>Connect monitoring and alerts.</li>
+        <li><strong>Time:</strong> ~10 hours &middot; <strong>Difficulty:</strong> Advanced &middot; <strong>Prereqs:</strong> Milestone 1 completed.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Milestone 2 multi-tier topology">
+graph TD
+  LB[Load Balancer] --> Web[Web subnet]
+  Web --> App[App subnet]
+  App --> Data[Data subnet]
+  All[All tiers] --> Mon[Azure Monitor]
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <ul>
+        <li>The VNet/VM from Milestone 1.</li>
+        <li>The Azure CLI and a Log Analytics workspace.</li>
+      </ul>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Add app and data subnets</strong>
+          <div class="command-block" data-copy><div class="command"><code>az network vnet subnet create --vnet-name vnet -n data --address-prefixes 10.0.3.0/24</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Front the web tier with a load balancer</strong>
+          <div class="command-block" data-copy><div class="command"><code>az network lb create -n web-lb --sku Standard --frontend-ip-name fe --backend-pool-name web-pool</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Connect monitoring</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az monitor diagnostic-settings create --name diag --resource $LBID --workspace $WID</span></div>
+            <div class="terminal-output">"provisioningState": "Succeeded"</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Milestone 2 progress">
+graph LR
+  A[01 Subnets] -->|done| B[02 Load balancer]
+  B -->|done| C[03 Monitoring]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>curl -s -o /dev/null -w "%{http_code}\n" http://$(az network public-ip show -n web-lb-ip --query ipAddress -o tsv)</code></div></div>
+      <p>The load balancer front end should return 200 from a backend VM, and tiers should only talk to adjacent tiers. Milestone 2 is complete.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>LB returns no response:</strong> add a health probe and ensure backend pool membership.</li>
+        <li><strong>Tier reachable it should not be:</strong> tighten the subnet NSG rules.</li>
+        <li><strong>No diagnostic data:</strong> confirm the diagnostic setting targets the workspace.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Promote the whole build to the <a href="capstone-cloud.html">Cloud Capstone</a>.</li>
+        <li>Replace VMs with <a href="../labs/containers-kubernetes/aks-deployment.html">AKS</a>.</li>
+        <li>Codify the environment with <a href="../labs/cloud-azure/infrastructure-as-code.html">IaC</a>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Extended to a 3-tier topology with scoped NSGs.</li>
+        <li>Load-balanced the web tier behind a public front end.</li>
+        <li>Connected diagnostics and monitoring.</li>
+        <li>Achieved a production-shaped environment.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Work</h2>
+      <ul>
+        <li><a href="milestone-1-vnet-vm.html">Milestone 1: VNet + VM</a></li>
+        <li><a href="azure-infrastructure.html">Azure Infrastructure</a></li>
+        <li><a href="capstone-cloud.html">Cloud Capstone</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

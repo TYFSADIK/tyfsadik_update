@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mininet SDN Lab | Custom Topologies in Python</title>
+  <meta name="description" content="Build reproducible SDN test topologies with the Mininet Python API. Spun up multi-switch labs on demand for OpenFlow experimentation.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/mininet-lab.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Mininet SDN Lab Environment with the Python API",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-05-20",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "Mininet, Open vSwitch, Python API",
+    "articleSection": "Networking"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>Mininet SDN Lab</span></nav>
+    <div class="page-header"><h1>Mininet SDN Lab Environment with Custom Python Topologies</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Networking</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Mininet</span><span class="tag">Python API</span><span class="tag">OVS</span><span class="tag">topology</span></div>
+    </div>
+
+    <section><p class="lead">I built reproducible SDN test environments with the Mininet Python API, defining custom multi-switch topologies that spin up on demand against a remote controller. Codifying topologies made OpenFlow and controller experiments repeatable and disposable.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Mininet emulates real networks with lightweight namespaces and Open vSwitch, so an entire fabric runs on one host. This lab uses the Python API to script topologies, providing the reproducible substrate for the SDN concepts, OpenFlow, and controller labs.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Mininet with Open vSwitch; Python 3.</li>
+        <li>A remote controller (Ryu/ONOS) for non-trivial topologies.</li>
+        <li>Root privileges (Mininet manipulates namespaces).</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Custom Mininet topology">
+flowchart TB
+  C[Remote Controller] --> S1[s1]
+  C --> S2[s2]
+  S1 --- S2
+  S1 --- H1[h1]
+  S2 --- H2[h2]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Define a topology with the Python API</h3>
+<pre><code class="language-bash">from mininet.topo import Topo
+class TwoSwitch(Topo):
+    def build(self):
+        s1, s2 = self.addSwitch('s1'), self.addSwitch('s2')
+        self.addLink(s1, s2)
+        self.addLink(self.addHost('h1'), s1)
+        self.addLink(self.addHost('h2'), s2)
+topos = {'two': (lambda: TwoSwitch())}</code></pre>
+      <h3>2. Launch against a remote controller [PRIVILEGED]</h3>
+      <div class="command-block"><div class="command"><code>mn --custom topo.py --topo two --controller remote,ip=127.0.0.1</code></div></div>
+      <h3>3. Validate full reachability</h3>
+      <div class="command-block"><div class="command"><code>mininet> pingall</code></div></div>
+<pre><code class="language-bash">*** Results: 0% dropped (2/2 received)</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Run <code>pingall</code> and <code>iperf</code> within the emulated topology to confirm connectivity and link behaviour. Pass criteria: 0% drop with the controller present and a clean teardown via <code>mn -c</code>.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Stale state errors:</strong> always <code>mn -c</code> between runs to clear namespaces and OVS bridges.</li>
+        <li><strong>No connectivity:</strong> a remote controller must be running or hosts have no flows.</li>
+        <li><strong>Link params ignored:</strong> use TCLink to apply bandwidth/delay.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Scripted reproducible multi-switch topologies that deploy in seconds.</li>
+        <li>Provided the disposable substrate for 3 dependent SDN labs.</li>
+        <li>Achieved 0% packet drop in controller-managed reachability tests.</li>
+        <li>Standardized clean teardown to prevent cross-run contamination.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="sdn-concepts.html">SDN Concepts</a></li>
+        <li><a href="openflow-protocol.html">OpenFlow Protocol</a></li>
+        <li><a href="sdn-controllers.html">SDN Controllers</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

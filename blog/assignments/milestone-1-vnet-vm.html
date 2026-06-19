@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Milestone 1: VNet + VM | Azure Assignment</title>
+  <meta name="description" content="Azure milestone 1: deploy a VNet, subnet, and a secured VM with the CLI. Establish the network and compute foundation for later milestones.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/assignments/milestone-1-vnet-vm.html">
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Azure Milestone 1: VNet and VM",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-04-02",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "Azure CLI, VNet, VM",
+    "articleSection": "Assignments"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../index.html">Home</a> &rsaquo; <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo; <span>Milestone 1: VNet + VM</span></nav>
+    <div class="page-header"><h1>Azure Milestone 1: VNet and Secured VM</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Cloud &middot; 2025</span><span class="lab-time">~5 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">VNet</span><span class="tag">subnet</span><span class="tag">VM</span><span class="tag">NSG</span></div>
+    </div>
+
+    <section><p class="lead">You will complete the first milestone of an Azure build: a VNet, a subnet, and a secured VM reachable only from your IP. By the end you will have the network and compute foundation the next milestone extends.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Deploy a VNet and subnet.</li>
+        <li>Launch a key-authenticated VM.</li>
+        <li>Scope inbound access to your IP only.</li>
+        <li><strong>Time:</strong> ~5 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> the Azure CLI configured.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Milestone 1 VNet and VM">
+graph LR
+  You[You] -->|SSH from your IP| VM[VM in subnet]
+  VNet[VNet 10.0.0.0/16] --> Sub[subnet 10.0.1.0/24]
+  Sub --> VM
+  NSG[NSG] --> VM
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <ul>
+        <li>Azure CLI authenticated with a default resource group.</li>
+        <li>An SSH keypair and your current public IP.</li>
+      </ul>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create the VNet and subnet</strong>
+          <div class="command-block" data-copy><div class="command"><code>az network vnet create -n vnet --address-prefixes 10.0.0.0/16 --subnet-name app --subnet-prefixes 10.0.1.0/24</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Deploy the VM with key auth</strong>
+          <div class="command-block" data-copy><div class="command"><code>az vm create -n vm01 --image Ubuntu2204 --vnet-name vnet --subnet app --ssh-key-values ~/.ssh/id_ed25519.pub</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Restrict SSH to your IP</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az vm open-port -n vm01 --port 22 &amp;&amp; az network nsg rule update --nsg-name vm01NSG -n open-port-22 --source-address-prefixes 203.0.113.10/32</span></div>
+            <div class="terminal-output">"sourceAddressPrefix": "203.0.113.10/32"</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Milestone 1 progress">
+graph LR
+  A[01 VNet] -->|done| B[02 VM]
+  B -->|done| C[03 Scope SSH]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>ssh azureuser@$(az vm show -d -n vm01 --query publicIps -o tsv) 'hostname'</code></div></div>
+      <p>You should connect by key and see the hostname. Confirm SSH from any other IP is blocked. Milestone 1 is complete.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>SSH blocked from your IP:</strong> your public IP changed; update the NSG source prefix.</li>
+        <li><strong>VM has no public IP:</strong> add one or use a bastion/jump host.</li>
+        <li><strong>Password prompt:</strong> deploy with the SSH key, not a password.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Continue to <a href="milestone-2-full-env.html">Milestone 2: Full Environment</a>.</li>
+        <li>Bootstrap with cloud-init (see <a href="../labs/cloud-azure/azure-vm-config.html">Azure VM Configuration</a>).</li>
+        <li>Codify with <a href="../labs/cloud-azure/infrastructure-as-code.html">IaC</a>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Deployed a VNet, subnet, and a working VM.</li>
+        <li>Enforced key-only SSH access.</li>
+        <li>Restricted inbound SSH to a single IP.</li>
+        <li>Established the foundation for milestone 2.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Work</h2>
+      <ul>
+        <li><a href="milestone-2-full-env.html">Milestone 2: Full Environment</a></li>
+        <li><a href="../labs/cloud-azure/vnet-deployment.html">Virtual Network Deployment</a></li>
+        <li><a href="azure-infrastructure.html">Azure Infrastructure</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

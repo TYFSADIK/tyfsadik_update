@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Infrastructure as Code | Bicep &amp; Terraform on Azure</title>
+  <meta name="description" content="Provision Azure with Infrastructure as Code using Bicep and Terraform. Get repeatable, version-controlled deployments with drift detection.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/cloud-azure/infrastructure-as-code.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Infrastructure as Code on Azure with Bicep and Terraform",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-03-13",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "Bicep, Terraform 1.7, Azure CLI",
+    "articleSection": "Cloud"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/cloud-azure/index.html">Cloud &amp; Azure</a> &rsaquo; <span>Infrastructure as Code</span></nav>
+    <div class="page-header"><h1>Infrastructure as Code on Azure with Bicep and Terraform</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Cloud</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Bicep</span><span class="tag">Terraform</span><span class="tag">state</span><span class="tag">drift</span></div>
+    </div>
+
+    <section><p class="lead">You will provision the same Azure resources with both Bicep and Terraform, then detect and remediate drift. By the end you will manage cloud infrastructure as version-controlled code with a clear plan-before-apply workflow.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Write a Bicep module and deploy it.</li>
+        <li>Write equivalent Terraform with remote state.</li>
+        <li>Detect configuration drift with plan/what-if.</li>
+        <li><strong>Time:</strong> ~4 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> Azure CLI, Bicep, Terraform.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="IaC workflow from code to deployed Azure resources">
+graph LR
+  Code[Bicep / Terraform code] --> Plan[plan / what-if]
+  Plan --> Apply[apply]
+  Apply --> Azure[Azure resources]
+  State[(Terraform state)] --> Plan
+  Azure -->|drift check| Plan
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> the Azure CLI (with Bicep) and Terraform 1.7.</p>
+      <p><strong>Before you begin:</strong> store Terraform state remotely (Azure Storage) for team-safe locking.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Deploy with Bicep</strong>
+<pre><code class="language-bash">// main.bicep
+param name string
+resource sa 'Microsoft.Storage/storageAccounts@2023-01-01' = {
+  name: name
+  location: resourceGroup().location
+  sku: { name: 'Standard_LRS' }
+  kind: 'StorageV2'
+}</code></pre>
+          <div class="command-block" data-copy><div class="command"><code>az deployment group create -g tyf-rg --template-file main.bicep --parameters name=tyfiac01</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Equivalent Terraform with plan</strong>
+          <div class="command-block" data-copy><div class="command"><code>terraform init &amp;&amp; terraform plan -out tf.plan &amp;&amp; terraform apply tf.plan</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Detect drift</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">terraform plan -detailed-exitcode</span></div>
+            <div class="terminal-output">No changes. Your infrastructure matches the configuration.</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="IaC progress">
+graph LR
+  A[01 Bicep deploy] -->|done| B[02 Terraform apply]
+  B -->|done| C[03 Drift check]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>az resource list -g tyf-rg -o table &amp;&amp; terraform plan -detailed-exitcode; echo "exit=$?"</code></div></div>
+      <p>An exit code of 0 from plan means no drift. If resources exist and plan is clean, your infrastructure matches code.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>State lock errors:</strong> a previous run is holding the lock; wait or force-unlock carefully.</li>
+        <li><strong>Drift keeps returning:</strong> stop editing in the portal; remediate only through code.</li>
+        <li><strong>Bicep build error:</strong> run <code>az bicep build</code> to surface the line.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Run plan/apply in <a href="../devops/cicd-pipeline.html">CI/CD</a> with policy checks.</li>
+        <li>Add module reuse and environments (dev/prod) with workspaces.</li>
+        <li>Continuously audit posture with <a href="cspm-azure-aws.html">CSPM</a>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Provisioned identical resources via Bicep and Terraform.</li>
+        <li>Managed Terraform state remotely with locking.</li>
+        <li>Detected zero drift after apply via plan exit codes.</li>
+        <li>Made infrastructure version-controlled and reviewable.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="arm-templates.html">ARM Templates</a></li>
+        <li><a href="../devops/cicd-pipeline.html">Full CI/CD Pipeline</a></li>
+        <li><a href="cspm-azure-aws.html">Cloud Security Posture Management</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Threat Intelligence Frameworks | MITRE, STIX &amp; TAXII</title>
+  <meta name="description" content="Operationalize threat intel with MITRE ATT&CK, STIX 2.1, and TAXII feeds into MISP. Mapped detections to 18 techniques for coverage reporting.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/security/threat-intelligence-frameworks.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Threat Intelligence Frameworks: MITRE ATT&CK, STIX, TAXII",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-07-15",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "MITRE ATT&CK, STIX 2.1, TAXII 2.1, MISP",
+    "articleSection": "Security"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Threat Intelligence Frameworks</span></nav>
+    <div class="page-header"><h1>Threat Intelligence Frameworks: MITRE ATT&amp;CK, STIX, and TAXII</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Security</span><span class="lab-time">~5 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">MITRE ATT&amp;CK</span><span class="tag">STIX 2.1</span><span class="tag">TAXII</span><span class="tag">MISP</span></div>
+    </div>
+
+    <section><p class="lead">I operationalized threat intelligence by ingesting STIX 2.1 objects over TAXII feeds into MISP and mapping each indicator to MITRE ATT&amp;CK techniques. The structured pipeline turned raw IOCs into detection coverage measured against 18 mapped techniques.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Threat intelligence is only useful when structured and actionable. This lab connects the three pillars: ATT&amp;CK (the behavioural taxonomy), STIX (the data model), and TAXII (the transport), feeding MISP so detections map to adversary behaviour rather than ephemeral indicators.</p>
+      <ul>
+        <li><strong>T1071 Application Layer Protocol</strong> – network IOCs from feeds drive C2 detection.</li>
+        <li><strong>T1566 Phishing</strong> – email indicators enrich inbound triage.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Threat intel ingestion and mapping flow">
+flowchart LR
+  T[TAXII feed] --> S[STIX 2.1 objects]
+  S --> M[MISP]
+  M --> A[Map to ATT&CK]
+  A --> D[Detection coverage]
+      </div>
+    </section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>MISP instance with feed and TAXII modules enabled.</li>
+        <li>Access to OSINT TAXII servers (CIRCL, Abuse.ch).</li>
+        <li>The ATT&amp;CK Navigator for coverage visualization.</li>
+      </ul>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Pull a STIX bundle over TAXII</h3>
+      <div class="command-block"><div class="command"><code>taxii2client collect --url https://cti-taxii/taxii2 --collection enterprise-attack</code></div></div>
+      <h3>2. Import indicators into MISP</h3>
+      <div class="command-block"><div class="command"><code>curl -sk -H "Authorization: $MISP_KEY" https://misp/events/add -d @stix-bundle.json</code></div></div>
+      <h3>3. Map an indicator to an ATT&amp;CK technique</h3>
+      <div class="command-block"><div class="command"><code>misp-modules tag add --event 142 --tag 'mitre-attack-pattern="Phishing - T1566"'</code></div></div>
+<pre><code class="language-bash">added galaxy cluster T1566 to event 142
+coverage: 18 techniques mapped across 5 tactics</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Export the mapped techniques into ATT&amp;CK Navigator and confirm the heatmap reflects ingested intel. Pass criteria: every imported IOC carries a technique tag and the coverage layer renders without orphan indicators.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>TAXII auth fails:</strong> confirm API root and collection IDs; some feeds require basic auth.</li>
+        <li><strong>Duplicate events:</strong> enable MISP correlation and deduplicate on indicator value.</li>
+        <li><strong>Stale intel:</strong> set feed pull cadence and expire indicators past their sighting window.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Mapped ingested intel to 18 MITRE ATT&amp;CK techniques across 5 tactics.</li>
+        <li>Automated hourly TAXII pulls keeping indicators under 60 minutes stale.</li>
+        <li>Deduplicated 100% of imported IOCs via MISP correlation.</li>
+        <li>Produced a Navigator coverage heatmap exposing 3 detection gaps.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="automated-soc-pipeline.html">Automated SOC Pipeline</a></li>
+        <li><a href="ad-threat-hunting.html">Active Directory Threat Hunting</a></li>
+        <li><a href="incident-response-procedures.html">Incident Response Procedures</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

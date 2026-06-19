@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pull Requests &amp; Code Review | gh CLI Workflow</title>
+  <meta name="description" content="Open, review, and merge pull requests with the GitHub gh CLI. Build a review workflow with required checks that protects main.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/devops/pull-requests.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Pull Requests and Code Review with the gh CLI",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-02-24",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "Git, GitHub CLI (gh)",
+    "articleSection": "DevOps"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/devops/index.html">DevOps</a> &rsaquo; <span>Pull Requests &amp; Code Review</span></nav>
+    <div class="page-header"><h1>Pull Requests and Code Review with the GitHub CLI</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">DevOps</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">gh CLI</span><span class="tag">PR</span><span class="tag">reviews</span><span class="tag">branch protection</span></div>
+    </div>
+
+    <section><p class="lead">You will open a pull request from the command line, run reviews, and merge only after checks pass. By the end you will have a review workflow and branch protection that keeps unreviewed code out of main.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Create and manage PRs with the gh CLI.</li>
+        <li>Request reviews and respond to feedback.</li>
+        <li>Require status checks and reviews before merge.</li>
+        <li><strong>Time:</strong> ~2 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> a GitHub repo and the gh CLI.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Pull request review and merge gate">
+graph LR
+  B[feature branch] -->|gh pr create| PR[Pull Request]
+  PR --> CI[Required checks]
+  PR --> Rev[Review approval]
+  CI -->|pass| Merge{Merge allowed}
+  Rev -->|approved| Merge
+  Merge --> Main[main]
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> the gh CLI authenticated (<code>gh auth login</code>) and a repo.</p>
+      <p><strong>Before you begin:</strong> enable branch protection on main in repo settings.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Open a pull request</strong>
+          <div class="command-block" data-copy><div class="command"><code>gh pr create --base main --head feature/api --title "Add API" --body "Implements endpoint"</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Review and check status</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">gh pr checks &amp;&amp; gh pr review --approve</span></div>
+            <div class="terminal-output">All checks were successful
+Approved pull request #42</div>
+          </div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Merge after checks pass</strong>
+          <div class="command-block" data-copy><div class="command"><code>gh pr merge --squash --delete-branch</code></div></div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="PR workflow progress">
+graph LR
+  A[01 Open PR] -->|done| B[02 Review + checks]
+  B -->|done| C[03 Merge]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>gh pr list --state merged --limit 1 &amp;&amp; git log main --oneline -1</code></div></div>
+      <p>You should see the merged PR and the squashed commit on main. With protection on, an unreviewed or failing PR cannot merge.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Merge button blocked:</strong> branch protection requires checks/reviews; satisfy them first.</li>
+        <li><strong>gh not authenticated:</strong> run <code>gh auth login</code> and select the right account.</li>
+        <li><strong>Stale branch after merge:</strong> use <code>--delete-branch</code> to keep the repo tidy.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Add automated checks in <a href="github-actions.html">GitHub Actions</a>.</li>
+        <li>Require CODEOWNERS review for sensitive paths.</li>
+        <li>Auto-merge once checks pass with <code>gh pr merge --auto</code>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Opened and merged a PR entirely from the CLI.</li>
+        <li>Enforced review approval before merge.</li>
+        <li>Required passing checks via branch protection.</li>
+        <li>Kept main clean with squash + branch deletion.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="merge-conflicts.html">Merge Conflict Resolution</a></li>
+        <li><a href="github-actions.html">GitHub Actions Basics</a></li>
+        <li><a href="branching-strategies.html">Branching &amp; Merging</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

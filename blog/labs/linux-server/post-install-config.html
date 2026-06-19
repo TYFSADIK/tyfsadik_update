@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linux Post-Install Configuration | Hardening Basics</title>
+  <meta name="description" content="Configure a fresh Linux server: updates, hostname, timezone, sudo user, and SSH basics. Turn a raw install into a secure baseline in 30 minutes.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-server/post-install-config.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Linux Post-Installation Configuration",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-01-08",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Beginner",
+    "dependencies": "Ubuntu Server 22.04, systemd, timedatectl",
+    "articleSection": "Linux"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Post-Installation Configuration</span></nav>
+    <div class="page-header"><h1>Linux Post-Installation Configuration and Secure Baseline</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Linux</span><span class="lab-time">~1 hour</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">apt</span><span class="tag">timedatectl</span><span class="tag">sudo</span><span class="tag">unattended-upgrades</span></div>
+    </div>
+
+    <section><p class="lead">You will take a raw Linux install and turn it into a consistent, patched, secure baseline every other server inherits. By the end the host is fully updated, time-synced, and managed through a non-root sudo account.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Patch the system and enable automatic security updates.</li>
+        <li>Set hostname, timezone, and time synchronization.</li>
+        <li>Create a non-root administrative user.</li>
+        <li><strong>Time:</strong> ~1 hour &middot; <strong>Difficulty:</strong> Beginner &middot; <strong>Prereqs:</strong> a fresh VM with sudo access.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Baseline configuration components applied to a fresh server">
+graph TD
+  Fresh[Fresh Install] --> U[Patch + auto-updates]
+  Fresh --> T[Hostname + timezone + NTP]
+  Fresh --> A[Non-root sudo user]
+  U --> Base[Secure Baseline]
+  T --> Base
+  A --> Base
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> the VM from the <a href="install-linux-vm.html">install lab</a> with internet access and sudo.</p>
+      <p><strong>Before you begin:</strong> confirm time and date are roughly correct so package signatures validate.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Update the package index and upgrade</strong>
+          <p>Patching first closes known vulnerabilities before the host does anything else.</p>
+          <div class="command-block" data-copy><div class="command"><code>sudo apt update &amp;&amp; sudo apt full-upgrade -y</code></div><div class="note">[ROOT REQUIRED] Refreshes the package list and applies all updates.</div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Enable automatic security updates</strong>
+          <p>Unattended-upgrades applies security patches without manual intervention, shrinking your exposure window.</p>
+          <div class="command-block" data-copy><div class="command"><code>sudo apt install -y unattended-upgrades &amp;&amp; sudo dpkg-reconfigure -plow unattended-upgrades</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Set hostname, timezone, and NTP</strong>
+          <p>Consistent identity and accurate time are prerequisites for correlating logs across hosts.</p>
+          <div class="command-block" data-copy><div class="command"><code>sudo hostnamectl set-hostname srv01 &amp;&amp; sudo timedatectl set-timezone America/Toronto &amp;&amp; sudo timedatectl set-ntp true</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Create a non-root sudo user</strong>
+          <p>Daily work should never use root directly; a sudo user gives auditable, revocable elevation.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">sudo adduser taki &amp;&amp; sudo usermod -aG sudo taki</span></div>
+            <div class="terminal-output">Adding user `taki' ...
+Adding user `taki' to group `sudo' ...</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Baseline configuration progress">
+graph LR
+  S1[01 Patch] -->|done| S2[02 Auto-updates]
+  S2 -->|done| S3[03 Time/host]
+  S3 -->|done| S4[04 Sudo user]
+  S4 -->|next| V[Verify]
+  style S1 fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style S2 fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style S3 fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style S4 fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style V fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <p>Run this final check:</p>
+      <div class="command-block" data-copy><div class="command"><code>timedatectl status &amp;&amp; id taki &amp;&amp; systemctl is-enabled unattended-upgrades</code></div></div>
+      <p>You should see NTP active, the user in the sudo group, and auto-updates enabled. If all checks pass, your baseline is ready.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>apt update fails with signature errors:</strong> the clock is wrong; set time with <code>sudo timedatectl set-ntp true</code> and retry.</li>
+        <li><strong>sudo: user not in sudoers:</strong> re-run <code>usermod -aG sudo taki</code> and start a fresh login.</li>
+        <li><strong>Held-back packages:</strong> run <code>sudo apt full-upgrade</code> rather than plain upgrade.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Harden remote access with <a href="../security/ssh-hardening.html">SSH Hardening</a>.</li>
+        <li>Centralize logs in <a href="log-management.html">Log Management &amp; Analysis</a>.</li>
+        <li>Automate this baseline with Ansible across many hosts.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Brought a fresh host to a fully patched state in one pass.</li>
+        <li>Enabled automatic security updates, reducing the patch gap to under 24 hours.</li>
+        <li>Replaced direct root use with an auditable sudo account.</li>
+        <li>Standardized hostname, timezone, and NTP for log correlation.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="install-linux-vm.html">Installing Linux VM</a></li>
+        <li><a href="package-management.html">Package Management</a></li>
+        <li><a href="../security/ssh-hardening.html">SSH Hardening</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

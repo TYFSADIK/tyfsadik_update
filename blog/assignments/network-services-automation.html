@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Services Automation | Assignment</title>
+  <meta name="description" content="Automate DNS, DHCP, and device config with Python and Ansible. Deploy and validate network services from code with idempotent runs.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/assignments/network-services-automation.html">
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Network Services Automation with Ansible",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-05-02",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "Ansible, Python, BIND9, ISC DHCP",
+    "articleSection": "Assignments"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../index.html">Home</a> &rsaquo; <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo; <span>Network Services Automation</span></nav>
+    <div class="page-header"><h1>Network Services Automation with Ansible</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Networking &middot; 2025</span><span class="lab-time">~12 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Ansible</span><span class="tag">DNS</span><span class="tag">DHCP</span><span class="tag">idempotent</span></div>
+    </div>
+
+    <section><p class="lead">You will deploy and manage DNS and DHCP from code with Ansible, generating zone and scope files from templates. By the end network services are reproducible, version-controlled, and validated on every run.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Template DNS zones and DHCP scopes from variables.</li>
+        <li>Deploy services idempotently with Ansible.</li>
+        <li>Validate configuration before reloading.</li>
+        <li><strong>Time:</strong> ~12 hours &middot; <strong>Difficulty:</strong> Advanced &middot; <strong>Prereqs:</strong> the DNS, DHCP, and automation labs.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Ansible deploying network services from templates">
+graph LR
+  Vars[group_vars] --> Tpl[Jinja2 templates]
+  Tpl --> Ans[Ansible]
+  Ans -->|deploy + validate| DNS[BIND9]
+  Ans -->|deploy + validate| DHCP[ISC DHCP]
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <ul>
+        <li>Ansible control node with SSH to service hosts.</li>
+        <li>BIND9 and ISC DHCP target hosts.</li>
+        <li>Variables describing zones, records, and scopes.</li>
+      </ul>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Template the zone and scope files</strong>
+          <div class="command-block" data-copy><div class="command"><code>ansible-playbook -i inventory.ini dns-dhcp.yml --check --diff</code></div><div class="note">Previews the rendered config before applying.</div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Validate before reload</strong>
+          <p>The playbook runs <code>named-checkzone</code> and <code>dhcpd -t</code> before reloading, so a bad template never takes a service down.</p>
+          <div class="command-block" data-copy><div class="command"><code>ansible-playbook -i inventory.ini dns-dhcp.yml</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Confirm idempotency</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">ansible-playbook -i inventory.ini dns-dhcp.yml</span></div>
+            <div class="terminal-output">PLAY RECAP  ns1: ok=9 changed=0   dhcp1: ok=7 changed=0</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Network automation progress">
+graph LR
+  A[01 Template] -->|done| B[02 Validate + deploy]
+  B -->|done| C[03 Idempotent]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>dig @ns1 web.lab +short &amp;&amp; ansible-playbook -i inventory.ini dns-dhcp.yml --check</code></div></div>
+      <p>DNS should resolve and a check run should report no changes. If so, your network services are fully codified and idempotent.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>changed=1 every run:</strong> templates produce non-deterministic output; sort and normalize.</li>
+        <li><strong>Service down after deploy:</strong> ensure validation tasks gate the reload handler.</li>
+        <li><strong>Stale zone:</strong> bump the SOA serial in the template on each change.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Add device config automation for switches/routers.</li>
+        <li>Run from <a href="../labs/devops/cicd-pipeline.html">CI/CD</a> with approvals.</li>
+        <li>Combine with <a href="complete-network-implementation.html">Complete Network Implementation</a>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Codified DNS and DHCP from templated variables.</li>
+        <li>Gated reloads behind config validation.</li>
+        <li>Achieved idempotent runs (<code>changed=0</code> on repeat).</li>
+        <li>Made network services version-controlled and reproducible.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Work</h2>
+      <ul>
+        <li><a href="automation-project.html">Python + Ansible Automation</a></li>
+        <li><a href="../labs/networking/dns-server-config.html">DNS Server Configuration</a></li>
+        <li><a href="complete-network-implementation.html">Complete Network Implementation</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

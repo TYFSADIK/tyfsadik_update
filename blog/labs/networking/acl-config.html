@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Access Control Lists | Cisco ACLs &amp; Filtering</title>
+  <meta name="description" content="Configure standard and extended ACLs for traffic filtering on Cisco IOS. Enforced least-privilege flow control with order-aware rule design.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/acl-config.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Access Control Lists for Traffic Filtering",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-05-06",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "Cisco IOS, standard/extended ACLs",
+    "articleSection": "Networking"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>Access Control Lists</span></nav>
+    <div class="page-header"><h1>Access Control Lists: Standard and Extended Traffic Filtering</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Networking</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">ACL</span><span class="tag">Cisco IOS</span><span class="tag">extended ACL</span><span class="tag">filtering</span></div>
+    </div>
+
+    <section><p class="lead">I configured standard and extended ACLs on Cisco IOS to enforce least-privilege traffic flow between segments, ordering rules so specific permits precede the implicit deny. Correct sequencing turned ACLs into a precise filter rather than an accidental black hole.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>ACLs filter by matching packets top-down against ordered entries with an implicit deny at the end. This lab uses standard ACLs (source only) and extended ACLs (source, destination, protocol, port) to enforce segment policy, mirroring host firewall intent at the network layer.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Cisco router/L3 switch (or emulator) with multiple subnets.</li>
+        <li>Defined allow/deny policy between segments.</li>
+        <li>Understanding of wildcard masks.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="ACL top-down evaluation">
+flowchart LR
+  P[Packet] --> E1{Permit 1?}
+  E1 -->|yes| A[Forward]
+  E1 -->|no| E2{Permit 2?}
+  E2 -->|yes| A
+  E2 -->|no| D[Implicit deny]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Define an extended ACL</h3>
+      <div class="command-block"><div class="command"><code>ip access-list extended SEG-POLICY ; permit tcp 192.168.20.0 0.0.0.255 host 192.168.30.10 eq 443 ; deny ip any any log</code></div></div>
+      <h3>2. Apply it to an interface direction</h3>
+      <div class="command-block"><div class="command"><code>interface Gi0/1 ; ip access-group SEG-POLICY in</code></div></div>
+      <h3>3. Verify hit counts</h3>
+      <div class="command-block"><div class="command"><code>show access-lists SEG-POLICY</code></div></div>
+<pre><code class="language-bash">10 permit tcp 192.168.20.0 0.0.0.255 host 192.168.30.10 eq 443 (142 matches)
+20 deny ip any any log (37 matches)</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Send permitted and denied flows and confirm hit counters increment on the expected entries, with denied traffic logged. Pass criteria: only the explicitly permitted flow passes and the implicit deny catches everything else.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Everything blocked:</strong> a too-early deny or missing permit before the implicit deny; reorder entries.</li>
+        <li><strong>Wrong direction:</strong> apply inbound vs outbound on the correct interface relative to traffic.</li>
+        <li><strong>Wildcard mask errors:</strong> remember masks are inverse of subnet masks.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Enforced least-privilege flow with a single permitted service path.</li>
+        <li>Logged 100% of denied traffic for audit via the deny-log entry.</li>
+        <li>Validated rule ordering through per-entry hit counters.</li>
+        <li>Aligned network-layer filtering with host firewall policy.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="vlan-configuration.html">VLAN Configuration</a></li>
+        <li><a href="../security/firewall-configuration.html">Firewall Configuration</a></li>
+        <li><a href="../security/network-security-groups.html">Network Security Groups</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

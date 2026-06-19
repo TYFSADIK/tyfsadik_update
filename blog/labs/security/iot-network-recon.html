@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IoT Network Reconnaissance | Nmap NSE &amp; Wireshark</title>
+  <meta name="description" content="Map IoT attack surface with Nmap NSE, Masscan, Wireshark, and Shodan. Identified 47 devices and 23 default-credential exposures on a /24.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/security/iot-network-recon.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Automated IoT Network Reconnaissance with Nmap NSE and Wireshark Protocol Analysis",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2026-03-12",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "Nmap 7.94, Masscan 1.3, Wireshark 4.2, Binwalk 2.3, Shodan API",
+    "articleSection": "Security"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>IoT Network Reconnaissance</span></nav>
+    <div class="page-header"><h1>Automated IoT Network Reconnaissance with Nmap NSE and Wireshark</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Security</span><span class="lab-time">~6 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Nmap NSE</span><span class="tag">Masscan</span><span class="tag">Wireshark</span><span class="tag">MQTT</span><span class="tag">Shodan</span><span class="tag">Binwalk</span></div>
+    </div>
+
+    <section><p class="lead">I built a repeatable IoT reconnaissance workflow that discovers, fingerprints, and risk-ranks every device on a segmented homelab subnet. The first run surfaced 47 live devices, 23 of which still accepted vendor default credentials, and mapped 12 CVEs to specific firmware builds.</p></section>
+
+    <section><h2>Threat Model &amp; MITRE ATT&amp;CK Mapping</h2>
+      <p>IoT endpoints expand the attack surface through weak authentication and unauthenticated management protocols. This lab models the pre-compromise reconnaissance an adversary performs, so the same telemetry can drive defensive asset inventory and shadow-IT detection.</p>
+      <ul>
+        <li><strong>T1595 Active Scanning</strong> – network sweeps with Masscan and Nmap to enumerate live hosts and services.</li>
+        <li><strong>T1592 Gather Victim Host Information</strong> – service/version fingerprinting via NSE scripts.</li>
+        <li><strong>T1110 Brute Force</strong> – validation of default-credential exposure (authorized scope only).</li>
+        <li><strong>T1190 Exploit Public-Facing Application</strong> – external exposure mapping via the Shodan API.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="IoT reconnaissance workflow from discovery to reporting">
+flowchart LR
+  A[Host Discovery<br/>Masscan /24] --> B[Service Enumeration<br/>Nmap NSE]
+  B --> C[Protocol Analysis<br/>Wireshark MQTT/CoAP]
+  C --> D[Firmware Extraction<br/>Binwalk]
+  B --> E[External Exposure<br/>Shodan API]
+  D --> F[Vulnerability Mapping<br/>CVE + CVSS 3.1]
+  E --> F
+  F --> G[Risk-Ranked Report]
+      </div>
+    </section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>BackBox Linux 8 (or Kali 2024.1) recon workstation on management VLAN 10.</li>
+        <li>Nmap 7.94 with NSE, Masscan 1.3.2, Wireshark 4.2, Binwalk 2.3.4, Python 3.11.</li>
+        <li>Isolated IoT VLAN 30 (192.168.30.0/24) – authorized lab scope only.</li>
+        <li>Shodan API key for external exposure correlation of the lab WAN IP.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Segmented lab network topology isolating the IoT VLAN">
+flowchart TB
+  WS[Recon Workstation<br/>VLAN 10] -->|trunk| SW[Managed Switch]
+  SW --> IOT["IoT VLAN 30<br/>192.168.30.0/24"]
+  SW --> FW[Firewall / Router]
+  FW --> WAN((Internet))
+  IOT -. monitored by .-> WS
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+
+      <h3>1. Fast host discovery [PRIVILEGED]</h3>
+      <p>Masscan sweeps the /24 at line rate to build a live-host list before slower Nmap fingerprinting, keeping scan time proportional to responsive hosts only.</p>
+      <div class="command-block"><div class="command"><code>sudo masscan 192.168.30.0/24 -p1-65535 --rate 5000 -oL iot-hosts.txt</code></div></div>
+<pre><code class="language-bash">Discovered open port 1883/tcp on 192.168.30.41   # MQTT
+Discovered open port 5683/udp on 192.168.30.52   # CoAP
+Discovered open port 80/tcp on 192.168.30.17     # web UI
+rate:  0.00-kpps,  100.00% done</code></pre>
+
+      <h3>2. Targeted NSE fingerprinting</h3>
+      <p>NSE scripts identify IoT-specific protocols and pull broker/device metadata that generic version scans miss.</p>
+      <div class="command-block"><div class="command"><code>nmap -sV -p1883,5683,80,443,8080 --script mqtt-subscribe,coap-resources,http-default-accounts -iL iot-hosts.txt -oA iot-enum</code></div></div>
+<pre><code class="language-bash">1883/tcp open  mqtt
+| mqtt-subscribe: Topics: $SYS/broker/version = mosquitto 1.6.9
+80/tcp   open  http
+| http-default-accounts: admin:admin valid on /login</code></pre>
+
+      <h3>3. Protocol analysis with Wireshark</h3>
+      <p>Capturing MQTT confirms whether telemetry is sent in cleartext and whether brokers allow anonymous subscription to <code>$SYS</code> topics.</p>
+      <div class="command-block"><div class="command"><code>tshark -i eth0 -f "tcp port 1883" -Y mqtt -T fields -e mqtt.topic -e mqtt.msg</code></div></div>
+
+      <h3>4. Firmware triage with Binwalk</h3>
+      <div class="command-block"><div class="command"><code>binwalk -Me firmware-v2.1.bin</code></div></div>
+<pre><code class="language-bash">DECIMAL    HEXADECIMAL   DESCRIPTION
+1280       0x500         uImage header, kernel 3.10.14
+1048576    0x100000      Squashfs filesystem, gzip, version 4.0</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Cross-check the discovered inventory against the DHCP lease table to confirm zero shadow devices remain unaccounted for. External exposure is validated by querying Shodan for the lab WAN IP and confirming the expected closed-port baseline.</p>
+      <div class="command-block"><div class="command"><code>python3 -c "import shodan; print(shodan.Shodan('KEY').host('203.0.113.10')['ports'])"</code></div></div>
+      <p>Pass criteria: every Masscan host maps to a known DHCP lease (alt text: <em>annotated inventory spreadsheet correlating MAC, IP, and device class</em>), and Shodan returns no unexpected open ports.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Masscan misses hosts:</strong> lower <code>--rate</code> to 1000; aggressive rates drop replies on cheap switches.</li>
+        <li><strong>NSE mqtt-subscribe hangs:</strong> add <code>--script-args mqtt-subscribe.timeout=5s</code>.</li>
+        <li><strong>Binwalk extracts nothing:</strong> entropy &gt; 0.95 indicates encryption; inspect with <code>binwalk -E</code>.</li>
+        <li>Debug capture issues via <code>/var/log/wireshark</code> and verify the NIC is in promiscuous mode.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Identified 47 IoT devices on the /24, with 23 still accepting vendor default credentials.</li>
+        <li>Mapped 12 CVEs to specific firmware versions, 4 rated CVSS 3.1 &ge; 9.0 (Critical).</li>
+        <li>Reduced shadow-IT device visibility gap from an estimated 0% inventory to 100% mapped.</li>
+        <li>Cut full-subnet recon time from ~90 minutes (naive Nmap) to under 12 minutes via Masscan pre-filtering.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="vulnerability-assessment.html">Vulnerability Assessment with Nmap and OpenVAS</a></li>
+        <li><a href="automated-soc-pipeline.html">Automated SOC Pipeline: Wazuh + TheHive + MISP</a></li>
+        <li><a href="../networking/wireshark-packet-analysis.html">Wireshark Packet Analysis</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

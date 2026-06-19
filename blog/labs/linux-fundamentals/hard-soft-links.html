@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linux Links | Hard vs Symbolic &amp; inodes</title>
+  <meta name="description" content="Understand hard and symbolic links via inodes with ln and ls -i. Used links for atomic config swaps and shared storage references.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-fundamentals/hard-soft-links.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Hard and Symbolic Links in Linux",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-01-16",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "GNU coreutils, ln",
+    "articleSection": "Linux"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>Working with Links</span></nav>
+    <div class="page-header"><h1>Working with Hard and Symbolic Links via inodes</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">ln</span><span class="tag">inode</span><span class="tag">symlink</span><span class="tag">ls -i</span></div>
+    </div>
+
+    <section><p class="lead">I worked through hard versus symbolic links by inspecting inodes and link counts with <code>ls -i</code> and <code>stat</code>. Symlinks enabled atomic configuration swaps (the current-release pointer pattern) while hard links shared data without duplication.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Links are how Linux references the same data from multiple paths. This lab clarifies that hard links share an inode (same data, multiple names) while symlinks are pointers to a path, then applies symlinks for zero-downtime config and release switching.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Linux shell with coreutils.</li>
+        <li>A filesystem supporting hard links (same filesystem only).</li>
+        <li>Sample files to link.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Hard link vs symlink referencing data">
+flowchart LR
+  N1[name A] --> I[(inode + data)]
+  N2[hard link B] --> I
+  S[symlink] -->|path pointer| N1
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Compare inodes of a hard link</h3>
+      <div class="command-block"><div class="command"><code>ln file.txt hard.txt &amp;&amp; ls -li file.txt hard.txt</code></div></div>
+      <h3>2. Create a symlink and inspect it</h3>
+      <div class="command-block"><div class="command"><code>ln -s /srv/releases/v2 /srv/current &amp;&amp; stat /srv/current</code></div></div>
+      <h3>3. Atomic release switch</h3>
+      <div class="command-block"><div class="command"><code>ln -sfn /srv/releases/v3 /srv/current</code></div></div>
+<pre><code class="language-bash">524301 -rw-r--r-- 2 taki taki file.txt
+524301 -rw-r--r-- 2 taki taki hard.txt   # same inode, count 2</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Delete the original name of a hard-linked file and confirm the data survives via the other name; repoint a symlink and confirm consumers see the new target atomically. Pass criteria: hard links share an inode and survive original deletion; symlink swap is instantaneous.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Cross-filesystem hard link fails:</strong> hard links cannot span filesystems; use a symlink.</li>
+        <li><strong>Dangling symlink:</strong> the target moved or was deleted; recreate or repoint.</li>
+        <li><strong>Non-atomic swap:</strong> use <code>ln -sfn</code> to replace a symlink in one step.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Demonstrated shared-inode behaviour of hard links with link counts.</li>
+        <li>Implemented zero-downtime release switching with atomic symlink swaps.</li>
+        <li>Distinguished symlink path-pointers from inode-sharing hard links.</li>
+        <li>Avoided data duplication for shared references via hard links.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="file-management.html">File Management</a></li>
+        <li><a href="mounting-filesystems.html">Mounting Filesystems</a></li>
+        <li><a href="advanced-file-management.html">Advanced File Management</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wireshark Packet Analysis | Filters &amp; tshark</title>
+  <meta name="description" content="Capture and analyze traffic with Wireshark display filters and tshark. Isolated protocol anomalies and reconstructed sessions from pcap.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/wireshark-packet-analysis.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Wireshark Packet Analysis and tshark Filtering",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-04-01",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "Wireshark 4.2, tshark, pcap",
+    "articleSection": "Networking"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>Wireshark Packet Analysis</span></nav>
+    <div class="page-header"><h1>Wireshark Packet Analysis with Display Filters and tshark</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Networking</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Wireshark</span><span class="tag">tshark</span><span class="tag">display filters</span><span class="tag">pcap</span></div>
+    </div>
+
+    <section><p class="lead">I captured live traffic and analyzed it with Wireshark display filters and headless tshark, isolating protocol anomalies and reconstructing full TCP sessions. Precise filtering turned a noisy multi-gigabyte capture into the handful of packets that mattered.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Packet analysis is the ground truth of networking and security. This lab builds fluency in capture filters (BPF) versus display filters and in following streams, the same skills used in the IoT recon and SOC labs.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Wireshark 4.2 and tshark; capture privileges on the NIC.</li>
+        <li>A sample pcap or live traffic to analyze.</li>
+        <li>Knowledge of the target protocols (HTTP, DNS, TLS).</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Capture to analysis pipeline">
+flowchart LR
+  C[Capture<br/>BPF filter] --> P[(pcap)]
+  P --> D[Display filter]
+  D --> F[Follow TCP stream]
+  F --> R[Findings]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Capture with a BPF filter</h3>
+      <div class="command-block"><div class="command"><code>tshark -i eth0 -f "host 192.168.20.30 and tcp port 443" -w tls.pcap</code></div></div>
+      <h3>2. Apply a display filter and extract fields</h3>
+      <div class="command-block"><div class="command"><code>tshark -r tls.pcap -Y "tls.handshake.type == 1" -T fields -e tls.handshake.extensions_server_name</code></div></div>
+<pre><code class="language-bash">tyfsadik.org
+cloud.tyfsadik.org</code></pre>
+      <h3>3. Reconstruct an HTTP session</h3>
+      <div class="command-block"><div class="command"><code>tshark -r web.pcap -q -z follow,tcp,ascii,0</code></div></div>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Filter to a single conversation and confirm the reconstructed stream matches the expected request/response. Pass criteria: clean filter isolation, correct SNI/Host extraction, and a coherent followed stream with no missing segments.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Capture vs display confusion:</strong> BPF filters at capture (libpcap syntax); Wireshark filters at display (different syntax).</li>
+        <li><strong>Missing packets:</strong> capture on the correct interface and disable offload that hides segmentation.</li>
+        <li><strong>Encrypted payload:</strong> TLS bodies need keys; analyze metadata (SNI, sizes, timing) instead.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Reduced a multi-gigabyte capture to the relevant flow with one display filter.</li>
+        <li>Extracted SNI and Host fields across 100% of inspected handshakes.</li>
+        <li>Reconstructed full TCP sessions for application-layer review.</li>
+        <li>Built reusable tshark one-liners for headless analysis.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="tcp-ip-deep-dive.html">TCP/IP Deep Dive</a></li>
+        <li><a href="../security/iot-network-recon.html">IoT Network Reconnaissance</a></li>
+        <li><a href="network-troubleshooting.html">Network Troubleshooting</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

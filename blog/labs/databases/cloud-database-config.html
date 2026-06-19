@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cloud Database Configuration | Terraform &amp; Encryption</title>
+  <meta name="description" content="Provision secured cloud databases with Terraform: private networking, encryption at rest, and automated backups. Codified a hardened baseline.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/databases/cloud-database-config.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Cloud Database Configuration with Terraform",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-04-15",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "Terraform 1.7, AWS RDS / Azure SQL, KMS",
+    "articleSection": "Databases"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/databases/index.html">Databases</a> &rsaquo; <span>Cloud Database Configuration</span></nav>
+    <div class="page-header"><h1>Cloud Database Configuration with Terraform and Encryption</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Databases</span><span class="lab-time">~5 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Terraform</span><span class="tag">RDS</span><span class="tag">KMS</span><span class="tag">private subnet</span></div>
+    </div>
+
+    <section><p class="lead">I codified a hardened cloud database baseline in Terraform with private-subnet networking, KMS encryption at rest, and automated backups. Infrastructure-as-code made the secure configuration repeatable, reviewable, and drift-detectable across environments.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Cloud database security is a configuration problem solved best as code. This lab provisions a managed database (AWS RDS / Azure SQL) into a private subnet with no public endpoint, enables encryption with a customer-managed key, and sets a backup retention window, aligning to CIS cloud benchmarks.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Terraform 1.7 with a cloud provider configured.</li>
+        <li>An existing VPC/VNet with private subnets.</li>
+        <li>A KMS/Key Vault key for encryption.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Secured cloud database topology">
+flowchart LR
+  App[App subnet] -->|private| DB[(Managed DB<br/>no public IP)]
+  KMS[KMS key] -->|encrypt at rest| DB
+  DB --> BK[Automated backups<br/>retention 14d]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Declare a private, encrypted database</h3>
+<pre><code class="language-bash">resource "aws_db_instance" "app" {
+  engine                  = "postgres"
+  instance_class          = "db.t3.medium"
+  storage_encrypted       = true
+  kms_key_id              = aws_kms_key.db.arn
+  publicly_accessible     = false
+  backup_retention_period = 14
+  db_subnet_group_name    = aws_db_subnet_group.private.name
+}</code></pre>
+      <h3>2. Plan and apply</h3>
+      <div class="command-block"><div class="command"><code>terraform plan -out tf.plan &amp;&amp; terraform apply tf.plan</code></div></div>
+      <h3>3. Detect drift later</h3>
+      <div class="command-block"><div class="command"><code>terraform plan -detailed-exitcode</code></div></div>
+<pre><code class="language-bash">aws_db_instance.app: Creation complete (encrypted, private)
+No changes. Infrastructure matches configuration.</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Confirm the database has no public endpoint, storage is encrypted with the CMK, and backups are retained. Pass criteria: connection only succeeds from inside the VPC, encryption is enabled, and <code>terraform plan</code> reports no drift after apply.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Public exposure:</strong> set <code>publicly_accessible=false</code> and place in private subnets only.</li>
+        <li><strong>Encryption can't be added later:</strong> enable at creation; retrofitting often requires a re-create.</li>
+        <li><strong>State drift:</strong> remediate via Terraform, not console edits, to keep code authoritative.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Codified a private, encrypted database baseline as reusable Terraform.</li>
+        <li>Eliminated public database endpoints across environments.</li>
+        <li>Enabled KMS encryption at rest and 14-day backup retention.</li>
+        <li>Gained drift detection via <code>terraform plan</code>.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="azure-sql-deployment.html">Azure SQL Deployment</a></li>
+        <li><a href="../cloud-azure/cspm-azure-aws.html">Cloud Security Posture Management</a></li>
+        <li><a href="../cloud-azure/infrastructure-as-code.html">Infrastructure as Code</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

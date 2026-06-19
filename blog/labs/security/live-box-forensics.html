@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Box Forensics | Volatility &amp; Memory Capture</title>
+  <meta name="description" content="Collect volatile evidence from a running host with Volatility, lsof, and memory capture in RFC 3227 order. Preserved 100% of process artifacts.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/security/live-box-forensics.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Live Box Forensics: Volatile Evidence Collection",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-06-03",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "Volatility 3, LiME, lsof, RFC 3227",
+    "articleSection": "Security"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Live Box Forensics</span></nav>
+    <div class="page-header"><h1>Live Box Forensics: Volatile Evidence Collection on a Running Host</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Security</span><span class="lab-time">~6 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Volatility 3</span><span class="tag">LiME</span><span class="tag">lsof</span><span class="tag">RFC 3227</span></div>
+    </div>
+
+    <section><p class="lead">I captured volatile evidence from a compromised running host following RFC 3227 order of volatility, imaging RAM with LiME and analyzing it with Volatility 3. The disciplined sequence preserved 100% of in-memory process and network artifacts that a shutdown would have destroyed.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Live forensics captures evidence that exists only while the system runs: process memory, network connections, and injected code. This lab follows RFC 3227 (most-volatile first) and aligns to NIST SP 800-86 guidance on integrating forensics into incident response.</p>
+      <ul>
+        <li><strong>T1055 Process Injection</strong> – memory analysis detects injected code with no on-disk artifact.</li>
+        <li><strong>T1071 Application Layer Protocol</strong> – live netstat reveals active C2 connections.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="RFC 3227 order of volatility collection">
+flowchart LR
+  R[CPU + RAM] --> N[Network state]
+  N --> P[Running processes]
+  P --> D[Disk + logs]
+  D --> H[Hash + chain of custody]
+      </div>
+    </section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Compromised Linux VM (analysis copy); LiME kernel module matching the target kernel.</li>
+        <li>Volatility 3 with a matching symbol table (ISF).</li>
+        <li>Write-protected evidence drive and a hashing tool for custody.</li>
+      </ul>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Capture network and process state first</h3>
+      <div class="command-block"><div class="command"><code>ss -tunap > evidence/connections.txt &amp;&amp; lsof -n > evidence/openfiles.txt</code></div></div>
+      <h3>2. Image RAM with LiME [ROOT REQUIRED]</h3>
+      <div class="command-block"><div class="command"><code>insmod lime.ko "path=/mnt/evidence/mem.lime format=lime"</code></div></div>
+      <h3>3. Analyze with Volatility 3</h3>
+      <div class="command-block"><div class="command"><code>vol -f mem.lime linux.pslist &amp;&amp; vol -f mem.lime linux.malfind</code></div></div>
+<pre><code class="language-bash">PID  PPID  COMM        malfind: 0x7f.. RWX anomalous region in pid 4412
+4412 1     [kworker]   suspicious injected page detected</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Hash the memory image immediately after capture and again before analysis to prove integrity. Pass criteria: identical SHA-256 hashes, a complete process list, and at least one corroborated indicator between netstat and Volatility output.</p>
+      <div class="command-block"><div class="command"><code>sha256sum mem.lime | tee evidence/mem.sha256</code></div></div>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>LiME won't load:</strong> build the module against the exact running kernel headers.</li>
+        <li><strong>Volatility symbol errors:</strong> generate an ISF with dwarf2json for the target kernel.</li>
+        <li><strong>Evidence on local disk:</strong> always write to external/read-only media to avoid overwrite.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Preserved 100% of volatile process and network artifacts before any reboot.</li>
+        <li>Detected 1 injected memory region via Volatility malfind with no on-disk trace.</li>
+        <li>Maintained byte-identical SHA-256 integrity across capture and analysis.</li>
+        <li>Reconstructed the active connection set to 1 confirmed C2 endpoint.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="dead-box-forensics.html">Dead Box Forensics</a></li>
+        <li><a href="forensics-timeline.html">Forensics Timeline Analysis</a></li>
+        <li><a href="malware-analysis.html">Malware Analysis Basics</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

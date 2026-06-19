@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Server Infrastructure | Assignment</title>
+  <meta name="description" content="Design and build resilient server infrastructure: virtualization, storage, services, backups, and monitoring. Deliver a documented, recoverable estate.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/assignments/server-infrastructure.html">
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Resilient Server Infrastructure Build",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-03-30",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "KVM/Proxmox, LVM, systemd, restic, Prometheus",
+    "articleSection": "Assignments"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../index.html">Home</a> &rsaquo; <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo; <span>Server Infrastructure</span></nav>
+    <div class="page-header"><h1>Resilient Server Infrastructure Build</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Infrastructure &middot; 2025</span><span class="lab-time">~16 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">virtualization</span><span class="tag">LVM</span><span class="tag">backups</span><span class="tag">monitoring</span></div>
+    </div>
+
+    <section><p class="lead">You will design and build resilient server infrastructure: virtualization, flexible storage, managed services, backups, and monitoring. By the end you will have a documented estate that recovers cleanly from failure.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Provision VMs with flexible LVM-backed storage.</li>
+        <li>Run services under systemd with auto-restart.</li>
+        <li>Add tested backups and monitoring.</li>
+        <li><strong>Time:</strong> ~16 hours &middot; <strong>Difficulty:</strong> Advanced &middot; <strong>Prereqs:</strong> the Linux server labs.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Resilient server infrastructure components">
+graph TD
+  HV[Hypervisor] --> VMs[Service VMs]
+  VMs --> LVM[LVM storage]
+  VMs --> SD[systemd services]
+  VMs --> BK[restic backups]
+  VMs --> Mon[Prometheus]
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <ul>
+        <li>A KVM/Proxmox host with spare disks.</li>
+        <li>restic and a backup target; Prometheus + Grafana.</li>
+      </ul>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Provision VMs on LVM storage</strong>
+          <div class="command-block" data-copy><div class="command"><code>lvcreate -L 30G -n vm-disk vg0 &amp;&amp; virt-install --name app01 --disk path=/dev/vg0/vm-disk --import</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Run services with auto-restart and back them up</strong>
+          <div class="command-block" data-copy><div class="command"><code>systemctl enable --now app.service &amp;&amp; restic -r /backup/repo backup /srv</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Add monitoring</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">curl -s localhost:9090/api/v1/targets | grep -o '"health":"up"' | wc -l</span></div>
+            <div class="terminal-output">4</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Server infrastructure progress">
+graph LR
+  A[01 VMs + LVM] -->|done| B[02 Services + backups]
+  B -->|done| C[03 Monitoring]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>restic -r /backup/repo restore latest --target /tmp/restore --include /srv/config &amp;&amp; systemctl is-active app.service</code></div></div>
+      <p>A restore should succeed and the service should be active. Kill the service and confirm systemd restarts it. The estate is resilient and recoverable.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>VM won't boot from LVM:</strong> confirm the disk path and that the LV is not in use.</li>
+        <li><strong>Backup untested:</strong> schedule periodic restore drills, not just backups.</li>
+        <li><strong>Targets down in Prometheus:</strong> verify exporters are running and reachable.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Add HA/clustering as in <a href="../../work/infrastructure/proxmox-zero-trust.html">Proxmox Zero-Trust</a>.</li>
+        <li>Centralize logs and alerts.</li>
+        <li>Promote to the <a href="capstone-onprem.html">On-Prem Capstone</a>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Provisioned service VMs on flexible LVM storage.</li>
+        <li>Ran services with systemd auto-restart.</li>
+        <li>Verified backups with a real restore.</li>
+        <li>Monitored the estate with healthy Prometheus targets.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Work</h2>
+      <ul>
+        <li><a href="multi-service-server.html">Multi-Service Server</a></li>
+        <li><a href="../labs/linux-server/backup-recovery.html">Backup &amp; Recovery</a></li>
+        <li><a href="capstone-onprem.html">On-Prem Capstone</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

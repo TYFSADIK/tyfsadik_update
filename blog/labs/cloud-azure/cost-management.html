@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure Cost Management | Budgets, Advisor &amp; Tags</title>
+  <meta name="description" content="Control Azure spend with budgets, alerts, cost analysis, and Advisor. Tag resources for showback and cut waste before the bill arrives.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/cloud-azure/cost-management.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Azure Cost Management with Budgets and Advisor",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-03-17",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Beginner",
+    "dependencies": "Azure Cost Management, Advisor, resource tags",
+    "articleSection": "Cloud"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/cloud-azure/index.html">Cloud &amp; Azure</a> &rsaquo; <span>Cost Management</span></nav>
+    <div class="page-header"><h1>Azure Cost Management: Budgets, Tags, and Advisor</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Cloud</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">budgets</span><span class="tag">tags</span><span class="tag">Advisor</span><span class="tag">cost analysis</span></div>
+    </div>
+
+    <section><p class="lead">You will set a budget with alerts, tag resources for showback, and act on Azure Advisor recommendations. By the end you will catch overspend early and cut waste before the monthly bill arrives.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Create a budget with threshold alerts.</li>
+        <li>Tag resources to attribute cost by project.</li>
+        <li>Apply Advisor cost recommendations.</li>
+        <li><strong>Time:</strong> ~2 hours &middot; <strong>Difficulty:</strong> Beginner &middot; <strong>Prereqs:</strong> an Azure subscription with some resources.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Cost governance flow">
+graph LR
+  Res[Tagged resources] --> CA[Cost Analysis]
+  CA --> B[Budget + alerts]
+  Adv[Azure Advisor] -->|recommendations| Act[Right-size / shut down]
+  Act --> Save[Lower spend]
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> the Azure CLI and a subscription with billable resources.</p>
+      <p><strong>Before you begin:</strong> agree a tagging convention (for example <code>project</code>, <code>env</code>).</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Tag resources for attribution</strong>
+          <div class="command-block" data-copy><div class="command"><code>az resource tag --tags project=tyf env=lab --ids $(az resource list -g tyf-rg --query "[].id" -o tsv)</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Create a budget with alerts</strong>
+          <div class="command-block" data-copy><div class="command"><code>az consumption budget create --budget-name tyf-monthly --amount 50 --time-grain Monthly --category Cost</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Review Advisor recommendations</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az advisor recommendation list --category Cost -o table</span></div>
+            <div class="terminal-output">Category  Impact  ShortDescription
+Cost      High    Right-size or shut down underutilized VM</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Cost management progress">
+graph LR
+  A[01 Tagging] -->|done| B[02 Budget]
+  B -->|done| C[03 Advisor]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>az consumption budget show --budget-name tyf-monthly --query amount &amp;&amp; az resource list -g tyf-rg --query "[?tags.project=='tyf'] | length(@)"</code></div></div>
+      <p>You should see the budget amount and a count of tagged resources. With Advisor reviewed, cost governance is in place.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Budget alert not received:</strong> attach notification contacts/action groups to the budget.</li>
+        <li><strong>Costs unattributed:</strong> enforce tags with Azure Policy so new resources inherit them.</li>
+        <li><strong>Advisor empty:</strong> recommendations need usage history; check back after a day of activity.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Auto-shutdown dev VMs on a schedule to cut idle cost.</li>
+        <li>Export cost data and chart it in <a href="azure-monitor.html">Azure Monitor</a> workbooks.</li>
+        <li>Detect anomalies as part of <a href="cspm-azure-aws.html">CSPM</a>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Set a monthly budget with threshold alerts.</li>
+        <li>Tagged resources to attribute 100% of project cost.</li>
+        <li>Surfaced Advisor recommendations to cut waste.</li>
+        <li>Established proactive spend governance before billing.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="azure-monitor.html">Azure Monitor &amp; Alerting</a></li>
+        <li><a href="infrastructure-as-code.html">Infrastructure as Code</a></li>
+        <li><a href="cspm-azure-aws.html">Cloud Security Posture Management</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

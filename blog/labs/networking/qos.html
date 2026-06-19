@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quality of Service | DSCP, tc &amp; Traffic Shaping</title>
+  <meta name="description" content="Apply QoS with DSCP marking and Linux tc traffic shaping. Prioritized latency-sensitive traffic and capped bulk flows under congestion.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/qos.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Quality of Service with DSCP and Linux tc",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-05-13",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "Linux tc (HTB), DSCP, iperf3",
+    "articleSection": "Networking"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>Quality of Service</span></nav>
+    <div class="page-header"><h1>Quality of Service with DSCP Marking and Linux tc</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Networking</span><span class="lab-time">~5 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">DSCP</span><span class="tag">tc HTB</span><span class="tag">shaping</span><span class="tag">iperf3</span></div>
+    </div>
+
+    <section><p class="lead">I implemented QoS by marking latency-sensitive traffic with DSCP and shaping bandwidth using Linux tc with hierarchical token bucket (HTB) classes. Under simulated congestion, priority traffic held low latency while bulk transfers were capped to their allocation.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Without QoS, bulk transfers starve interactive flows during congestion. This lab classifies traffic with DSCP and enforces per-class bandwidth and priority with HTB, the mechanism behind voice/video prioritization on shared links.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Linux host with tc (iproute2) and iperf3.</li>
+        <li>A constrained test link to create congestion.</li>
+        <li>Defined traffic classes (priority vs bulk).</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="HTB class hierarchy for QoS">
+flowchart TB
+  Root[HTB root 100mbit] --> P[Priority class<br/>60mbit, prio 0]
+  Root --> B[Bulk class<br/>40mbit, prio 1]
+  P --> Pf[DSCP EF flows]
+  B --> Bf[Bulk flows]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Build the HTB hierarchy [PRIVILEGED]</h3>
+      <div class="command-block"><div class="command"><code>tc qdisc add dev eth0 root handle 1: htb default 30 &amp;&amp; tc class add dev eth0 parent 1: classid 1:1 htb rate 100mbit</code></div></div>
+      <h3>2. Add priority and bulk classes</h3>
+      <div class="command-block"><div class="command"><code>tc class add dev eth0 parent 1:1 classid 1:10 htb rate 60mbit prio 0 &amp;&amp; tc class add dev eth0 parent 1:1 classid 1:30 htb rate 40mbit prio 1</code></div></div>
+      <h3>3. Mark and verify under load with iperf3</h3>
+      <div class="command-block"><div class="command"><code>iperf3 -c 192.168.10.30 -S 0xb8 &amp;&amp; tc -s class show dev eth0</code></div></div>
+<pre><code class="language-bash">class htb 1:10 rate 60Mbit  sent 71MB  (priority held)
+class htb 1:30 rate 40Mbit  sent 48MB  (bulk capped)</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Generate simultaneous priority and bulk flows and measure latency/throughput per class. Pass criteria: priority class retains low latency and its rate, while bulk is shaped to its ceiling under contention.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>No shaping effect:</strong> tc shapes egress; apply on the correct outbound interface or use IFB for ingress.</li>
+        <li><strong>Wrong class match:</strong> verify the filter maps DSCP/marks to the intended classid.</li>
+        <li><strong>Bursty behaviour:</strong> tune <code>burst</code> and <code>cburst</code> for HTB.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Held priority-class latency low under simulated link saturation.</li>
+        <li>Capped bulk flows to a 40mbit ceiling during contention.</li>
+        <li>Classified traffic by DSCP into 2 enforced HTB classes.</li>
+        <li>Verified per-class throughput with tc statistics under iperf3 load.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="routing-switching.html">Routing &amp; Switching</a></li>
+        <li><a href="network-function-virtualization.html">Network Function Virtualization</a></li>
+        <li><a href="tcp-ip-deep-dive.html">TCP/IP Deep Dive</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

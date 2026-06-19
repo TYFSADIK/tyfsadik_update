@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Docker Images &amp; Dockerfile | Build &amp; Optimize</title>
+  <meta name="description" content="Write a Dockerfile and build optimized, multi-stage images with layer caching. Cut image size dramatically and scan for vulnerabilities.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/containers-kubernetes/docker-images.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Building Optimized Docker Images with Multi-Stage Builds",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-02-05",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "Docker 24.x, BuildKit, Trivy",
+    "articleSection": "Containers"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Docker Images &amp; Dockerfile</span></nav>
+    <div class="page-header"><h1>Build Optimized Docker Images with Multi-Stage Dockerfiles</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Containers</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Dockerfile</span><span class="tag">multi-stage</span><span class="tag">layer cache</span><span class="tag">Trivy</span></div>
+    </div>
+
+    <section><p class="lead">You will write a Dockerfile, build it with multi-stage layers, and scan the result for vulnerabilities. By the end you will produce a small, cache-friendly image with a minimal attack surface.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Author a Dockerfile using layer-cache-friendly ordering.</li>
+        <li>Shrink images with a multi-stage build.</li>
+        <li>Scan images for known CVEs with Trivy.</li>
+        <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> Docker and a small app to containerize.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Multi-stage build producing a slim runtime image">
+graph LR
+  Src[Source code] --> B[Build stage<br/>compile/deps]
+  B -->|copy artifact| R[Runtime stage<br/>slim base]
+  R --> Img[Final image]
+  Img -->|Trivy scan| Scan[CVE report]
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> Docker with BuildKit and Trivy (<a href="https://aquasecurity.github.io/trivy/" target="_blank" rel="noopener">install docs</a>).</p>
+      <p><strong>Before you begin:</strong> have a buildable app (a small Go or Node service works well).</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Write a multi-stage Dockerfile</strong>
+          <p>Compiling in a build stage and copying only the artifact into a slim base keeps the runtime tiny.</p>
+<pre><code class="language-bash"># Dockerfile
+FROM golang:1.22 AS build
+WORKDIR /src
+COPY . .
+RUN CGO_ENABLED=0 go build -o app .
+
+FROM gcr.io/distroless/static
+COPY --from=build /src/app /app
+ENTRYPOINT ["/app"]</code></pre>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Build with cache and a tag</strong>
+          <div class="command-block" data-copy><div class="command"><code>DOCKER_BUILDKIT=1 docker build -t tyf/app:1.0 .</code></div><div class="note">BuildKit caches layers, speeding up rebuilds.</div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Compare image size</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker images tyf/app</span></div>
+            <div class="terminal-output">REPOSITORY  TAG  SIZE
+tyf/app     1.0  12.3MB   &lt;- distroless runtime</div>
+          </div>
+        </div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Scan for vulnerabilities</strong>
+          <div class="command-block" data-copy><div class="command"><code>trivy image --severity HIGH,CRITICAL tyf/app:1.0</code></div></div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Image build progress">
+graph LR
+  A[01 Dockerfile] -->|done| B[02 Build]
+  B -->|done| C[03 Size check]
+  C -->|done| D[04 Trivy scan]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>docker run --rm tyf/app:1.0 --version &amp;&amp; trivy image --exit-code 1 --severity CRITICAL tyf/app:1.0</code></div></div>
+      <p>The app should run and Trivy should exit 0 (no criticals). If so, you have a small, scanned image.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Image still huge:</strong> ensure the final stage uses a slim/distroless base and copies only the artifact.</li>
+        <li><strong>Cache never hits:</strong> order Dockerfile steps from least to most frequently changing.</li>
+        <li><strong>Trivy DB error:</strong> run with internet access on first use to fetch the vulnerability DB.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Push to a registry and sign the image with cosign.</li>
+        <li>Add the scan to a pipeline in <a href="../devops/cicd-pipeline.html">Full CI/CD Pipeline</a>.</li>
+        <li>Run it on a cluster in <a href="kubernetes-pods-services.html">Pods &amp; Deployments</a>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Produced a ~12MB runtime image via multi-stage build.</li>
+        <li>Cut rebuild time with BuildKit layer caching.</li>
+        <li>Scanned for HIGH/CRITICAL CVEs before shipping.</li>
+        <li>Minimized attack surface with a distroless base.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="docker-fundamentals.html">Docker Fundamentals</a></li>
+        <li><a href="docker-compose.html">Docker Compose</a></li>
+        <li><a href="../devops/cicd-pipeline.html">Full CI/CD Pipeline</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Python Memory Usage Analyzer | tracemalloc &amp; psutil</title>
+  <meta name="description" content="Profile and reduce Python memory use with tracemalloc, psutil, and gc. Located the top allocators and cut peak RSS on a data script.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/python/memory-usage-analyzer.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Python Memory Usage Analyzer with tracemalloc",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-04-15",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "Python 3.11, tracemalloc, psutil, gc",
+    "articleSection": "Python"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/python/index.html">Python</a> &rsaquo; <span>Memory Usage Analyzer</span></nav>
+    <div class="page-header"><h1>Python Memory Usage Analyzer with tracemalloc and psutil</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Python</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">tracemalloc</span><span class="tag">psutil</span><span class="tag">gc</span><span class="tag">profiling</span></div>
+    </div>
+
+    <section><p class="lead">I built a memory profiler that snapshots allocations with tracemalloc, tracks process RSS with psutil, and inspects the garbage collector. Identifying the top allocators let me replace a list accumulation with a generator and cut peak memory substantially.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Memory bloat is invisible until a script is OOM-killed. This lab measures rather than guesses, using tracemalloc to rank allocation sites and psutil to track real RSS, then applies streaming patterns to reduce footprint.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Python 3.11 with tracemalloc and gc (standard library); psutil.</li>
+        <li>A memory-heavy script to profile.</li>
+        <li>A representative input dataset.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Memory profiling workflow">
+flowchart LR
+  S[Start tracemalloc] --> R[Run workload]
+  R --> Snap[Snapshot top stats]
+  Snap --> Fix[Generator / del refs]
+  Fix --> V[Compare RSS]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Snapshot top allocators</h3>
+<pre><code class="language-bash">import tracemalloc
+tracemalloc.start()
+run_workload()
+for stat in tracemalloc.take_snapshot().statistics("lineno")[:5]:
+    print(stat)</code></pre>
+      <h3>2. Track process RSS with psutil</h3>
+      <div class="command-block"><div class="command"><code>python -c "import psutil,os; print(psutil.Process(os.getpid()).memory_info().rss//1024//1024,'MB')"</code></div></div>
+      <h3>3. Refactor accumulation to a generator</h3>
+      <div class="command-block"><div class="command"><code>python -c "g=(x*x for x in range(10**6)); print(sum(g))"</code></div></div>
+<pre><code class="language-bash">data.py:42: size=128 MiB, count=1000000
+333332833333500000</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Compare tracemalloc snapshots and RSS before and after the generator refactor on the same input. Pass criteria: the top allocator is identified, peak RSS drops measurably, and output is unchanged after the optimization.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Memory not freed:</strong> drop references and call <code>gc.collect()</code>; watch for lingering globals.</li>
+        <li><strong>Reference cycles:</strong> inspect with <code>gc.get_referrers</code>; prefer weakrefs for caches.</li>
+        <li><strong>Misleading RSS:</strong> the allocator may retain freed memory; trust tracemalloc deltas.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Identified the single top allocation site via tracemalloc ranking.</li>
+        <li>Cut peak RSS by streaming with a generator instead of a list.</li>
+        <li>Verified unchanged output after the memory optimization.</li>
+        <li>Built a reusable profiling harness for future scripts.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="lists-dictionaries.html">Lists &amp; Dictionaries</a></li>
+        <li><a href="system-admin-scripts.html">System Administration Scripts</a></li>
+        <li><a href="functions-modules.html">Functions &amp; Modules</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Database Administration | Roles, GRANT &amp; Monitoring</title>
+  <meta name="description" content="Administer PostgreSQL with role-based GRANT/REVOKE, connection limits, and monitoring. Enforced least privilege and tracked slow queries.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/databases/database-admin.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "PostgreSQL Database Administration",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-03-25",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "PostgreSQL 16, pg_stat_statements",
+    "articleSection": "Databases"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/databases/index.html">Databases</a> &rsaquo; <span>Database Administration</span></nav>
+    <div class="page-header"><h1>PostgreSQL Administration: Roles, Privileges, and Monitoring</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Databases</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">GRANT</span><span class="tag">roles</span><span class="tag">pg_stat_statements</span><span class="tag">monitoring</span></div>
+    </div>
+
+    <section><p class="lead">I administered PostgreSQL with role-based access control, least-privilege GRANTs, connection limits, and query monitoring via pg_stat_statements. Separating roles by function and tracking slow queries kept the database both secure and observable.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>DBA work is access control plus observability. This lab builds a role hierarchy (readonly, readwrite, admin), applies least-privilege GRANTs, and enables statement statistics to surface the slowest queries, aligning to NIST AC-6 least privilege.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>PostgreSQL 16 with superuser access to configure roles.</li>
+        <li>pg_stat_statements extension available.</li>
+        <li>A workload generating varied queries.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Role hierarchy">
+flowchart TB
+  Admin[admin role] --> RW[readwrite role]
+  RW --> RO[readonly role]
+  RO --> U[app users]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Create roles and grant least privilege</h3>
+      <div class="command-block"><div class="command"><code>CREATE ROLE readonly; GRANT CONNECT ON DATABASE appdb TO readonly; GRANT SELECT ON ALL TABLES IN SCHEMA public TO readonly;</code></div></div>
+      <h3>2. Enable query monitoring</h3>
+      <div class="command-block"><div class="command"><code>CREATE EXTENSION pg_stat_statements; SELECT query, mean_exec_time FROM pg_stat_statements ORDER BY mean_exec_time DESC LIMIT 5;</code></div></div>
+      <h3>3. Limit connections per role</h3>
+      <div class="command-block"><div class="command"><code>ALTER ROLE app CONNECTION LIMIT 20;</code></div></div>
+<pre><code class="language-bash">query                          mean_exec_time
+SELECT * FROM orders WHERE...  142.6 ms</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Connect as the readonly role and confirm writes are denied; review pg_stat_statements to identify the slowest query. Pass criteria: roles enforce least privilege, connection limits apply, and the slowest queries are visible for tuning.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>New tables not granted:</strong> set <code>ALTER DEFAULT PRIVILEGES</code> so future tables inherit grants.</li>
+        <li><strong>pg_stat_statements empty:</strong> add it to <code>shared_preload_libraries</code> and restart.</li>
+        <li><strong>Connection exhaustion:</strong> use a pooler (PgBouncer) for many short-lived clients.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Enforced least privilege via a 3-tier role hierarchy.</li>
+        <li>Surfaced the top 5 slowest queries with pg_stat_statements.</li>
+        <li>Capped per-role connections to protect the server.</li>
+        <li>Applied default privileges so new tables stay governed.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="backup-recovery.html">Backup &amp; Recovery</a></li>
+        <li><a href="constraints-keys.html">Constraints &amp; Keys</a></li>
+        <li><a href="cloud-database-config.html">Cloud Database Configuration</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

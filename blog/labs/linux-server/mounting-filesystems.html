@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mounting &amp; Filesystem Management | fstab &amp; systemd</title>
+  <meta name="description" content="Manage Linux mounts with fstab, UUID, and systemd mount units, including NFS. Build resilient boot-time mounts with safe validation.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-server/mounting-filesystems.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Mounting and Filesystem Management on Linux Servers",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-01-16",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "util-linux, fstab, systemd, nfs-common",
+    "articleSection": "Linux"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Mounting &amp; Filesystem Management</span></nav>
+    <div class="page-header"><h1>Mounting and Filesystem Management with fstab and NFS</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">fstab</span><span class="tag">UUID</span><span class="tag">NFS</span><span class="tag">systemd mount</span></div>
+    </div>
+
+    <section><p class="lead">You will configure resilient boot-time mounts for local and network filesystems on a server. By the end you will mount a local disk by UUID and an <span class="glossary-term" data-definition="Network File System: a protocol for accessing files over a network as if they were local.">NFS</span> share, both surviving reboot.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Write safe UUID-based fstab entries with the nofail option.</li>
+        <li>Mount an NFS share at boot.</li>
+        <li>Validate every entry without risking a boot hang.</li>
+        <li><strong>Time:</strong> ~2 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> a server plus a local disk and (optionally) an NFS export.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Local and network mounts via fstab">
+graph LR
+  Disk[(Local disk UUID)] -->|fstab| L[/mnt/local]
+  NFS[NFS server export] -->|TCP/2049 fstab| N[/mnt/share]
+  L --> Boot[Persistent at boot]
+  N --> Boot
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> util-linux, and nfs-common for the NFS portion.</p>
+      <p><strong>Before you begin:</strong> know your disk UUID (<code>blkid</code>) and the NFS server export path.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Add a local mount by UUID</strong>
+          <p>UUIDs are stable across reboots; <code>nofail</code> avoids a boot hang if the disk is absent.</p>
+          <div class="command-block" data-copy><div class="command"><code>echo "UUID=$(blkid -s UUID -o value /dev/sdb1) /mnt/local ext4 defaults,nofail 0 2" | sudo tee -a /etc/fstab</code></div><div class="note">[ROOT REQUIRED] Appends a persistent local mount entry.</div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Add an NFS mount</strong>
+          <p>NFS lets multiple servers share centralized storage over the network.</p>
+          <div class="command-block" data-copy><div class="command"><code>echo "192.168.1.50:/export/share /mnt/share nfs defaults,_netdev,nofail 0 0" | sudo tee -a /etc/fstab</code></div><div class="note">_netdev waits for the network before mounting.</div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Validate without rebooting</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">#</span> <span class="input">mkdir -p /mnt/local /mnt/share &amp;&amp; mount -a &amp;&amp; findmnt /mnt/share</span></div>
+            <div class="terminal-output">TARGET     SOURCE                        FSTYPE OPTIONS
+/mnt/share 192.168.1.50:/export/share    nfs4   rw,_netdev</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Mount configuration progress">
+graph LR
+  A[01 Local mount] -->|done| B[02 NFS mount]
+  B -->|done| C[03 Validate mount -a]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>mount -a &amp;&amp; df -hT /mnt/local /mnt/share</code></div></div>
+      <p>You should see both mounts with their filesystem types and no errors from <code>mount -a</code>. If clean, your mounts are boot-safe.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Boot hangs waiting for a mount:</strong> add <code>nofail</code> (and <code>_netdev</code> for network mounts).</li>
+        <li><strong>NFS mount times out:</strong> confirm the export with <code>showmount -e 192.168.1.50</code> and firewall on TCP/2049.</li>
+        <li><strong>Permission denied on NFS:</strong> check the export's allowed clients and squash settings.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Replace fstab with a systemd <code>.mount</code> unit for dependency control.</li>
+        <li>Combine with <a href="lvm.html">LVM</a> for flexible local capacity.</li>
+        <li>Secure NFS with Kerberos (sec=krb5p).</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Configured local and NFS mounts that persist across reboot.</li>
+        <li>Prevented boot hangs with nofail and _netdev options.</li>
+        <li>Validated entries safely with <code>mount -a</code> before reboot.</li>
+        <li>Centralized shared storage over NFS for multiple servers.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="disk-management.html">Disk Management &amp; Partitioning</a></li>
+        <li><a href="lvm.html">Logical Volume Management</a></li>
+        <li><a href="../linux-fundamentals/mounting-filesystems.html">Linux Fundamentals: Mounting Filesystems</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

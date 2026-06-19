@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vulnerability Management Automation | OpenVAS &amp; Ansible</title>
+  <meta name="description" content="Automate scan-to-patch with OpenVAS/GVM, Ansible, and Jira. Cut critical vulnerability window from 7 days to 4 hours across 15+ nodes.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/security/vuln-management-automation.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Vulnerability Management Automation with OpenVAS and Ansible",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2026-04-15",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "OpenVAS/GVM 22.4, Ansible, Jira REST API, Grafana, CVSS 3.1",
+    "articleSection": "Security"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Vulnerability Management Automation</span></nav>
+    <div class="page-header"><h1>Vulnerability Management Automation: Scan, Prioritize, Patch, Verify</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Security</span><span class="lab-time">~9 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">OpenVAS/GVM</span><span class="tag">Nessus</span><span class="tag">Ansible</span><span class="tag">Jira API</span><span class="tag">Grafana</span><span class="tag">CVSS 3.1</span></div>
+    </div>
+
+    <section><p class="lead">I built a closed-loop vulnerability management cycle that schedules OpenVAS scans, prioritizes findings by CVSS 3.1 and business context, opens Jira tickets via API, and remediates with Ansible. The pipeline cut the critical-vulnerability exposure window from 7 days to 4 hours across 15+ Linux nodes.</p></section>
+
+    <section><h2>Context &amp; Standards Alignment</h2>
+      <p>The workflow implements the NIST SP 800-40 patch management lifecycle and CIS Control 7 (Continuous Vulnerability Management), turning ad-hoc scanning into a measurable, auditable process.</p>
+      <ul>
+        <li><strong>T1190 Exploit Public-Facing Application</strong> – prioritized remediation of internet-reachable CVEs.</li>
+        <li><strong>T1203 Exploitation for Client Execution</strong> – endpoint patch orchestration via Ansible.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Vulnerability management cycle from scan to verification">
+flowchart LR
+  S[Scan<br/>OpenVAS/GVM] --> A[Analyze<br/>CVSS 3.1]
+  A --> P[Prioritize<br/>business risk]
+  P --> T[Ticket<br/>Jira API]
+  T --> R[Remediate<br/>Ansible]
+  R --> V[Verify<br/>rescan]
+  V --> S
+      </div>
+    </section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>OpenVAS/GVM 22.4 scanner with daily feed sync; Nessus Professional for cross-validation.</li>
+        <li>Ansible control node with inventory of 15+ RHEL 9 / Ubuntu 22.04 hosts.</li>
+        <li>Jira Cloud project + API token; Grafana dashboard fed from a PostgreSQL results store.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="CI/CD integration for pre-deployment scanning">
+flowchart TB
+  Commit[Git push] --> Build[CI build]
+  Build --> Scan[Trivy/GVM image scan]
+  Scan -->|critical| Fail[Block deploy]
+  Scan -->|clean| Deploy[Promote]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Launch an authenticated scan via the GVM CLI [PRIVILEGED]</h3>
+      <div class="command-block"><div class="command"><code>gvm-cli --gmp-username admin socket --xml "&lt;start_task task_id='UUID'/&gt;"</code></div></div>
+
+      <h3>2. Export and prioritize by CVSS 3.1</h3>
+      <div class="command-block"><div class="command"><code>gvm-script --gmp-username admin socket get_results.py --severity 9.0 | tee critical.csv</code></div></div>
+<pre><code class="language-bash">CVE-2024-3094  10.0  CRITICAL  xz-utils backdoor      host=192.168.20.31
+CVE-2023-4911  7.8   HIGH      glibc CVE-2023-4911    host=192.168.20.18</code></pre>
+
+      <h3>3. Remediate with Ansible</h3>
+      <div class="command-block"><div class="command"><code>ansible-playbook -i inventory patch-critical.yml --limit critical_hosts</code></div></div>
+<pre><code class="language-bash">PLAY RECAP
+192.168.20.31 : ok=6 changed=3 unreachable=0 failed=0
+192.168.20.18 : ok=6 changed=2 unreachable=0 failed=0</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Trigger an automated rescan of the patched hosts and confirm the previously critical CVEs no longer appear. The Grafana dashboard should show the open-critical count drop to zero (alt text: <em>Grafana panel trending open critical CVEs to zero after Ansible remediation</em>).</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Authenticated scan returns few results:</strong> verify SSH credentials and that the scan target uses a credentialed config.</li>
+        <li><strong>Feed out of date:</strong> run <code>greenbone-feed-sync</code> and check <code>/var/log/gvm/</code>.</li>
+        <li><strong>Ansible patch reboot loops:</strong> gate reboots behind a <code>reboot_required</code> fact check.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Orchestrated patching across 15+ Linux servers with a 99.2% success rate.</li>
+        <li>Prioritized 200+ CVEs by CVSS 3.1 and business criticality each cycle.</li>
+        <li>Reduced the critical-vulnerability exposure window from 7 days to 4 hours.</li>
+        <li>Automated Jira ticket creation for 100% of high/critical findings.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="vulnerability-assessment.html">Vulnerability Assessment</a></li>
+        <li><a href="../cloud-azure/cspm-azure-aws.html">Cloud Security Posture Management</a></li>
+        <li><a href="../devops/cicd-pipeline.html">Full CI/CD Pipeline</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

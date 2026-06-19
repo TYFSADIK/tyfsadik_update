@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenFlow Protocol | Flow Tables &amp; ovs-ofctl</title>
+  <meta name="description" content="Program OpenFlow 1.3 flow tables on Open vSwitch with match-action rules. Installed proactive flows and verified packet handling with ovs-ofctl.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/openflow-protocol.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "OpenFlow Protocol: Flow Tables and Match-Action",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-04-15",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "OpenFlow 1.3, Open vSwitch, ovs-ofctl",
+    "articleSection": "Networking"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>OpenFlow Protocol</span></nav>
+    <div class="page-header"><h1>OpenFlow Protocol: Programming Flow Tables on Open vSwitch</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Networking</span><span class="lab-time">~5 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">OpenFlow 1.3</span><span class="tag">OVS</span><span class="tag">flow tables</span><span class="tag">match-action</span></div>
+    </div>
+
+    <section><p class="lead">I programmed OpenFlow 1.3 flow tables directly on Open vSwitch using match-action rules with priorities, idle timeouts, and output actions. Installing proactive flows revealed exactly how the southbound protocol turns controller intent into packet forwarding.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>OpenFlow is the canonical SDN southbound protocol: a switch matches packet fields against prioritized table entries and applies actions. This lab manipulates flows by hand with ovs-ofctl to make the abstraction concrete before automating it from a controller.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Open vSwitch with OpenFlow 1.3 enabled; a Mininet topology.</li>
+        <li>ovs-ofctl and ovs-vsctl tooling.</li>
+        <li>Understanding of match fields (in_port, dl_dst, nw_dst).</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="OpenFlow match-action pipeline">
+flowchart LR
+  P[Packet] --> M{Match table entry?}
+  M -->|priority match| A[Apply action<br/>output/drop/mod]
+  M -->|miss| C[Send to controller]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Install a proactive forwarding flow</h3>
+      <div class="command-block"><div class="command"><code>ovs-ofctl -O OpenFlow13 add-flow s1 "priority=200,in_port=1,actions=output:2"</code></div></div>
+      <h3>2. Add a higher-priority drop rule</h3>
+      <div class="command-block"><div class="command"><code>ovs-ofctl -O OpenFlow13 add-flow s1 "priority=300,ip,nw_dst=10.0.0.9,actions=drop"</code></div></div>
+      <h3>3. Inspect counters per flow</h3>
+      <div class="command-block"><div class="command"><code>ovs-ofctl -O OpenFlow13 dump-flows s1</code></div></div>
+<pre><code class="language-bash">priority=300,ip,nw_dst=10.0.0.9 actions=drop  n_packets=14
+priority=200,in_port=1 actions=output:2       n_packets=88</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Send traffic and confirm the higher-priority drop wins over the forward rule, with packet counters incrementing on the matched entry. Pass criteria: priority ordering observed and counters confirm which flow handled each packet.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Flow not matching:</strong> a higher-priority entry may shadow it; dump and check ordering.</li>
+        <li><strong>Version errors:</strong> always pass <code>-O OpenFlow13</code> consistently.</li>
+        <li><strong>Flows expire:</strong> set <code>idle_timeout=0</code> for permanent proactive rules.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Installed proactive flows with explicit priority and action semantics.</li>
+        <li>Verified priority resolution between a forward and a drop rule.</li>
+        <li>Read per-flow packet counters to confirm handling, not assumptions.</li>
+        <li>Built the manual baseline later automated via an SDN controller app.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="sdn-concepts.html">SDN Concepts</a></li>
+        <li><a href="sdn-controllers.html">SDN Controllers</a></li>
+        <li><a href="mininet-lab.html">Mininet SDN Lab Environment</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure NSGs &amp; Route Tables | Traffic Control</title>
+  <meta name="description" content="Control Azure traffic with Network Security Groups and user-defined routes. Enforce least-privilege flows and force traffic through an appliance.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/cloud-azure/nsg-route-tables.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Azure NSGs and User-Defined Route Tables",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-03-09",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "Azure CLI, NSG, UDR",
+    "articleSection": "Cloud"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/cloud-azure/index.html">Cloud &amp; Azure</a> &rsaquo; <span>NSGs &amp; Route Tables</span></nav>
+    <div class="page-header"><h1>Azure NSGs and Route Tables for Traffic Control</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Cloud</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">NSG</span><span class="tag">UDR</span><span class="tag">effective routes</span><span class="tag">priority</span></div>
+    </div>
+
+    <section><p class="lead">You will filter traffic with Network Security Groups and steer it with user-defined routes (UDRs), including forcing traffic through a firewall appliance. By the end you will control both what is allowed and the path packets take.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Write priority-ordered NSG rules for least privilege.</li>
+        <li>Create a UDR that overrides default system routes.</li>
+        <li>Inspect effective rules and routes on a NIC.</li>
+        <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> a VNet with VMs.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="NSG filtering and UDR forcing traffic through a firewall">
+graph LR
+  Net((Internet)) -->|NSG allow 443| Web[web subnet]
+  Web -->|UDR next hop| FW[Firewall appliance]
+  FW --> App[app subnet]
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> a VNet with at least two subnets and the Azure CLI.</p>
+      <p><strong>Before you begin:</strong> NSG rules are evaluated by priority, lowest number first.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create an NSG allow rule</strong>
+          <div class="command-block" data-copy><div class="command"><code>az network nsg create -n web-nsg &amp;&amp; az network nsg rule create --nsg-name web-nsg -n allow-https --priority 100 --destination-port-ranges 443 --access Allow --protocol Tcp</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Create a UDR forcing traffic via a firewall</strong>
+          <p>A user-defined route overrides Azure's default routing so traffic must pass your inspection point.</p>
+          <div class="command-block" data-copy><div class="command"><code>az network route-table create -n rt-app &amp;&amp; az network route-table route create --route-table-name rt-app -n to-fw --address-prefix 0.0.0.0/0 --next-hop-type VirtualAppliance --next-hop-ip-address 10.0.3.4</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Inspect effective rules and routes</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network nic show-effective-route-table -n web01VMNic -o table</span></div>
+            <div class="terminal-output">Source  AddressPrefix  NextHopType        NextHopIp
+User    0.0.0.0/0      VirtualAppliance   10.0.3.4</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="NSG and UDR progress">
+graph LR
+  A[01 NSG rule] -->|done| B[02 UDR]
+  B -->|done| C[03 Effective routes]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>az network nic show-effective-route-table -n web01VMNic --query "value[?nextHopType=='VirtualAppliance']"</code></div></div>
+      <p>You should see the appliance as the next hop for 0.0.0.0/0, confirming traffic is forced through your firewall. NSG denies should appear in flow logs.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Rule has no effect:</strong> a lower-priority number wins; reorder so the intended rule precedes broad denies.</li>
+        <li><strong>UDR ignored:</strong> associate the route table with the subnet, not just create it.</li>
+        <li><strong>Appliance drops traffic:</strong> enable IP forwarding on the appliance NIC.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Compare cloud NSGs with the cross-cloud view in <a href="../security/network-security-groups.html">Network Security Groups</a>.</li>
+        <li>Audit rules with <a href="cspm-azure-aws.html">CSPM</a>.</li>
+        <li>Codify NSGs/UDRs with <a href="infrastructure-as-code.html">IaC</a>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Enforced least-privilege inbound rules via NSG priorities.</li>
+        <li>Forced all egress through a firewall appliance with a UDR.</li>
+        <li>Verified the effective route table on the VM NIC.</li>
+        <li>Combined filtering and routing for defense in depth.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="vnet-deployment.html">Virtual Network Deployment</a></li>
+        <li><a href="../security/network-security-groups.html">Network Security Groups</a></li>
+        <li><a href="cspm-azure-aws.html">Cloud Security Posture Management</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

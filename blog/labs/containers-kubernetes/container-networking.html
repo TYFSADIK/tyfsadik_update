@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Container Networking | Bridges, DNS &amp; Isolation</title>
+  <meta name="description" content="Connect and isolate Docker containers with user-defined bridges and DNS. Build a private network where only intended containers can talk.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Docker Container Networking and Isolation",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-02-07",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "Docker 24.x, bridge networks",
+    "articleSection": "Containers"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Container Networking</span></nav>
+    <div class="page-header"><h1>Docker Container Networking and Isolation</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Containers</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">bridge</span><span class="tag">DNS</span><span class="tag">isolation</span><span class="tag">--network</span></div>
+    </div>
+
+    <section><p class="lead">You will create user-defined bridge networks so containers reach each other by name while staying isolated from unrelated containers. By the end you will prove a database is reachable by its app but unreachable from outside its network.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Create user-defined bridge networks with built-in DNS.</li>
+        <li>Connect containers by name instead of IP.</li>
+        <li>Verify network isolation between groups.</li>
+        <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> Docker installed.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Two isolated bridge networks">
+graph TD
+  subgraph app-net
+    Web[web] -->|DNS: db:5432| DB[db]
+  end
+  subgraph other-net
+    X[unrelated]
+  end
+  X -. cannot reach .- DB
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> Docker and two or three small images (nginx and postgres work well).</p>
+      <p><strong>Before you begin:</strong> the default bridge has no DNS; always use user-defined networks.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create a user-defined network</strong>
+          <p>User-defined bridges provide automatic name resolution between attached containers.</p>
+          <div class="command-block" data-copy><div class="command"><code>docker network create app-net</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Attach containers to it</strong>
+          <div class="command-block" data-copy><div class="command"><code>docker run -d --name db --network app-net postgres:16 &amp;&amp; docker run -d --name web --network app-net nginx:stable</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Resolve by name from the app</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker exec web getent hosts db</span></div>
+            <div class="terminal-output">172.18.0.2      db</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Container networking progress">
+graph LR
+  A[01 Create net] -->|done| B[02 Attach]
+  B -->|done| C[03 Resolve by name]
+  C -->|next| V[Verify isolation]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style V fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>docker run --rm --name probe alpine sh -c "nc -zv db 5432 || echo isolated"</code></div></div>
+      <p>The probe (not on app-net) should print <code>isolated</code>, while <code>web</code> can reach <code>db</code>. That confirms isolation plus intended connectivity.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Name not resolving:</strong> the default bridge lacks DNS; attach to a user-defined network.</li>
+        <li><strong>Containers can all reach each other:</strong> they share one network; separate concerns into distinct networks.</li>
+        <li><strong>Port not reachable from host:</strong> publish it with <code>-p</code>; network membership alone does not expose it.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Define the whole topology declaratively in <a href="docker-compose.html">Docker Compose</a>.</li>
+        <li>Move isolation to L3 in <a href="kubernetes-networking.html">Kubernetes Services &amp; Networking</a>.</li>
+        <li>Enforce policy with the <a href="../security/zero-trust-hybrid-cloud.html">Zero-Trust</a> microsegmentation lab.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Connected containers by name via user-defined DNS.</li>
+        <li>Isolated unrelated containers onto separate networks.</li>
+        <li>Proved both connectivity and isolation with a live probe.</li>
+        <li>Established the networking model used by Compose and K8s.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="docker-compose.html">Docker Compose</a></li>
+        <li><a href="multi-container-apps.html">Multi-Container Applications</a></li>
+        <li><a href="kubernetes-networking.html">Kubernetes Services &amp; Networking</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

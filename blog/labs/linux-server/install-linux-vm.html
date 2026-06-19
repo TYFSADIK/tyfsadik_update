@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Install a Linux Server VM | VMware &amp; VirtualBox</title>
+  <meta name="description" content="Step-by-step guide to install a Linux server VM in VirtualBox or VMware with networking and snapshots. Build a reproducible lab base in under an hour.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-server/install-linux-vm.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Installing a Linux Server Virtual Machine",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-01-06",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Beginner",
+    "dependencies": "VirtualBox 7.x / VMware Workstation, Ubuntu Server 22.04",
+    "articleSection": "Linux"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Installing Linux VM</span></nav>
+    <div class="page-header"><h1>Install a Linux Server VM in VirtualBox or VMware</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Linux</span><span class="lab-time">~1 hour</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">VirtualBox</span><span class="tag">VMware</span><span class="tag">Ubuntu Server</span><span class="tag">snapshot</span></div>
+    </div>
+
+    <section><p class="lead">You will install a headless Ubuntu Server virtual machine you can break and rebuild freely, the safe foundation for every other server lab. By the end you will have a reachable VM with a clean snapshot to roll back to.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Create and boot a Linux server VM from an ISO.</li>
+        <li>Configure bridged networking so the VM is reachable over SSH.</li>
+        <li>Capture a clean snapshot you can restore in seconds.</li>
+        <li><strong>Time:</strong> ~1 hour &middot; <strong>Difficulty:</strong> Beginner &middot; <strong>Prereqs:</strong> a host with 4GB+ free RAM and virtualization enabled in BIOS.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Host hypervisor running a bridged Linux server VM">
+graph LR
+  Host[Your Host OS] -->|VirtualBox/VMware| HV[Hypervisor]
+  HV -->|virtual disk| VM[Ubuntu Server VM]
+  VM -->|bridged NIC| LAN[Home LAN]
+  You[You] -->|SSH 22| VM
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong></p>
+      <ul>
+        <li>VirtualBox 7.x (<a href="https://www.virtualbox.org" target="_blank" rel="noopener">virtualbox.org</a>) or VMware Workstation.</li>
+        <li>The Ubuntu Server 22.04 ISO.</li>
+        <li>Virtualization (VT-x/AMD-V) enabled in your host BIOS.</li>
+      </ul>
+      <p><strong>Before you begin:</strong> confirm you have 4GB+ free RAM and 20GB free disk.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create the VM and disk</strong>
+          <p>This provisions an empty VM with a 20GB dynamically allocated disk. A dedicated disk keeps the lab isolated from your host.</p>
+          <div class="command-block" data-copy><div class="command"><code>VBoxManage createvm --name ubuntu-srv --ostype Ubuntu_64 --register</code></div><div class="note">Registers a new VM definition with VirtualBox.</div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Attach the ISO and boot the installer</strong>
+          <p>Booting from the ISO launches the guided Ubuntu installer where you set hostname, user, and OpenSSH.</p>
+          <div class="command-block" data-copy><div class="command"><code>VBoxManage storageattach ubuntu-srv --storagectl IDE --port 0 --device 0 --type dvddrive --medium ubuntu-22.04-live-server.iso</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Verify the OS after first boot</strong>
+          <p>Confirm the release so later commands match your <span class="glossary-term" data-definition="A family of Linux distributions; Ubuntu and Debian share the apt package manager.">Debian-family</span> tooling.</p>
+          <div class="command-block" data-copy><div class="command"><code>cat /etc/os-release | head -2</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Enable bridged networking and find the IP</strong>
+          <p>Bridged mode puts the VM on your LAN with its own IP so you can SSH in from your host.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">ip -br addr show</span></div>
+            <div class="terminal-output">lo     UNKNOWN  127.0.0.1/8
+enp0s3 UP       192.168.1.42/24</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input"># your VM is reachable at 192.168.1.42</span></div>
+          </div>
+        </div></div>
+        <div class="step"><div class="step-num">05</div><div class="step-body"><strong>Snapshot the clean base</strong>
+          <p>A snapshot lets you undo any future mistake instantly, which is what makes a VM a safe learning sandbox.</p>
+          <div class="command-block" data-copy><div class="command"><code>VBoxManage snapshot ubuntu-srv take clean-base --description "fresh install"</code></div></div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Install progress from create to snapshot">
+graph LR
+  A[01 Create VM] -->|done| B[02 Install OS]
+  B -->|done| C[03 Verify OS]
+  C -->|done| D[04 Network + SSH]
+  D -->|done| E[05 Snapshot]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style E fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <p>Run this final check from your host:</p>
+      <div class="command-block" data-copy><div class="command"><code>ssh youruser@192.168.1.42 'uname -a &amp;&amp; uptime'</code></div></div>
+      <p>You should see the VM's kernel string and uptime. If all checks pass, you have a working, reachable, restorable Linux server.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>No 64-bit OS option:</strong> enable VT-x/AMD-V in host BIOS, then restart VirtualBox.</li>
+        <li><strong>SSH connection refused:</strong> confirm OpenSSH was selected during install (<code>sudo systemctl status ssh</code>).</li>
+        <li><strong>No LAN IP:</strong> switch the adapter from NAT to Bridged and re-run the installer's network step.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Try the <a href="post-install-config.html">Post-Installation Configuration</a> lab to harden this base.</li>
+        <li>Convert the VM to a KVM guest in <a href="nested-vms-kvm.html">Creating Nested VMs with KVM</a>.</li>
+        <li>Read the Ubuntu Server install docs for autoinstall (cloud-init) automation.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Stood up a reachable Linux server VM in under 1 hour.</li>
+        <li>Confirmed SSH access over a bridged LAN IP.</li>
+        <li>Captured a snapshot enabling sub-minute rollback.</li>
+        <li>Created a disposable base reused across 11 server labs.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="post-install-config.html">Post-Installation Configuration</a></li>
+        <li><a href="../linux-fundamentals/installing-debian-centos-vm.html">Installing Debian &amp; CentOS VMs</a></li>
+        <li><a href="package-management.html">Package Management</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

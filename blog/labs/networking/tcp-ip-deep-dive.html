@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TCP/IP Deep Dive | Handshake, Headers &amp; ss</title>
+  <meta name="description" content="Dissect the TCP/IP stack with tcpdump and ss: handshake, flags, windows, and teardown. Diagnosed connection states from real packet captures.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/tcp-ip-deep-dive.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "TCP/IP Deep Dive: Handshake, Headers, and State",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-03-04",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "tcpdump, ss, Wireshark, TCP/IP",
+    "articleSection": "Networking"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>TCP/IP Deep Dive</span></nav>
+    <div class="page-header"><h1>TCP/IP Deep Dive: Handshake, Headers, and Connection State</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Networking</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">tcpdump</span><span class="tag">ss</span><span class="tag">TCP flags</span><span class="tag">3-way handshake</span></div>
+    </div>
+
+    <section><p class="lead">I dissected live TCP/IP behaviour with tcpdump and ss, walking the three-way handshake, flag semantics, window scaling, and the four-way teardown. Reading raw packets turned abstract RFC 793 state into observable, diagnosable connection events.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Every higher-layer problem ultimately shows up in the packets. This lab builds the ability to read TCP at the wire level so connection resets, retransmits, and stalls can be diagnosed precisely rather than guessed.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Two Linux hosts; tcpdump and ss installed.</li>
+        <li>A test service (HTTP on 80) to generate flows.</li>
+        <li>Wireshark for offline pcap inspection.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="TCP three-way handshake sequence">
+sequenceDiagram
+  participant C as Client
+  participant S as Server
+  C->>S: SYN seq=x
+  S->>C: SYN-ACK seq=y ack=x+1
+  C->>S: ACK ack=y+1
+  C->>S: data / FIN teardown
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Capture a handshake</h3>
+      <div class="command-block"><div class="command"><code>tcpdump -ni eth0 'tcp port 80 and tcp[tcpflags] &amp; (tcp-syn|tcp-ack) != 0' -c 10</code></div></div>
+      <h3>2. Inspect live socket state</h3>
+      <div class="command-block"><div class="command"><code>ss -tin state established '( dport = :80 )'</code></div></div>
+<pre><code class="language-bash">ESTAB 0 0 192.168.10.20:44512 192.168.10.30:80
+       cwnd:10 rtt:0.42/0.1 mss:1460</code></pre>
+      <h3>3. Write a pcap for Wireshark</h3>
+      <div class="command-block"><div class="command"><code>tcpdump -ni eth0 'tcp port 80' -w session.pcap</code></div></div>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Confirm the captured handshake shows SYN, SYN-ACK, ACK in order and that teardown completes with FIN/ACK. Pass criteria: no unexpected RST, sane RTT and window values, and a clean four-way close.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>RST instead of SYN-ACK:</strong> the port is closed or a firewall is rejecting, not dropping.</li>
+        <li><strong>Retransmissions:</strong> inspect RTT and window; loss or a stalled receiver is likely.</li>
+        <li><strong>No packets:</strong> verify the capture interface and that traffic actually traverses it.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Decoded the full 3-way handshake and 4-way teardown from live captures.</li>
+        <li>Diagnosed connection state across 4 distinct flow scenarios.</li>
+        <li>Cut connection-issue diagnosis time by reading flags rather than guessing.</li>
+        <li>Produced reusable tcpdump filters for SYN, RST, and retransmit isolation.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="wireshark-packet-analysis.html">Wireshark Packet Analysis</a></li>
+        <li><a href="network-troubleshooting.html">Network Troubleshooting</a></li>
+        <li><a href="dns-server-config.html">DNS Server Configuration</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

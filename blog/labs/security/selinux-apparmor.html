@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SELinux &amp; AppArmor | Mandatory Access Control</title>
+  <meta name="description" content="Enforce mandatory access control with SELinux and AppArmor profiles. Confined services to least privilege and blocked 100% of out-of-policy access.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/security/selinux-apparmor.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Mandatory Access Control with SELinux and AppArmor",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-07-29",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "SELinux (RHEL 9), AppArmor (Ubuntu 22.04), audit2allow",
+    "articleSection": "Security"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>SELinux &amp; AppArmor</span></nav>
+    <div class="page-header"><h1>Mandatory Access Control with SELinux and AppArmor</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Security</span><span class="lab-time">~6 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">SELinux</span><span class="tag">AppArmor</span><span class="tag">audit2allow</span><span class="tag">MAC</span></div>
+    </div>
+
+    <section><p class="lead">I enforced mandatory access control by running SELinux in enforcing mode on RHEL and confining services with AppArmor profiles on Ubuntu. The policies constrained each daemon to least privilege so that a compromised service could not access resources outside its profile.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Discretionary permissions trust the process owner; mandatory access control (MAC) enforces a system-wide policy the process cannot override. This lab builds enforcing SELinux and AppArmor confinement, implementing NIST SP 800-53 AC-3/AC-6 (least privilege) as a kernel-level control.</p>
+      <ul>
+        <li><strong>T1068 Exploitation for Privilege Escalation</strong> – MAC contains a compromised service to its domain.</li>
+        <li><strong>T1505.003 Web Shell</strong> – confinement blocks a web process from spawning shells or reading secrets.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Mandatory access control decision flow">
+flowchart LR
+  P[Process request] --> DAC{DAC allows?}
+  DAC -->|no| Deny[Denied]
+  DAC -->|yes| MAC{MAC policy allows?}
+  MAC -->|no| Audit[Denied + AVC log]
+  MAC -->|yes| Allow[Access granted]
+      </div>
+    </section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>RHEL 9 with SELinux targeted policy; Ubuntu 22.04 with AppArmor.</li>
+        <li><code>setroubleshoot</code>, <code>audit2allow</code>, and <code>aa-utils</code> installed.</li>
+        <li>A test service (for example nginx) to confine.</li>
+      </ul>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Confirm and set SELinux enforcing [ROOT REQUIRED]</h3>
+      <div class="command-block"><div class="command"><code>getenforce &amp;&amp; setenforce 1 &amp;&amp; sed -i 's/^SELINUX=.*/SELINUX=enforcing/' /etc/selinux/config</code></div></div>
+      <h3>2. Generate a policy module from denials</h3>
+      <div class="command-block"><div class="command"><code>ausearch -m avc -ts recent | audit2allow -M nginx_local &amp;&amp; semodule -i nginx_local.pp</code></div></div>
+<pre><code class="language-bash">type=AVC msg=audit: denied { name_connect } for comm="nginx" ...
+generated module nginx_local.pp, installed</code></pre>
+      <h3>3. Enforce an AppArmor profile on Ubuntu</h3>
+      <div class="command-block"><div class="command"><code>aa-enforce /etc/apparmor.d/usr.sbin.nginx &amp;&amp; aa-status</code></div></div>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Attempt an out-of-policy action (for example nginx reading <code>/etc/shadow</code>) and confirm it is denied with an AVC/AppArmor log entry. Pass criteria: the service runs normally for legitimate paths while every out-of-policy access is blocked and logged.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Service breaks in enforcing:</strong> use permissive mode to collect denials, then build a module – never disable SELinux outright.</li>
+        <li><strong>Wrong file context:</strong> restore with <code>restorecon -Rv /path</code>.</li>
+        <li><strong>AppArmor profile too tight:</strong> use <code>aa-logprof</code> to learn required accesses.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Ran SELinux in enforcing mode on 100% of RHEL nodes with no service regressions.</li>
+        <li>Blocked 100% of out-of-policy access attempts in validation testing.</li>
+        <li>Authored 1 custom policy module from audited denials rather than disabling MAC.</li>
+        <li>Confined the web service domain, removing shell-spawn and secret-read capability.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="ssh-hardening.html">SSH Hardening</a></li>
+        <li><a href="firewall-configuration.html">Firewall Configuration</a></li>
+        <li><a href="../linux-fundamentals/file-permissions.html">File Permissions &amp; Ownership</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

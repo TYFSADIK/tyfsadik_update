@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multi-Service Linux Server | Assignment</title>
+  <meta name="description" content="Build a hardened multi-service Linux server: web, DNS, and database behind a firewall with monitoring. Run several services safely on one host.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/assignments/multi-service-server.html">
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Multi-Service Linux Server Build",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-03-26",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "Nginx, BIND9, PostgreSQL, nftables, systemd",
+    "articleSection": "Assignments"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../index.html">Home</a> &rsaquo; <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo; <span>Multi-Service Server</span></nav>
+    <div class="page-header"><h1>Hardened Multi-Service Linux Server</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Linux &middot; 2025</span><span class="lab-time">~12 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Nginx</span><span class="tag">BIND9</span><span class="tag">PostgreSQL</span><span class="tag">nftables</span></div>
+    </div>
+
+    <section><p class="lead">You will run several services (web, DNS, database) safely on one hardened Linux host behind a default-deny firewall, each managed by systemd. By the end the server delivers all three services with least-privilege exposure.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Install and manage web, DNS, and database services.</li>
+        <li>Expose only the required ports with nftables.</li>
+        <li>Monitor service health with systemd and logs.</li>
+        <li><strong>Time:</strong> ~12 hours &middot; <strong>Difficulty:</strong> Advanced &middot; <strong>Prereqs:</strong> the Linux server labs.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Multi-service server behind a firewall">
+graph LR
+  Net((Clients)) -->|443/53| FW[nftables default-deny]
+  FW --> Web[Nginx]
+  FW --> DNS[BIND9]
+  Web --> DB[(PostgreSQL local-only)]
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <ul>
+        <li>A Linux server with systemd and nftables.</li>
+        <li>Nginx, BIND9, and PostgreSQL packages.</li>
+      </ul>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Install and enable the services</strong>
+          <div class="command-block" data-copy><div class="command"><code>sudo apt install -y nginx bind9 postgresql &amp;&amp; sudo systemctl enable --now nginx named postgresql</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Expose only required ports</strong>
+          <p>The database stays local-only; only web and DNS are reachable.</p>
+          <div class="command-block" data-copy><div class="command"><code>sudo nft add rule inet filter input tcp dport {80,443} accept &amp;&amp; sudo nft add rule inet filter input udp dport 53 accept</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Verify all services are healthy</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">systemctl is-active nginx named postgresql</span></div>
+            <div class="terminal-output">active
+active
+active</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Multi-service progress">
+graph LR
+  A[01 Install services] -->|done| B[02 Firewall scope]
+  B -->|done| C[03 Health check]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>curl -s -o /dev/null -w "%{http_code}\n" http://localhost &amp;&amp; dig @localhost lab +short &amp;&amp; nft list ruleset | grep 5432 || echo "db not exposed"</code></div></div>
+      <p>Web returns 200, DNS resolves, and the database port is not exposed externally. If so, the server runs all services with least privilege.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Service won't start:</strong> inspect <code>journalctl -u &lt;service&gt;</code> for the failure.</li>
+        <li><strong>Port unreachable:</strong> confirm the nftables accept rule precedes the default drop.</li>
+        <li><strong>DB reachable externally:</strong> bind PostgreSQL to localhost and block 5432 at the firewall.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Add TLS to Nginx and DNSSEC to BIND9.</li>
+        <li>Centralize logs (see <a href="../labs/linux-server/log-management.html">Log Management</a>).</li>
+        <li>Containerize the services with <a href="../labs/containers-kubernetes/docker-compose.html">Docker Compose</a>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Ran web, DNS, and database on one hardened host.</li>
+        <li>Exposed only the required ports via default-deny nftables.</li>
+        <li>Kept the database local-only with no external exposure.</li>
+        <li>Verified health of all three services.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Work</h2>
+      <ul>
+        <li><a href="../labs/linux-server/service-management.html">Service Management (systemd)</a></li>
+        <li><a href="../labs/security/firewall-configuration.html">Firewall Configuration</a></li>
+        <li><a href="server-infrastructure.html">Server Infrastructure</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

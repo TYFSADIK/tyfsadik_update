@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multi-Container Apps | Compose to Production Patterns</title>
+  <meta name="description" content="Build a realistic multi-container app with a reverse proxy, API, worker, and database. Apply env config, secrets, and scaling patterns.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/containers-kubernetes/multi-container-apps.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Building Multi-Container Applications",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-02-11",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "Docker Compose v2, Nginx, Redis, PostgreSQL",
+    "articleSection": "Containers"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Multi-Container Applications</span></nav>
+    <div class="page-header"><h1>Build a Realistic Multi-Container Application</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Containers</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">reverse proxy</span><span class="tag">API</span><span class="tag">worker</span><span class="tag">secrets</span></div>
+    </div>
+
+    <section><p class="lead">You will assemble a production-shaped app: a reverse proxy in front of an API, a background worker, and a database with persistent storage. By the end you will run a realistic topology with config via environment and secrets.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Compose a 4-tier app (proxy, API, worker, DB).</li>
+        <li>Inject configuration with environment and secrets.</li>
+        <li>Scale a stateless service horizontally.</li>
+        <li><strong>Time:</strong> ~4 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> the Compose lab completed.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Reverse proxy in front of API, worker, and database">
+graph LR
+  U[User] -->|443| Px[Nginx proxy]
+  Px -->|HTTP| API[API service]
+  API --> DB[(PostgreSQL)]
+  API -->|enqueue| Q[(Redis)]
+  Q --> W[Worker]
+  W --> DB
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> Docker Compose v2 and the proxy/API/worker images (or simple placeholders).</p>
+      <p><strong>Before you begin:</strong> never bake secrets into images; pass them at runtime.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Define the multi-service stack</strong>
+          <p>Each tier is a service; the proxy is the only one exposed to the host.</p>
+          <div class="command-block" data-copy><div class="command"><code>docker compose -f compose.yaml config</code></div><div class="note">Validates and renders the merged configuration.</div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Provide secrets at runtime</strong>
+          <div class="command-block" data-copy><div class="command"><code>printf 'supersecret' | docker secret create db_password - 2>/dev/null || echo "use env_file for compose"</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Bring it up and scale the API</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker compose up -d --scale api=3</span></div>
+            <div class="terminal-output">[+] Running 6/6
+proj-api-1 Started  proj-api-2 Started  proj-api-3 Started</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Multi-container app progress">
+graph LR
+  A[01 Define stack] -->|done| B[02 Secrets]
+  B -->|done| C[03 Up + scale]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>for i in 1 2 3; do curl -s http://localhost/api/whoami; done</code></div></div>
+      <p>You should see responses from different API replicas, confirming load distribution behind the proxy.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Only one replica answers:</strong> ensure the proxy load-balances across the service name, not a fixed container.</li>
+        <li><strong>Worker idle:</strong> confirm it consumes the same Redis queue the API publishes to.</li>
+        <li><strong>Secret not found:</strong> Compose uses <code>secrets:</code> with files; Swarm uses <code>docker secret</code>.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Translate this topology to Kubernetes Deployments and Services.</li>
+        <li>Add autoscaling and resource limits.</li>
+        <li>Front it with the <a href="../../../work/infrastructure/proxmox-zero-trust.html">Cloudflare Tunnel</a> pattern.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Ran a 4-tier app with only the proxy exposed.</li>
+        <li>Injected configuration and secrets at runtime, not in images.</li>
+        <li>Scaled the stateless API to 3 replicas behind the proxy.</li>
+        <li>Verified load distribution across replicas.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="docker-compose.html">Docker Compose</a></li>
+        <li><a href="kubernetes-pods-services.html">Pods &amp; Deployments</a></li>
+        <li><a href="kubernetes-networking.html">Kubernetes Services &amp; Networking</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

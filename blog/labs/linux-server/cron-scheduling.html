@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cron &amp; Task Scheduling | systemd Timers on Servers</title>
+  <meta name="description" content="Schedule server tasks with cron and systemd timers, with logging and failure alerts. Build reliable, observable automation that catches missed runs.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-server/cron-scheduling.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Server Task Scheduling with cron and systemd Timers",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-01-28",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Beginner",
+    "dependencies": "cron, systemd timers",
+    "articleSection": "Linux"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Cron &amp; Task Scheduling</span></nav>
+    <div class="page-header"><h1>Server Task Scheduling with cron and systemd Timers</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Linux</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">cron</span><span class="tag">systemd timer</span><span class="tag">OnCalendar</span><span class="tag">Persistent</span></div>
+    </div>
+
+    <section><p class="lead">You will schedule a recurring server task with both cron and a systemd timer, adding logging and missed-run catch-up. By the end you will have observable automation that survives reboots and tells you when it fails.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Write a logged cron entry with a sane environment.</li>
+        <li>Create an equivalent systemd timer with Persistent catch-up.</li>
+        <li>Alert on failure rather than failing silently.</li>
+        <li><strong>Time:</strong> ~2 hours &middot; <strong>Difficulty:</strong> Beginner &middot; <strong>Prereqs:</strong> a systemd-based server.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Scheduled task with logging and alerting">
+graph LR
+  Timer[systemd timer OnCalendar] -->|triggers| Svc[backup.service]
+  Svc -->|runs| Job[Script]
+  Job -->|logs| J[journald]
+  Job -->|nonzero exit| Alert[OnFailure notify]
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> a systemd server and a script to schedule (for example the restic backup from the backup lab).</p>
+      <p><strong>Before you begin:</strong> use absolute paths in scheduled jobs; cron's environment is minimal.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Add a logged cron entry</strong>
+          <p>Redirecting both streams to a log makes cron failures visible instead of silent.</p>
+          <div class="command-block" data-copy><div class="command"><code>( crontab -l 2>/dev/null; echo "30 2 * * * /usr/local/bin/backup.sh >> /var/log/backup.log 2>&amp;1" ) | crontab -</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Create a systemd timer with catch-up</strong>
+          <p>Persistent=true runs a missed job after downtime, which plain cron will not do.</p>
+          <div class="command-block" data-copy><div class="command"><code>printf '[Timer]\nOnCalendar=*-*-* 02:30:00\nPersistent=true\n[Install]\nWantedBy=timers.target\n' | sudo tee /etc/systemd/system/backup.timer</code></div><div class="note">[ROOT REQUIRED] Pairs with a backup.service unit.</div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Enable and inspect</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">#</span> <span class="input">systemctl daemon-reload &amp;&amp; systemctl enable --now backup.timer &amp;&amp; systemctl list-timers backup.timer</span></div>
+            <div class="terminal-output">NEXT                     LEFT     UNIT          ACTIVATES
+2026-06-18 02:30 UTC     16h      backup.timer  backup.service</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Scheduling progress">
+graph LR
+  A[01 Cron entry] -->|done| B[02 systemd timer]
+  B -->|done| C[03 Enable + inspect]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>sudo systemctl start backup.service &amp;&amp; journalctl -u backup.service -n 5 --no-pager</code></div></div>
+      <p>You should see the job run and log output. If the timer also appears in <code>list-timers</code> with a future run, scheduling is working.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Cron job runs in shell but not scheduled:</strong> cron has a minimal PATH; use absolute paths and set variables.</li>
+        <li><strong>Timer never fires:</strong> confirm it is enabled and the <code>OnCalendar</code> syntax with <code>systemd-analyze calendar</code>.</li>
+        <li><strong>Missed runs:</strong> set <code>Persistent=true</code> so the job catches up after downtime.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Add an <code>OnFailure=</code> unit that sends a notification.</li>
+        <li>Schedule the <a href="backup-recovery.html">restic backups</a> from the backup lab.</li>
+        <li>Randomize start with <code>RandomizedDelaySec</code> to avoid thundering herds.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Scheduled a task via both cron and a systemd timer.</li>
+        <li>Captured all job output to logs for observability.</li>
+        <li>Enabled missed-run catch-up with Persistent timers.</li>
+        <li>Validated the schedule with list-timers and a manual run.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="backup-recovery.html">Backup &amp; Recovery</a></li>
+        <li><a href="service-management.html">Service Management (systemd)</a></li>
+        <li><a href="../linux-fundamentals/cron-jobs.html">Linux Fundamentals: Cron Jobs</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

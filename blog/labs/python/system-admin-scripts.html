@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Python Sysadmin Scripts | subprocess &amp; psutil</title>
+  <meta name="description" content="Automate Linux administration with Python subprocess, psutil, and os. Replaced manual checks with scheduled health and cleanup scripts.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/python/system-admin-scripts.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Python System Administration Scripts",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-03-25",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "Python 3.11, psutil, subprocess",
+    "articleSection": "Python"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/python/index.html">Python</a> &rsaquo; <span>System Administration Scripts</span></nav>
+    <div class="page-header"><h1>Python System Administration Scripts with psutil and subprocess</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Python</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">psutil</span><span class="tag">subprocess</span><span class="tag">os</span><span class="tag">systemd timer</span></div>
+    </div>
+
+    <section><p class="lead">I automated routine Linux administration with Python, using psutil for resource metrics and subprocess for safe command execution. Scheduled health and cleanup scripts replaced manual checks and surfaced disk and memory pressure before it caused outages.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Repetitive admin tasks are error-prone when done by hand. This lab builds idempotent Python scripts that gather metrics, act on thresholds, and run under systemd timers, the toolkit that underpins the IR automation and vulnerability labs.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Linux host with Python 3.11 and psutil.</li>
+        <li>systemd for scheduling (timer + service unit).</li>
+        <li>Permissions appropriate to the managed resources.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Scheduled health-check script flow">
+flowchart LR
+  Tmr[systemd timer] --> S[health.py]
+  S --> M[psutil metrics]
+  M --> T{Threshold breach?}
+  T -->|yes| A[alert + cleanup]
+  T -->|no| L[log ok]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Gather metrics with psutil</h3>
+<pre><code class="language-bash">import psutil
+disk = psutil.disk_usage("/").percent
+mem  = psutil.virtual_memory().percent
+if disk > 85 or mem > 90:
+    alert(disk, mem)</code></pre>
+      <h3>2. Run a command safely with subprocess</h3>
+      <div class="command-block"><div class="command"><code>python -c "import subprocess; print(subprocess.run(['df','-h','/'],capture_output=True,text=True).stdout)"</code></div></div>
+      <h3>3. Schedule via systemd timer [ROOT REQUIRED]</h3>
+      <div class="command-block"><div class="command"><code>systemctl enable --now health.timer &amp;&amp; systemctl list-timers health.timer</code></div></div>
+<pre><code class="language-bash">NEXT                        UNIT          ACTIVATES
+2026-06-17 10:00:00 UTC     health.timer  health.service</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Fill a test filesystem past the threshold and confirm the script alerts and runs cleanup, then verify the timer fires on schedule. Pass criteria: threshold logic triggers correctly, subprocess uses a list (no shell injection), and the timer runs reliably.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Shell injection risk:</strong> pass args as a list, never <code>shell=True</code> with user input.</li>
+        <li><strong>Timer not firing:</strong> check <code>systemctl status health.timer</code> and journal logs.</li>
+        <li><strong>Permission denied:</strong> run the service as a user with the needed access, not blanket root.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Replaced manual checks with scheduled health monitoring.</li>
+        <li>Surfaced disk/memory pressure before it caused service impact.</li>
+        <li>Eliminated shell-injection risk via list-form subprocess calls.</li>
+        <li>Ran idempotent cleanup automatically under systemd timers.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="cli-tools-argparse.html">CLI Tools with argparse</a></li>
+        <li><a href="memory-usage-analyzer.html">Memory Usage Analyzer</a></li>
+        <li><a href="../security/python-ir-automation.html">Python IR Automation</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

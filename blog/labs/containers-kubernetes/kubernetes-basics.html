@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kubernetes Basics | Cluster, kubectl &amp; First Pod</title>
+  <meta name="description" content="Get started with Kubernetes: spin up a local cluster, learn kubectl, and run your first pod and deployment. Understand the control plane.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-basics.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Kubernetes Basics: Cluster, kubectl, and Pods",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-02-13",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "kind/minikube, kubectl, Kubernetes 1.29",
+    "articleSection": "Containers"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Kubernetes Basics</span></nav>
+    <div class="page-header"><h1>Kubernetes Basics: Your First Cluster and Pod</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Containers</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">kubectl</span><span class="tag">kind</span><span class="tag">pods</span><span class="tag">deployments</span></div>
+    </div>
+
+    <section><p class="lead">You will create a local Kubernetes cluster, learn the core kubectl workflow, and run your first deployment. By the end you will understand how the control plane keeps your desired state running.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Spin up a local cluster with kind or minikube.</li>
+        <li>Use kubectl to create and inspect workloads.</li>
+        <li>Run a self-healing deployment.</li>
+        <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> Docker and kubectl installed.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Kubernetes control plane reconciling desired state">
+graph LR
+  K[kubectl] -->|apply| API[API Server]
+  API --> ETCD[(etcd desired state)]
+  API --> Sch[Scheduler]
+  Sch --> Node[Worker Node]
+  Node --> Pod[Pod]
+  CM[Controller Manager] -->|reconcile| API
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> Docker, kubectl, and <span class="glossary-term" data-definition="Kubernetes IN Docker: runs a local Kubernetes cluster using Docker containers as nodes.">kind</span> (or minikube).</p>
+      <p><strong>Before you begin:</strong> confirm kubectl is installed with <code>kubectl version --client</code>.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create a local cluster</strong>
+          <div class="command-block" data-copy><div class="command"><code>kind create cluster --name lab</code></div><div class="note">Boots a single-node Kubernetes cluster in Docker.</div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Run a deployment</strong>
+          <p>A Deployment declares desired replicas; the controller keeps that many pods running.</p>
+          <div class="command-block" data-copy><div class="command"><code>kubectl create deployment web --image=nginx:stable --replicas=2</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Inspect the cluster</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get pods -o wide</span></div>
+            <div class="terminal-output">NAME            READY   STATUS    NODE
+web-6f...-a1b2   1/1     Running   lab-control-plane
+web-6f...-c3d4   1/1     Running   lab-control-plane</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Kubernetes basics progress">
+graph LR
+  A[01 Create cluster] -->|done| B[02 Deployment]
+  B -->|done| C[03 Inspect]
+  C -->|next| V[Self-heal test]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style V fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>kubectl delete pod -l app=web --field-selector status.phase=Running --grace-period=0 | head -1; kubectl get deploy web</code></div></div>
+      <p>After deleting a pod, the deployment should report the desired replica count again within seconds, proving self-healing.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>kubectl cannot connect:</strong> kind writes a kubeconfig context; confirm with <code>kubectl config current-context</code>.</li>
+        <li><strong>Pods Pending:</strong> the node may lack resources; check <code>kubectl describe pod</code>.</li>
+        <li><strong>ImagePullBackOff:</strong> the image name or tag is wrong; verify it pulls with docker.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Expose the deployment in <a href="kubernetes-pods-services.html">Pods &amp; Deployments</a>.</li>
+        <li>Add networking and Services in <a href="kubernetes-networking.html">Kubernetes Networking</a>.</li>
+        <li>Move to managed Kubernetes in <a href="aks-deployment.html">Azure Kubernetes Service</a>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Created a working local Kubernetes cluster.</li>
+        <li>Ran a 2-replica deployment via kubectl.</li>
+        <li>Observed control-plane reconciliation of desired state.</li>
+        <li>Proved self-healing by deleting and recovering a pod.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="kubernetes-pods-services.html">Pods &amp; Deployments</a></li>
+        <li><a href="kubernetes-networking.html">Kubernetes Services &amp; Networking</a></li>
+        <li><a href="../../../work/infrastructure/kubernetes-infrastructure.html">Kubernetes Infrastructure Project</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

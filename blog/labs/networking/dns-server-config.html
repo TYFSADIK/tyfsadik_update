@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DNS Server Configuration | BIND9 Zones &amp; dig</title>
+  <meta name="description" content="Configure authoritative DNS with BIND9 forward and reverse zones. Served local name resolution validated end-to-end with dig.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/dns-server-config.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "DNS Server Configuration with BIND9",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-03-18",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "BIND9, dig, zone files",
+    "articleSection": "Networking"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>DNS Server Configuration</span></nav>
+    <div class="page-header"><h1>Authoritative DNS Configuration with BIND9</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Networking</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">BIND9</span><span class="tag">zones</span><span class="tag">PTR</span><span class="tag">dig</span></div>
+    </div>
+
+    <section><p class="lead">I configured BIND9 as an authoritative server with forward and reverse zones for a local domain, including A, PTR, MX, and CNAME records. The deployment delivered internal name resolution validated end-to-end with dig against the server directly.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>DNS underpins almost every service interaction. This lab builds authoritative forward and reverse zones so internal hosts resolve by name and reverse lookups support logging and mail, complementing the DHCP and static-config labs.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Linux server with BIND9 (named) installed.</li>
+        <li>A local domain (lab.tyfsadik.org) and subnet for the reverse zone.</li>
+        <li>dig and named-checkzone for validation.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Forward and reverse zone resolution">
+flowchart LR
+  Q[dig host.lab] --> N[BIND9 named]
+  N --> F[(Forward zone A/MX/CNAME)]
+  N --> R[(Reverse zone PTR)]
+  F --> A[Answer]
+  R --> A
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Define a forward zone record set</h3>
+<pre><code class="language-bash">$TTL 3600
+@   IN SOA ns1.lab.tyfsadik.org. admin.lab.tyfsadik.org. (2026061701 3600 600 86400 3600)
+@   IN NS  ns1
+ns1 IN A   192.168.20.2
+nas IN A   192.168.20.10</code></pre>
+      <h3>2. Validate zones before reload [ROOT REQUIRED]</h3>
+      <div class="command-block"><div class="command"><code>named-checkzone lab.tyfsadik.org /etc/bind/db.lab &amp;&amp; rndc reload</code></div></div>
+      <h3>3. Query the server directly</h3>
+      <div class="command-block"><div class="command"><code>dig @192.168.20.2 nas.lab.tyfsadik.org +short</code></div></div>
+<pre><code class="language-bash">192.168.20.10</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Resolve forward and reverse records and confirm the SOA serial incremented on each change. Pass criteria: correct A and PTR answers, authoritative AA flag set, and clean <code>named-checkzone</code> output.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>SERVFAIL:</strong> a zone file syntax error; run named-checkzone and inspect <code>/var/log/syslog</code>.</li>
+        <li><strong>Stale answers:</strong> bump the SOA serial; secondaries cache by serial.</li>
+        <li><strong>Reverse lookup fails:</strong> confirm the in-addr.arpa zone and PTR records exist.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Served authoritative forward and reverse resolution for the local domain.</li>
+        <li>Validated 100% of zones with named-checkzone before every reload.</li>
+        <li>Resolved A, PTR, MX, and CNAME records end-to-end via dig.</li>
+        <li>Standardized SOA serial discipline (date-based) for change tracking.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="dhcp-server-setup.html">DHCP Server Configuration</a></li>
+        <li><a href="static-network-config.html">Static Network Configuration</a></li>
+        <li><a href="../../../work/infrastructure/self-hosted-dns.html">Self-Hosted DNS (Pi-hole + Unbound)</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

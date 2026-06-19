@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Static Network Configuration | ip &amp; nmcli</title>
+  <meta name="description" content="Configure persistent static IP, routes, and DNS with ip and nmcli on Linux. Delivered deterministic addressing with zero DHCP dependency.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/static-network-config.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Static Network Configuration with ip and nmcli",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-02-04",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Beginner",
+    "dependencies": "iproute2, NetworkManager (nmcli), systemd-networkd",
+    "articleSection": "Networking"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>Static Network Configuration</span></nav>
+    <div class="page-header"><h1>Static Network Configuration with ip and nmcli</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Networking</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">iproute2</span><span class="tag">nmcli</span><span class="tag">systemd-networkd</span><span class="tag">DNS</span></div>
+    </div>
+
+    <section><p class="lead">I configured persistent static IPv4 addressing, default routes, and DNS resolvers on Linux using both the runtime <code>ip</code> tool and persistent <code>nmcli</code> profiles. Static configuration removed DHCP lease dependency for infrastructure hosts that must hold deterministic addresses.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Servers, gateways, and DNS hosts need fixed addresses that survive reboots and DHCP outages. This lab distinguishes the volatile runtime layer (<code>ip</code>) from the persistent layer (NetworkManager/systemd-networkd), so changes are both immediate and durable.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Ubuntu 22.04 / RHEL 9 with NetworkManager 1.4x.</li>
+        <li>An assigned subnet, gateway, and DNS resolver addresses.</li>
+        <li>Console access in case a change drops connectivity.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Static addressing components">
+flowchart LR
+  N[NIC] --> A[Static IP/CIDR]
+  A --> G[Default Gateway]
+  G --> D[DNS Resolvers]
+  D --> P[Persisted profile]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Apply a runtime address with ip [PRIVILEGED]</h3>
+      <div class="command-block"><div class="command"><code>ip addr add 192.168.10.20/24 dev eth0 &amp;&amp; ip route add default via 192.168.10.1</code></div></div>
+      <h3>2. Persist with an nmcli profile</h3>
+      <div class="command-block"><div class="command"><code>nmcli con mod eth0 ipv4.addresses 192.168.10.20/24 ipv4.gateway 192.168.10.1 ipv4.dns 192.168.10.2 ipv4.method manual</code></div></div>
+      <h3>3. Reload and verify</h3>
+      <div class="command-block"><div class="command"><code>nmcli con up eth0 &amp;&amp; ip -br addr show eth0</code></div></div>
+<pre><code class="language-bash">eth0   UP   192.168.10.20/24</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Reboot and confirm the address persists, then test gateway reachability and DNS resolution. Pass criteria: identical address after reboot, successful <code>ping</code> to the gateway, and name resolution via the configured resolver.</p>
+      <div class="command-block"><div class="command"><code>ping -c2 192.168.10.1 &amp;&amp; dig +short tyfsadik.org</code></div></div>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Address lost on reboot:</strong> the runtime <code>ip</code> change is not persistent; commit it in nmcli.</li>
+        <li><strong>No DNS:</strong> verify <code>/etc/resolv.conf</code> is managed and points to the configured resolver.</li>
+        <li><strong>Two managers fighting:</strong> run either NetworkManager or systemd-networkd, not both, on the same NIC.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Delivered deterministic addressing on infrastructure hosts with 0 DHCP dependency.</li>
+        <li>Persisted configuration surviving 5/5 reboot cycles.</li>
+        <li>Cut DHCP-related address-change incidents to zero for fixed servers.</li>
+        <li>Standardized one nmcli profile template across managed nodes.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="ip-routing-subnetting.html">IP Routing &amp; Subnetting</a></li>
+        <li><a href="dns-server-config.html">DNS Server Configuration</a></li>
+        <li><a href="network-troubleshooting.html">Network Troubleshooting</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

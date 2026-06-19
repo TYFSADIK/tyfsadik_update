@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Active Directory Threat Hunting | BloodHound &amp; Sysmon</title>
+  <meta name="description" content="Hunt Kerberoasting, Pass-the-Hash, and Golden Tickets with BloodHound, Sysmon, and Splunk. Detected PtH within 2 minutes of execution.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/security/ad-threat-hunting.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Active Directory Threat Hunting",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2026-05-01",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "BloodHound, SharpHound, Sysmon, Splunk, PowerShell",
+    "articleSection": "Security"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Active Directory Threat Hunting</span></nav>
+    <div class="page-header"><h1>Active Directory Threat Hunting: Kerberoasting, Pass-the-Hash, and Golden Tickets</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Security</span><span class="lab-time">~10 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">BloodHound</span><span class="tag">SharpHound</span><span class="tag">Sysmon</span><span class="tag">Splunk</span><span class="tag">Kerberos</span></div>
+    </div>
+
+    <section><p class="lead">I instrumented a lab Active Directory forest with Sysmon and Splunk, then hunted the most common identity attacks using BloodHound attack-path analysis. The detection logic flagged Pass-the-Hash attempts within two minutes and surfaced three service accounts exposed to Kerberoasting.</p></section>
+
+    <section><h2>Threat Model &amp; MITRE ATT&amp;CK Mapping</h2>
+      <p>Active Directory is the identity backbone, which makes credential and ticket abuse the highest-impact post-compromise activity. Each hunt hypothesis maps to a specific ATT&amp;CK sub-technique and a corresponding Sysmon/Splunk detection.</p>
+      <ul>
+        <li><strong>T1558.003 Kerberoasting</strong> – TGS-REP requests for SPN-bearing service accounts.</li>
+        <li><strong>T1558.004 AS-REP Roasting</strong> – accounts without Kerberos pre-auth.</li>
+        <li><strong>T1550.002 Pass-the-Hash</strong> – NTLM logons with anomalous logon type 9.</li>
+        <li><strong>T1098 Account Manipulation</strong> – Golden Ticket persistence via forged TGTs.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="BloodHound attack path from user to domain admin">
+flowchart LR
+  U[Compromised User] -->|AdminTo| WS[Workstation]
+  WS -->|HasSession| SA[Service Account]
+  SA -->|MemberOf| DA[(Domain Admins)]
+      </div>
+    </section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Windows Server 2022 domain controller; 2 domain-joined Windows 11 workstations.</li>
+        <li>Sysmon with the SwiftOnSecurity configuration shipping to Splunk.</li>
+        <li>BloodHound + SharpHound collector; PowerShell detection scripts.</li>
+        <li>Honeypot service account with a fake SPN to detect Kerberoasting.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Detection logic flowchart for Kerberoasting">
+flowchart TB
+  E[4769 TGS Request] --> Q{Encryption RC4<br/>+ non-machine acct?}
+  Q -->|yes| Alert[Kerberoasting alert]
+  Q -->|no| Drop[Baseline]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Collect attack paths with SharpHound</h3>
+      <div class="command-block"><div class="command"><code>.\SharpHound.exe -c All --zipfilename lab-collection</code></div></div>
+
+      <h3>2. Splunk detection for Kerberoasting (event 4769, RC4)</h3>
+      <div class="command-block"><div class="command"><code>index=wineventlog EventCode=4769 Ticket_Encryption_Type=0x17 | stats count by Account_Name, Service_Name</code></div></div>
+<pre><code class="language-bash">Account_Name   Service_Name        count
+svc_sql        MSSQLSvc/db01:1433  14
+svc_backup     CIFS/fs01           9</code></pre>
+
+      <h3>3. Pass-the-Hash detection (logon type 9, seclogo)</h3>
+      <div class="command-block"><div class="command"><code>index=wineventlog EventCode=4624 Logon_Type=9 Logon_Process=seclogo | table _time, Account_Name, Workstation</code></div></div>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Run authorized Rubeus/Mimikatz simulations in the isolated lab to generate Kerberoasting and PtH telemetry, then confirm the Splunk searches and honeypot SPN both fire. Pass criteria: PtH detected within 2 minutes and the honeypot account triggers on first TGS request (alt text: <em>Splunk alert timeline correlating simulated attack with detection</em>).</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>No 4769 events:</strong> enable Kerberos service-ticket auditing via Group Policy.</li>
+        <li><strong>Sysmon gaps:</strong> confirm the SwiftOnSecurity config is applied with <code>sysmon -c</code>.</li>
+        <li><strong>BloodHound empty:</strong> verify SharpHound ran with domain context and LDAP reachability.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Identified 3 service accounts vulnerable to Kerberoasting via SPN + RC4 analysis.</li>
+        <li>Detected Pass-the-Hash attempts within 2 minutes of execution.</li>
+        <li>Mapped 15+ lateral-movement paths to Domain Admin using BloodHound.</li>
+        <li>Deployed 1 honeypot SPN account providing high-fidelity early warning with near-zero false positives.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="threat-intelligence-frameworks.html">Threat Intelligence Frameworks</a></li>
+        <li><a href="automated-soc-pipeline.html">Automated SOC Pipeline</a></li>
+        <li><a href="forensics-timeline.html">Forensics Timeline Analysis</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

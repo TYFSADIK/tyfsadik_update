@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nested VMs with KVM | Build a Hypervisor Lab</title>
+  <meta name="description" content="Enable nested KVM on a Linux server and run guest VMs with libvirt. Build multi-node clustering labs on one machine, no extra hardware.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-server/nested-vms-kvm.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Nested KVM Virtualization on a Linux Server",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-01-10",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "KVM, libvirt, virt-install, virsh",
+    "articleSection": "Linux"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Nested VMs with KVM</span></nav>
+    <div class="page-header"><h1>Build a Nested KVM Hypervisor Lab with libvirt</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Linux</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">KVM</span><span class="tag">libvirt</span><span class="tag">virt-install</span><span class="tag">virsh</span></div>
+    </div>
+
+    <section><p class="lead">You will turn one Linux server into a hypervisor that runs guest VMs, letting you build multi-node clusters on a single machine. By the end you will boot a nested guest and manage it entirely from the command line.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Enable nested virtualization in the KVM kernel module.</li>
+        <li>Provision a guest VM with <span class="glossary-term" data-definition="A toolkit and daemon (libvirtd) for managing virtualization platforms like KVM through a common API.">libvirt</span> and virt-install.</li>
+        <li>Manage VM lifecycle with virsh.</li>
+        <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Advanced &middot; <strong>Prereqs:</strong> a Linux host with CPU virtualization extensions and 8GB+ RAM.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Nested KVM layers from host to inner guests">
+graph TD
+  Host[Linux Server + KVM] -->|nested=1| L1[L1 Hypervisor VM]
+  L1 -->|virt-install| G1[Guest node-1]
+  L1 -->|virt-install| G2[Guest node-2]
+  G1 --- Cluster[Cluster lab]
+  G2 --- Cluster
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> a Linux server with KVM (<code>kvm-ok</code> passes), libvirt, and virtinst installed.</p>
+      <p><strong>Before you begin:</strong> confirm CPU extensions with <code>egrep -c '(vmx|svm)' /proc/cpuinfo</code> (must be &gt; 0).</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Install the virtualization stack</strong>
+          <p>These packages provide the KVM hypervisor, the libvirt management API, and the virt-install provisioning tool.</p>
+          <div class="command-block" data-copy><div class="command"><code>sudo apt install -y qemu-kvm libvirt-daemon-system virtinst</code></div><div class="note">[ROOT REQUIRED] Installs KVM, libvirtd, and virt-install.</div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Enable nested virtualization</strong>
+          <p>Nesting exposes virtualization extensions to guests so an L1 VM can itself run VMs.</p>
+          <div class="command-block" data-copy><div class="command"><code>echo 'options kvm_intel nested=1' | sudo tee /etc/modprobe.d/kvm.conf &amp;&amp; sudo modprobe -r kvm_intel; sudo modprobe kvm_intel</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Provision a guest with virt-install</strong>
+          <p>This creates and boots a guest from a cloud image, scripted and repeatable.</p>
+          <div class="command-block" data-copy><div class="command"><code>virt-install --name node1 --memory 2048 --vcpus 2 --disk size=10 --osinfo ubuntu22.04 --import --noautoconsole</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Manage the guest with virsh</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">virsh list --all</span></div>
+            <div class="terminal-output"> Id   Name    State
+ 1    node1   running</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Nested KVM build progress">
+graph LR
+  A[01 Install KVM] -->|done| B[02 Enable nesting]
+  B -->|done| C[03 Provision guest]
+  C -->|done| D[04 Manage with virsh]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>cat /sys/module/kvm_intel/parameters/nested &amp;&amp; virsh domstate node1</code></div></div>
+      <p>You should see <code>Y</code> for nesting and <code>running</code> for the guest. If both pass, your nested hypervisor lab works.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>nested reads N:</strong> reload the module after adding the modprobe option; persist via <code>/etc/modprobe.d</code>.</li>
+        <li><strong>Guest has no virtualization:</strong> set the L1 CPU mode to host-passthrough.</li>
+        <li><strong>libvirtd not running:</strong> <code>sudo systemctl enable --now libvirtd</code>.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Boot two guests and build the <a href="../containers-kubernetes/kubernetes-basics.html">Kubernetes Basics</a> lab across them.</li>
+        <li>Compare with the <a href="../../../work/infrastructure/proxmox-homelab.html">Proxmox Homelab</a> approach.</li>
+        <li>Automate guest creation with cloud-init user-data.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Enabled nested KVM and booted a guest inside a VM.</li>
+        <li>Provisioned guests reproducibly with one virt-install command.</li>
+        <li>Built multi-node topologies on a single physical host.</li>
+        <li>Managed full VM lifecycle through virsh.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="../linux-fundamentals/nested-vms-kvm.html">Linux Fundamentals: Nested VMs with KVM</a></li>
+        <li><a href="install-linux-vm.html">Installing Linux VM</a></li>
+        <li><a href="../../../work/infrastructure/proxmox-homelab.html">Proxmox Homelab</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

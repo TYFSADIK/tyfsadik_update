@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cron Jobs &amp; Scheduling | crontab, at &amp; systemd Timers</title>
+  <meta name="description" content="Schedule recurring tasks with cron, at, and systemd timers. Built logged, reliable automation with correct environment and error handling.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-fundamentals/cron-jobs.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Cron Jobs and Task Scheduling with systemd Timers",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-01-16",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Beginner",
+    "dependencies": "cron, at, systemd timers",
+    "articleSection": "Linux"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>Cron Jobs &amp; Scheduling</span></nav>
+    <div class="page-header"><h1>Cron Jobs and Task Scheduling with systemd Timers</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Linux</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">cron</span><span class="tag">crontab</span><span class="tag">at</span><span class="tag">systemd timer</span></div>
+    </div>
+
+    <section><p class="lead">I scheduled recurring tasks with cron and systemd timers, handling cron's minimal environment, logging, and failure notification. Capturing output and using absolute paths eliminated the classic "works in my shell but not in cron" failures.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Scheduling is how routine work becomes hands-off. This lab covers crontab syntax, one-shot <code>at</code> jobs, and systemd timers (with logging and dependency control), the scheduling layer behind backups, health checks, and the vulnerability-scan automation.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Linux with cron and systemd.</li>
+        <li>A script to schedule (backup or health check).</li>
+        <li>A mail or webhook channel for failure alerts.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Scheduled job execution and logging">
+flowchart LR
+  T[cron/timer fires] --> J[run script abs path]
+  J --> L[log stdout/stderr]
+  L --> S{exit 0?}
+  S -->|no| A[alert]
+  S -->|yes| Done[ok]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Add a logged cron job</h3>
+      <div class="command-block"><div class="command"><code>(crontab -l; echo "0 2 * * * /usr/local/bin/backup.sh >> /var/log/backup.log 2>&amp;1") | crontab -</code></div></div>
+      <h3>2. Equivalent systemd timer</h3>
+      <div class="command-block"><div class="command"><code>systemctl enable --now backup.timer &amp;&amp; systemctl list-timers backup.timer</code></div></div>
+      <h3>3. One-shot job with at</h3>
+      <div class="command-block"><div class="command"><code>echo '/usr/local/bin/report.sh' | at 17:00</code></div></div>
+<pre><code class="language-bash">NEXT                     UNIT          ACTIVATES
+2026-06-18 02:00 UTC     backup.timer  backup.service</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Schedule a job a minute out, confirm it runs and logs, and force a failure to confirm the alert fires. Pass criteria: the job runs on schedule with full output captured, and non-zero exits trigger notification.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Job runs in shell, not cron:</strong> cron has a minimal PATH/env; use absolute paths and set variables.</li>
+        <li><strong>No output:</strong> redirect both streams (<code>&gt;&gt; log 2&gt;&amp;1</code>) to capture errors.</li>
+        <li><strong>Timer vs cron:</strong> prefer systemd timers for logging, dependencies, and missed-run catch-up.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Automated recurring tasks with logged cron and systemd timers.</li>
+        <li>Eliminated cron-environment failures via absolute paths.</li>
+        <li>Captured full job output for auditing and debugging.</li>
+        <li>Alerted on non-zero exits rather than failing silently.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="../linux-server/cron-scheduling.html">Server Cron &amp; Task Scheduling</a></li>
+        <li><a href="../python/system-admin-scripts.html">Python System Administration Scripts</a></li>
+        <li><a href="cli-email.html">Command Line Email</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

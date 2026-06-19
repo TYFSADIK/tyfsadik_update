@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Server LVM | Flexible Storage &amp; Online Resize</title>
+  <meta name="description" content="Build flexible server storage with LVM: PV, VG, LV, and online resize. Grow a mounted filesystem with zero downtime, verified at each step.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-server/lvm.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Server Storage with Logical Volume Management",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-01-14",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "LVM2, ext4/xfs",
+    "articleSection": "Linux"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Logical Volume Management</span></nav>
+    <div class="page-header"><h1>Server LVM: Flexible Storage and Online Resize</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Linux</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">LVM</span><span class="tag">pvcreate</span><span class="tag">lvextend</span><span class="tag">resize2fs</span></div>
+    </div>
+
+    <section><p class="lead">You will build a flexible LVM storage stack on a server and grow a live filesystem without unmounting it. By the end you will expand capacity with zero downtime, the way production systems add space.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Assemble physical volumes into a volume group.</li>
+        <li>Carve a logical volume and put a filesystem on it.</li>
+        <li>Extend the volume and filesystem online.</li>
+        <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Advanced &middot; <strong>Prereqs:</strong> a server with two spare disks.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="LVM stack from disks to filesystem">
+graph LR
+  D[(sdb + sdc)] -->|pvcreate| PV[Physical Volumes]
+  PV -->|vgcreate| VG[Volume Group 'data']
+  VG -->|lvcreate| LV[Logical Volume]
+  LV -->|mkfs + mount| FS[/srv ext4]
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> a Linux server with LVM2 and two empty disks (<code>/dev/sdb</code>, <code>/dev/sdc</code>).</p>
+      <p><strong>Before you begin:</strong> verify the disks are empty with <code>lsblk</code>.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Initialize physical volumes and a group</strong>
+          <p>This labels the disks for LVM and pools them into one resizable group.</p>
+          <div class="command-block" data-copy><div class="command"><code>sudo pvcreate /dev/sdb /dev/sdc &amp;&amp; sudo vgcreate data /dev/sdb /dev/sdc</code></div><div class="note">[ROOT REQUIRED] Creates PVs and the 'data' volume group.</div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Create and format a logical volume</strong>
+          <p>The LV behaves like a partition but can grow across both disks.</p>
+          <div class="command-block" data-copy><div class="command"><code>sudo lvcreate -L 10G -n srv data &amp;&amp; sudo mkfs.ext4 /dev/data/srv</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Mount it</strong>
+          <div class="command-block" data-copy><div class="command"><code>sudo mkdir -p /srv/store &amp;&amp; sudo mount /dev/data/srv /srv/store</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Grow the volume online</strong>
+          <p>Extend the LV, then grow the filesystem, all while it stays mounted and in use.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">#</span> <span class="input">lvextend -L +5G /dev/data/srv &amp;&amp; resize2fs /dev/data/srv</span></div>
+            <div class="terminal-output">Size of logical volume data/srv changed to 15.00 GiB
+The filesystem is now 3932160 (4k) blocks long.</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="LVM build progress">
+graph LR
+  A[01 PV + VG] -->|done| B[02 LV + format]
+  B -->|done| C[03 Mount]
+  C -->|done| D[04 Online grow]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>df -h /srv/store &amp;&amp; sudo vgs &amp;&amp; sudo lvs</code></div></div>
+      <p>You should see the larger size while the mount stayed active. If so, you grew storage with zero downtime.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Filesystem size unchanged:</strong> run resize2fs (ext4) or xfs_growfs (xfs) after lvextend.</li>
+        <li><strong>VG out of space:</strong> add a disk with pvcreate + vgextend before lvextend.</li>
+        <li><strong>Cannot create PV:</strong> the disk has an existing signature; wipe with <code>wipefs</code> after confirming it is empty.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Add LVM snapshots for consistent backups in <a href="backup-recovery.html">Backup &amp; Recovery</a>.</li>
+        <li>Compare with the fundamentals view in <a href="../linux-fundamentals/lvm.html">Linux Fundamentals: LVM</a>.</li>
+        <li>Experiment with thin provisioning for over-commit scenarios.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Grew a mounted filesystem from 10GB to 15GB with zero downtime.</li>
+        <li>Pooled two disks into one flexible volume group.</li>
+        <li>Decoupled filesystem size from physical disk limits.</li>
+        <li>Verified capacity changes with df, vgs, and lvs.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="disk-management.html">Disk Management &amp; Partitioning</a></li>
+        <li><a href="mounting-filesystems.html">Mounting &amp; Filesystem Management</a></li>
+        <li><a href="backup-recovery.html">Backup &amp; Recovery</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

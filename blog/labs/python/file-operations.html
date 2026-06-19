@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Python File Operations | pathlib, JSON &amp; Context Managers</title>
+  <meta name="description" content="Read and write files safely in Python with pathlib, context managers, and JSON. Built atomic, exception-safe file I/O for automation scripts.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/python/file-operations.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Python File Operations with pathlib and JSON",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-02-25",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Beginner",
+    "dependencies": "Python 3.11, pathlib, json",
+    "articleSection": "Python"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/python/index.html">Python</a> &rsaquo; <span>File Operations</span></nav>
+    <div class="page-header"><h1>Python File Operations with pathlib, Context Managers, and JSON</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Python</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">pathlib</span><span class="tag">context managers</span><span class="tag">JSON</span><span class="tag">atomic write</span></div>
+    </div>
+
+    <section><p class="lead">I built safe file I/O in Python using pathlib, <code>with</code> context managers, and the json module, including an atomic write pattern. Writing to a temp file and renaming guaranteed config files were never left half-written on failure.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Automation scripts read and rewrite config and state files constantly. This lab uses context managers for guaranteed close, pathlib for portable paths, and atomic replace to prevent corruption, the I/O backbone for the sysadmin and IR scripts.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Python 3.11 with pathlib and json (standard library).</li>
+        <li>A writable working directory.</li>
+        <li>Sample JSON config to manipulate.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Atomic write pattern">
+flowchart LR
+  D[Data] --> T[Write temp file]
+  T --> F[flush + fsync]
+  F --> R[os.replace -> target]
+  R --> S[Consistent file]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Read JSON with a context manager</h3>
+<pre><code class="language-bash">import json, pathlib
+cfg = json.loads(pathlib.Path("config.json").read_text())</code></pre>
+      <h3>2. Atomic write to avoid corruption</h3>
+<pre><code class="language-bash">import os, tempfile, pathlib
+def atomic_write(path, text):
+    d = pathlib.Path(path).parent
+    fd, tmp = tempfile.mkstemp(dir=d)
+    with os.fdopen(fd, "w") as f:
+        f.write(text); f.flush(); os.fsync(f.fileno())
+    os.replace(tmp, path)</code></pre>
+      <h3>3. Verify the round trip</h3>
+      <div class="command-block"><div class="command"><code>python -c "import json,pathlib; print(json.loads(pathlib.Path('config.json').read_text())['name'])"</code></div></div>
+<pre><code class="language-bash">tyf-ai</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Interrupt a write mid-stream and confirm the original file remains intact thanks to atomic replace. Pass criteria: JSON round-trips losslessly and an aborted write never corrupts the target file.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Partial files:</strong> never write in place; write-temp-then-replace.</li>
+        <li><strong>Encoding issues:</strong> specify <code>encoding="utf-8"</code> explicitly.</li>
+        <li><strong>Leaked handles:</strong> always use <code>with</code> to guarantee close.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Guaranteed zero file corruption via atomic write-and-replace.</li>
+        <li>Round-tripped JSON config losslessly with explicit encoding.</li>
+        <li>Eliminated leaked file handles using context managers.</li>
+        <li>Portable paths via pathlib across Linux and Windows.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="string-manipulation.html">String Manipulation</a></li>
+        <li><a href="error-handling.html">Error Handling (try/except)</a></li>
+        <li><a href="system-admin-scripts.html">System Administration Scripts</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

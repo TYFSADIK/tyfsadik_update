@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Security Groups | Azure NSG &amp; AWS SG</title>
+  <meta name="description" content="Design least-privilege cloud firewall rules with Azure NSGs and AWS security groups. Enforced micro-perimeters with zero any-any rules.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/security/network-security-groups.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Cloud Network Security Groups: Azure NSG and AWS SG",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-04-08",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "Azure CLI, AWS CLI, NSG, Security Groups",
+    "articleSection": "Security"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Network Security Groups</span></nav>
+    <div class="page-header"><h1>Cloud Network Security Groups with Azure NSG and AWS SG</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Security</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Azure NSG</span><span class="tag">AWS SG</span><span class="tag">UDR</span><span class="tag">least privilege</span></div>
+    </div>
+
+    <section><p class="lead">I designed least-privilege cloud micro-perimeters using Azure Network Security Groups and AWS security groups, scoping each rule to specific source CIDRs and ports. The result removed every any-to-any rule and enforced tier isolation between web, app, and data subnets.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Cloud NSGs and security groups are stateful, software-defined firewalls applied at the subnet or interface level. This lab builds a three-tier segmentation model where each tier only accepts traffic from the tier above, mapping to NIST SP 800-53 SC-7 and CIS cloud benchmarks.</p>
+      <ul>
+        <li><strong>T1190 Exploit Public-Facing Application</strong> – only the web tier exposes 443 to the internet.</li>
+        <li><strong>T1210 Exploitation of Remote Services</strong> – the data tier rejects all but app-tier sources.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Three-tier NSG segmentation">
+flowchart LR
+  NET((Internet)) -->|443| WEB[Web NSG]
+  WEB -->|8080| APP[App NSG]
+  APP -->|5432| DB[Data NSG]
+  NET -. denied .- DB
+      </div>
+    </section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Azure subscription (Reader + Network Contributor) and AWS account.</li>
+        <li>Azure CLI 2.5x and AWS CLI v2 configured.</li>
+        <li>Three subnets per cloud representing web, app, and data tiers.</li>
+      </ul>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Create an Azure NSG rule allowing only HTTPS inbound</h3>
+      <div class="command-block"><div class="command"><code>az network nsg rule create -g rg --nsg-name web-nsg -n allow-https --priority 100 --destination-port-ranges 443 --access Allow --protocol Tcp</code></div></div>
+      <h3>2. Scope the data tier to the app subnet only</h3>
+      <div class="command-block"><div class="command"><code>az network nsg rule create -g rg --nsg-name db-nsg -n allow-app --priority 100 --source-address-prefixes 10.0.2.0/24 --destination-port-ranges 5432 --access Allow</code></div></div>
+      <h3>3. Equivalent AWS security-group ingress</h3>
+      <div class="command-block"><div class="command"><code>aws ec2 authorize-security-group-ingress --group-id sg-db --protocol tcp --port 5432 --source-group sg-app</code></div></div>
+<pre><code class="language-bash">{"Return": true, "SecurityGroupRules": [{"IpProtocol": "tcp", "FromPort": 5432}]}</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>From the web tier attempt a direct connection to the data tier; it must time out. Use Azure NSG flow logs and AWS VPC Flow Logs to confirm the DENY verdict. Pass criteria: only adjacent-tier traffic is permitted and no rule allows 0.0.0.0/0 except web 443.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Rule has no effect:</strong> NSGs evaluate by priority; a lower number wins – check rule ordering.</li>
+        <li><strong>Unexpected allow:</strong> a subnet and NIC NSG both apply; review effective rules with <code>az network nic list-effective-nsg</code>.</li>
+        <li><strong>AWS asymmetric block:</strong> security groups are stateful; NACLs are not – verify which layer drops.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Eliminated 100% of any-to-any rules across 6 NSGs/security groups.</li>
+        <li>Reduced internet-exposed ports to a single 443 entry point.</li>
+        <li>Enforced 3-tier isolation validated by flow-log DENY verdicts.</li>
+        <li>Cut the data-tier reachable source set from the whole VPC to 1 app subnet.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="firewall-configuration.html">Firewall Configuration</a></li>
+        <li><a href="../cloud-azure/nsg-route-tables.html">NSGs &amp; Route Tables</a></li>
+        <li><a href="zero-trust-hybrid-cloud.html">Zero-Trust Hybrid Cloud</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

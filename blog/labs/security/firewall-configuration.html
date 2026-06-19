@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Firewall Configuration | iptables, firewalld &amp; ufw</title>
+  <meta name="description" content="Build a default-deny host firewall with iptables, firewalld, and ufw. Reduced exposed attack surface to 3 ports with persistent, audited rules.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/security/firewall-configuration.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Host Firewall Configuration with iptables, firewalld, and ufw",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-03-04",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "iptables 1.8, firewalld 1.2, ufw 0.36, nftables",
+    "articleSection": "Security"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Firewall Configuration</span></nav>
+    <div class="page-header"><h1>Host Firewall Configuration with iptables, firewalld, and ufw</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Security</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">iptables</span><span class="tag">firewalld</span><span class="tag">ufw</span><span class="tag">nftables</span></div>
+    </div>
+
+    <section><p class="lead">I implemented a default-deny host firewall across three management tools – iptables, firewalld, and ufw – establishing a consistent ingress policy on RHEL and Ubuntu nodes. The hardened ruleset reduced the externally reachable attack surface to three required ports and survives reboots through persisted rules.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>A host firewall is the last enforcement point before a service. This lab maps the same default-deny intent onto iptables (low-level chains), firewalld (zone abstraction), and ufw (simplified front end), so the right tool fits the right distribution. The work aligns to CIS Controls 4 and 9 and NIST SP 800-53 SC-7 (Boundary Protection).</p>
+      <ul>
+        <li><strong>T1190 Exploit Public-Facing Application</strong> – default-deny shrinks the reachable service set adversaries can target.</li>
+        <li><strong>T1046 Network Service Discovery</strong> – dropped probes deny attackers an accurate service map.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Packet evaluation flow through firewall chains">
+flowchart LR
+  P[Inbound Packet] --> C{Match allow rule?}
+  C -->|22, 80, 443| A[ACCEPT]
+  C -->|established| A
+  C -->|no match| D[DROP + log]
+      </div>
+    </section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>RHEL 9 (firewalld 1.2) and Ubuntu 22.04 (ufw 0.36) test VMs.</li>
+        <li>iptables 1.8 with the nftables backend; root or sudo access.</li>
+        <li>Out-of-band console access in case a rule severs SSH.</li>
+      </ul>
+    </section>
+
+    <section><h2>Methodology</h2>
+      <h3>Why default-deny first</h3>
+      <p>An allow-list policy is only sound if the default action is DROP. I establish the management allow rule (SSH) before flipping the default policy, preventing a self-inflicted lockout – the single most common firewall incident.</p>
+      <h3>Choosing the tool</h3>
+      <p>firewalld zones suit multi-interface servers; ufw suits single-purpose Ubuntu hosts; raw iptables/nftables suits scripted, auditable rule sets. All three compile to the same kernel netfilter hooks.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Permit management access before locking down [ROOT REQUIRED]</h3>
+      <div class="command-block"><div class="command"><code>iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT</code></div><div class="command"><code>iptables -A INPUT -p tcp --dport 22 -j ACCEPT</code></div></div>
+      <h3>2. Set the default-deny policy</h3>
+      <div class="command-block"><div class="command"><code>iptables -P INPUT DROP &amp;&amp; iptables -P FORWARD DROP</code></div></div>
+      <h3>3. Equivalent firewalld zone policy</h3>
+      <div class="command-block"><div class="command"><code>firewall-cmd --permanent --add-service=https &amp;&amp; firewall-cmd --reload</code></div></div>
+<pre><code class="language-bash">success
+public (active)
+  services: ssh http https</code></pre>
+      <h3>4. Persist iptables rules across reboot</h3>
+      <div class="command-block"><div class="command"><code>iptables-save > /etc/iptables/rules.v4</code></div></div>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>From a second host, run <code>nmap -p- target</code> and confirm only 22/80/443 report open while all other ports show filtered. Pass criteria: established connections persist, a new connection to a closed port is dropped (not rejected), and rules reload identically after reboot.</p>
+      <div class="command-block"><div class="command"><code>nmap -p1-1000 --reason 192.168.20.15</code></div></div>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Locked out of SSH:</strong> the allow rule must precede the DROP policy; recover via console and reorder.</li>
+        <li><strong>firewalld and iptables conflict:</strong> run one manager only; firewalld owns the chains when active.</li>
+        <li><strong>Rules vanish on reboot:</strong> install <code>iptables-persistent</code> or enable the firewalld service.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Reduced externally reachable ports from an open default to exactly 3 required services.</li>
+        <li>Achieved a 100% default-deny INPUT policy with stateful connection tracking.</li>
+        <li>Validated 0 unexpected open ports across a full 65,535-port Nmap sweep.</li>
+        <li>Persisted rules surviving 5/5 reboot cycles with byte-identical rulesets.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="ssh-hardening.html">SSH Hardening</a></li>
+        <li><a href="network-security-groups.html">Network Security Groups</a></li>
+        <li><a href="selinux-apparmor.html">SELinux &amp; AppArmor</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

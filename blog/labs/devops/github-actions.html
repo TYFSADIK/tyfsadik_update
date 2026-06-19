@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GitHub Actions Basics | CI Workflows &amp; YAML</title>
+  <meta name="description" content="Automate testing with GitHub Actions: triggers, jobs, steps, and caching. Build a CI workflow that runs on every push and protects main.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/devops/github-actions.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "GitHub Actions CI Basics",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-02-28",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "GitHub Actions, YAML",
+    "articleSection": "DevOps"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/devops/index.html">DevOps</a> &rsaquo; <span>GitHub Actions Basics</span></nav>
+    <div class="page-header"><h1>GitHub Actions Basics: CI on Every Push</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">DevOps</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Actions</span><span class="tag">workflow YAML</span><span class="tag">jobs</span><span class="tag">caching</span></div>
+    </div>
+
+    <section><p class="lead">You will write a GitHub Actions workflow that lints and tests your code on every push. By the end, broken code is caught automatically before it can be merged into main.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Define triggers, jobs, and steps in workflow YAML.</li>
+        <li>Cache dependencies to speed up runs.</li>
+        <li>Make the workflow a required status check.</li>
+        <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> a GitHub repo with tests.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Push triggers a CI workflow with jobs">
+graph LR
+  Push[git push] -->|on: push| WF[Workflow]
+  WF --> J1[lint job]
+  WF --> J2[test job]
+  J1 --> St[Status check]
+  J2 --> St
+  St -->|required| Main[protected main]
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> a GitHub repo with a test command (for example pytest or npm test).</p>
+      <p><strong>Before you begin:</strong> workflows live in <code>.github/workflows/</code>.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Write the workflow</strong>
+<pre><code class="language-bash"># .github/workflows/ci.yml
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11', cache: 'pip' }
+      - run: pip install -r requirements.txt
+      - run: pytest -q</code></pre>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Push and watch the run</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git push &amp;&amp; gh run watch</span></div>
+            <div class="terminal-output">CI · test (push)  completed  success</div>
+          </div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Require the check on main</strong>
+          <p>Set the workflow as a required status check in branch protection so failing code cannot merge.</p>
+          <div class="command-block" data-copy><div class="command"><code>gh api repos/:owner/:repo/branches/main/protection -X PUT -f required_status_checks.strict=true</code></div></div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="GitHub Actions progress">
+graph LR
+  A[01 Workflow YAML] -->|done| B[02 Push + run]
+  B -->|done| C[03 Required check]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>gh run list --limit 1 &amp;&amp; gh run view --log-failed 2>/dev/null | head</code></div></div>
+      <p>The latest run should show success. Push a deliberately failing test and confirm the workflow goes red and blocks the merge.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Workflow not triggering:</strong> the file must be in <code>.github/workflows/</code> on the default branch.</li>
+        <li><strong>Cache misses:</strong> ensure the cache key matches the lockfile path.</li>
+        <li><strong>Secrets needed:</strong> add them under repo Settings, reference via <code>${{ secrets.NAME }}</code>.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Add build + deploy stages in <a href="cicd-pipeline.html">Full CI/CD Pipeline</a>.</li>
+        <li>Scan images (see <a href="../containers-kubernetes/docker-images.html">Docker Images</a>) in CI.</li>
+        <li>Deploy to Azure with a service principal from <a href="../cloud-azure/azure-cli-setup.html">Azure CLI Setup</a>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Ran lint and tests automatically on every push and PR.</li>
+        <li>Sped up runs with dependency caching.</li>
+        <li>Made CI a required check protecting main.</li>
+        <li>Confirmed failing code is blocked from merge.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="cicd-pipeline.html">Full CI/CD Pipeline</a></li>
+        <li><a href="pull-requests.html">Pull Requests &amp; Code Review</a></li>
+        <li><a href="../python/git-workflow-python.html">Git Workflow for Python</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

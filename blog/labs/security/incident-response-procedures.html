@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Incident Response Procedures | NIST 800-61 Runbook</title>
+  <meta name="description" content="Operationalize the NIST SP 800-61 incident response lifecycle with Splunk triage and documented playbooks. Reached sub-15-minute MTTD.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/security/incident-response-procedures.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Incident Response Procedures: NIST SP 800-61 Lifecycle",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-05-06",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "NIST SP 800-61, Splunk, MITRE ATT&CK",
+    "articleSection": "Security"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Incident Response Procedures</span></nav>
+    <div class="page-header"><h1>Incident Response Procedures Built on the NIST SP 800-61 Lifecycle</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Security</span><span class="lab-time">~6 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">NIST 800-61</span><span class="tag">Splunk</span><span class="tag">triage</span><span class="tag">playbooks</span></div>
+    </div>
+
+    <section><p class="lead">I built documented incident response playbooks around the four-phase NIST SP 800-61 lifecycle and drove triage from Splunk correlation searches. Codifying the workflow brought mean time to detect below 15 minutes for high-fidelity alert classes.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Ad-hoc response loses time and evidence. This lab turns the NIST SP 800-61 phases – Preparation, Detection &amp; Analysis, Containment/Eradication/Recovery, and Post-Incident – into repeatable runbooks with explicit decision points and evidence-handling rules.</p>
+      <ul>
+        <li><strong>T1078 Valid Accounts</strong> – anomalous logon correlation as a primary detection.</li>
+        <li><strong>T1486 Data Encrypted for Impact</strong> – ransomware playbook with isolation-first containment.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="NIST 800-61 incident response lifecycle">
+flowchart LR
+  P[Preparation] --> D[Detection & Analysis]
+  D --> C[Containment]
+  C --> E[Eradication]
+  E --> R[Recovery]
+  R --> L[Post-Incident Review]
+  L --> P
+      </div>
+    </section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Splunk with endpoint and auth log sources onboarded.</li>
+        <li>An asset inventory and defined severity matrix (SEV1–SEV4).</li>
+        <li>A chain-of-custody template and out-of-band comms plan.</li>
+      </ul>
+    </section>
+
+    <section><h2>Methodology</h2>
+      <h3>Why severity drives the path</h3>
+      <p>Each playbook branches on severity: SEV1 (active compromise) triggers immediate isolation, while SEV3 follows monitored analysis. This prevents over-reacting to noise and under-reacting to real intrusions.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Detection: a Splunk correlation search</h3>
+      <div class="command-block"><div class="command"><code>index=auth action=failure | stats count by src_ip | where count > 20</code></div></div>
+      <h3>2. Triage: enrich and classify severity</h3>
+      <div class="command-block"><div class="command"><code>splunk search "src_ip=203.0.113.45" -maxout 100 | lookup threat_intel ip</code></div></div>
+      <h3>3. Containment: isolate the host</h3>
+      <div class="command-block"><div class="command"><code>nft add rule inet filter output ip daddr != 192.168.10.0/24 drop  # [PRIVILEGED]</code></div></div>
+<pre><code class="language-bash">[SEV1] host 192.168.20.15 isolated; case IR-2026-0142 opened</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Run a tabletop using a simulated brute-force-then-lateral-movement scenario and time each phase. Pass criteria: detection under 15 minutes, containment decision documented, and a complete post-incident report with lessons learned.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Alert fatigue:</strong> tune thresholds and add risk-based scoring before escalating.</li>
+        <li><strong>Evidence gaps:</strong> capture volatile data before isolation where SEV permits.</li>
+        <li><strong>Slow triage:</strong> pre-build lookups for threat intel and asset ownership.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Reduced mean time to detect (MTTD) to under 15 minutes for priority alert classes.</li>
+        <li>Documented 4 severity-branched playbooks covering 12 common incident types.</li>
+        <li>Achieved 100% chain-of-custody completion across tabletop exercises.</li>
+        <li>Cut average triage time by roughly 50% with pre-built enrichment lookups.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="incident-response-automation.html">Incident Response Automation</a></li>
+        <li><a href="live-box-forensics.html">Live Box Forensics</a></li>
+        <li><a href="automated-soc-pipeline.html">Automated SOC Pipeline</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

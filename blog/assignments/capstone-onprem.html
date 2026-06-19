@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>On-Prem Capstone | Full Datacenter Build</title>
+  <meta name="description" content="Capstone: build an on-prem datacenter with virtualization, VLANs, services, and monitoring. A complete, documented, recoverable environment.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/assignments/capstone-onprem.html">
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "On-Prem Capstone: Full Datacenter Build",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-05-22",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "Proxmox/KVM, VLANs, Linux services, Prometheus",
+    "articleSection": "Assignments"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../index.html">Home</a> &rsaquo; <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo; <span>On-Prem Capstone</span></nav>
+    <div class="page-header"><h1>On-Prem Capstone: Full Datacenter Build</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Infrastructure &middot; 2025</span><span class="lab-time">~25 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Proxmox</span><span class="tag">VLAN</span><span class="tag">services</span><span class="tag">Prometheus</span></div>
+    </div>
+
+    <section><p class="lead">You will build a complete on-premises datacenter: a virtualization host, VLAN-segmented networking, core services, and monitoring. By the end you will have a documented, recoverable environment that mirrors a small production site.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Stand up virtualization and segment the network by VLAN.</li>
+        <li>Deploy core services (DNS, DHCP, web) as VMs.</li>
+        <li>Add monitoring and backups for recoverability.</li>
+        <li><strong>Time:</strong> ~25 hours &middot; <strong>Difficulty:</strong> Advanced &middot; <strong>Prereqs:</strong> the server, networking, and KVM labs.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="On-prem datacenter topology">
+graph TD
+  HV[Proxmox host] --> Mgmt[VLAN 10 Mgmt]
+  HV --> Prod[VLAN 20 Prod: web/app]
+  HV --> Svc[VLAN 30 Services: DNS/DHCP]
+  Prod --> Prom[Prometheus + Grafana]
+  HV --> BK[(Backups)]
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <ul>
+        <li>A Proxmox/KVM host with enough RAM for several VMs.</li>
+        <li>A managed switch or virtual bridges for VLANs.</li>
+        <li>Backup storage separate from the host.</li>
+      </ul>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Provision VMs and VLANs</strong>
+          <div class="command-block" data-copy><div class="command"><code>qm create 110 --name dns --net0 virtio,bridge=vmbr0,tag=30</code></div><div class="note">Creates a service VM on VLAN 30.</div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Deploy core services</strong>
+          <div class="command-block" data-copy><div class="command"><code>ansible-playbook -i inventory.ini services.yml   # DNS, DHCP, web</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Add monitoring</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">curl -s localhost:9090/-/healthy</span></div>
+            <div class="terminal-output">Prometheus is Healthy.</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="On-prem capstone progress">
+graph LR
+  A[01 VMs + VLANs] -->|done| B[02 Services]
+  B -->|done| C[03 Monitoring + backups]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>dig @10.0.30.2 web.lab.tyfsadik.org +short &amp;&amp; curl -s -o /dev/null -w "%{http_code}\n" http://web.lab.tyfsadik.org</code></div></div>
+      <p>DNS should resolve the web host and the site should return 200. Restore a VM from backup to confirm recoverability.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>VLAN traffic blocked:</strong> confirm trunk ports allow the VLAN IDs end to end.</li>
+        <li><strong>Service unreachable:</strong> check inter-VLAN routing and firewall rules.</li>
+        <li><strong>Backup restore fails:</strong> test restores regularly, not just backups.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Add zero-trust access as in <a href="../../work/infrastructure/proxmox-zero-trust.html">Proxmox Zero-Trust</a>.</li>
+        <li>Centralize logs into a SIEM.</li>
+        <li>Document a full DR runbook and test it.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Built a VLAN-segmented virtualized datacenter.</li>
+        <li>Deployed DNS, DHCP, and web as managed VMs.</li>
+        <li>Monitored the estate with Prometheus + Grafana.</li>
+        <li>Verified recoverability with a backup restore.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Work</h2>
+      <ul>
+        <li><a href="server-infrastructure.html">Server Infrastructure</a></li>
+        <li><a href="../../work/infrastructure/proxmox-homelab.html">Proxmox Homelab</a></li>
+        <li><a href="capstone-cloud.html">Cloud Capstone</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

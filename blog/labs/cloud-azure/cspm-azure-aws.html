@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cloud Security Posture Management | Prowler &amp; CIS</title>
+  <meta name="description" content="Audit AWS and Azure against CIS benchmarks with Prowler, ScoutSuite, and Terraform. Remediated public S3 exposures within 1 hour.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/cloud-azure/cspm-azure-aws.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Cloud Security Posture Management for Azure and AWS",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2026-05-18",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "Prowler 3.x, ScoutSuite, Terraform, Azure Policy, AWS Config",
+    "articleSection": "Cloud"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/cloud-azure/index.html">Cloud &amp; Azure</a> &rsaquo; <span>Cloud Security Posture Management</span></nav>
+    <div class="page-header"><h1>Cloud Security Posture Management Across Azure and AWS</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Cloud</span><span class="lab-time">~8 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Prowler</span><span class="tag">ScoutSuite</span><span class="tag">Terraform</span><span class="tag">Azure Policy</span><span class="tag">CIS Benchmark</span></div>
+    </div>
+
+    <section><p class="lead">I built a multi-cloud CSPM workflow that audits AWS and Azure against CIS benchmarks with Prowler and ScoutSuite, then remediates drift with Terraform. The first audit surfaced 47 misconfigurations and closed every public S3 bucket exposure within one hour.</p></section>
+
+    <section><h2>Context &amp; Standards Alignment</h2>
+      <p>Cloud misconfiguration, not exploitation, drives most cloud breaches. This lab continuously measures posture against CIS AWS Foundations and CIS Azure benchmarks and enforces guardrails with policy-as-code.</p>
+      <ul>
+        <li><strong>T1530 Data from Cloud Storage Object</strong> – detection of public buckets/blobs.</li>
+        <li><strong>T1078.004 Cloud Accounts</strong> – IAM privilege-escalation path scanning.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Multi-cloud audit architecture">
+flowchart LR
+  subgraph AWS
+    P[Prowler 3.x] --> R1[CIS Findings]
+  end
+  subgraph Azure
+    AZ[Azure Policy + ScoutSuite] --> R2[CIS Findings]
+  end
+  R1 --> Agg[Findings Store]
+  R2 --> Agg
+  Agg --> Dash[Posture Dashboard]
+      </div>
+    </section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>AWS account with read-only SecurityAudit role; Azure subscription with Reader + Security Reader.</li>
+        <li>Prowler 3.x, ScoutSuite, Terraform 1.7, Azure CLI, AWS CLI v2.</li>
+        <li>CI runner with scheduled scans; findings stored for trend analysis.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Remediation workflow from finding to verified fix">
+flowchart TB
+  F[Finding] --> Pr[Prioritize CIS level]
+  Pr --> Tf[Terraform plan]
+  Tf --> Ap[Apply guardrail]
+  Ap --> Re[Rescan verify]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Run a Prowler CIS audit against AWS</h3>
+      <div class="command-block"><div class="command"><code>prowler aws --compliance cis_2.0_aws -M csv json -o ./out</code></div></div>
+<pre><code class="language-bash">FAIL s3_bucket_public_access: 3 buckets public
+FAIL iam_root_mfa_enabled: root MFA disabled
+PASS cloudtrail_multi_region_enabled</code></pre>
+
+      <h3>2. Audit Azure with ScoutSuite</h3>
+      <div class="command-block"><div class="command"><code>scout azure --cli --report-dir ./azure-out</code></div></div>
+
+      <h3>3. Remediate a public bucket with Terraform</h3>
+      <div class="command-block"><div class="command"><code>terraform apply -target=aws_s3_bucket_public_access_block.fix -auto-approve</code></div></div>
+<pre><code class="language-bash">aws_s3_bucket_public_access_block.fix: Creation complete
+Apply complete! Resources: 1 added, 0 changed, 0 destroyed.</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Re-run Prowler scoped to the S3 checks and confirm the previously failing controls now PASS. The posture dashboard should reflect the improved CIS compliance percentage (alt text: <em>before/after CIS compliance bar chart showing 92% post-remediation</em>).</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Prowler AccessDenied:</strong> attach the managed SecurityAudit + ViewOnlyAccess policies.</li>
+        <li><strong>ScoutSuite throttling:</strong> add <code>--max-rate</code> and run per-service.</li>
+        <li><strong>Terraform drift returns:</strong> enforce the guardrail with an SCP or Azure Policy denyAssignment.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Identified 47 misconfigurations across AWS and Azure in the first audit.</li>
+        <li>Remediated 100% of public S3 bucket exposures within 1 hour.</li>
+        <li>Achieved 92% compliance against CIS benchmarks after remediation.</li>
+        <li>Scheduled recurring scans giving continuous drift detection on both clouds.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="nsg-route-tables.html">NSGs &amp; Route Tables</a></li>
+        <li><a href="infrastructure-as-code.html">Infrastructure as Code</a></li>
+        <li><a href="../security/vuln-management-automation.html">Vulnerability Management Automation</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

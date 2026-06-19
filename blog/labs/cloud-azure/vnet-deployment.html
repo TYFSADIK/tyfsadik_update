@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure VNet Deployment | Subnets &amp; Peering</title>
+  <meta name="description" content="Deploy an Azure Virtual Network with subnets and peering via the az CLI. Build a segmented network foundation for VMs and services.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/cloud-azure/vnet-deployment.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Azure Virtual Network Deployment with Subnets and Peering",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-03-05",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "Azure CLI, Azure Virtual Network",
+    "articleSection": "Cloud"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/cloud-azure/index.html">Cloud &amp; Azure</a> &rsaquo; <span>Virtual Network Deployment</span></nav>
+    <div class="page-header"><h1>Azure Virtual Network Deployment with Subnets and Peering</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Cloud</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">VNet</span><span class="tag">subnets</span><span class="tag">peering</span><span class="tag">CIDR</span></div>
+    </div>
+
+    <section><p class="lead">You will deploy an Azure Virtual Network with tiered subnets and peer it to a second VNet. By the end you will have a segmented cloud network foundation that VMs and services can join.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Create a VNet with non-overlapping subnets.</li>
+        <li>Peer two VNets for private connectivity.</li>
+        <li>Verify routing between peered networks.</li>
+        <li><strong>Time:</strong> ~2 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> the Azure CLI configured.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Two peered VNets with tiered subnets">
+graph LR
+  subgraph VNet-A 10.0.0.0/16
+    Web[web 10.0.1.0/24]
+    App[app 10.0.2.0/24]
+  end
+  subgraph VNet-B 10.1.0.0/16
+    Data[data 10.1.1.0/24]
+  end
+  App <-->|peering| Data
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> the Azure CLI authenticated with a default resource group set.</p>
+      <p><strong>Before you begin:</strong> plan non-overlapping CIDR ranges; peered VNets cannot overlap.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create the VNet and subnets</strong>
+          <div class="command-block" data-copy><div class="command"><code>az network vnet create -n vnet-a --address-prefixes 10.0.0.0/16 --subnet-name web --subnet-prefixes 10.0.1.0/24</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Add a second subnet</strong>
+          <div class="command-block" data-copy><div class="command"><code>az network vnet subnet create --vnet-name vnet-a -n app --address-prefixes 10.0.2.0/24</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Peer two VNets</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet peering create -n a-to-b --vnet-name vnet-a --remote-vnet vnet-b --allow-vnet-access</span></div>
+            <div class="terminal-output">"peeringState": "Connected"</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="VNet deployment progress">
+graph LR
+  A[01 VNet + subnet] -->|done| B[02 Add subnet]
+  B -->|done| C[03 Peering]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>az network vnet peering show -n a-to-b --vnet-name vnet-a --query peeringState -o tsv</code></div></div>
+      <p>You should see <code>Connected</code>. With both directions peered, resources in app and data subnets can reach each other privately.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Peering stuck at Initiated:</strong> create the peering in both directions; it requires a pair.</li>
+        <li><strong>Overlapping address space:</strong> peered VNets must use non-overlapping CIDR ranges.</li>
+        <li><strong>No connectivity despite peering:</strong> check NSGs and that <code>--allow-vnet-access</code> is set.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Place a VM in a subnet with <a href="azure-vm-config.html">Azure VM Configuration</a>.</li>
+        <li>Control traffic with <a href="nsg-route-tables.html">NSGs &amp; Route Tables</a>.</li>
+        <li>Codify the whole network with <a href="infrastructure-as-code.html">IaC</a>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Deployed a VNet with two non-overlapping subnets.</li>
+        <li>Connected two VNets via bidirectional peering.</li>
+        <li>Confirmed the peering reached the Connected state.</li>
+        <li>Built a segmented foundation for cloud workloads.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="azure-vm-config.html">Azure VM Configuration</a></li>
+        <li><a href="nsg-route-tables.html">NSGs &amp; Route Tables</a></li>
+        <li><a href="../security/network-security-groups.html">Network Security Groups</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

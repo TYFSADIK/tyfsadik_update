@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure SQL Deployment | az CLI &amp; Firewall Rules</title>
+  <meta name="description" content="Deploy Azure SQL Database with the az CLI, firewall rules, and least-privilege logins. Provisioned a secured PaaS database in minutes.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/databases/azure-sql-deployment.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Azure SQL Database Deployment with the az CLI",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-03-18",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "Azure CLI, Azure SQL Database, SQL",
+    "articleSection": "Databases"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/databases/index.html">Databases</a> &rsaquo; <span>Azure SQL Deployment</span></nav>
+    <div class="page-header"><h1>Azure SQL Database Deployment with the az CLI</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Databases</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Azure SQL</span><span class="tag">az CLI</span><span class="tag">firewall</span><span class="tag">least privilege</span></div>
+    </div>
+
+    <section><p class="lead">I deployed a managed Azure SQL Database via the az CLI with server-level firewall rules and least-privilege contained users. Scripting the provisioning made a secured PaaS database repeatable and reviewable instead of click-driven.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Azure SQL is a managed PaaS database; security depends on firewall scoping and login least privilege, not host hardening. This lab provisions a logical server and database, restricts network access, and creates non-admin application users, aligning to CIS Azure data recommendations.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Azure subscription with the az CLI authenticated.</li>
+        <li>A resource group and naming convention.</li>
+        <li>Client IP for the firewall allow rule.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Azure SQL deployment components">
+flowchart LR
+  RG[Resource Group] --> S[Logical SQL Server]
+  S --> DB[(Azure SQL Database)]
+  S --> FW[Firewall rule: client IP]
+  DB --> U[App login least privilege]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Create the logical server and database</h3>
+      <div class="command-block"><div class="command"><code>az sql server create -g rg -n tyf-sql --admin-user adm --admin-password '****' &amp;&amp; az sql db create -g rg -s tyf-sql -n appdb --service-objective S0</code></div></div>
+      <h3>2. Restrict network access</h3>
+      <div class="command-block"><div class="command"><code>az sql server firewall-rule create -g rg -s tyf-sql -n client --start-ip-address 203.0.113.10 --end-ip-address 203.0.113.10</code></div></div>
+      <h3>3. Create a least-privilege user</h3>
+      <div class="command-block"><div class="command"><code>CREATE USER app WITH PASSWORD='****'; ALTER ROLE db_datareader ADD MEMBER app;</code></div></div>
+<pre><code class="language-bash">Database appdb provisioned (S0). Firewall rule 'client' created.</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Connect from the allowed IP with the app login and confirm read access works while writes are denied; connect from a non-allowed IP and confirm it is blocked. Pass criteria: firewall enforces source IP and the app user holds only granted roles.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Cannot connect:</strong> add the client IP firewall rule and confirm "Allow Azure services" only if intended.</li>
+        <li><strong>Over-privileged login:</strong> avoid using the server admin for apps; create scoped users.</li>
+        <li><strong>Throttling:</strong> the service objective (DTU/vCore) may be undersized for the workload.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Provisioned a secured Azure SQL database from a repeatable CLI script.</li>
+        <li>Restricted network access to a single explicit source IP.</li>
+        <li>Granted the app login read-only, removing admin over-privilege.</li>
+        <li>Made the deployment reviewable and reproducible versus portal clicks.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="cloud-database-config.html">Cloud Database Configuration</a></li>
+        <li><a href="database-admin.html">Database Administration</a></li>
+        <li><a href="../cloud-azure/azure-cli-setup.html">Azure CLI Setup</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

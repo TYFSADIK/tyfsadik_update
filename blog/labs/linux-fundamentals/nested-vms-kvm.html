@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nested VMs with KVM | virt-install &amp; virsh</title>
+  <meta name="description" content="Run nested KVM virtual machines with libvirt, virt-install, and virsh. Built layered hypervisor labs to test clustering without extra hardware.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-fundamentals/nested-vms-kvm.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Nested Virtual Machines with KVM and libvirt",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-01-07",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "KVM, libvirt, virt-install, virsh",
+    "articleSection": "Linux"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>Nested VMs with KVM</span></nav>
+    <div class="page-header"><h1>Nested Virtual Machines with KVM, libvirt, and virsh</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Linux</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">KVM</span><span class="tag">libvirt</span><span class="tag">virt-install</span><span class="tag">virsh</span></div>
+    </div>
+
+    <section><p class="lead">I enabled nested virtualization on KVM and provisioned guest VMs inside a VM with libvirt, virt-install, and virsh. Nesting let me build multi-node clustering and hypervisor labs on a single physical host with no additional hardware.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Nested KVM exposes the CPU virtualization extensions to a guest so it can itself run VMs. This lab turns on nesting, scripts guest creation with virt-install, and manages lifecycle with virsh, the technique behind the Proxmox and Kubernetes cluster labs.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Linux host with KVM, libvirt, and CPU virtualization extensions.</li>
+        <li>Sufficient RAM/CPU for nested guests.</li>
+        <li>A cloud or ISO image for the inner guest.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Nested virtualization layers">
+flowchart TB
+  H[Physical host KVM] --> L1[L1 VM nested enabled]
+  L1 --> G1[Inner guest A]
+  L1 --> G2[Inner guest B]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Enable nested virtualization [ROOT REQUIRED]</h3>
+      <div class="command-block"><div class="command"><code>modprobe -r kvm_intel; modprobe kvm_intel nested=1; cat /sys/module/kvm_intel/parameters/nested</code></div></div>
+      <h3>2. Provision an inner guest with virt-install</h3>
+      <div class="command-block"><div class="command"><code>virt-install --name inner1 --memory 2048 --vcpus 2 --disk size=10 --osinfo debian12 --import</code></div></div>
+      <h3>3. Manage with virsh</h3>
+      <div class="command-block"><div class="command"><code>virsh list --all &amp;&amp; virsh start inner1</code></div></div>
+<pre><code class="language-bash">Y   # nested enabled
+ Id   Name     State
+ 3    inner1   running</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Confirm <code>nested</code> reads Y, then boot an inner guest and verify it sees virtualization extensions (<code>egrep -c '(vmx|svm)' /proc/cpuinfo</code> &gt; 0). Pass criteria: nesting enabled, inner guest boots, and it can itself run a container or VM.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>nested = N:</strong> the module must be reloaded with <code>nested=1</code>; persist via modprobe.d.</li>
+        <li><strong>Inner guest no VT:</strong> set the L1 VM CPU mode to host-passthrough.</li>
+        <li><strong>Poor performance:</strong> nesting adds overhead; allocate generous host resources.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Enabled nested KVM and booted guests inside a VM.</li>
+        <li>Built multi-node lab topologies on a single physical host.</li>
+        <li>Scripted reproducible guest creation with virt-install.</li>
+        <li>Managed full VM lifecycle through virsh.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="installing-debian-centos-vm.html">Installing Debian &amp; CentOS VMs</a></li>
+        <li><a href="../linux-server/nested-vms-kvm.html">Linux Server: Nested VMs with KVM</a></li>
+        <li><a href="../../../work/infrastructure/proxmox-homelab.html">Proxmox Homelab</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

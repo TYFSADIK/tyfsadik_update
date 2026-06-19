@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SSH Remote Access | Keys, Config &amp; tmux</title>
+  <meta name="description" content="Connect to Linux hosts over SSH with key auth, client config, and persistent tmux sessions. Standardized one-command access to managed nodes.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-fundamentals/ssh-remote-access.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "SSH Remote Access with Keys and Client Config",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-01-07",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Beginner",
+    "dependencies": "OpenSSH 9.x, tmux",
+    "articleSection": "Linux"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>SSH Remote Access</span></nav>
+    <div class="page-header"><h1>SSH Remote Access with Keys, Client Config, and tmux</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Linux</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">OpenSSH</span><span class="tag">ssh config</span><span class="tag">ProxyJump</span><span class="tag">tmux</span></div>
+    </div>
+
+    <section><p class="lead">I standardized remote access to managed Linux hosts using SSH key authentication, a maintained <code>~/.ssh/config</code>, and persistent tmux sessions. Host aliases and ProxyJump turned multi-hop logins into a single short command that survives dropped connections.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>SSH is the primary control channel for every server in the homelab. This lab builds reliable, low-friction access with key auth, named host entries, jump-host routing, and tmux for session persistence, the entry point for the hardening lab.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>OpenSSH 9.x client and server; an ed25519 keypair.</li>
+        <li>One or more reachable Linux hosts, optionally behind a bastion.</li>
+        <li>tmux installed on the remote host.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="SSH access via a jump host">
+flowchart LR
+  C[Client] -->|ssh config alias| J[Bastion/Jump]
+  J -->|ProxyJump| H[Internal host]
+  H --> T[tmux persistent session]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Define a host alias with ProxyJump</h3>
+<pre><code class="language-bash">Host nas
+  HostName 192.168.20.10
+  User taki
+  ProxyJump bastion
+  IdentityFile ~/.ssh/id_ed25519</code></pre>
+      <h3>2. Connect with one command</h3>
+      <div class="command-block"><div class="command"><code>ssh nas</code></div></div>
+      <h3>3. Start a persistent session</h3>
+      <div class="command-block"><div class="command"><code>tmux new -s work; tmux attach -t work</code></div></div>
+<pre><code class="language-bash">Last login: Wed Jun 17 2026 from 192.168.10.5
+[work] taki@nas:~$</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Disconnect mid-task and reconnect to confirm the tmux session resumes intact, and verify login uses the key (no password prompt). Pass criteria: one-command access through the jump host and a session that survives network drops.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Password prompt:</strong> confirm the public key is in remote <code>~/.ssh/authorized_keys</code> with 600 perms.</li>
+        <li><strong>ProxyJump fails:</strong> the bastion host entry must itself be reachable and keyed.</li>
+        <li><strong>Lost work on disconnect:</strong> always run long tasks inside tmux or screen.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Reduced multi-hop logins to a single aliased command.</li>
+        <li>Eliminated password prompts via key-based authentication.</li>
+        <li>Preserved 100% of long-running sessions across disconnects with tmux.</li>
+        <li>Centralized host definitions in one maintained ssh config.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="../security/ssh-hardening.html">SSH Hardening</a></li>
+        <li><a href="file-transfer-email.html">File Transfer &amp; Email</a></li>
+        <li><a href="user-group-admin.html">User &amp; Group Administration</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Full CI/CD Pipeline | Build, Scan, Deploy</title>
+  <meta name="description" content="Build an end-to-end CI/CD pipeline: test, build, scan, and deploy a container with GitHub Actions. Ship safely with gated, automated releases.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/devops/cicd-pipeline.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Full CI/CD Pipeline with GitHub Actions",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-03-02",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "GitHub Actions, Docker, Trivy, kubectl",
+    "articleSection": "DevOps"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/devops/index.html">DevOps</a> &rsaquo; <span>Full CI/CD Pipeline</span></nav>
+    <div class="page-header"><h1>Build a Full CI/CD Pipeline: Test, Scan, Deploy</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">DevOps</span><span class="lab-time">~5 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">CI/CD</span><span class="tag">Docker build</span><span class="tag">Trivy</span><span class="tag">deploy</span></div>
+    </div>
+
+    <section><p class="lead">You will build an end-to-end pipeline that tests, builds a container, scans it, and deploys on a successful merge to main. By the end every release is automated, gated, and traceable to a commit.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Chain test, build, scan, and deploy stages.</li>
+        <li>Gate deployment on passing tests and a clean scan.</li>
+        <li>Deploy a container to a target on merge to main.</li>
+        <li><strong>Time:</strong> ~5 hours &middot; <strong>Difficulty:</strong> Advanced &middot; <strong>Prereqs:</strong> the GitHub Actions and Docker labs.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="CI/CD pipeline stages from commit to deploy">
+graph LR
+  C[Commit] --> T[Test]
+  T --> B[Build image]
+  B --> S[Trivy scan]
+  S -->|clean + on main| D[Deploy]
+  S -->|critical| Fail[Block release]
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> GitHub Actions, a container registry, Trivy, and a deploy target (kubectl/SSH).</p>
+      <p><strong>Before you begin:</strong> store registry and deploy credentials as GitHub secrets.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Test then build a tagged image</strong>
+<pre><code class="language-bash">jobs:
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t ghcr.io/tyfsadik/app:${{ github.sha }} .</code></pre>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Scan and fail on critical CVEs</strong>
+          <div class="command-block" data-copy><div class="command"><code>trivy image --exit-code 1 --severity CRITICAL ghcr.io/tyfsadik/app:${{ github.sha }}</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Deploy on merge to main</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl set image deploy/app app=ghcr.io/tyfsadik/app:$GITHUB_SHA &amp;&amp; kubectl rollout status deploy/app</span></div>
+            <div class="terminal-output">deployment "app" successfully rolled out</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="CI/CD pipeline progress">
+graph LR
+  A[01 Test+Build] -->|done| B[02 Scan]
+  B -->|done| C[03 Deploy]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>gh run list --workflow=cicd.yml --limit 1 &amp;&amp; kubectl get deploy app -o jsonpath='{.spec.template.spec.containers[0].image}'</code></div></div>
+      <p>The latest run should be green and the deployment image tag should match the merged commit SHA, proving end-to-end traceability.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Deploy runs on every branch:</strong> guard the deploy job with <code>if: github.ref == 'refs/heads/main'</code>.</li>
+        <li><strong>Registry push denied:</strong> authenticate with a token scoped to packages.</li>
+        <li><strong>Scan blocks valid release:</strong> triage the CVE; only fail on fixable criticals where appropriate.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Add a manual approval gate for production.</li>
+        <li>Deploy to <a href="../containers-kubernetes/aks-deployment.html">AKS</a> instead of a single cluster.</li>
+        <li>Add IaC apply with <a href="../cloud-azure/infrastructure-as-code.html">Terraform</a> in the pipeline.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Automated test, build, scan, and deploy from one commit.</li>
+        <li>Blocked releases with critical CVEs before deploy.</li>
+        <li>Tagged images with the commit SHA for full traceability.</li>
+        <li>Deployed only from main, gated on green checks.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="github-actions.html">GitHub Actions Basics</a></li>
+        <li><a href="../containers-kubernetes/docker-images.html">Docker Images &amp; Dockerfile</a></li>
+        <li><a href="../containers-kubernetes/aks-deployment.html">Azure Kubernetes Service (AKS)</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

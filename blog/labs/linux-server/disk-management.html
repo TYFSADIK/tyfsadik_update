@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linux Disk Management | Partitioning &amp; Filesystems</title>
+  <meta name="description" content="Partition, format, and mount disks on Linux with parted, mkfs, and fstab. Add and prepare storage safely with verification at each step.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-server/disk-management.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Linux Disk Management and Partitioning",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-01-12",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "parted, mkfs, util-linux, fstab",
+    "articleSection": "Linux"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Disk Management</span></nav>
+    <div class="page-header"><h1>Linux Disk Management: Partition, Format, and Mount</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">parted</span><span class="tag">mkfs</span><span class="tag">lsblk</span><span class="tag">fstab</span></div>
+    </div>
+
+    <section><p class="lead">You will add a new disk to a Linux server, create a GPT partition, format it, and mount it persistently. By the end you will have extra storage that survives reboots, with a verification check after every destructive step.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Identify disks safely with lsblk before touching them.</li>
+        <li>Create a GPT partition and format it with a journaling filesystem.</li>
+        <li>Mount it persistently by UUID.</li>
+        <li><strong>Time:</strong> ~2 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> a server with a second, empty disk.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Disk to mounted filesystem pipeline">
+graph LR
+  D[(New disk /dev/sdb)] -->|parted GPT| P[Partition /dev/sdb1]
+  P -->|mkfs.ext4| FS[Filesystem]
+  FS -->|UUID in fstab| M[/mnt/data mounted]
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> a Linux server and a second empty block device (a fresh virtual disk works well).</p>
+      <p><strong>Before you begin:</strong> double-check the target device, formatting the wrong disk destroys data.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Identify the target disk</strong>
+          <p>Confirm the device name and that it is empty before any change, this prevents catastrophic mistakes.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">lsblk -o NAME,SIZE,TYPE,MOUNTPOINT</span></div>
+            <div class="terminal-output">sda    20G disk
+&#9492;&#9472;sda1 20G part /
+sdb    10G disk            &lt;- empty target</div>
+          </div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Create a GPT partition</strong>
+          <p>GPT is the modern partition table supporting large disks and many partitions.</p>
+          <div class="command-block" data-copy><div class="command"><code>sudo parted -s /dev/sdb mklabel gpt mkpart primary ext4 0% 100%</code></div><div class="note">[ROOT REQUIRED] Creates one full-disk partition on /dev/sdb.</div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Format with a journaling filesystem</strong>
+          <p>ext4's journal protects metadata consistency across crashes.</p>
+          <div class="command-block" data-copy><div class="command"><code>sudo mkfs.ext4 -L data /dev/sdb1</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Mount persistently by UUID</strong>
+          <p>UUID-based fstab entries stay correct even if device order changes.</p>
+          <div class="command-block" data-copy><div class="command"><code>echo "UUID=$(blkid -s UUID -o value /dev/sdb1) /mnt/data ext4 defaults,nofail 0 2" | sudo tee -a /etc/fstab &amp;&amp; sudo mkdir -p /mnt/data &amp;&amp; sudo mount -a</code></div></div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Disk management progress">
+graph LR
+  A[01 Identify] -->|done| B[02 Partition]
+  B -->|done| C[03 Format]
+  C -->|done| D[04 Mount]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>df -h /mnt/data &amp;&amp; touch /mnt/data/test &amp;&amp; ls -l /mnt/data</code></div></div>
+      <p>You should see the mounted size and a writable test file. If both pass, your new storage is ready and persistent.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>mount -a errors:</strong> a bad fstab line; the <code>nofail</code> option prevents a boot hang while you fix it.</li>
+        <li><strong>Device busy:</strong> something is using it; check with <code>lsof /dev/sdb1</code>.</li>
+        <li><strong>Wrong disk formatted:</strong> stop immediately; restore from backup. Always verify with lsblk first.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Make the storage flexible with <a href="lvm.html">Logical Volume Management</a>.</li>
+        <li>Explore mount options further in <a href="mounting-filesystems.html">Mounting &amp; Filesystem Management</a>.</li>
+        <li>Try XFS instead of ext4 and compare resize behaviour.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Added and prepared a 10GB disk with a verified mount.</li>
+        <li>Used GPT and a journaling filesystem for resilience.</li>
+        <li>Made the mount persistent and boot-safe via UUID + nofail.</li>
+        <li>Validated every destructive step before proceeding.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="lvm.html">Logical Volume Management (LVM)</a></li>
+        <li><a href="mounting-filesystems.html">Mounting &amp; Filesystem Management</a></li>
+        <li><a href="backup-recovery.html">Backup &amp; Recovery</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

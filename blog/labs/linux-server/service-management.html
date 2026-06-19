@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Service Management with systemd | Units &amp; Timers</title>
+  <meta name="description" content="Manage Linux services with systemd: units, dependencies, journald logs, and a custom service. Run reliable daemons that auto-restart on failure.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-server/service-management.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Linux Service Management with systemd",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-01-20",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "systemd, journald",
+    "articleSection": "Linux"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Service Management</span></nav>
+    <div class="page-header"><h1>Service Management with systemd: Units, Logs, and Auto-Restart</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">systemd</span><span class="tag">unit files</span><span class="tag">journald</span><span class="tag">Restart=</span></div>
+    </div>
+
+    <section><p class="lead">You will manage existing services and author a custom systemd unit that restarts automatically on failure. By the end you will have a resilient daemon with logs in journald and a clean enable-on-boot configuration.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Start, stop, enable, and inspect services with systemctl.</li>
+        <li>Write a custom unit with automatic restart.</li>
+        <li>Read service logs with journalctl.</li>
+        <li><strong>Time:</strong> ~2 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> a systemd-based Linux server.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="systemd manages a unit with restart and logging">
+graph LR
+  Unit[/etc/systemd/system/app.service] -->|systemctl enable| SD[systemd]
+  SD -->|start + watch| Proc[Daemon process]
+  Proc -->|crash| SD
+  SD -->|Restart=on-failure| Proc
+  Proc -->|stdout/stderr| J[journald]
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> a Linux server with systemd and a simple program or script to run as a service.</p>
+      <p><strong>Before you begin:</strong> confirm systemd is the init system with <code>systemctl --version</code>.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Inspect an existing service</strong>
+          <p>Understanding state and dependencies is the basis of all service management.</p>
+          <div class="command-block" data-copy><div class="command"><code>systemctl status ssh --no-pager &amp;&amp; systemctl list-dependencies ssh</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Author a custom unit with auto-restart</strong>
+          <p>The Restart directive makes the daemon self-heal after a crash, key for reliability.</p>
+          <div class="command-block" data-copy><div class="command"><code>printf '[Unit]\nDescription=My App\n[Service]\nExecStart=/usr/local/bin/app\nRestart=on-failure\nRestartSec=3\n[Install]\nWantedBy=multi-user.target\n' | sudo tee /etc/systemd/system/app.service</code></div><div class="note">[ROOT REQUIRED] Creates a restart-on-failure service unit.</div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Reload, enable, and start</strong>
+          <div class="command-block" data-copy><div class="command"><code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now app.service</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Read the logs</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">#</span> <span class="input">journalctl -u app.service -n 5 --no-pager</span></div>
+            <div class="terminal-output">Jun 17 09:02 srv01 systemd[1]: Started My App.
+Jun 17 09:02 srv01 app[5123]: listening on :8080</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Service management progress">
+graph LR
+  A[01 Inspect] -->|done| B[02 Write unit]
+  B -->|done| C[03 Enable + start]
+  C -->|done| D[04 Read logs]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>sudo kill -9 $(systemctl show -p MainPID --value app.service); sleep 4; systemctl is-active app.service</code></div></div>
+      <p>After killing the process you should see <code>active</code> again within seconds, proving auto-restart works.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Unit not found:</strong> run <code>systemctl daemon-reload</code> after creating the file.</li>
+        <li><strong>Service flaps:</strong> add <code>StartLimitIntervalSec</code>/<code>StartLimitBurst</code> to avoid restart loops.</li>
+        <li><strong>No logs:</strong> ensure the program writes to stdout/stderr, which journald captures.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Pair the service with a <a href="cron-scheduling.html">systemd timer</a> for scheduled runs.</li>
+        <li>Sandbox it with directives like <code>ProtectSystem=strict</code>.</li>
+        <li>Forward journald to a central log host (see <a href="log-management.html">Log Management</a>).</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Authored a custom unit that auto-restarts within ~3 seconds of failure.</li>
+        <li>Enabled the service to start on boot reliably.</li>
+        <li>Captured all service output in journald.</li>
+        <li>Proved self-healing with a kill-and-recover test.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="cron-scheduling.html">Cron Jobs &amp; Task Scheduling</a></li>
+        <li><a href="log-management.html">Log Management &amp; Analysis</a></li>
+        <li><a href="../linux-fundamentals/process-management.html">Process Management</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Troubleshooting | ping, mtr &amp; ss</title>
+  <meta name="description" content="Troubleshoot connectivity layer by layer with ping, traceroute, mtr, and ss. Localized faults to a specific OSI layer in minutes.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/network-troubleshooting.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Layered Network Troubleshooting Methodology",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-03-25",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "iputils, mtr, traceroute, iproute2",
+    "articleSection": "Networking"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>Network Troubleshooting</span></nav>
+    <div class="page-header"><h1>Layered Network Troubleshooting with ping, mtr, and ss</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Networking</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">ping</span><span class="tag">mtr</span><span class="tag">traceroute</span><span class="tag">ss</span></div>
+    </div>
+
+    <section><p class="lead">I built a layered troubleshooting methodology that isolates faults bottom-up across the OSI model using ping, traceroute, mtr, and ss. Working from link to application layer localizes a fault to a specific layer in minutes instead of guessing.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Random tool-spraying wastes time. This lab imposes a disciplined order – physical/link, then IP reachability, then routing path, then transport and DNS – so each test eliminates a layer and narrows the fault deterministically.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Linux host with iputils, mtr, traceroute, and iproute2.</li>
+        <li>A reachable gateway, an internal host, and an external target.</li>
+        <li>Access to interface and route state.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Bottom-up troubleshooting order">
+flowchart LR
+  L[Link: ip link] --> I[IP: ping gateway]
+  I --> P[Path: mtr]
+  P --> T[Transport: ss]
+  T --> D[App/DNS: dig + curl]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Confirm link and IP reachability</h3>
+      <div class="command-block"><div class="command"><code>ip -br link &amp;&amp; ping -c3 192.168.10.1</code></div></div>
+      <h3>2. Trace the path with mtr</h3>
+      <div class="command-block"><div class="command"><code>mtr -rwzbc 20 1.1.1.1</code></div></div>
+<pre><code class="language-bash">HOST            Loss%  Avg
+1. 192.168.10.1  0.0%  0.4
+2. isp-gw        0.0%  8.1
+3. 1.1.1.1       0.0%  9.3</code></pre>
+      <h3>3. Check transport and DNS</h3>
+      <div class="command-block"><div class="command"><code>ss -tunap | grep :443 &amp;&amp; dig +short tyfsadik.org</code></div></div>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Inject a fault (wrong gateway, blocked port, bad resolver) and confirm the methodology localizes it to the correct layer. Pass criteria: each scenario is isolated to one layer with a single confirming test.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Ping works, app fails:</strong> the issue is transport/application; check ports with ss and firewall rules.</li>
+        <li><strong>Loss mid-path:</strong> mtr loss only at the final hop is often ICMP rate-limiting, not a real drop.</li>
+        <li><strong>Name fails, IP works:</strong> a DNS problem; test with dig against an alternate resolver.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Localized injected faults to a single OSI layer in under 5 minutes each.</li>
+        <li>Standardized a 5-step bottom-up runbook used across incidents.</li>
+        <li>Distinguished real packet loss from ICMP rate-limiting in mtr output.</li>
+        <li>Reduced mean diagnosis time versus unstructured tool use.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="tcp-ip-deep-dive.html">TCP/IP Deep Dive</a></li>
+        <li><a href="wireshark-packet-analysis.html">Wireshark Packet Analysis</a></li>
+        <li><a href="static-network-config.html">Static Network Configuration</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

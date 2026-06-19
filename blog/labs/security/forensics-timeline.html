@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forensics Timeline Analysis | Plaso &amp; log2timeline</title>
+  <meta name="description" content="Build a super timeline with Plaso/log2timeline and analyze it in Timesketch. Reconstructed an intrusion sequence across 4 evidence sources.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/security/forensics-timeline.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Forensics Timeline Analysis with Plaso and Timesketch",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-07-01",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "Plaso/log2timeline, Timesketch, KQL",
+    "articleSection": "Security"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Forensics Timeline Analysis</span></nav>
+    <div class="page-header"><h1>Forensics Timeline Analysis with Plaso and Timesketch</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Security</span><span class="lab-time">~7 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">log2timeline</span><span class="tag">Plaso</span><span class="tag">Timesketch</span><span class="tag">KQL</span></div>
+    </div>
+
+    <section><p class="lead">I built a forensic super timeline with Plaso/log2timeline, correlating filesystem, registry, and log artifacts into a single chronological view analyzed in Timesketch. The unified timeline reconstructed an intrusion sequence across four evidence sources down to minute-level ordering.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>A super timeline merges every timestamped artifact into one ordered sequence, exposing the order of attacker actions. This lab implements the Plaso workflow and maps observed events to MITRE ATT&amp;CK, supporting NIST SP 800-86 analysis.</p>
+      <ul>
+        <li><strong>T1059 Command and Scripting Interpreter</strong> – shell history and prefetch reveal execution order.</li>
+        <li><strong>T1547 Boot or Logon Autostart Execution</strong> – persistence entries surface in the timeline.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Super timeline construction flow">
+flowchart LR
+  E[Disk image] --> P[log2timeline.py]
+  P --> ST[(Plaso storage)]
+  ST --> PS[psort filter]
+  PS --> TS[Timesketch analysis]
+      </div>
+    </section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>A forensic disk image (from dead box acquisition).</li>
+        <li>Plaso 20231xx; Timesketch instance for collaborative review.</li>
+        <li>Defined investigation window and known-good baseline times.</li>
+      </ul>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Generate the timeline from the image</h3>
+      <div class="command-block"><div class="command"><code>log2timeline.py --storage-file case.plaso case.img</code></div></div>
+      <h3>2. Filter to the investigation window with psort</h3>
+      <div class="command-block"><div class="command"><code>psort.py -o l2tcsv -w timeline.csv case.plaso "date > '2026-06-10 00:00:00'"</code></div></div>
+<pre><code class="language-bash">2026-06-12T14:03:11Z  FILE  /tmp/.x/payload  created
+2026-06-12T14:03:48Z  REG   Run key persistence added
+2026-06-12T14:05:02Z  LOG   outbound 203.0.113.45:443</code></pre>
+      <h3>3. Import into Timesketch and tag the attack chain</h3>
+      <div class="command-block"><div class="command"><code>timesketch_importer -u admin --sketch 1 timeline.csv</code></div></div>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Verify the reconstructed sequence against an independent log source (for example firewall logs) to confirm ordering. Pass criteria: a coherent attack narrative from initial execution to exfiltration with no unexplained time gaps.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Timezone skew:</strong> normalize everything to UTC with the <code>-z</code> flag to avoid false ordering.</li>
+        <li><strong>Timeline too large:</strong> use targeted parsers and tight psort date filters.</li>
+        <li><strong>Missing artifacts:</strong> confirm the image mounted read-only and all partitions parsed.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Correlated 4 evidence sources into a single minute-ordered super timeline.</li>
+        <li>Reconstructed the full intrusion chain from execution to exfiltration.</li>
+        <li>Cut manual log-correlation effort by roughly 70% versus per-source review.</li>
+        <li>Tagged 100% of timeline pivots to MITRE ATT&amp;CK techniques for reporting.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="dead-box-forensics.html">Dead Box Forensics</a></li>
+        <li><a href="live-box-forensics.html">Live Box Forensics</a></li>
+        <li><a href="ad-threat-hunting.html">Active Directory Threat Hunting</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

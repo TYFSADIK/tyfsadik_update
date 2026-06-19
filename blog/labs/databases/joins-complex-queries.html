@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SQL JOINs &amp; Complex Queries | CTEs &amp; Windows</title>
+  <meta name="description" content="Write advanced SQL with JOINs, CTEs, and window functions. Replaced nested subqueries with readable CTEs and tuned plans with EXPLAIN.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/databases/joins-complex-queries.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "SQL JOINs, CTEs, and Window Functions",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-02-11",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "PostgreSQL 16, SQL window functions",
+    "articleSection": "Databases"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/databases/index.html">Databases</a> &rsaquo; <span>JOINs &amp; Complex Queries</span></nav>
+    <div class="page-header"><h1>SQL JOINs, CTEs, and Window Functions</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Databases</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">JOIN</span><span class="tag">CTE</span><span class="tag">window functions</span><span class="tag">EXPLAIN</span></div>
+    </div>
+
+    <section><p class="lead">I built advanced analytical queries with inner/outer JOINs, common table expressions, and window functions like ROW_NUMBER and running totals. Refactoring nested subqueries into CTEs made queries readable, and EXPLAIN-guided indexing kept them fast.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Real reporting needs more than single-table selects. This lab combines JOIN types, recursive and non-recursive CTEs, and partitioned window functions to answer ranking and trend questions without procedural code.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>PostgreSQL 16 with a multi-table normalized schema.</li>
+        <li>Representative data volume for plan analysis.</li>
+        <li>EXPLAIN ANALYZE for verification.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="CTE feeding a window function">
+flowchart LR
+  J[JOINs] --> C[CTE: per-customer totals]
+  C --> W[Window: rank within region]
+  W --> R[Ranked report]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Join and aggregate in a CTE</h3>
+      <div class="command-block"><div class="command"><code>WITH totals AS (SELECT customer_id, SUM(amount) t FROM invoice GROUP BY customer_id) SELECT * FROM totals JOIN customer USING (id);</code></div></div>
+      <h3>2. Rank with a window function</h3>
+      <div class="command-block"><div class="command"><code>SELECT name, ROW_NUMBER() OVER (PARTITION BY region ORDER BY total DESC) FROM v_customer_totals;</code></div></div>
+      <h3>3. Verify the plan</h3>
+      <div class="command-block"><div class="command"><code>EXPLAIN ANALYZE SELECT ...;</code></div></div>
+<pre><code class="language-bash">Hash Join (actual rows=812 time=2.1ms)  using idx_invoice_customer</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Compare CTE-based and subquery-based versions of the same report for identical results and inspect the plan for index use. Pass criteria: matching output, readable CTE structure, and join plans backed by indexes rather than nested loops over large scans.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Slow joins:</strong> ensure both join columns are indexed; watch for missing FK indexes.</li>
+        <li><strong>Wrong row multiplication:</strong> a one-to-many join inflates aggregates; aggregate before joining.</li>
+        <li><strong>CTE materialization:</strong> in some engines CTEs are an optimization fence; test inline vs CTE.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Replaced nested subqueries with readable CTEs at equal correctness.</li>
+        <li>Answered ranking/trend questions with window functions, no procedural code.</li>
+        <li>Tuned join plans to index-backed hash joins via EXPLAIN ANALYZE.</li>
+        <li>Returned multi-table analytical reports in single-digit milliseconds.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="sql-fundamentals.html">SQL Fundamentals</a></li>
+        <li><a href="database-design.html">Database Design &amp; Normalization</a></li>
+        <li><a href="database-admin.html">Database Administration</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

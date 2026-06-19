@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure Monitor &amp; Alerting | Logs, KQL &amp; Alerts</title>
+  <meta name="description" content="Collect metrics and logs with Azure Monitor, query with KQL, and fire alerts. Build observability that pages you before users notice.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/cloud-azure/azure-monitor.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Azure Monitor, Log Analytics, and Alerting",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-03-15",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "Azure Monitor, Log Analytics, KQL",
+    "articleSection": "Cloud"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/cloud-azure/index.html">Cloud &amp; Azure</a> &rsaquo; <span>Azure Monitor &amp; Alerting</span></nav>
+    <div class="page-header"><h1>Azure Monitor: Log Analytics, KQL, and Alerts</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Cloud</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Azure Monitor</span><span class="tag">Log Analytics</span><span class="tag">KQL</span><span class="tag">alerts</span></div>
+    </div>
+
+    <section><p class="lead">You will route VM metrics and logs into a Log Analytics workspace, query them with KQL, and create an alert that notifies you on a threshold. By the end you will detect problems before users do.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Connect resources to a Log Analytics workspace.</li>
+        <li>Query telemetry with <span class="glossary-term" data-definition="Kusto Query Language: the read-only query language used by Azure Monitor and Sentinel.">KQL</span>.</li>
+        <li>Create a metric/log alert with an action group.</li>
+        <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> a running Azure VM.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Telemetry flow from resources to alerts">
+graph LR
+  VM[Azure VM] -->|agent/diagnostics| LA[Log Analytics workspace]
+  LA -->|KQL query| Rule[Alert rule]
+  Rule -->|fires| AG[Action group: email/webhook]
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> a VM, a Log Analytics workspace, and the Azure CLI.</p>
+      <p><strong>Before you begin:</strong> enable diagnostic settings so data actually flows to the workspace.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create a workspace and connect the VM</strong>
+          <div class="command-block" data-copy><div class="command"><code>az monitor log-analytics workspace create -g tyf-rg -n tyf-law</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Query telemetry with KQL</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az monitor log-analytics query -w $WID --analytics-query "Heartbeat | summarize count() by Computer"</span></div>
+            <div class="terminal-output">Computer   count_
+web01      120</div>
+          </div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Create an alert with an action group</strong>
+          <div class="command-block" data-copy><div class="command"><code>az monitor metrics alert create -g tyf-rg -n cpu-high --scopes $VMID --condition "avg Percentage CPU &gt; 80" --action $AG_ID</code></div></div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Monitoring progress">
+graph LR
+  A[01 Workspace] -->|done| B[02 KQL query]
+  B -->|done| C[03 Alert rule]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>az monitor metrics alert show -g tyf-rg -n cpu-high --query "enabled" -o tsv</code></div></div>
+      <p>The alert should report <code>true</code>. Generate load on the VM and confirm the action group notifies you, proving end-to-end observability.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>No data in workspace:</strong> enable diagnostic settings / install the Azure Monitor Agent.</li>
+        <li><strong>KQL returns nothing:</strong> widen the time range; data ingestion has a short delay.</li>
+        <li><strong>Alert never fires:</strong> verify the condition aggregation window and the action group target.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Build dashboards or workbooks over the same KQL.</li>
+        <li>Forward security signals into Microsoft Sentinel.</li>
+        <li>Compare with self-hosted logging in <a href="../linux-server/log-management.html">Log Management</a>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Centralized VM telemetry in a Log Analytics workspace.</li>
+        <li>Queried metrics and heartbeats with KQL.</li>
+        <li>Created a CPU alert wired to a notification action group.</li>
+        <li>Achieved proactive detection ahead of user impact.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="cost-management.html">Azure Cost Management</a></li>
+        <li><a href="../linux-server/log-management.html">Log Management &amp; Analysis</a></li>
+        <li><a href="../security/automated-soc-pipeline.html">Automated SOC Pipeline</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

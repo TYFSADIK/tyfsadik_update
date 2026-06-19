@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Routing &amp; Switching | STP, LACP &amp; Inter-VLAN</title>
+  <meta name="description" content="Configure switching with STP and LACP plus inter-VLAN routing. Built a loop-free, link-aggregated fabric with sub-second failover.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/routing-switching.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Routing and Switching: STP, LACP, and Inter-VLAN",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-02-25",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "Cisco IOS, STP/RSTP, LACP (802.3ad)",
+    "articleSection": "Networking"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>Routing &amp; Switching</span></nav>
+    <div class="page-header"><h1>Routing and Switching: STP, LACP, and Inter-VLAN Routing</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Networking</span><span class="lab-time">~5 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">STP</span><span class="tag">LACP</span><span class="tag">inter-VLAN</span><span class="tag">Cisco IOS</span></div>
+    </div>
+
+    <section><p class="lead">I built a loop-free switching fabric using Rapid STP, aggregated uplinks with LACP, and enabled inter-VLAN routing on a Layer 3 switch. The design eliminated Layer 2 loops while providing redundant, load-shared uplinks with sub-second failover.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Switching forwards within a broadcast domain; routing moves between them. This lab combines RSTP loop prevention, 802.3ad link aggregation for bandwidth and redundancy, and SVI-based inter-VLAN routing to connect the VLANs from the segmentation lab.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Two managed switches with RSTP and LACP support.</li>
+        <li>Pre-configured VLANs (10/20/30/40) and a Layer 3 switch.</li>
+        <li>Redundant inter-switch links for the LACP bundle.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Redundant switches with LACP bundle and RSTP">
+flowchart LR
+  S1[Switch 1] ===|LACP bundle| S2[Switch 2]
+  S1 -. RSTP blocked .- S2
+  S2 --> L3[L3 Switch<br/>inter-VLAN SVIs]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Enable Rapid STP</h3>
+      <div class="command-block"><div class="command"><code>spanning-tree mode rapid-pvst</code></div></div>
+      <h3>2. Bundle uplinks with LACP</h3>
+      <div class="command-block"><div class="command"><code>interface range Gi0/1-2 ; channel-group 1 mode active</code></div></div>
+      <h3>3. Create an inter-VLAN SVI</h3>
+      <div class="command-block"><div class="command"><code>interface vlan 20 ; ip address 192.168.20.1 255.255.255.0 ; no shutdown</code></div></div>
+<pre><code class="language-bash">Port-channel1  LACP  active  Gi0/1 Gi0/2  bundled
+Vlan20         up/up  192.168.20.1</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Disconnect one bundle member and confirm traffic continues over the survivor; verify RSTP shows one forwarding path. Pass criteria: no loop, sub-second LACP failover, and successful inter-VLAN routing via the SVIs.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>LACP not bundling:</strong> both ends must be active/passive compatible with matching speed/duplex.</li>
+        <li><strong>STP blocking wrong port:</strong> set bridge priority to elect the intended root.</li>
+        <li><strong>No inter-VLAN routing:</strong> enable <code>ip routing</code> on the L3 switch.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Eliminated Layer 2 loops with RSTP across redundant links.</li>
+        <li>Achieved sub-second failover on LACP member loss.</li>
+        <li>Doubled inter-switch bandwidth via a 2-link 802.3ad bundle.</li>
+        <li>Routed all 4 VLANs through SVIs on a single L3 switch.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="vlan-configuration.html">VLAN Configuration</a></li>
+        <li><a href="ip-routing-subnetting.html">IP Routing &amp; Subnetting</a></li>
+        <li><a href="network-troubleshooting.html">Network Troubleshooting</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

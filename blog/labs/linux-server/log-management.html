@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linux Log Management | journald, rsyslog &amp; logrotate</title>
+  <meta name="description" content="Manage and centralize Linux logs with journald, rsyslog forwarding, and logrotate. Build searchable, rotated, shippable logs for analysis.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-server/log-management.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Linux Log Management and Centralization",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-01-26",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "systemd-journald, rsyslog, logrotate",
+    "articleSection": "Linux"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Log Management</span></nav>
+    <div class="page-header"><h1>Linux Log Management with journald, rsyslog, and logrotate</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">journald</span><span class="tag">rsyslog</span><span class="tag">logrotate</span><span class="tag">forwarding</span></div>
+    </div>
+
+    <section><p class="lead">You will query journald, forward logs to a central rsyslog server, and rotate files so disks never fill. By the end you will have searchable, retained, centralized logs, the foundation for monitoring and the SOC labs.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Filter and follow logs with journalctl.</li>
+        <li>Forward logs to a central server over rsyslog.</li>
+        <li>Rotate and retain logs with logrotate.</li>
+        <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> a server (and optionally a second host as collector).</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Log flow from sources to central collector">
+graph LR
+  App[Apps + kernel] -->|journald| J[systemd-journald]
+  J -->|forward| R[rsyslog]
+  R -->|TCP/514| C[(Central log host)]
+  J -->|rotate| LR[logrotate retention]
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> systemd-journald (default), rsyslog, and logrotate.</p>
+      <p><strong>Before you begin:</strong> if forwarding, have a reachable collector listening on TCP/514.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Query logs precisely with journalctl</strong>
+          <p>Targeted filters turn a flood of entries into the few that matter for triage.</p>
+          <div class="command-block" data-copy><div class="command"><code>journalctl -p err -S "2026-06-17 00:00:00" -u ssh --no-pager</code></div><div class="note">Shows SSH errors since midnight at priority error or higher.</div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Forward logs to a central server</strong>
+          <p>Centralized logs survive a compromised host and enable cross-host correlation.</p>
+          <div class="command-block" data-copy><div class="command"><code>echo '*.* @@192.168.1.60:514' | sudo tee /etc/rsyslog.d/90-forward.conf &amp;&amp; sudo systemctl restart rsyslog</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Rotate logs with logrotate</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">#</span> <span class="input">logrotate -d /etc/logrotate.d/rsyslog</span></div>
+            <div class="terminal-output">rotating pattern: /var/log/syslog  weekly (4 rotations)
+considering log /var/log/syslog
+  log does not need rotating</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Log management progress">
+graph LR
+  A[01 Query journald] -->|done| B[02 Forward rsyslog]
+  B -->|done| C[03 Rotate logrotate]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>logger "test-event-tyf" &amp;&amp; journalctl -n 1 | grep test-event-tyf</code></div></div>
+      <p>You should see the test event in the local journal (and on the collector if forwarding). If so, your logging pipeline is working.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>No logs on collector:</strong> confirm the collector listens on 514 and firewall allows it.</li>
+        <li><strong>Journal too large:</strong> cap with <code>SystemMaxUse=</code> in journald.conf.</li>
+        <li><strong>logrotate not running:</strong> it is triggered by a daily timer; test with <code>logrotate -f</code>.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Feed centralized logs into the <a href="../security/automated-soc-pipeline.html">Automated SOC Pipeline</a>.</li>
+        <li>Add structured logging (JSON) for easier parsing.</li>
+        <li>Forward over TLS (RELP) for confidentiality and reliability.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Queried logs precisely by priority, time, and unit.</li>
+        <li>Centralized logs to a collector for cross-host correlation.</li>
+        <li>Bounded disk usage with rotation and retention.</li>
+        <li>Verified the pipeline end to end with a test event.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="service-management.html">Service Management (systemd)</a></li>
+        <li><a href="../security/incident-response-procedures.html">Incident Response Procedures</a></li>
+        <li><a href="../security/automated-soc-pipeline.html">Automated SOC Pipeline</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

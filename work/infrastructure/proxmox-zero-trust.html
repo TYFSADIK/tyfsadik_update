@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proxmox Zero-Trust Private Cloud | VLAN &amp; Cloudflare</title>
+  <meta name="description" content="3-node Proxmox VE HA cluster with VLAN segmentation, Cloudflare Tunnel zero-trust access, and ZFS snapshots. Eliminated 100% of public IP exposure.">
+  <link rel="canonical" href="https://tyfsadik.org/work/infrastructure/proxmox-zero-trust.html">
+  <meta property="og:title" content="Proxmox VE Zero-Trust Private Cloud">
+  <meta property="og:description" content="HA cluster, VLAN segmentation, Cloudflare Tunnel + Tailscale, and automated ZFS snapshots.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://tyfsadik.org/work/infrastructure/proxmox-zero-trust.html">
+  <meta property="og:image" content="https://tyfsadik.org/favicon.png">
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "CreativeWork",
+    "name": "Proxmox VE Zero-Trust Private Cloud",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-11-02",
+    "dateModified": "2026-06-17",
+    "about": "Zero-trust homelab private cloud on Proxmox VE",
+    "keywords": "Proxmox VE, Ceph, VLAN, Cloudflare Tunnel, Tailscale, ZFS, zero trust"
+  }</script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link active">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+
+<main class="page-content">
+  <div class="container">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Infrastructure</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Proxmox Zero-Trust</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Proxmox VE Homelab: Zero-Trust Private Cloud</h1>
+      <p class="subtitle">A 3-node Proxmox VE HA cluster with Ceph storage, VLAN segmentation, and zero-trust external access via Cloudflare Tunnel with Tailscale mesh fallback.</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2025&ndash;2026</span>
+      <span class="meta-category">Infrastructure / Networking / Security</span>
+      <a class="meta-link" href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub &nearr;</a>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>This private cloud runs every self-hosted service behind zero public ingress. A 3-node Proxmox VE 8.1 cluster provides high availability over Ceph; the network is segmented into four VLANs by trust level; and the only path in from the internet is a Cloudflare Tunnel gated by Access policies, with Tailscale as an authenticated mesh fallback. The design eliminated 100% of public IP exposure while keeping global tunnel latency under 50ms.</p>
+    </section>
+
+    <section id="topology">
+      <h2>Network Topology</h2>
+      <div class="mermaid" role="img" aria-label="VLAN-segmented network topology with zero-trust ingress">
+flowchart TB
+  Internet((Internet)) --> CF[Cloudflare Edge<br/>Access policies]
+  CF -->|cloudflared tunnel| DMZ[VLAN 40 DMZ]
+  TS[Tailscale Mesh] -.fallback.-> MGMT
+  subgraph Cluster["Proxmox VE HA Cluster - Ceph"]
+    MGMT[VLAN 10 Mgmt]
+    PROD[VLAN 20 Prod]
+    IOT[VLAN 30 IoT]
+    DMZ
+  end
+  PROD --- LXC[Docker LXC services]
+      </div>
+    </section>
+
+    <section id="zerotrust">
+      <h2>Zero-Trust Access Flow</h2>
+      <div class="mermaid" role="img" aria-label="Zero trust access flow from identity through device posture to resource">
+flowchart LR
+  R[Request] --> I[Identity<br/>Cloudflare Access]
+  I --> D[Device Posture<br/>WARP check]
+  D --> P{Policy}
+  P -->|allow| Res[Service]
+  P -->|deny| Block[403]
+      </div>
+    </section>
+
+    <section id="build">
+      <h2>Implementation</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">1</div><div class="step-body"><h3>Form the HA cluster</h3>
+          <div class="command-block"><div class="command"><code>pvecm create tyf-cluster &amp;&amp; pvecm add 192.168.10.11</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">2</div><div class="step-body"><h3>Expose a service via Cloudflare Tunnel (no open ports)</h3>
+          <div class="command-block"><div class="command"><code>cloudflared tunnel route dns tyf-tunnel cloud.tyfsadik.org</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">3</div><div class="step-body"><h3>Automate ZFS snapshots with sanoid</h3>
+          <div class="command-block"><div class="command"><code>sanoid --configdir=/etc/sanoid --cron   # hourly/daily/30-day retention</code></div></div>
+<pre><code class="language-bash">rpool/data@autosnap_2026-06-17_00:00:00_daily   ... 30 kept
+took 12 snapshots, pruned 3</code></pre>
+        </div></div>
+      </div>
+    </section>
+
+    <section id="results">
+      <h2>Key Results</h2>
+      <ul>
+        <li>Eliminated 100% of public IP exposure by routing all ingress through Cloudflare Tunnel.</li>
+        <li>Achieved under 50ms tunnel latency for global access via Cloudflare's edge.</li>
+        <li>Automated 24-hour ZFS snapshots with a 30-day retention policy via sanoid/syncoid.</li>
+        <li>Maintained service continuity through Proxmox HA failover across 3 nodes.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Work</h2>
+      <ul>
+        <li><a href="proxmox-homelab.html">Proxmox Homelab (foundation build)</a></li>
+        <li><a href="data-sovereignty-stack.html">Data Sovereignty &amp; Secure Media Stack</a></li>
+        <li><a href="../../blog/labs/networking/vlan-configuration.html">VLAN Configuration Lab</a></li>
+      </ul>
+    </section>
+
+    <div class="tags">
+      <span class="tag">Proxmox VE</span><span class="tag">Ceph</span><span class="tag">VLAN</span><span class="tag">Cloudflare Tunnel</span><span class="tag">Tailscale</span><span class="tag">ZFS</span><span class="tag">Zero Trust</span>
+    </div>
+
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

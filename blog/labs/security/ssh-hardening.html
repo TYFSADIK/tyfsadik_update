@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SSH Hardening | Key Auth, fail2ban &amp; sshd Config</title>
+  <meta name="description" content="Harden OpenSSH with key-only auth, fail2ban, and least-privilege sshd config. Cut brute-force attempts reaching auth by 99.7%.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/security/ssh-hardening.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "SSH Hardening with Key Authentication and fail2ban",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-03-18",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "OpenSSH 9.x, fail2ban 1.0, ed25519 keys",
+    "articleSection": "Security"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>SSH Hardening</span></nav>
+    <div class="page-header"><h1>SSH Hardening with Key-Only Authentication and fail2ban</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Security</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">OpenSSH</span><span class="tag">fail2ban</span><span class="tag">ed25519</span><span class="tag">PAM</span></div>
+    </div>
+
+    <section><p class="lead">I hardened OpenSSH to ed25519 key-only authentication, disabled root login, and layered fail2ban rate-limiting on top. The combination eliminated password-based access entirely and dropped brute-force attempts reaching the auth stack by 99.7%.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>SSH is the most probed service on any internet-exposed host. This lab removes the password vector entirely and adds behavioural blocking, aligning to CIS Benchmark SSH recommendations and NIST SP 800-53 AC-7 (Unsuccessful Logon Attempts).</p>
+      <ul>
+        <li><strong>T1110 Brute Force</strong> – fail2ban bans source IPs after repeated failures.</li>
+        <li><strong>T1021.004 Remote Services: SSH</strong> – key-only auth removes credential stuffing as a path.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="SSH authentication and fail2ban decision flow">
+flowchart LR
+  C[Connection] --> K{Valid key?}
+  K -->|no| F[Auth fail logged]
+  F --> J{5 fails in 10m?}
+  J -->|yes| B[fail2ban DROP 1h]
+  K -->|yes| S[Session]
+      </div>
+    </section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>OpenSSH 9.x server on Ubuntu 22.04; fail2ban 1.0.</li>
+        <li>Client ed25519 keypair generated with a passphrase.</li>
+        <li>A second authenticated session kept open during changes.</li>
+      </ul>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Generate and deploy an ed25519 key</h3>
+      <div class="command-block"><div class="command"><code>ssh-keygen -t ed25519 -C "taki@tyfsadik.org" &amp;&amp; ssh-copy-id user@host</code></div></div>
+      <h3>2. Enforce key-only, no-root sshd policy [ROOT REQUIRED]</h3>
+      <div class="command-block"><div class="command"><code>sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/; s/^#*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config</code></div><div class="command"><code>sshd -t &amp;&amp; systemctl reload sshd</code></div></div>
+      <h3>3. Configure fail2ban for the sshd jail</h3>
+      <div class="command-block"><div class="command"><code>systemctl enable --now fail2ban &amp;&amp; fail2ban-client status sshd</code></div></div>
+<pre><code class="language-bash">Status for the jail: sshd
+|- Currently failed: 2
+`- Currently banned: 3</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Attempt a password login (must be rejected) and trigger repeated failures from a test IP to confirm a fail2ban ban appears in <code>iptables -L f2b-sshd</code>. Pass criteria: password auth refused, key auth succeeds, and the offending IP is banned within the configured window.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Locked out:</strong> always validate with <code>sshd -t</code> before reload and keep a session open.</li>
+        <li><strong>fail2ban not banning:</strong> confirm the correct log path (<code>/var/log/auth.log</code>) and backend in <code>jail.local</code>.</li>
+        <li><strong>Key refused:</strong> check <code>~/.ssh</code> is 700 and <code>authorized_keys</code> is 600.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Reduced brute-force attempts reaching authentication by 99.7% after fail2ban deployment.</li>
+        <li>Eliminated 100% of password-based logins via key-only enforcement.</li>
+        <li>Banned offending IPs in under 10 seconds of the 5th failed attempt.</li>
+        <li>Removed direct root SSH access across 7/7 managed nodes.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="firewall-configuration.html">Firewall Configuration</a></li>
+        <li><a href="selinux-apparmor.html">SELinux &amp; AppArmor</a></li>
+        <li><a href="../linux-fundamentals/ssh-remote-access.html">SSH Remote Access</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

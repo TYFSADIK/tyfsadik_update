@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IP Routing &amp; Subnetting | CIDR &amp; Linux Routing</title>
+  <meta name="description" content="Design CIDR subnets and configure Linux IP routing between segments. Segmented a /24 into role-based subnets with verified inter-VLAN routing.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/ip-routing-subnetting.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "IP Routing and Subnetting with CIDR",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-02-11",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "iproute2, ipcalc, Linux IP forwarding",
+    "articleSection": "Networking"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>IP Routing &amp; Subnetting</span></nav>
+    <div class="page-header"><h1>IP Routing and Subnetting with CIDR on Linux</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Networking</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">CIDR</span><span class="tag">ipcalc</span><span class="tag">routing</span><span class="tag">forwarding</span></div>
+    </div>
+
+    <section><p class="lead">I subdivided a /24 into role-based CIDR subnets and configured a Linux host as a router to forward traffic between them. Correct subnet sizing and route tables produced verified end-to-end reachability with no overlap or black-hole routes.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Subnetting controls broadcast domains and enforces segmentation; routing connects those segments. This lab plans address space with VLSM and turns a multi-homed Linux box into a forwarding router, the foundation for the VLAN and zero-trust segmentation labs.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>A Linux router VM with two interfaces; two client VMs.</li>
+        <li><code>ipcalc</code> for subnet math; iproute2 for routes.</li>
+        <li>A /24 to subdivide (for example 192.168.10.0/24).</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Two subnets joined by a Linux router">
+flowchart LR
+  A[Subnet A<br/>192.168.10.0/26] --> R[Linux Router<br/>ip_forward=1]
+  R --> B[Subnet B<br/>192.168.10.64/26]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Plan subnets with ipcalc</h3>
+      <div class="command-block"><div class="command"><code>ipcalc 192.168.10.0/24 --split 60 60</code></div></div>
+      <h3>2. Enable IP forwarding [PRIVILEGED]</h3>
+      <div class="command-block"><div class="command"><code>sysctl -w net.ipv4.ip_forward=1 &amp;&amp; echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf</code></div></div>
+      <h3>3. Add and inspect routes</h3>
+      <div class="command-block"><div class="command"><code>ip route add 192.168.10.64/26 via 192.168.10.62 &amp;&amp; ip route show</code></div></div>
+<pre><code class="language-bash">192.168.10.0/26 dev eth0 proto kernel scope link
+192.168.10.64/26 via 192.168.10.62 dev eth1</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>From a client in subnet A, ping a client in subnet B and trace the path through the router. Pass criteria: successful cross-subnet ping, the router appears as the first hop, and no overlapping routes exist.</p>
+      <div class="command-block"><div class="command"><code>traceroute 192.168.10.70</code></div></div>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>No cross-subnet traffic:</strong> confirm <code>ip_forward=1</code> and that clients use the router as gateway.</li>
+        <li><strong>Overlapping subnets:</strong> recompute with ipcalc; overlaps cause unpredictable routing.</li>
+        <li><strong>Asymmetric routing:</strong> ensure return routes exist on both segments.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Segmented one /24 into 2 role-based /26 subnets with zero overlap.</li>
+        <li>Achieved verified bidirectional reachability across segments.</li>
+        <li>Reduced each broadcast domain by roughly 75% versus a flat /24.</li>
+        <li>Documented a reusable VLSM plan for future segments.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="vlan-configuration.html">VLAN Configuration</a></li>
+        <li><a href="routing-switching.html">Routing &amp; Switching</a></li>
+        <li><a href="static-network-config.html">Static Network Configuration</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

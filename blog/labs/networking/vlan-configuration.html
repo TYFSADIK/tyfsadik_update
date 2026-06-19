@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VLAN Configuration | 802.1Q Trunking &amp; Tagging</title>
+  <meta name="description" content="Configure 802.1Q VLANs and trunk links across Linux and Cisco. Isolated 4 trust domains on shared switching with verified tag separation.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/vlan-configuration.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "VLAN Configuration with 802.1Q Trunking",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-02-18",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "802.1Q, Linux VLAN (8021q), Cisco IOS",
+    "articleSection": "Networking"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>VLAN Configuration</span></nav>
+    <div class="page-header"><h1>VLAN Configuration with 802.1Q Trunking and Tagging</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Networking</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">802.1Q</span><span class="tag">trunk</span><span class="tag">Cisco IOS</span><span class="tag">8021q</span></div>
+    </div>
+
+    <section><p class="lead">I segmented a shared switching fabric into four 802.1Q VLANs by trust level and carried them over a single tagged trunk. Tag-based isolation kept management, production, IoT, and DMZ traffic on separate broadcast domains across one physical link.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>VLANs partition a switch into isolated Layer 2 domains; 802.1Q tags identify each frame's VLAN across trunk links. This lab maps the same four-zone model used in the Proxmox zero-trust build, enforcing segmentation that complements Layer 3 routing and ACLs.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>A managed switch (or Linux bridge with 8021q) and two hosts.</li>
+        <li>VLAN plan: 10 Mgmt, 20 Prod, 30 IoT, 40 DMZ.</li>
+        <li>iproute2 with the 8021q module loaded.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="VLANs carried over a single 802.1Q trunk">
+flowchart LR
+  H1[Host A] --> SW[Switch]
+  SW -->|802.1Q trunk<br/>tags 10,20,30,40| RTR[Router on a stick]
+  SW --> H2[Host B]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Create a tagged VLAN interface on Linux [PRIVILEGED]</h3>
+      <div class="command-block"><div class="command"><code>ip link add link eth0 name eth0.20 type vlan id 20 &amp;&amp; ip addr add 192.168.20.1/24 dev eth0.20</code></div></div>
+      <h3>2. Cisco access and trunk ports</h3>
+      <div class="command-block"><div class="command"><code>switchport mode access ; switchport access vlan 20</code></div><div class="command"><code>switchport mode trunk ; switchport trunk allowed vlan 10,20,30,40</code></div></div>
+      <h3>3. Verify VLAN assignment</h3>
+      <div class="command-block"><div class="command"><code>show vlan brief</code></div></div>
+<pre><code class="language-bash">VLAN Name      Status    Ports
+20   PROD      active    Gi0/2
+40   DMZ       active    Gi0/4</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Place two hosts in different VLANs and confirm they cannot reach each other at Layer 2 without routing. Pass criteria: intra-VLAN traffic succeeds, inter-VLAN traffic requires the router, and trunk carries all tagged VLANs.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>No connectivity on a VLAN:</strong> confirm the trunk allows that VLAN ID on both ends.</li>
+        <li><strong>Native VLAN mismatch:</strong> align native VLAN to avoid tag leakage.</li>
+        <li><strong>Linux tag dropped:</strong> ensure the 8021q module is loaded and the NIC passes tagged frames.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Isolated 4 trust domains over a single physical trunk link.</li>
+        <li>Verified zero inter-VLAN leakage without an explicit routing path.</li>
+        <li>Reduced broadcast scope per segment to a single VLAN.</li>
+        <li>Aligned switching segmentation to the 4-VLAN zero-trust model.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="routing-switching.html">Routing &amp; Switching</a></li>
+        <li><a href="acl-config.html">Access Control Lists (ACLs)</a></li>
+        <li><a href="../security/zero-trust-hybrid-cloud.html">Zero-Trust Hybrid Cloud</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure CLI Setup | Login, Subscriptions &amp; Defaults</title>
+  <meta name="description" content="Install and configure the Azure CLI: authenticate, select subscriptions, and set defaults. Get a reproducible az workflow ready for automation.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/cloud-azure/azure-cli-setup.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Azure CLI Setup and Authentication",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-03-03",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Beginner",
+    "dependencies": "Azure CLI 2.5x",
+    "articleSection": "Cloud"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/cloud-azure/index.html">Cloud &amp; Azure</a> &rsaquo; <span>Azure CLI Setup</span></nav>
+    <div class="page-header"><h1>Azure CLI Setup: Authenticate and Configure Defaults</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Cloud</span><span class="lab-time">~1 hour</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">az login</span><span class="tag">subscriptions</span><span class="tag">defaults</span><span class="tag">service principal</span></div>
+    </div>
+
+    <section><p class="lead">You will install the Azure CLI, authenticate, select the right subscription, and set defaults so later commands are short and safe. By the end you will have a reproducible az workflow ready for every other Azure lab.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Authenticate interactively and view your subscriptions.</li>
+        <li>Set the active subscription and default resource group/location.</li>
+        <li>Create a service principal for automation.</li>
+        <li><strong>Time:</strong> ~1 hour &middot; <strong>Difficulty:</strong> Beginner &middot; <strong>Prereqs:</strong> an Azure account.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Azure CLI authentication to subscription">
+graph LR
+  You[You] -->|az login| AAD[Microsoft Entra ID]
+  AAD -->|token| CLI[Azure CLI]
+  CLI -->|set subscription| Sub[Subscription]
+  CLI -->|create SP| SP[Service Principal for automation]
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> the Azure CLI (<a href="https://learn.microsoft.com/cli/azure/install-azure-cli" target="_blank" rel="noopener">install docs</a>) and an Azure account.</p>
+      <p><strong>Before you begin:</strong> know which subscription you should deploy into to avoid surprise billing.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Authenticate</strong>
+          <div class="command-block" data-copy><div class="command"><code>az login</code></div><div class="note">Opens a browser to sign in to Microsoft Entra ID.</div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Select the subscription</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az account list -o table &amp;&amp; az account set --subscription "Pay-As-You-Go"</span></div>
+            <div class="terminal-output">Name             IsDefault
+Pay-As-You-Go    True</div>
+          </div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Set defaults to shorten commands</strong>
+          <div class="command-block" data-copy><div class="command"><code>az configure --defaults group=tyf-rg location=eastus</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Create a service principal for automation</strong>
+          <p>A <span class="glossary-term" data-definition="A non-human identity in Entra ID used by scripts and pipelines to authenticate to Azure.">service principal</span> lets pipelines authenticate without your personal account.</p>
+          <div class="command-block" data-copy><div class="command"><code>az ad sp create-for-rbac --name tyf-ci --role Contributor --scopes /subscriptions/$(az account show --query id -o tsv)</code></div></div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Azure CLI setup progress">
+graph LR
+  A[01 Login] -->|done| B[02 Subscription]
+  B -->|done| C[03 Defaults]
+  C -->|done| D[04 Service principal]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>az account show -o table &amp;&amp; az group create -n tyf-rg -l eastus</code></div></div>
+      <p>You should see your active subscription and a created resource group using your defaults. If so, your CLI is ready.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>az: command not found:</strong> the CLI is not on PATH; reinstall or restart your shell.</li>
+        <li><strong>Wrong subscription used:</strong> always confirm with <code>az account show</code> before deploying.</li>
+        <li><strong>SP secret printed once:</strong> store it immediately in a secret manager; it is not retrievable later.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Deploy your first network in <a href="vnet-deployment.html">Virtual Network Deployment</a>.</li>
+        <li>Use the service principal in <a href="../devops/github-actions.html">GitHub Actions</a>.</li>
+        <li>Codify everything with <a href="infrastructure-as-code.html">Infrastructure as Code</a>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Authenticated and confirmed the correct subscription.</li>
+        <li>Set defaults that shorten and de-risk every later command.</li>
+        <li>Created a least-privilege service principal for automation.</li>
+        <li>Validated by creating a resource group from defaults.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="vnet-deployment.html">Virtual Network Deployment</a></li>
+        <li><a href="azure-vm-config.html">Azure VM Configuration</a></li>
+        <li><a href="infrastructure-as-code.html">Infrastructure as Code</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

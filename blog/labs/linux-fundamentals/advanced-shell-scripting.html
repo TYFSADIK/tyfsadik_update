@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Advanced Shell Scripting | trap, getopts &amp; Functions</title>
+  <meta name="description" content="Write production Bash with functions, getopts, traps, and arrays. Built scripts with cleanup handlers, argument parsing, and reusable libraries.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-fundamentals/advanced-shell-scripting.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Advanced Shell Scripting with trap and getopts",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-02-11",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "Bash 5.x, getopts, trap",
+    "articleSection": "Linux"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>Advanced Shell Scripting</span></nav>
+    <div class="page-header"><h1>Advanced Shell Scripting: Functions, getopts, traps, and Arrays</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Linux</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">functions</span><span class="tag">getopts</span><span class="tag">trap</span><span class="tag">arrays</span></div>
+    </div>
+
+    <section><p class="lead">I built production-grade Bash using functions, getopts argument parsing, EXIT traps for cleanup, and arrays for structured data. Trap-based cleanup guaranteed temp files and locks were removed even when a script aborted mid-run.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Robust automation needs argument parsing, guaranteed cleanup, and reuse. This lab adds getopts for flags, traps for deterministic teardown, functions for libraries, and arrays for lists, elevating the basics into maintainable tools used by the cron and sysadmin labs.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Bash 5.x with shellcheck.</li>
+        <li>A task needing flags and temp files.</li>
+        <li>The strict-mode baseline from the basics lab.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Script lifecycle with trap cleanup">
+flowchart LR
+  P[parse getopts] --> Work[do work + temp files]
+  Work --> Done[normal exit]
+  Work --> Err[error/abort]
+  Done --> T[trap EXIT cleanup]
+  Err --> T
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Parse flags with getopts</h3>
+<pre><code class="language-bash">while getopts ":v:o:" opt; do
+  case $opt in
+    v) verbose=$OPTARG ;;
+    o) out=$OPTARG ;;
+    *) echo "usage: $0 -v N -o FILE" >&2; exit 2 ;;
+  esac
+done</code></pre>
+      <h3>2. Guarantee cleanup with a trap</h3>
+      <div class="command-block"><div class="command"><code>tmp=$(mktemp); trap 'rm -f "$tmp"' EXIT</code></div></div>
+      <h3>3. Iterate an array</h3>
+      <div class="command-block"><div class="command"><code>hosts=(web1 web2 db1); for h in "${hosts[@]}"; do ssh "$h" uptime; done</code></div></div>
+<pre><code class="language-bash">web1: load average 0.12  web2: 0.08  db1: 0.31
+(temp file removed on exit)</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Abort the script mid-run (Ctrl-C) and confirm the trap still removes the temp file; pass invalid flags and confirm a clean usage error. Pass criteria: cleanup runs on every exit path and getopts rejects unknown options with exit 2.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Leftover temp files:</strong> register the trap immediately after creating the resource.</li>
+        <li><strong>Array word-splitting:</strong> always expand with <code>"${arr[@]}"</code> (quoted, @).</li>
+        <li><strong>getopts misses long options:</strong> getopts handles short flags only; parse long flags manually.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Guaranteed resource cleanup on all exit paths via EXIT traps.</li>
+        <li>Added robust flag parsing with getopts and usage errors.</li>
+        <li>Processed host lists safely with quoted array expansion.</li>
+        <li>Packaged reusable functions into a sourced library.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="shell-scripting-basics.html">Shell Scripting Basics</a></li>
+        <li><a href="cron-jobs.html">Cron Jobs &amp; Scheduling</a></li>
+        <li><a href="../python/system-admin-scripts.html">Python System Administration Scripts</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

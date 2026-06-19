@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Sovereignty Stack | Nextcloud + Immich</title>
+  <meta name="description" content="Self-hosted Nextcloud and Immich on BTRFS external SSDs with 3-2-1 BorgBase backup. Zero data loss and 100% cloud-cost elimination.">
+  <link rel="canonical" href="https://tyfsadik.org/work/infrastructure/data-sovereignty-stack.html">
+  <meta property="og:title" content="Data Sovereignty &amp; Secure Media Stack">
+  <meta property="og:description" content="Nextcloud + Immich on external SSDs with BTRFS snapshots and 3-2-1 offsite backup.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://tyfsadik.org/work/infrastructure/data-sovereignty-stack.html">
+  <meta property="og:image" content="https://tyfsadik.org/favicon.png">
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "CreativeWork",
+    "name": "Data Sovereignty & Secure Media Stack",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-12-08",
+    "dateModified": "2026-06-17",
+    "about": "Self-hosted private cloud storage and photo management with offsite backup",
+    "keywords": "Nextcloud, Immich, BTRFS, BorgBase, rsync.net, 3-2-1 backup, GDPR"
+  }</script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link active">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+
+<main class="page-content">
+  <div class="container">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Infrastructure</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Data Sovereignty Stack</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Data Sovereignty &amp; Secure Media Stack</h1>
+      <p class="subtitle">Self-hosted Nextcloud and Immich on external SSDs with BTRFS snapshots, multi-user ACL isolation, and a 3-2-1 offsite backup strategy to BorgBase and rsync.net.</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2025&ndash;2026</span>
+      <span class="meta-category">Infrastructure / Storage / Privacy</span>
+      <a class="meta-link" href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub &nearr;</a>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>This stack replaces Google Drive and Google Photos with fully owned infrastructure. Nextcloud AIO and Immich run in Docker on a BTRFS pool of external USB 3.2 SSDs, with per-user ACLs enforcing isolation and zstd compression maximizing capacity. A 3-2-1 backup pipeline snapshots locally, replicates encrypted archives to BorgBase, and keeps a secondary copy on rsync.net, achieving GDPR-aligned retention with zero data-loss events.</p>
+    </section>
+
+    <section id="architecture">
+      <h2>Storage Architecture</h2>
+      <div class="mermaid" role="img" aria-label="Storage architecture from host through BTRFS pool to containers and user namespaces">
+flowchart TB
+  Host[Linux Host] --> BTRFS[(BTRFS pool zstd<br/>external USB 3.2 SSDs)]
+  BTRFS --> NC[Nextcloud AIO container]
+  BTRFS --> IM[Immich container]
+  NC --> U1[User namespace ACLs]
+  IM --> U2[Multi-user libraries]
+      </div>
+    </section>
+
+    <section id="backup">
+      <h2>Backup Flow (3-2-1)</h2>
+      <div class="mermaid" role="img" aria-label="Backup flow from local BTRFS snapshot to BorgBase and rsync.net">
+flowchart LR
+  L[BTRFS snapshot<br/>local copy 1] --> B[BorgBase<br/>encrypted offsite]
+  L --> R[rsync.net<br/>secondary offsite]
+  B --> V[Restore test monthly]
+      </div>
+    </section>
+
+    <section id="build">
+      <h2>Implementation</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">1</div><div class="step-body"><h3>Create the compressed BTRFS pool [PRIVILEGED]</h3>
+          <div class="command-block"><div class="command"><code>mkfs.btrfs -d single /dev/sda /dev/sdb &amp;&amp; mount -o compress=zstd:3 /dev/sda /mnt/data</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">2</div><div class="step-body"><h3>Deploy Nextcloud AIO and Immich</h3>
+          <div class="command-block"><div class="command"><code>docker compose -f nextcloud-aio.yml -f immich.yml up -d</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">3</div><div class="step-body"><h3>Encrypted offsite backup with Borg</h3>
+          <div class="command-block"><div class="command"><code>borg create --stats ssh://borgbase/repo::data-{now} /mnt/data</code></div></div>
+<pre><code class="language-bash">Archive name: data-2026-06-17
+Deduplicated size: 38.2 GB    Time: 4m12s
+</code></pre>
+        </div></div>
+      </div>
+    </section>
+
+    <section id="results">
+      <h2>Key Results</h2>
+      <ul>
+        <li>Achieved 3-2-1 backup compliance with zero data-loss events to date.</li>
+        <li>Reduced recurring cloud storage costs by 100% versus equivalent Google One tiers.</li>
+        <li>Sustained roughly 2.5 Gbps read/write across the external SSD array.</li>
+        <li>Enforced multi-user isolation via filesystem ACLs preserved across container mounts.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Work</h2>
+      <ul>
+        <li><a href="nextcloud-storage.html">Self-Hosted Cloud Storage (Nextcloud)</a></li>
+        <li><a href="photo-server.html">Self-Hosted Photo Server (Immich)</a></li>
+        <li><a href="proxmox-zero-trust.html">Proxmox Zero-Trust Private Cloud</a></li>
+      </ul>
+    </section>
+
+    <div class="tags">
+      <span class="tag">Nextcloud</span><span class="tag">Immich</span><span class="tag">BTRFS</span><span class="tag">Docker</span><span class="tag">BorgBase</span><span class="tag">rsync.net</span><span class="tag">Backup</span><span class="tag">Privacy</span>
+    </div>
+
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

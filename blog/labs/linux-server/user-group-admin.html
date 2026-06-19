@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Server User &amp; Group Administration | sudo &amp; Policy</title>
+  <meta name="description" content="Provision server users and groups with least-privilege sudo, password policy, and account auditing. Enforce auditable access at scale.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-server/user-group-admin.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Server User and Group Administration",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-01-18",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "shadow-utils, sudo, PAM faillock",
+    "articleSection": "Linux"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>User &amp; Group Administration</span></nav>
+    <div class="page-header"><h1>Server User and Group Administration with Least-Privilege Sudo</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">useradd</span><span class="tag">sudoers</span><span class="tag">faillock</span><span class="tag">chage</span></div>
+    </div>
+
+    <section><p class="lead">You will provision server accounts with role-based groups, scoped sudo rules, password aging, and lockout on failed logins. By the end, access is least-privilege and every privileged action is auditable.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Create role groups and assign users to them.</li>
+        <li>Write a least-privilege sudoers drop-in safely.</li>
+        <li>Apply password aging and account lockout.</li>
+        <li><strong>Time:</strong> ~2 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> a server with root/sudo.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Role-based access flow on a server">
+graph TD
+  U[User] -->|member of| G[Role group: ops]
+  G -->|sudoers drop-in| S{Allowed command?}
+  S -->|yes| Run[Run as root + logged]
+  S -->|no| Deny[Denied + audited]
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> shadow-utils, sudo, and PAM faillock (default on Ubuntu/RHEL).</p>
+      <p><strong>Before you begin:</strong> keep a second root session open while editing sudoers.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create a role group and user</strong>
+          <p>Groups let you grant access by role rather than per user, which scales cleanly.</p>
+          <div class="command-block" data-copy><div class="command"><code>sudo groupadd ops &amp;&amp; sudo useradd -m -s /bin/bash -G ops deploy &amp;&amp; sudo passwd deploy</code></div><div class="note">[ROOT REQUIRED] Creates the ops group and a member user.</div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Grant a scoped sudo rule with visudo</strong>
+          <p>Editing through visudo validates syntax so a typo cannot lock everyone out of sudo.</p>
+          <div class="command-block" data-copy><div class="command"><code>echo '%ops ALL=(root) /usr/bin/systemctl restart nginx, /usr/bin/journalctl' | sudo EDITOR='tee' visudo -f /etc/sudoers.d/ops</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Apply password aging and lockout</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">#</span> <span class="input">chage -M 90 -W 7 deploy &amp;&amp; faillock --user deploy</span></div>
+            <div class="terminal-output">deploy:
+When                Type  Source           Valid
+(no failed logins)</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Account provisioning progress">
+graph LR
+  A[01 Group + user] -->|done| B[02 Scoped sudo]
+  B -->|done| C[03 Aging + lockout]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>sudo -l -U deploy &amp;&amp; chage -l deploy</code></div></div>
+      <p>You should see only the two allowed sudo commands and the 90-day aging policy. If so, least-privilege access is enforced.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Broken sudoers locks out sudo:</strong> use the open root session and run <code>visudo -c</code> to find the error.</li>
+        <li><strong>Group change not effective:</strong> the user must log out and back in.</li>
+        <li><strong>Account locked:</strong> reset with <code>faillock --user deploy --reset</code>.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Centralize accounts with LDAP or FreeIPA for many servers.</li>
+        <li>Pair with <a href="../security/ssh-hardening.html">SSH Hardening</a> for key-only access.</li>
+        <li>Ship sudo logs to your SIEM from <a href="log-management.html">Log Management</a>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Granted access by role group rather than per-user edits.</li>
+        <li>Limited sudo to 2 explicit commands, fully audited.</li>
+        <li>Enforced 90-day password aging with lockout on failures.</li>
+        <li>Confirmed effective privileges with <code>sudo -l</code>.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="../linux-fundamentals/user-group-admin.html">Linux Fundamentals: User &amp; Group Administration</a></li>
+        <li><a href="../security/ssh-hardening.html">SSH Hardening</a></li>
+        <li><a href="log-management.html">Log Management &amp; Analysis</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

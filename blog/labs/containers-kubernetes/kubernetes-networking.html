@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kubernetes Networking | Services, Ingress &amp; Policy</title>
+  <meta name="description" content="Master Kubernetes networking: ClusterIP, NodePort, Ingress, and NetworkPolicy. Expose apps safely and enforce default-deny pod traffic.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-networking.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Kubernetes Services, Ingress, and Network Policy",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-02-17",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "Kubernetes 1.29, Ingress controller, NetworkPolicy",
+    "articleSection": "Containers"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Kubernetes Networking</span></nav>
+    <div class="page-header"><h1>Kubernetes Networking: Services, Ingress, and NetworkPolicy</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Containers</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">ClusterIP</span><span class="tag">Ingress</span><span class="tag">NetworkPolicy</span><span class="tag">CoreDNS</span></div>
+    </div>
+
+    <section><p class="lead">You will expose an app through an Ingress and lock down pod-to-pod traffic with a default-deny NetworkPolicy. By the end external users reach your service while only authorized pods can talk to the backend.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Compare ClusterIP, NodePort, and Ingress for exposure.</li>
+        <li>Route external traffic via an Ingress controller.</li>
+        <li>Enforce default-deny with NetworkPolicy.</li>
+        <li><strong>Time:</strong> ~4 hours &middot; <strong>Difficulty:</strong> Advanced &middot; <strong>Prereqs:</strong> a cluster with an Ingress controller and a CNI that supports policy.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Ingress routing to services with network policy">
+graph LR
+  U[User] -->|443| Ing[Ingress controller]
+  Ing -->|host/path| Svc[Service]
+  Svc --> API[api pods]
+  API -->|policy allow| DB[db pods]
+  Other[other pods] -. default deny .- DB
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> a cluster, an Ingress controller (ingress-nginx), and a policy-capable CNI (Calico/Cilium).</p>
+      <p><strong>Before you begin:</strong> the default cluster allows all pod traffic until you add a policy.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Expose a service internally</strong>
+          <div class="command-block" data-copy><div class="command"><code>kubectl expose deploy web --port 80 --target-port 80 --name web</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Route external traffic with Ingress</strong>
+<pre><code class="language-bash"># ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: { name: web }
+spec:
+  rules:
+    - host: web.lab.tyfsadik.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: web, port: { number: 80 } } }</code></pre>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Apply a default-deny policy</strong>
+          <p>Default-deny then explicit-allow is the zero-trust posture for pod traffic.</p>
+          <div class="command-block" data-copy><div class="command"><code>kubectl apply -f default-deny.yaml &amp;&amp; kubectl apply -f allow-api-to-db.yaml</code></div></div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Kubernetes networking progress">
+graph LR
+  A[01 Service] -->|done| B[02 Ingress]
+  B -->|done| C[03 NetworkPolicy]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>curl -H 'Host: web.lab.tyfsadik.org' http://INGRESS_IP/ ; kubectl exec other -- nc -zv db 5432 || echo denied</code></div></div>
+      <p>External access through the Ingress should succeed, while a non-authorized pod reaching the DB should print <code>denied</code>. That confirms exposure plus segmentation.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Ingress 404:</strong> the host/path rule must match the request Host header.</li>
+        <li><strong>Policy has no effect:</strong> your CNI must support NetworkPolicy (Calico/Cilium), not all do.</li>
+        <li><strong>DNS fails inside pods:</strong> check CoreDNS pods are Running in kube-system.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Add TLS to the Ingress with cert-manager.</li>
+        <li>Move to eBPF policy in the <a href="../security/zero-trust-hybrid-cloud.html">Zero-Trust Hybrid Cloud</a> lab.</li>
+        <li>Deploy this on managed Kubernetes in <a href="aks-deployment.html">AKS</a>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Exposed an app externally through an Ingress controller.</li>
+        <li>Enforced default-deny pod traffic with explicit allow rules.</li>
+        <li>Verified both external reachability and internal segmentation.</li>
+        <li>Applied a zero-trust posture inside the cluster.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="kubernetes-pods-services.html">Pods &amp; Deployments</a></li>
+        <li><a href="../security/zero-trust-hybrid-cloud.html">Zero-Trust Hybrid Cloud</a></li>
+        <li><a href="aks-deployment.html">Azure Kubernetes Service (AKS)</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

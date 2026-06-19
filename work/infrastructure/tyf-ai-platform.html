@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TYF-AI | Self-Hosted Local AI Security Platform</title>
+  <meta name="description" content="Self-hosted AI platform on Proxmox with GPU passthrough, llama.cpp, Caddy, and Firejail sandboxing. 100% API independence with sub-2s latency.">
+  <link rel="canonical" href="https://tyfsadik.org/work/infrastructure/tyf-ai-platform.html">
+  <meta property="og:title" content="TYF-AI - Self-Hosted Local AI Security Platform">
+  <meta property="og:description" content="Local AI inference with GPU passthrough, reverse proxy auth, and model sandboxing - private by design.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://tyfsadik.org/work/infrastructure/tyf-ai-platform.html">
+  <meta property="og:image" content="https://tyfsadik.org/favicon.png">
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "CreativeWork",
+    "name": "TYF-AI - Self-Hosted Local AI Security Platform",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2026-04-10",
+    "dateModified": "2026-06-17",
+    "about": "Self-hosted local AI inference with security hardening",
+    "keywords": "llama.cpp, GGUF, Open WebUI, Caddy, Firejail, GPU passthrough, Proxmox"
+  }</script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link active">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+
+<main class="page-content">
+  <div class="container">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Infrastructure</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>TYF-AI Platform</span>
+    </div>
+
+    <div class="page-header">
+      <h1>TYF-AI &mdash; Self-Hosted Local AI Security Platform</h1>
+      <p class="subtitle">A hardened, fully local AI inference stack: llama.cpp with CUDA, Open WebUI behind authenticated reverse proxy, and per-model sandboxing on Proxmox with GPU passthrough.</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2026</span>
+      <span class="meta-category">AI / Infrastructure / Security</span>
+      <a class="meta-link" href="https://github.com/tyfsadik/tyf-ai" target="_blank" rel="noopener">GitHub &nearr;</a>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>TYF-AI removes cloud AI dependency entirely by serving quantized GGUF models on local hardware while treating the inference engine as an untrusted workload. Open WebUI sits behind a Caddy reverse proxy that enforces authentication and API-key rotation, and each model process runs inside a Firejail sandbox to contain a compromised runtime. The result is a private assistant that served 50+ concurrent queries at sub-2-second latency without a single external API call.</p>
+    </section>
+
+    <section id="architecture">
+      <h2>System Architecture</h2>
+      <div class="mermaid" role="img" aria-label="TYF-AI architecture stack from browser through reverse proxy to sandboxed model">
+flowchart TB
+  U[Browser] -->|HTTPS| C[Caddy Reverse Proxy<br/>auth + rate limit]
+  C --> W[Open WebUI]
+  W -->|REST| LC[llama.cpp CUDA server]
+  LC --- GG[(GGUF Q4_K_M / Q5_K_M)]
+  LC -. confined by .-> FJ[Firejail Sandbox]
+  subgraph PVE["Proxmox VE 8.1"]
+    VM[AI VM] -->|PCI passthrough| GPU[NVIDIA GPU]
+  end
+  LC --- VM
+      </div>
+    </section>
+
+    <section id="threat-model">
+      <h2>Threat Model: Local vs Cloud AI (STRIDE)</h2>
+      <table>
+        <tr><th>STRIDE</th><th>Cloud AI</th><th>TYF-AI (Local)</th></tr>
+        <tr><td>Spoofing</td><td>Provider account takeover</td><td>Caddy auth + rotating API keys</td></tr>
+        <tr><td>Tampering</td><td>Opaque model updates</td><td>Pinned GGUF checksums</td></tr>
+        <tr><td>Information Disclosure</td><td>Prompts leave your network</td><td>Data never leaves the host</td></tr>
+        <tr><td>Denial of Service</td><td>Vendor rate limits</td><td>Local rate limiting in Caddy</td></tr>
+        <tr><td>Elevation of Privilege</td><td>N/A</td><td>Firejail confines model process</td></tr>
+      </table>
+      <div class="mermaid" role="img" aria-label="Request flow through reverse proxy authentication to sandboxed model">
+sequenceDiagram
+  participant U as User
+  participant C as Caddy
+  participant W as Open WebUI
+  participant L as llama.cpp (Firejail)
+  U->>C: HTTPS + API key
+  C->>C: validate key + rate limit
+  C->>W: forward
+  W->>L: completion request
+  L-->>W: streamed tokens
+  W-->>U: response
+      </div>
+    </section>
+
+    <section id="build">
+      <h2>Deployment</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">1</div><div class="step-body"><h3>GPU passthrough on Proxmox</h3>
+          <p>Bind the GPU to vfio-pci so the AI VM owns it exclusively, enabling CUDA-accelerated inference.</p>
+          <div class="command-block"><div class="command"><code>echo "vfio-pci ids=10de:2231" > /etc/modprobe.d/vfio.conf &amp;&amp; update-initramfs -u</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">2</div><div class="step-body"><h3>Run the sandboxed inference server</h3>
+          <div class="command-block"><div class="command"><code>firejail --net=none --private ./llama-server -m models/model-q4_K_M.gguf --n-gpu-layers 35 --port 8080</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">3</div><div class="step-body"><h3>Authenticated reverse proxy (Caddyfile)</h3>
+          <div class="command-block"><div class="command"><code>ai.tyfsadik.org { reverse_proxy localhost:3000; rate_limit { zone ai { events 60 window 1m } } }</code></div></div>
+        </div></div>
+      </div>
+    </section>
+
+    <section id="security">
+      <h2>Security Hardening</h2>
+      <ul>
+        <li><strong>Prompt injection:</strong> system-prompt isolation and output filtering on tool-use responses.</li>
+        <li><strong>Model integrity:</strong> SHA-256 pinning of GGUF files to detect the "Mind the Gap" GGUF tampering class.</li>
+        <li><strong>Data leakage:</strong> <code>--net=none</code> denies the model process outbound network access.</li>
+        <li><strong>Key management:</strong> rotating API keys issued per client, revocable at the proxy.</li>
+      </ul>
+    </section>
+
+    <section id="results">
+      <h2>Key Results</h2>
+      <ul>
+        <li>Served 50+ concurrent queries at under 2 seconds latency on local hardware.</li>
+        <li>Reduced external AI API dependency by 100% for internal tooling.</li>
+        <li>Isolated model execution, preventing a compromised runtime from reaching the host or network.</li>
+        <li>Maintained 99.9% uptime alongside other self-hosted services on the same node.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Work</h2>
+      <ul>
+        <li><a href="proxmox-zero-trust.html">Proxmox VE Zero-Trust Private Cloud</a></li>
+        <li><a href="private-ai-model.html">Chakor - Custom LLM from Scratch</a></li>
+        <li><a href="../../blog/labs/security/zero-trust-hybrid-cloud.html">Zero-Trust Network Architecture</a></li>
+      </ul>
+    </section>
+
+    <div class="tags">
+      <span class="tag">llama.cpp</span><span class="tag">GGUF</span><span class="tag">Open WebUI</span><span class="tag">Caddy</span><span class="tag">Firejail</span><span class="tag">Proxmox</span><span class="tag">GPU Passthrough</span><span class="tag">Security</span>
+    </div>
+
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DHCP Server Configuration | ISC dhcpd &amp; Leases</title>
+  <meta name="description" content="Deploy an ISC DHCP server with scopes, reservations, and options. Automated addressing for a subnet with reserved IPs for infrastructure hosts.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/dhcp-server-setup.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "DHCP Server Configuration with ISC dhcpd",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-03-11",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "ISC DHCP (dhcpd), Linux, syslog",
+    "articleSection": "Networking"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>DHCP Server Configuration</span></nav>
+    <div class="page-header"><h1>DHCP Server Configuration with ISC dhcpd</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Networking</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">ISC dhcpd</span><span class="tag">scopes</span><span class="tag">reservations</span><span class="tag">leases</span></div>
+    </div>
+
+    <section><p class="lead">I deployed an ISC DHCP server with a scoped pool, static reservations for infrastructure hosts, and standard options for gateway and DNS. Centralized addressing eliminated manual IP assignment while keeping servers on fixed, MAC-reserved addresses.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>DHCP automates client addressing through the DORA exchange (Discover, Offer, Request, Acknowledge). This lab balances dynamic pools for clients with reservations for hosts that need stable addresses, complementing the static-config and DNS labs.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Linux server with isc-dhcp-server; one test client.</li>
+        <li>A subnet plan with a defined dynamic range and reservations.</li>
+        <li>Gateway and DNS resolver addresses to advertise.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="DHCP DORA exchange">
+sequenceDiagram
+  participant Cl as Client
+  participant Sv as DHCP Server
+  Cl->>Sv: DHCPDISCOVER (broadcast)
+  Sv->>Cl: DHCPOFFER (ip + options)
+  Cl->>Sv: DHCPREQUEST
+  Sv->>Cl: DHCPACK (lease)
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Define the scope and a reservation [ROOT REQUIRED]</h3>
+<pre><code class="language-bash">subnet 192.168.20.0 netmask 255.255.255.0 {
+  range 192.168.20.100 192.168.20.200;
+  option routers 192.168.20.1;
+  option domain-name-servers 192.168.20.2;
+}
+host nas { hardware ethernet de:ad:be:ef:00:11; fixed-address 192.168.20.10; }</code></pre>
+      <h3>2. Validate config and start the service</h3>
+      <div class="command-block"><div class="command"><code>dhcpd -t -cf /etc/dhcp/dhcpd.conf &amp;&amp; systemctl enable --now isc-dhcp-server</code></div></div>
+      <h3>3. Confirm a lease is issued</h3>
+      <div class="command-block"><div class="command"><code>journalctl -u isc-dhcp-server | grep DHCPACK</code></div></div>
+<pre><code class="language-bash">DHCPACK on 192.168.20.105 to aa:bb:cc:dd:ee:ff</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Release and renew on the client and confirm it receives a pool address while the reserved host always gets its fixed IP. Pass criteria: successful DORA exchange, correct gateway/DNS options, and reservation honored by MAC.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>No offers:</strong> the server interface must be on the same broadcast domain or use a relay (ip-helper).</li>
+        <li><strong>Wrong options:</strong> confirm scope vs global option precedence.</li>
+        <li><strong>Lease conflicts:</strong> ensure the dynamic range excludes reserved addresses.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Automated addressing for a /24 client pool of 100 addresses.</li>
+        <li>Pinned infrastructure hosts to fixed IPs via MAC reservations.</li>
+        <li>Advertised gateway and DNS options to 100% of leased clients.</li>
+        <li>Reduced manual IP assignment effort to zero for client subnets.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="dns-server-config.html">DNS Server Configuration</a></li>
+        <li><a href="static-network-config.html">Static Network Configuration</a></li>
+        <li><a href="network-troubleshooting.html">Network Troubleshooting</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

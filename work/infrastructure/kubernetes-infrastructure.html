@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kubernetes Infrastructure | TYFSADIK</title>
+  <meta name="description" content="Production-grade multi-node Kubernetes cluster built on bare-metal hardware — 7 machines, 1 switch, 1 router, 1 radio">
+  <link rel="canonical" href="https://tyfsadik.org/work/infrastructure/kubernetes-infrastructure.html">
+  <meta property="og:title" content="Kubernetes Infrastructure">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://tyfsadik.org/work/infrastructure/kubernetes-infrastructure.html">
+  <meta property="og:image" content="https://tyfsadik.org/favicon.png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"CreativeWork","name":"Kubernetes Infrastructure","author":{"@type":"Person","name":"MD. Taki Yasir Faraji Sadik","url":"https://tyfsadik.org/about.html"},"dateModified":"2026-06-17"}</script>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a>
+    <button class="nav-mobile-toggle">MENU</button>
+    <div class="nav-links">
+      <a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link active">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a>
+    </div>
+  </div>
+</nav>
+<main class="page-content">
+  <div class="container">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Infrastructure</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Kubernetes Infrastructure</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Kubernetes Infrastructure</h1>
+      <p class="subtitle">Production-grade multi-node Kubernetes cluster built on bare-metal hardware &mdash; 7 machines, 1 switch, 1 router, 1 radio</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2025 &ndash; 2026</span>
+      <span class="meta-category">Infrastructure</span>
+    </div>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        This project is a self-designed, self-built <strong>Kubernetes homelab</strong> running across
+        <strong>3 desktop PCs</strong> and <strong>4 laptops</strong>, interconnected through a single
+        managed switch, a dedicated router handling inter-VLAN routing and NAT, and a wireless radio
+        providing mesh backhaul for the laptop nodes. The goal was to replicate a production-grade
+        container orchestration environment entirely from consumer hardware &mdash; no cloud, no
+        rented rack space, no managed services.
+      </p>
+      <p>
+        The cluster runs <strong>kubeadm-bootstrapped Kubernetes</strong> on Ubuntu Server VMs
+        provisioned inside Proxmox, with <strong>Calico</strong> as the CNI for pod networking and
+        network policy enforcement, <strong>MetalLB</strong> for bare-metal LoadBalancer services,
+        <strong>Longhorn</strong> for distributed persistent storage across nodes, and a full
+        observability stack built on <strong>Prometheus + Grafana + Loki</strong>. Deployments are
+        automated through Bash scripts and Docker Compose for auxiliary services, with GitOps
+        workflows managing application manifests.
+      </p>
+      <p>
+        Every component &mdash; from the physical cable runs and VLAN trunking to the Kubernetes
+        RBAC policies and Grafana dashboards &mdash; was planned, configured, and documented by hand.
+        The cluster currently hosts all self-hosted services (Nextcloud, AI model, DNS, email, wiki,
+        search engine, photo server) in production.
+      </p>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="physical-topology">
+      <h2>Physical Topology</h2>
+      <p>
+        The entire infrastructure runs from a single physical location. Three desktop PCs serve as the
+        primary compute and storage nodes, while four laptops act as lightweight worker nodes and
+        provide redundancy. All wired nodes connect to a managed switch with 802.1Q VLAN trunking.
+        The router handles inter-VLAN routing, DHCP reservation, NAT to the public internet, and
+        port forwarding for externally-facing services. A wireless radio bridges the laptop nodes
+        into the cluster network over a dedicated 5 GHz backhaul link.
+      </p>
+      <div class="mermaid">
+graph TD
+  subgraph Internet["Public Internet"]
+    ISP["ISP Uplink"]
+  end
+
+  subgraph Edge["Edge Layer"]
+    RTR["Router\nNAT / Firewall / DHCP\nInter-VLAN Routing\nPort Forwarding"]
+  end
+
+  subgraph Network["Network Fabric"]
+    SW["Managed Switch\n802.1Q VLAN Trunking\nVLAN 10: Management\nVLAN 20: Cluster\nVLAN 30: Storage"]
+    RADIO["Wireless Radio\n5 GHz Backhaul\nBridge Mode"]
+  end
+
+  subgraph DesktopNodes["Desktop Nodes (Wired)"]
+    PC1["PC-01 &bull; Control Plane\n8C/32GB/512GB NVMe\nUbuntu Server 24.04\netcd + API Server"]
+    PC2["PC-02 &bull; Worker Node\n6C/16GB/1TB SSD\nUbuntu Server 24.04\nLonghorn Storage"]
+    PC3["PC-03 &bull; Worker Node\n6C/16GB/1TB SSD\nUbuntu Server 24.04\nLonghorn Storage"]
+  end
+
+  subgraph LaptopNodes["Laptop Nodes (Wireless)"]
+    LP1["Laptop-01 &bull; Worker\n4C/8GB/256GB"]
+    LP2["Laptop-02 &bull; Worker\n4C/8GB/256GB"]
+    LP3["Laptop-03 &bull; Worker\n4C/8GB/512GB"]
+    LP4["Laptop-04 &bull; Worker\n4C/16GB/512GB"]
+  end
+
+  ISP -->|"WAN"| RTR
+  RTR -->|"Trunk"| SW
+  SW -->|"Eth VLAN 20"| PC1
+  SW -->|"Eth VLAN 20"| PC2
+  SW -->|"Eth VLAN 20"| PC3
+  SW -->|"Eth VLAN 20"| RADIO
+  RADIO -->|"5 GHz Bridge"| LP1
+  RADIO -->|"5 GHz Bridge"| LP2
+  RADIO -->|"5 GHz Bridge"| LP3
+  RADIO -->|"5 GHz Bridge"| LP4
+
+style ISP fill:#1a1a2e,stroke:#ff4444,color:#e0e0e0
+style RTR fill:#1a1a2e,stroke:#ff8800,color:#e0e0e0
+style SW fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style RADIO fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style PC1 fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style PC2 fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style PC3 fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style LP1 fill:#1a1a2e,stroke:#aa88ff,color:#e0e0e0
+style LP2 fill:#1a1a2e,stroke:#aa88ff,color:#e0e0e0
+style LP3 fill:#1a1a2e,stroke:#aa88ff,color:#e0e0e0
+style LP4 fill:#1a1a2e,stroke:#aa88ff,color:#e0e0e0
+      </div>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="network-architecture">
+      <h2>Network Architecture</h2>
+      <p>
+        Network segmentation is enforced at the switch level using three VLANs. The router performs
+        inter-VLAN routing with firewall rules restricting lateral movement between segments. This
+        mirrors enterprise network design where management, application, and storage traffic are
+        isolated to prevent blast radius expansion during a compromise.
+      </p>
+      <table>
+        <thead><tr><th>VLAN</th><th>ID</th><th>Subnet</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>Management</td><td>10</td><td>10.10.10.0/24</td><td>SSH access, Proxmox UI, router admin, switch management, IPMI/BMC</td></tr>
+          <tr><td>Cluster</td><td>20</td><td>10.20.20.0/24</td><td>Kubernetes API server, pod-to-pod (Calico overlay), service mesh, MetalLB external IPs</td></tr>
+          <tr><td>Storage</td><td>30</td><td>10.30.30.0/24</td><td>Longhorn replication, NFS mounts, ZFS snapshot sync, backup traffic</td></tr>
+        </tbody>
+      </table>
+      <div class="mermaid">
+graph LR
+  subgraph VLAN10["VLAN 10 &mdash; Management"]
+    SSH["SSH Bastion"]
+    PMX["Proxmox Web UI"]
+    SWMGMT["Switch Mgmt"]
+  end
+
+  subgraph VLAN20["VLAN 20 &mdash; Cluster"]
+    API["K8s API Server :6443"]
+    CALICO["Calico CNI\nBGP / VXLAN"]
+    MLB["MetalLB\n10.20.20.200-250"]
+    PODS["Pod Network\n192.168.0.0/16"]
+  end
+
+  subgraph VLAN30["VLAN 30 &mdash; Storage"]
+    LH["Longhorn\niSCSI Replication"]
+    NFS["NFS Exports"]
+    ZFS["ZFS Snapshots"]
+  end
+
+  VLAN10 ---|"Firewall Rules"| VLAN20
+  VLAN20 ---|"Firewall Rules"| VLAN30
+
+style SSH fill:#1a1a2e,stroke:#ff8800,color:#e0e0e0
+style PMX fill:#1a1a2e,stroke:#ff8800,color:#e0e0e0
+style SWMGMT fill:#1a1a2e,stroke:#ff8800,color:#e0e0e0
+style API fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style CALICO fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style MLB fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style PODS fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style LH fill:#181818,stroke:#1e1e1e,color:#888
+style NFS fill:#181818,stroke:#1e1e1e,color:#888
+style ZFS fill:#181818,stroke:#1e1e1e,color:#888
+      </div>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="kubernetes-architecture">
+      <h2>Kubernetes Architecture</h2>
+      <div class="mermaid">
+graph TD
+  subgraph ControlPlane["Control Plane &mdash; PC-01"]
+    ETCD["etcd\nCluster State Store"]
+    APIS["kube-apiserver\n:6443"]
+    SCHED["kube-scheduler"]
+    CM["kube-controller-manager"]
+  end
+
+  subgraph Workers["Worker Nodes &mdash; PC-02, PC-03, LP-01..04"]
+    KP["kubelet"]
+    KPR["kube-proxy\niptables / IPVS"]
+    CR["containerd\nContainer Runtime"]
+  end
+
+  subgraph Networking["Network Layer"]
+    CAL["Calico CNI\nBGP Peering + NetworkPolicy"]
+    MLBX["MetalLB\nL2 / ARP Mode\nExternal IP Pool"]
+    ING["Nginx Ingress Controller\nTLS Termination"]
+  end
+
+  subgraph Storage["Storage Layer"]
+    LHN["Longhorn\nDistributed Block Storage\n3x Replication"]
+    PV["PersistentVolumes"]
+    PVC["PersistentVolumeClaims"]
+  end
+
+  subgraph Observability["Observability Stack"]
+    PROM["Prometheus\nMetrics Collection"]
+    GRAF["Grafana\nDashboards + Alerts"]
+    LOKI["Loki\nLog Aggregation"]
+    PRMTL["Promtail\nLog Shipping"]
+    NX["Node Exporter\nHardware Metrics"]
+  end
+
+  APIS --> ETCD
+  SCHED --> APIS
+  CM --> APIS
+  KP -->|"watch/report"| APIS
+  KP --> CR
+  KPR --> CAL
+  CAL --> MLBX
+  MLBX --> ING
+  LHN --> PV
+  PV --> PVC
+  NX -->|"metrics"| PROM
+  KP -->|"metrics"| PROM
+  PROM --> GRAF
+  PRMTL -->|"logs"| LOKI
+  LOKI --> GRAF
+
+style ETCD fill:#1a1a2e,stroke:#ff4444,color:#e0e0e0
+style APIS fill:#1a1a2e,stroke:#ff4444,color:#e0e0e0
+style SCHED fill:#1a1a2e,stroke:#ff4444,color:#e0e0e0
+style CM fill:#1a1a2e,stroke:#ff4444,color:#e0e0e0
+style KP fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style KPR fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style CR fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style CAL fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style MLBX fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style ING fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style LHN fill:#181818,stroke:#aa88ff,color:#e0e0e0
+style PV fill:#181818,stroke:#aa88ff,color:#e0e0e0
+style PVC fill:#181818,stroke:#aa88ff,color:#e0e0e0
+style PROM fill:#1a1a2e,stroke:#ffcc00,color:#e0e0e0
+style GRAF fill:#1a1a2e,stroke:#ffcc00,color:#e0e0e0
+style LOKI fill:#1a1a2e,stroke:#ffcc00,color:#e0e0e0
+style PRMTL fill:#1a1a2e,stroke:#ffcc00,color:#e0e0e0
+style NX fill:#1a1a2e,stroke:#ffcc00,color:#e0e0e0
+      </div>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="tech-stack">
+      <h2>Tech Stack</h2>
+      <table>
+        <thead><tr><th>Layer</th><th>Technology</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr><td>Hardware</td><td>3 &times; Desktop PC, 4 &times; Laptop</td><td>Bare-metal compute and storage nodes</td></tr>
+          <tr><td>Networking</td><td>Managed Switch (802.1Q), Router, 5 GHz Radio</td><td>VLAN segmentation, NAT, wireless mesh backhaul</td></tr>
+          <tr><td>Hypervisor</td><td>Proxmox VE 8.x</td><td>VM provisioning, snapshots, live migration</td></tr>
+          <tr><td>OS</td><td>Ubuntu Server 24.04 LTS</td><td>Minimal server images inside Proxmox VMs</td></tr>
+          <tr><td>Container Runtime</td><td>containerd</td><td>CRI-compliant runtime for Kubernetes</td></tr>
+          <tr><td>Orchestration</td><td>Kubernetes (kubeadm)</td><td>Cluster bootstrapping, upgrades, node management</td></tr>
+          <tr><td>CNI</td><td>Calico</td><td>Pod networking, BGP peering, NetworkPolicy enforcement</td></tr>
+          <tr><td>Load Balancer</td><td>MetalLB (L2 mode)</td><td>External IP allocation for bare-metal LoadBalancer services</td></tr>
+          <tr><td>Ingress</td><td>Nginx Ingress Controller</td><td>HTTP/HTTPS routing, TLS termination, path-based routing</td></tr>
+          <tr><td>Storage</td><td>Longhorn</td><td>Distributed block storage with 3x replication across nodes</td></tr>
+          <tr><td>TLS</td><td>Let&rsquo;s Encrypt + cert-manager</td><td>Automated certificate provisioning and renewal</td></tr>
+          <tr><td>Monitoring</td><td>Prometheus + Node Exporter</td><td>Metrics collection from nodes, pods, and Kubernetes internals</td></tr>
+          <tr><td>Dashboards</td><td>Grafana</td><td>Visualization, alerting rules, and SLA tracking</td></tr>
+          <tr><td>Logging</td><td>Loki + Promtail</td><td>Centralized log aggregation and querying</td></tr>
+          <tr><td>Automation</td><td>Bash, Docker Compose</td><td>Cluster provisioning scripts, auxiliary service orchestration</td></tr>
+          <tr><td>DNS</td><td>Pi-hole + Unbound</td><td>Internal cluster DNS resolution and ad/threat blocking</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="build-process">
+      <h2>Build Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h3>Hardware Preparation &amp; Network Wiring</h3>
+            <p>
+              Each desktop PC and laptop was prepared with a clean BIOS/UEFI configuration, boot order
+              set to PXE/USB, and hardware diagnostics run to verify RAM, disk health, and thermal
+              performance. Cat6 Ethernet cables were run from each desktop to the managed switch.
+              The switch was configured with three VLANs (10, 20, 30) and trunk ports for the router
+              uplink. The wireless radio was mounted and configured in bridge mode on VLAN 20 to
+              extend the cluster network to the laptop nodes over 5 GHz.
+            </p>
+            <pre><code># Switch VLAN configuration (CLI example)
+enable
+configure terminal
+
+vlan 10
+  name MANAGEMENT
+vlan 20
+  name CLUSTER
+vlan 30
+  name STORAGE
+
+# Trunk port to router
+interface GigabitEthernet0/1
+  switchport mode trunk
+  switchport trunk allowed vlan 10,20,30
+
+# Access ports for desktop nodes (VLAN 20)
+interface range GigabitEthernet0/2-4
+  switchport mode access
+  switchport access vlan 20
+
+# Trunk port to wireless radio
+interface GigabitEthernet0/5
+  switchport mode trunk
+  switchport trunk allowed vlan 20</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h3>Proxmox Installation &amp; VM Provisioning</h3>
+            <p>
+              Proxmox VE 8.x was installed on each desktop PC as the base hypervisor. Ubuntu Server
+              24.04 LTS VMs were created on each node with resource allocations matched to the
+              hardware. VMs were configured with two virtual NICs: one on VLAN 20 (cluster traffic)
+              and one on VLAN 30 (storage traffic). Cloud-init templates were used to standardize
+              hostname, SSH keys, and network configuration across all VMs.
+            </p>
+            <pre><code># Create a cloud-init template VM on Proxmox
+qm create 9000 --name ubuntu-cloud --memory 4096 --cores 2 \
+  --net0 virtio,bridge=vmbr0,tag=20 \
+  --net1 virtio,bridge=vmbr0,tag=30 \
+  --scsihw virtio-scsi-single
+
+# Import Ubuntu cloud image
+qm set 9000 --scsi0 local-lvm:0,import-from=/var/lib/vz/template/iso/ubuntu-24.04-server-cloudimg-amd64.img
+qm set 9000 --ide2 local-lvm:cloudinit
+qm set 9000 --boot order=scsi0
+qm set 9000 --serial0 socket --vga serial0
+
+# Configure cloud-init defaults
+qm set 9000 --ciuser taki --cipassword changeme \
+  --sshkeys ~/.ssh/authorized_keys \
+  --ipconfig0 ip=dhcp \
+  --ipconfig1 ip=10.30.30.X/24,gw=10.30.30.1
+
+# Clone template for each node
+for i in 1 2 3 4 5 6; do
+  qm clone 9000 10${i} --name k8s-node-${i} --full
+  qm start 10${i}
+done</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h3>Kubernetes Cluster Bootstrap with kubeadm</h3>
+            <p>
+              All nodes were prepared with the Kubernetes prerequisites: swap disabled, kernel modules
+              loaded (<code>br_netfilter</code>, <code>overlay</code>), sysctl parameters set for
+              IP forwarding, and containerd installed as the CRI runtime. The control plane was
+              initialized on PC-01, and worker nodes joined using the bootstrap token.
+            </p>
+            <pre><code># Run on ALL nodes
+cat &lt;&lt;EOF | sudo tee /etc/modules-load.d/k8s.conf
+overlay
+br_netfilter
+EOF
+sudo modprobe overlay &amp;&amp; sudo modprobe br_netfilter
+
+cat &lt;&lt;EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-iptables  = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward                 = 1
+EOF
+sudo sysctl --system
+
+sudo swapoff -a &amp;&amp; sudo sed -i '/swap/d' /etc/fstab
+
+# Install containerd
+sudo apt install -y containerd
+sudo mkdir -p /etc/containerd
+containerd config default | sudo tee /etc/containerd/config.toml
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+sudo systemctl restart containerd
+
+# Install kubeadm, kubelet, kubectl
+sudo apt install -y apt-transport-https ca-certificates curl gpg
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | \
+  sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | \
+  sudo tee /etc/apt/sources.list.d/kubernetes.list
+sudo apt update &amp;&amp; sudo apt install -y kubelet kubeadm kubectl
+sudo apt-mark hold kubelet kubeadm kubectl
+
+# Initialize control plane (PC-01)
+sudo kubeadm init \
+  --pod-network-cidr=192.168.0.0/16 \
+  --apiserver-advertise-address=10.20.20.10 \
+  --control-plane-endpoint=10.20.20.10:6443
+
+mkdir -p $HOME/.kube
+sudo cp /etc/kubernetes/admin.conf $HOME/.kube/config
+
+# Join workers (run on each worker node)
+sudo kubeadm join 10.20.20.10:6443 \
+  --token &lt;token&gt; \
+  --discovery-token-ca-cert-hash sha256:&lt;hash&gt;</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <h3>Calico CNI &amp; Network Policy Deployment</h3>
+            <p>
+              Calico was deployed as the CNI plugin for pod networking with BGP peering between nodes
+              and NetworkPolicy enforcement for micro-segmentation. Network policies were written to
+              restrict pod-to-pod traffic: only explicitly allowed communication paths are permitted,
+              following a default-deny ingress posture.
+            </p>
+            <pre><code># Install Calico operator and custom resources
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/custom-resources.yaml
+
+# Verify Calico pods are running
+kubectl get pods -n calico-system -w
+
+# Default-deny ingress NetworkPolicy (applied per namespace)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: production
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+# Allow only Nginx Ingress to reach web pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-web
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: web
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <h3>MetalLB &amp; Nginx Ingress Controller</h3>
+            <p>
+              MetalLB was deployed in L2 (ARP) mode to provide external IP addresses for LoadBalancer
+              services on the bare-metal cluster. An IP pool of <code>10.20.20.200&ndash;250</code> was
+              reserved on VLAN 20. The Nginx Ingress Controller was deployed as a DaemonSet to handle
+              all HTTP/HTTPS traffic with TLS termination via cert-manager and Let&rsquo;s Encrypt.
+            </p>
+            <pre><code># Install MetalLB
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
+
+# Configure IP address pool
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: cluster-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - 10.20.20.200-10.20.20.250
+
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: cluster-l2
+  namespace: metallb-system
+
+# Install Nginx Ingress Controller
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.1/deploy/static/provider/baremetal/deploy.yaml
+
+# Install cert-manager for automated TLS
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.15.0/cert-manager.yaml
+
+# ClusterIssuer for Let's Encrypt
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: taki@tyfsadik.org
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+      - http01:
+          ingress:
+            class: nginx</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">6</div>
+          <div class="step-body">
+            <h3>Longhorn Distributed Storage</h3>
+            <p>
+              Longhorn was deployed for persistent storage with 3x replication across the desktop
+              nodes. Each desktop contributes its SSD/NVMe storage to the Longhorn pool. Storage
+              traffic is isolated on VLAN 30 to prevent replication I/O from contesting with cluster
+              API and pod traffic on VLAN 20. Scheduled snapshots and backups to an NFS target
+              provide disaster recovery capability.
+            </p>
+            <pre><code># Install Longhorn
+kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.6.2/deploy/longhorn.yaml
+
+# Set as default StorageClass
+kubectl patch storageclass longhorn -p \
+  '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+
+# Verify volumes and nodes
+kubectl -n longhorn-system get pods
+kubectl -n longhorn-system get nodes.longhorn.io
+
+# Example PVC using Longhorn
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nextcloud-data
+  namespace: production
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 100Gi</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">7</div>
+          <div class="step-body">
+            <h3>Observability Stack &mdash; Prometheus + Grafana + Loki</h3>
+            <p>
+              The full observability stack was deployed using the kube-prometheus-stack Helm chart.
+              Prometheus scrapes metrics from Node Exporter (hardware), kubelet (pod resources),
+              kube-state-metrics (Kubernetes object states), and application-level exporters.
+              Grafana provides pre-built dashboards for cluster health, node resources, pod
+              performance, and Longhorn storage utilization. Loki with Promtail aggregates logs
+              from all pods and system journals into a queryable interface within Grafana.
+            </p>
+            <pre><code># Install Helm
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+# Add repos
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+
+# Install kube-prometheus-stack
+helm install monitoring prometheus-community/kube-prometheus-stack \
+  --namespace monitoring --create-namespace \
+  --set grafana.adminPassword='secureDashboard' \
+  --set prometheus.prometheusSpec.retention=30d \
+  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=longhorn \
+  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=50Gi
+
+# Install Loki + Promtail
+helm install loki grafana/loki-stack \
+  --namespace monitoring \
+  --set promtail.enabled=true \
+  --set loki.persistence.enabled=true \
+  --set loki.persistence.storageClassName=longhorn \
+  --set loki.persistence.size=20Gi
+
+# Expose Grafana via Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  namespace: monitoring
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [grafana.tyfsadik.org]
+      secretName: grafana-tls
+  rules:
+    - host: grafana.tyfsadik.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: monitoring-grafana
+                port:
+                  number: 80</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="services-hosted">
+      <h2>Services Running on the Cluster</h2>
+      <table>
+        <thead><tr><th>Service</th><th>Namespace</th><th>Domain</th><th>Replicas</th></tr></thead>
+        <tbody>
+          <tr><td>Nextcloud (Cloud Storage)</td><td>production</td><td>cloud.tyfsadik.org</td><td>2</td></tr>
+          <tr><td>Private AI Model (Ollama)</td><td>ai</td><td>ai.tyfsadik.org</td><td>1</td></tr>
+          <tr><td>Pi-hole + Unbound DNS</td><td>dns</td><td>Internal</td><td>2</td></tr>
+          <tr><td>Email Server (Postfix/Dovecot)</td><td>mail</td><td>tyfsadik.org</td><td>1</td></tr>
+          <tr><td>SearXNG Search Engine</td><td>search</td><td>search.tyfsadik.org</td><td>2</td></tr>
+          <tr><td>Photo Server</td><td>media</td><td>photo.tyfsadik.org</td><td>1</td></tr>
+          <tr><td>Wiki Server (Wikipedia Mirror)</td><td>wiki</td><td>wiki.tyfsadik.org</td><td>1</td></tr>
+          <tr><td>Grafana Dashboards</td><td>monitoring</td><td>grafana.tyfsadik.org</td><td>1</td></tr>
+          <tr><td>Prometheus + Loki</td><td>monitoring</td><td>Internal</td><td>1</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="deployment-workflow">
+      <h2>Deployment Workflow</h2>
+      <div class="mermaid">
+flowchart LR
+  A["Developer\ngit push"] -->|"webhook"| B["GitHub Actions\nCI Pipeline"]
+  B -->|"build + push"| C["Container Registry\nDocker Hub"]
+  C -->|"image pull"| D["Kubernetes\nkubectl apply"]
+  D --> E["Rolling Update\nzero-downtime deploy"]
+  E --> F["Health Check\nliveness + readiness"]
+  F -->|"metrics"| G["Prometheus\nmonitoring"]
+  G --> H["Grafana\nalert + dashboard"]
+
+style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style B fill:#1a1a2e,stroke:#ffcc00,color:#e0e0e0
+style C fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style D fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style E fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style F fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style G fill:#1a1a2e,stroke:#ffcc00,color:#e0e0e0
+style H fill:#1a1a2e,stroke:#ffcc00,color:#e0e0e0
+      </div>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li>
+          <strong>Laptop nodes dropping from cluster over Wi-Fi:</strong> The laptop worker nodes
+          periodically lost connectivity over the wireless bridge, causing kubelet to miss heartbeats
+          and the control plane to mark them as <code>NotReady</code>. Resolved by deploying a
+          dedicated 5 GHz radio in bridge mode with a fixed channel, disabling power management on
+          the laptop NICs (<code>iw dev wlan0 set power_save off</code>), and increasing the
+          <code>node-monitor-grace-period</code> to 60s to tolerate brief interruptions without
+          evicting pods.
+        </li>
+        <li>
+          <strong>Longhorn replication saturating the network:</strong> Initial deployment placed
+          storage replication on the same VLAN as cluster traffic, causing API server latency spikes
+          during large write operations. Resolved by creating a dedicated VLAN 30 for storage traffic
+          and configuring Longhorn to use the VLAN 30 interface for replication.
+        </li>
+        <li>
+          <strong>MetalLB ARP conflicts with router DHCP:</strong> MetalLB&rsquo;s L2 mode ARP
+          responses conflicted with the router&rsquo;s DHCP leases when the IP pool overlapped with
+          the DHCP range. Fixed by reserving <code>10.20.20.200&ndash;250</code> as a static range
+          excluded from DHCP and configuring MetalLB to only advertise within that range.
+        </li>
+        <li>
+          <strong>etcd performance on a single control plane node:</strong> With only one control
+          plane node, etcd write latency spiked during heavy scheduling. Mitigated by placing etcd
+          data on the NVMe drive (not SSD), tuning <code>heartbeat-interval</code> and
+          <code>election-timeout</code>, and ensuring no other I/O-heavy workloads run on PC-01.
+        </li>
+        <li>
+          <strong>TLS certificate provisioning for multiple subdomains:</strong> cert-manager&rsquo;s
+          HTTP-01 solver required each subdomain to be publicly reachable, which conflicted with
+          internal-only services. Resolved by using DNS-01 challenge validation for internal services
+          and HTTP-01 for public-facing ones.
+        </li>
+        <li>
+          <strong>Resource contention on 8 GB laptop nodes:</strong> Laptops with only 8 GB RAM
+          struggled when Longhorn and Prometheus exporters consumed too much memory alongside
+          application pods. Fixed by applying resource limits and requests to all pods, tainting the
+          laptop nodes with <code>node-role=lightweight:PreferNoSchedule</code>, and using node
+          affinity rules to keep heavy workloads on the desktop nodes.
+        </li>
+      </ul>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="security">
+      <h2>Security Hardening</h2>
+      <ul>
+        <li><strong>RBAC:</strong> Least-privilege service accounts per namespace; no pods run with <code>cluster-admin</code></li>
+        <li><strong>NetworkPolicy:</strong> Default-deny ingress on all namespaces; explicit allow rules per service</li>
+        <li><strong>Pod Security Standards:</strong> <code>restricted</code> profile enforced via Pod Security Admission; no privileged containers</li>
+        <li><strong>Image Scanning:</strong> Trivy scans on all container images before deployment; CVE alerts sent to Grafana</li>
+        <li><strong>Secrets Management:</strong> Kubernetes Secrets encrypted at rest with <code>aescbc</code> encryption provider</li>
+        <li><strong>SSH Hardening:</strong> Key-only authentication, <code>fail2ban</code> on all nodes, management access restricted to VLAN 10</li>
+        <li><strong>Firewall Rules:</strong> Router ACLs restrict inter-VLAN traffic; only necessary ports open between segments</li>
+      </ul>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="learnings">
+      <h2>What I Learned</h2>
+      <ul>
+        <li>End-to-end Kubernetes cluster lifecycle: bootstrapping, upgrading, scaling, and troubleshooting with kubeadm</li>
+        <li>Bare-metal networking for Kubernetes: VLAN segmentation, BGP with Calico, ARP-based load balancing with MetalLB</li>
+        <li>Distributed storage engineering: Longhorn replication, IOPS tuning, and failure recovery across physical nodes</li>
+        <li>Enterprise-grade observability: Prometheus metric design, Grafana alerting pipelines, Loki log correlation</li>
+        <li>Physical infrastructure design: cable management, switch VLAN configuration, wireless backhaul for cluster nodes</li>
+        <li>Security-first architecture: network micro-segmentation, RBAC design, pod security standards, image vulnerability scanning</li>
+        <li>Resource management on heterogeneous hardware: taints, tolerations, affinity rules, and resource quotas to balance workloads across nodes with different capabilities</li>
+        <li>The discipline of documentation: every configuration change logged, every decision recorded, every diagram kept current</li>
+      </ul>
+    </section>
+
+    <div class="tags">
+      <span class="tag">Kubernetes</span>
+      <span class="tag">kubeadm</span>
+      <span class="tag">Calico</span>
+      <span class="tag">MetalLB</span>
+      <span class="tag">Longhorn</span>
+      <span class="tag">Prometheus</span>
+      <span class="tag">Grafana</span>
+      <span class="tag">Loki</span>
+      <span class="tag">Proxmox</span>
+      <span class="tag">Docker</span>
+      <span class="tag">Ubuntu</span>
+      <span class="tag">containerd</span>
+      <span class="tag">Nginx Ingress</span>
+      <span class="tag">cert-manager</span>
+      <span class="tag">VLAN</span>
+      <span class="tag">Bare-Metal</span>
+      <span class="tag">Homelab</span>
+      <span class="tag">Self-Hosted</span>
+    </div>
+  </div>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Advanced File Management | lsof, inotify &amp; rsync</title>
+  <meta name="description" content="Use lsof, inotifywait, and rsync for advanced Linux file operations. Tracked open handles and synced trees with delta transfers.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-fundamentals/advanced-file-management.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Advanced Linux File Management with lsof and rsync",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-01-11",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "lsof, inotify-tools, rsync",
+    "articleSection": "Linux"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>Advanced File Management</span></nav>
+    <div class="page-header"><h1>Advanced File Management with lsof, inotify, and rsync</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">lsof</span><span class="tag">inotifywait</span><span class="tag">rsync</span><span class="tag">delta</span></div>
+    </div>
+
+    <section><p class="lead">I used lsof to trace open file handles, inotifywait to react to filesystem events, and rsync for delta-based synchronization. Together these tools diagnosed "file in use" problems and moved large trees efficiently by transferring only changed blocks.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Beyond basic copies, real admin work means finding what holds a file open, reacting to changes, and syncing efficiently. This lab covers lsof for handle inspection, inotify for event-driven automation, and rsync's delta algorithm.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Linux with lsof, inotify-tools, and rsync.</li>
+        <li>A source and destination tree to sync.</li>
+        <li>A process holding a file open to inspect.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Event-driven sync with inotify and rsync">
+flowchart LR
+  W[inotifywait on dir] -->|change event| S[rsync delta sync]
+  S --> D[Destination updated]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Find what holds a file open</h3>
+      <div class="command-block"><div class="command"><code>lsof /var/log/app.log</code></div></div>
+      <h3>2. React to filesystem events</h3>
+      <div class="command-block"><div class="command"><code>inotifywait -m -e close_write ./incoming</code></div></div>
+      <h3>3. Delta sync a tree</h3>
+      <div class="command-block"><div class="command"><code>rsync -aHAX --delete --info=stats2 src/ dst/</code></div></div>
+<pre><code class="language-bash">Number of regular files transferred: 12
+Total transferred file size: 4.20M (of 1.8G total)</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Modify a few files and re-run rsync to confirm only deltas transfer; use lsof to confirm a locked file's owning PID. Pass criteria: rsync transfers only changed data and lsof correctly identifies the holding process.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Cannot delete "busy" file:</strong> lsof reveals the PID; stop or restart it.</li>
+        <li><strong>rsync re-copies everything:</strong> preserve timestamps with <code>-a</code>; clock skew defeats delta.</li>
+        <li><strong>inotify misses events:</strong> raise <code>fs.inotify.max_user_watches</code> for large trees.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Synced a 1.8GB tree transferring only 4.2MB of deltas.</li>
+        <li>Pinpointed file-locking processes instantly with lsof.</li>
+        <li>Automated reactions to file events via inotify.</li>
+        <li>Preserved ACLs and xattrs across sync with <code>-aHAX</code>.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="file-management.html">File Management</a></li>
+        <li><a href="file-transfer-email.html">File Transfer &amp; Email</a></li>
+        <li><a href="process-management.html">Process Management</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

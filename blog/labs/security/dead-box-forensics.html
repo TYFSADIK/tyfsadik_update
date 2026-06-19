@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dead Box Forensics | Autopsy, dd &amp; The Sleuth Kit</title>
+  <meta name="description" content="Image and analyze a powered-off disk with dd, The Sleuth Kit, and Autopsy. Recovered deleted artifacts with verified write-blocked integrity.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/security/dead-box-forensics.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Dead Box Forensics: Disk Imaging and Analysis",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-06-17",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "dd, The Sleuth Kit 4.12, Autopsy, write blocker",
+    "articleSection": "Security"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Dead Box Forensics</span></nav>
+    <div class="page-header"><h1>Dead Box Forensics: Write-Blocked Disk Imaging and Analysis</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Security</span><span class="lab-time">~6 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Autopsy</span><span class="tag">dd</span><span class="tag">Sleuth Kit</span><span class="tag">write blocker</span></div>
+    </div>
+
+    <section><p class="lead">I produced a forensically sound image of a powered-off disk using a write blocker and dd, then carved and analyzed artifacts with The Sleuth Kit and Autopsy. The process recovered deleted files and confirmed evidence integrity with matching pre- and post-acquisition hashes.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Dead box forensics analyzes non-volatile storage from a system that is off, preserving the disk exactly. This lab follows NIST SP 800-86 acquisition principles: write-block, image, hash, then analyze only the copy.</p>
+      <ul>
+        <li><strong>T1070 Indicator Removal</strong> – recovering deleted logs and files an attacker tried to erase.</li>
+        <li><strong>T1505.003 Web Shell</strong> – locating planted web shells in the filesystem image.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Dead box acquisition and analysis flow">
+flowchart LR
+  WB[Write Blocker] --> IMG[dd image]
+  IMG --> H[Hash verify]
+  H --> TSK[Sleuth Kit carve]
+  TSK --> A[Autopsy analysis]
+      </div>
+    </section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Hardware or software write blocker on the source disk.</li>
+        <li>The Sleuth Kit 4.12 and Autopsy; sufficient evidence storage (2x source size).</li>
+        <li>A chain-of-custody log and hashing utility.</li>
+      </ul>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Acquire a bit-for-bit image [ROOT REQUIRED]</h3>
+      <div class="command-block"><div class="command"><code>dd if=/dev/sdb of=/evidence/case.img bs=4M conv=noerror,sync status=progress</code></div></div>
+      <h3>2. Verify acquisition integrity</h3>
+      <div class="command-block"><div class="command"><code>sha256sum /dev/sdb /evidence/case.img</code></div></div>
+<pre><code class="language-bash">a1b2...  /dev/sdb
+a1b2...  /evidence/case.img   # match = sound acquisition</code></pre>
+      <h3>3. Carve deleted files with The Sleuth Kit</h3>
+      <div class="command-block"><div class="command"><code>fls -rd /evidence/case.img &amp;&amp; icat /evidence/case.img 12345 > recovered.bin</code></div></div>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Confirm the source and image hashes match before any analysis and document them in the custody log. Pass criteria: hash equality, at least one recovered deleted artifact, and analysis performed exclusively on the image copy.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Hash mismatch:</strong> re-image; a mismatch means the source changed or the read failed.</li>
+        <li><strong>dd read errors:</strong> use <code>conv=noerror,sync</code> or ddrescue for failing media.</li>
+        <li><strong>Autopsy slow ingest:</strong> disable unneeded modules and index incrementally.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Acquired a bit-for-bit image with 100% pre/post hash integrity.</li>
+        <li>Recovered deleted artifacts from unallocated space via Sleuth Kit carving.</li>
+        <li>Performed 100% of analysis on the working copy, never the original.</li>
+        <li>Documented a complete chain of custody across the acquisition.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="live-box-forensics.html">Live Box Forensics</a></li>
+        <li><a href="forensics-timeline.html">Forensics Timeline Analysis</a></li>
+        <li><a href="malware-analysis.html">Malware Analysis Basics</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

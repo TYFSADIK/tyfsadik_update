@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure Kubernetes Service | Deploy &amp; Scale AKS</title>
+  <meta name="description" content="Provision a managed AKS cluster with the az CLI, deploy a workload, and enable autoscaling. Run production Kubernetes without managing the control plane.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/containers-kubernetes/aks-deployment.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Deploying to Azure Kubernetes Service (AKS)",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-02-19",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "Azure CLI, AKS, kubectl",
+    "articleSection": "Containers"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Azure Kubernetes Service</span></nav>
+    <div class="page-header"><h1>Deploy to Azure Kubernetes Service (AKS) with Autoscaling</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Containers</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">AKS</span><span class="tag">az CLI</span><span class="tag">autoscaler</span><span class="tag">HPA</span></div>
+    </div>
+
+    <section><p class="lead">You will provision a managed AKS cluster, deploy a workload, and enable both cluster and horizontal pod autoscaling. By the end you will run Kubernetes in the cloud without operating the control plane yourself.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Create an AKS cluster with the az CLI.</li>
+        <li>Deploy a workload and expose it via a load balancer.</li>
+        <li>Enable cluster autoscaler and a Horizontal Pod Autoscaler.</li>
+        <li><strong>Time:</strong> ~4 hours &middot; <strong>Difficulty:</strong> Advanced &middot; <strong>Prereqs:</strong> an Azure subscription and kubectl.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="AKS managed control plane with autoscaling node pool">
+graph TD
+  CLI[az CLI] -->|create| AKS[AKS managed control plane]
+  AKS --> NP[Node pool autoscaler]
+  NP --> Pods[Workload pods]
+  LB[Azure Load Balancer] --> Pods
+  HPA[HPA] -->|scale on CPU| Pods
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> the az CLI authenticated and kubectl.</p>
+      <p><strong>Before you begin:</strong> AKS incurs cost; delete the resource group when finished.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create the cluster with autoscaling nodes</strong>
+          <div class="command-block" data-copy><div class="command"><code>az aks create -g rg -n tyf-aks --node-count 2 --enable-cluster-autoscaler --min-count 2 --max-count 5 --generate-ssh-keys</code></div><div class="note">Provisions a managed cluster with an autoscaling node pool.</div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Get credentials and deploy</strong>
+          <div class="command-block" data-copy><div class="command"><code>az aks get-credentials -g rg -n tyf-aks &amp;&amp; kubectl create deployment web --image=nginx:stable</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Expose and add an HPA</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl expose deploy web --type=LoadBalancer --port=80 &amp;&amp; kubectl autoscale deploy web --cpu-percent=60 --min=2 --max=10</span></div>
+            <div class="terminal-output">service/web exposed
+horizontalpodautoscaler.autoscaling/web autoscaled</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="AKS deployment progress">
+graph LR
+  A[01 Create AKS] -->|done| B[02 Deploy]
+  B -->|done| C[03 Expose + HPA]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>kubectl get svc web -w &amp;&amp; kubectl get hpa web</code></div></div>
+      <p>You should get an external IP and an HPA reporting current vs target CPU. If reachable and scaling, your AKS deployment works. Remember to <code>az group delete -n rg</code> to stop charges.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>External IP pending:</strong> the Azure Load Balancer takes a minute to provision; keep watching.</li>
+        <li><strong>HPA shows unknown:</strong> install the metrics-server (built in on AKS, may need a moment).</li>
+        <li><strong>Quota errors:</strong> the region/subscription may cap node SKUs; pick a smaller VM size.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Add Ingress + TLS as in <a href="kubernetes-networking.html">Kubernetes Networking</a>.</li>
+        <li>Provision the cluster with Terraform (see <a href="../cloud-azure/infrastructure-as-code.html">IaC</a>).</li>
+        <li>Audit posture with <a href="../cloud-azure/cspm-azure-aws.html">CSPM</a>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Ran managed Kubernetes without operating the control plane.</li>
+        <li>Enabled cluster autoscaling from 2 to 5 nodes.</li>
+        <li>Added an HPA scaling pods from 2 to 10 on CPU.</li>
+        <li>Exposed the app via an Azure Load Balancer.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="kubernetes-networking.html">Kubernetes Services &amp; Networking</a></li>
+        <li><a href="../cloud-azure/infrastructure-as-code.html">Infrastructure as Code</a></li>
+        <li><a href="../../../work/infrastructure/kubernetes-infrastructure.html">Kubernetes Infrastructure Project</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

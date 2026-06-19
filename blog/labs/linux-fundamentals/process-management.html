@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linux Process Management | ps, top, kill &amp; systemd</title>
+  <meta name="description" content="Manage Linux processes with ps, top, kill, nice, and systemd. Diagnosed runaway processes and controlled services with signals and units.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-fundamentals/process-management.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Linux Process Management with ps, top, and systemd",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-01-30",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "procps-ng, systemd",
+    "articleSection": "Linux"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>Process Management</span></nav>
+    <div class="page-header"><h1>Linux Process Management with ps, top, kill, and systemd</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">ps</span><span class="tag">top</span><span class="tag">signals</span><span class="tag">systemd</span></div>
+    </div>
+
+    <section><p class="lead">I diagnosed and controlled processes using ps and top for inspection, signals for lifecycle control, nice/renice for scheduling priority, and systemd for service management. Sending the right signal in the right order stopped a runaway process cleanly instead of with a blunt SIGKILL.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>Process control is core incident response on a host. This lab covers reading process state, the signal model (TERM before KILL), priority tuning, and systemd as the modern init/service manager, feeding the IR and sysadmin labs.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Linux with procps-ng and systemd.</li>
+        <li>A test process to inspect and signal.</li>
+        <li>A managed service unit.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Process termination signal order">
+flowchart LR
+  P[Runaway PID] --> T[SIGTERM graceful]
+  T --> W{exited?}
+  W -->|no after grace| K[SIGKILL force]
+  W -->|yes| Done[Clean exit]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Find the offending process</h3>
+      <div class="command-block"><div class="command"><code>ps -eo pid,ppid,%cpu,%mem,comm --sort=-%cpu | head</code></div></div>
+      <h3>2. Signal it gracefully, then forcefully</h3>
+      <div class="command-block"><div class="command"><code>kill -TERM 4412 ; sleep 5 ; kill -KILL 4412 2>/dev/null</code></div></div>
+      <h3>3. Manage a service with systemd</h3>
+      <div class="command-block"><div class="command"><code>systemctl restart nginx &amp;&amp; systemctl status nginx --no-pager</code></div></div>
+<pre><code class="language-bash">PID  PPID %CPU %MEM COMMAND
+4412    1 98.7  2.1 stress-ng
+nginx.service: active (running)</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Start a CPU-bound test process, locate it, and stop it with the graceful-then-forceful sequence; restart a service and confirm it returns to active. Pass criteria: TERM is attempted before KILL and the service recovers cleanly under systemd.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Process won't die:</strong> a process in uninterruptible sleep (D state) is waiting on I/O; address the I/O, not the signal.</li>
+        <li><strong>Zombie processes:</strong> reap by fixing or restarting the parent, not by killing the zombie.</li>
+        <li><strong>Service keeps dying:</strong> inspect <code>journalctl -u service</code> for the real failure.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Identified the top CPU consumer instantly via sorted ps output.</li>
+        <li>Stopped runaway processes gracefully before forcing termination.</li>
+        <li>Managed service lifecycle reliably through systemd.</li>
+        <li>Diagnosed zombie and D-state cases correctly rather than blindly killing.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="../linux-server/service-management.html">Service Management (systemd)</a></li>
+        <li><a href="../python/system-admin-scripts.html">Python System Administration Scripts</a></li>
+        <li><a href="cron-jobs.html">Cron Jobs &amp; Scheduling</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

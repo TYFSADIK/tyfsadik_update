@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cloud Database Project | Azure SQL &amp; Security</title>
+  <meta name="description" content="Deploy and secure a cloud database on Azure SQL with private networking, backups, and least-privilege access. Build a production-ready data tier.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/assignments/cloud-db-project.html">
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Cloud Database Project on Azure SQL",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-04-28",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "Azure SQL, Private Endpoint, TDE",
+    "articleSection": "Assignments"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../index.html" class="nav-link">Home</a>
+      <a href="../../about.html" class="nav-link">About</a>
+      <a href="../../work.html" class="nav-link">Projects</a>
+      <a href="../../blog/labs/index.html" class="nav-link">Labs</a>
+      <a href="../../blog/assignments/index.html" class="nav-link active">Assignments</a>
+      <a href="../../blog.html" class="nav-link">Blog</a>
+      <a href="../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../index.html">Home</a> &rsaquo; <a href="../../blog/assignments/index.html">Assignments</a> &rsaquo; <span>Cloud Database Project</span></nav>
+    <div class="page-header"><h1>Cloud Database Project: Secure Azure SQL Data Tier</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Databases &middot; 2025</span><span class="lab-time">~12 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Azure SQL</span><span class="tag">Private Endpoint</span><span class="tag">TDE</span><span class="tag">least privilege</span></div>
+    </div>
+
+    <section><p class="lead">You will deploy a production-ready Azure SQL data tier with private networking, encryption, automated backups, and least-privilege logins. By the end the database has no public endpoint and a tested recovery path.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Deploy Azure SQL with a private endpoint (no public access).</li>
+        <li>Enable encryption (TDE) and automated backups.</li>
+        <li>Create least-privilege application logins.</li>
+        <li><strong>Time:</strong> ~12 hours &middot; <strong>Difficulty:</strong> Advanced &middot; <strong>Prereqs:</strong> a VNet and the Azure CLI.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Private Azure SQL data tier">
+graph LR
+  App[App subnet] -->|Private Endpoint| SQL[(Azure SQL)]
+  SQL -->|TDE| Enc[Encrypted at rest]
+  SQL --> BK[Automated backups]
+  Net((Internet)) -. denied .- SQL
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <ul>
+        <li>An Azure VNet with an app subnet.</li>
+        <li>The Azure CLI authenticated.</li>
+        <li>A private DNS zone for the SQL private endpoint.</li>
+      </ul>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create the server and database</strong>
+          <div class="command-block" data-copy><div class="command"><code>az sql server create -n tyf-sql --admin-user adm --admin-password '****' &amp;&amp; az sql db create -s tyf-sql -n appdb --service-objective S0</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Add a private endpoint and disable public access</strong>
+          <div class="command-block" data-copy><div class="command"><code>az sql server update -n tyf-sql --set publicNetworkAccess=Disabled</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Create a least-privilege login</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">SQL&gt;</span> <span class="input">CREATE USER app WITH PASSWORD='****'; ALTER ROLE db_datareader ADD MEMBER app;</span></div>
+            <div class="terminal-output">Commands completed successfully.</div>
+          </div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Cloud DB project progress">
+graph LR
+  A[01 Deploy] -->|done| B[02 Private + no public]
+  B -->|done| C[03 Least-priv login]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>az sql server show -n tyf-sql --query publicNetworkAccess -o tsv</code></div></div>
+      <p>This should return <code>Disabled</code>. Confirm the app subnet can connect via the private endpoint while public connections fail.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>App cannot connect:</strong> the private DNS zone must resolve the SQL FQDN to the private IP.</li>
+        <li><strong>Still reachable publicly:</strong> confirm publicNetworkAccess is Disabled and no firewall allow-all rule exists.</li>
+        <li><strong>Over-privileged login:</strong> grant only the roles the app needs.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Codify it with <a href="../labs/databases/cloud-database-config.html">Terraform</a>.</li>
+        <li>Add auditing and threat detection (Microsoft Defender for SQL).</li>
+        <li>Test point-in-time restore as in <a href="../labs/databases/backup-recovery.html">Backup &amp; Recovery</a>.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Deployed Azure SQL with zero public network access.</li>
+        <li>Enabled encryption at rest and automated backups.</li>
+        <li>Granted the app a read-only least-privilege login.</li>
+        <li>Verified private-only connectivity end to end.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Work</h2>
+      <ul>
+        <li><a href="../labs/databases/azure-sql-deployment.html">Azure SQL Deployment</a></li>
+        <li><a href="../labs/databases/cloud-database-config.html">Cloud Database Configuration</a></li>
+        <li><a href="capstone-cloud.html">Cloud Capstone</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

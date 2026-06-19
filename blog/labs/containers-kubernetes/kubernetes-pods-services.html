@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kubernetes Pods &amp; Deployments | YAML Manifests</title>
+  <meta name="description" content="Declare pods, deployments, and services in YAML and apply them with kubectl. Roll out, scale, and roll back workloads declaratively.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-pods-services.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Kubernetes Pods, Deployments, and Services",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-02-15",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Intermediate",
+    "dependencies": "Kubernetes 1.29, kubectl",
+    "articleSection": "Containers"
+  }</script>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="../../../index.html" class="nav-logo">TYF<span>SADIK</span></a><button class="nav-mobile-toggle">MENU</button><div class="nav-links"><a href="../../../index.html" class="nav-link">Home</a>
+      <a href="../../../about.html" class="nav-link">About</a>
+      <a href="../../../work.html" class="nav-link">Projects</a>
+      <a href="../../../blog/labs/index.html" class="nav-link active">Labs</a>
+      <a href="../../../blog/assignments/index.html" class="nav-link">Assignments</a>
+      <a href="../../../blog.html" class="nav-link">Blog</a>
+      <a href="../../../resume.html" class="nav-link">Resume</a></div></div></nav>
+<main class="page-content"><div class="container">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Pods &amp; Deployments</span></nav>
+    <div class="page-header"><h1>Kubernetes Pods, Deployments, and Services in YAML</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Containers</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">YAML</span><span class="tag">Deployment</span><span class="tag">Service</span><span class="tag">rollout</span></div>
+    </div>
+
+    <section><p class="lead">You will define a Deployment and a Service in YAML, apply them, then perform a rolling update and rollback. By the end you will manage workloads declaratively, the way real clusters are operated under GitOps.</p></section>
+
+    <div class="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Write Deployment and Service manifests.</li>
+        <li>Perform a zero-downtime rolling update.</li>
+        <li>Roll back a bad release in one command.</li>
+        <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> a running cluster from the basics lab.</li>
+      </ul>
+    </div>
+
+    <section><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Deployment manages ReplicaSet and pods behind a service">
+graph TD
+  Dep[Deployment] --> RS[ReplicaSet]
+  RS --> P1[Pod]
+  RS --> P2[Pod]
+  Svc[Service ClusterIP] --> P1
+  Svc --> P2
+      </div>
+    </section>
+
+    <section><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> a running cluster and kubectl context set.</p>
+      <p><strong>Before you begin:</strong> keep manifests in a directory so you can version them in Git.</p>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Write the Deployment + Service</strong>
+<pre><code class="language-bash"># web.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: web }
+spec:
+  replicas: 3
+  selector: { matchLabels: { app: web } }
+  template:
+    metadata: { labels: { app: web } }
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.25
+---
+apiVersion: v1
+kind: Service
+metadata: { name: web }
+spec:
+  selector: { app: web }
+  ports: [{ port: 80 }]</code></pre>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Apply it</strong>
+          <div class="command-block" data-copy><div class="command"><code>kubectl apply -f web.yaml &amp;&amp; kubectl rollout status deploy/web</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Roll out a new image version</strong>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl set image deploy/web web=nginx:1.27 &amp;&amp; kubectl rollout status deploy/web</span></div>
+            <div class="terminal-output">deployment "web" successfully rolled out</div>
+          </div>
+        </div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Roll back if needed</strong>
+          <div class="command-block" data-copy><div class="command"><code>kubectl rollout undo deploy/web</code></div></div>
+        </div></div>
+      </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Deployment lifecycle progress">
+graph LR
+  A[01 Manifest] -->|done| B[02 Apply]
+  B -->|done| C[03 Rolling update]
+  C -->|done| D[04 Rollback]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>kubectl rollout history deploy/web &amp;&amp; kubectl get svc web</code></div></div>
+      <p>You should see multiple revisions and a Service with a ClusterIP. If so, you can deploy, update, and undo declaratively.</p>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Rollout stuck:</strong> a new pod is crashing; inspect with <code>kubectl describe</code> and <code>logs</code>.</li>
+        <li><strong>Service has no endpoints:</strong> the selector labels must match the pod labels exactly.</li>
+        <li><strong>Image not updating:</strong> use a specific tag, not <code>latest</code>, so changes are detected.</li>
+      </ul>
+    </details>
+
+    <section><h2>Extension Ideas</h2>
+      <ul>
+        <li>Expose externally and add ingress in <a href="kubernetes-networking.html">Kubernetes Networking</a>.</li>
+        <li>Add readiness/liveness probes and resource limits.</li>
+        <li>Manage manifests with Kustomize or Helm under GitOps.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Deployed a 3-replica workload from declarative YAML.</li>
+        <li>Performed a zero-downtime rolling update.</li>
+        <li>Rolled back a release in a single command.</li>
+        <li>Exposed pods through a stable Service ClusterIP.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="kubernetes-basics.html">Kubernetes Basics</a></li>
+        <li><a href="kubernetes-networking.html">Kubernetes Services &amp; Networking</a></li>
+        <li><a href="aks-deployment.html">Azure Kubernetes Service (AKS)</a></li>
+      </ul>
+    </section>
+
+</div></main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>
