@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Function Virtualization | NFV with Namespaces</title>
+  <meta name="description" content="Virtualize network functions (router, firewall, load balancer) with Linux namespaces and HAProxy. Chained VNFs into a service path on commodity hardware.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/network-function-virtualization.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Network Function Virtualization with Linux Namespaces",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "datePublished": "2025-04-29",
+    "dateModified": "2026-06-17",
+    "proficiencyLevel": "Advanced",
+    "dependencies": "Linux network namespaces, veth, HAProxy, nftables",
+    "articleSection": "Networking"
+  }</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional - North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>Network Function Virtualization</span></nav>
+    <div class="page-header"><h1>Network Function Virtualization with Linux Namespaces</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Networking</span><span class="lab-time">~6 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">NFV</span><span class="tag">namespaces</span><span class="tag">veth</span><span class="tag">HAProxy</span></div>
+    </div>
+
+    <section><p class="lead">I virtualized network functions – a router, a firewall, and a load balancer – as isolated Linux network namespaces connected by veth pairs, then chained them into a single service path. Running VNFs in software on commodity hardware replaced dedicated appliances for the lab fabric.</p></section>
+
+    <section><h2>Objective &amp; Context</h2>
+      <p>NFV decouples network functions from proprietary hardware, running them as software instances that can be chained into service function paths. This lab uses namespaces as lightweight VNFs and HAProxy as a virtual load balancer, the same primitives behind container networking.</p></section>
+
+    <section><h2>Environment &amp; Prerequisites</h2>
+      <ul>
+        <li>Linux host with iproute2, nftables, and HAProxy.</li>
+        <li>Privileges to create namespaces and veth pairs.</li>
+        <li>Two backend services to balance.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Service function chain of virtual network functions">
+flowchart LR
+  C[Client] --> FW[ns: firewall<br/>nftables]
+  FW --> LB[ns: load balancer<br/>HAProxy]
+  LB --> B1[Backend 1]
+  LB --> B2[Backend 2]
+      </div>
+    </section>
+
+    <section><h2>Step-by-Step Execution</h2>
+      <h3>1. Create VNF namespaces and link them [PRIVILEGED]</h3>
+      <div class="command-block"><div class="command"><code>ip netns add fw &amp;&amp; ip netns add lb &amp;&amp; ip link add veth-fw type veth peer name veth-lb</code></div></div>
+      <h3>2. Run a firewall VNF in its namespace</h3>
+      <div class="command-block"><div class="command"><code>ip netns exec fw nft add rule inet filter forward tcp dport 80 accept</code></div></div>
+      <h3>3. Run HAProxy as the load-balancer VNF</h3>
+      <div class="command-block"><div class="command"><code>ip netns exec lb haproxy -f /etc/haproxy/lb.cfg</code></div></div>
+<pre><code class="language-bash">backend web  server b1 10.0.0.11:80 check  server b2 10.0.0.12:80 check
+Proxy web started.</code></pre>
+    </section>
+
+    <section><h2>Validation &amp; Testing</h2>
+      <p>Send requests through the chain and confirm they traverse firewall then load balancer and distribute across backends. Pass criteria: only permitted traffic passes the firewall VNF and load is shared across both backends.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>No traffic between namespaces:</strong> assign IPs to both veth ends and bring them up.</li>
+        <li><strong>HAProxy bind fails:</strong> confirm it binds inside the namespace, not the host.</li>
+        <li><strong>Forwarding blocked:</strong> enable forwarding within the namespace.</li>
+      </ul>
+    </details>
+
+    <section><h2>Key Results</h2>
+      <ul>
+        <li>Chained 3 virtual network functions into a single service path.</li>
+        <li>Replaced dedicated appliances with software VNFs on commodity hardware.</li>
+        <li>Load-balanced traffic across 2 backends through the HAProxy VNF.</li>
+        <li>Isolated each function in its own namespace for clean teardown.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="sdn-controllers.html">SDN Controllers</a></li>
+        <li><a href="../containers-kubernetes/container-networking.html">Container Networking</a></li>
+        <li><a href="qos.html">Quality of Service (QoS)</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

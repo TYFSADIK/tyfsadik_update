@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Counter-Drone Sensor Fusion Simulator | TYFSADIK</title>
+  <meta name="description" content="Simulation-only, defensive counter-drone project: synthetic radar, RF, acoustic, and camera tracks (ArduPilot SITL flight dynamics) fused with Kalman filters, confidence-scored detections, and human-in-the-loop alert triage.">
+  <link rel="canonical" href="https://tyfsadik.org/work/defence/counter-drone-sensor-fusion.html">
+  <meta property="og:title" content="Counter-Drone Sensor Fusion Simulator">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://tyfsadik.org/work/defence/counter-drone-sensor-fusion.html">
+  <meta property="og:image" content="https://tyfsadik.org/favicon.png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"CreativeWork","name":"Counter-Drone Sensor Fusion Simulator","author":{"@type":"Person","name":"MD. Taki Yasir Faraji Sadik","url":"https://tyfsadik.org/about.html"}}</script>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional - North York, ON, Canada</div>
+    </div>
+    <a href="../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
+        <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content">
+  <div class="container">
+    <div class="content-box">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Defence</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Counter-Drone Sensor Fusion Simulator</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Counter-Drone Sensor Fusion Simulator</h1>
+      <p class="subtitle">A simulation-only, strictly defensive project: synthetic radar, RF, acoustic, and camera tracks (ArduPilot SITL provides the drone flight dynamics) are fused with Kalman filters, every detection gets a confidence score, and alerts are triaged on a dashboard where a human always makes the final call.</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2026</span>
+      <span class="meta-category">Defence</span>
+      <span class="meta-category">In Progress</span>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        Small drones are cheap, fast, and hard to see. Detecting them well takes more than one
+        sensor: radar sees range and velocity but struggles with slow, low targets, RF scanners
+        hear control links but only for known protocols, acoustic arrays hear propellers but only
+        at short range, and cameras classify well but only in daylight and line of sight. This
+        project builds a <strong>sensor fusion simulator</strong> that combines synthetic feeds
+        from all four modalities into one track picture, so I can learn the hard part of
+        counter-drone work: deciding what is real.
+      </p>
+      <p>
+        Everything is simulated. <strong>ArduPilot SITL</strong> (software in the loop) flies a
+        virtual quadcopter on mission plans I write, and each simulated sensor observes that truth
+        with its own noise model, detection probability, and false-alarm rate. There is no weapons
+        logic anywhere in the system: the output is a scored, explainable alert on a dashboard,
+        and a human operator decides what to do with it. Nothing here touches real RF spectrum,
+        real airspace, or any classified technique.
+      </p>
+      <p>
+        Why build this: the interesting engineering in counter-UAS is not any single sensor, it is
+        <strong>false-positive management</strong>. A flock of birds, a delivery drone on a legal
+        route, and a genuine intruder can look identical to one sensor. Fusing weak signals into a
+        confidence score, and being able to explain to an operator exactly why the score is what it
+        is, is the problem this project practices.
+      </p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid" role="img" aria-label="Sensor fusion architecture">
+flowchart LR
+  subgraph Sim["Simulation (truth)"]
+    SITL["ArduPilot SITL<br/>virtual quad/plane"]
+    ENV["Scenario engine<br/>birds, clutter, weather"]
+  end
+  subgraph Sensors["Simulated sensors"]
+    RAD["Radar<br/>range + doppler<br/>Pd 0.9, clutter false alarms"]
+    RF["RF scanner<br/>control-link detection<br/>protocol fingerprint"]
+    ACO["Acoustic array<br/>propeller harmonics<br/>short range bearing"]
+    CAM["Camera (synthetic)<br/>YOLO on rendered frames"]
+  end
+  BUS[("Message bus<br/>NATS / Kafka")]
+  FUSE["Track fusion<br/>Kalman filters + gating"]
+  SCORE["Confidence scorer<br/>0-100 + explanation"]
+  DB[("Track &amp; alert store<br/>PostgreSQL")]
+  UI["Triage dashboard<br/>map + alert queue<br/>human confirms/dismisses"]
+  SITL --> RAD
+  SITL --> RF
+  SITL --> ACO
+  SITL --> CAM
+  ENV --> RAD
+  ENV --> CAM
+  RAD --> BUS
+  RF --> BUS
+  ACO --> BUS
+  CAM --> BUS
+  BUS --> FUSE
+  FUSE --> SCORE
+  FUSE --> DB
+  SCORE --> DB
+  SCORE --> UI
+  DB --> UI
+      </div>
+      <p class="diagram-label">Figure 1: simulated truth, four noisy sensor models, a common bus, fusion, scoring, and the human triage loop.</p>
+      <p>
+        ArduPilot SITL is the source of truth: I fly real mission plans (waypoints, loiters,
+        terrain-following) against the actual ArduPilot flight stack, so the drone dynamics are
+        realistic rather than scripted sine waves. Each sensor model reads the truth and produces
+        noisy detections on its own cadence. A scenario engine injects confusers: bird tracks with
+        bird-like kinematics, radar clutter, and background RF chatter, so the fusion layer always
+        has false positives to fight. Every sensor publishes to a common detection model
+        (<code>sensor_id, timestamp, position/bearing, velocity, features, detection_conf</code>)
+        on the message bus, which is what makes the sensors swappable.
+      </p>
+    </section>
+
+    <section id="fusion">
+      <h2>Track Fusion and Confidence Scoring</h2>
+      <div class="mermaid" role="img" aria-label="Track fusion lifecycle">
+flowchart TD
+  D["New detection<br/>(any sensor)"] --> G{"Gating: inside an existing<br/>track's predicted gate?"}
+  G -->|yes| U["Associate to nearest track<br/>Kalman update (correct step)"]
+  G -->|no| N{"Tentative track<br/>M-of-N confirmations<br/>within time window?"}
+  N -->|not yet| T["Hold tentative<br/>(do not alert)"]
+  N -->|confirmed| C["Promote to confirmed track<br/>start Kalman filter"]
+  U --> COAST{"Missed updates &gt;<br/>coast limit?"}
+  C --> COAST
+  COAST -->|no| S["Score: sensor agreement,<br/>kinematics, RF fingerprint,<br/>camera class"]
+  COAST -->|yes| DROP["Drop track<br/>(log for analysis)"]
+  S --> TH{"Confidence &gt; alert<br/>threshold?"}
+  TH -->|no| MON["Keep tracking silently"]
+  TH -->|yes| AL["ALERT queued with<br/>explanation: which sensors,<br/>which features, score history"]
+  AL --> H["Human operator:<br/>confirm / dismiss / snooze"]
+  H --> FB["Label written back<br/>used to tune thresholds"]
+      </div>
+      <p class="diagram-label">Figure 2: the detection-to-alert lifecycle, with tentative tracks, Kalman gating, and human feedback.</p>
+      <ul>
+        <li><strong>Gating and association</strong>: each confirmed track runs an extended Kalman filter (constant-velocity for now, constant-turn-rate next). A new detection is only associated if it falls inside the filter's predicted measurement gate (Mahalanobis distance), which is the first line of defence against clutter.</li>
+        <li><strong>Tentative tracks</strong>: a single radar hit or acoustic blip never alerts. A track must be confirmed by M-of-N detections within a time window before it can score high enough to reach the queue, which kills most single-sensor false positives at birth.</li>
+        <li><strong>Confidence scoring</strong>: the score combines sensor agreement (how many modalities see the same object), kinematics (does it move like a drone or a bird), RF fingerprint (known control-link protocol), and camera classification confidence. Every input to the score is shown to the operator, no black box.</li>
+        <li><strong>Human in the loop</strong>: the system never acts. It queues an alert with its evidence, and the operator's confirm/dismiss decision is written back as a labelled example for threshold tuning.</li>
+      </ul>
+    </section>
+
+    <section id="stack">
+      <h2>Stack</h2>
+      <table>
+        <thead><tr><th>Layer</th><th>Technology</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Drone truth</td><td>ArduPilot SITL + MAVProxy</td><td>Real flight stack, realistic dynamics, scriptable missions</td></tr>
+          <tr><td>Sensor models</td><td>Python (NumPy)</td><td>Noise, Pd, and false-alarm models per modality</td></tr>
+          <tr><td>Message bus</td><td>NATS (Kafka as alternative)</td><td>Lightweight pub/sub, one subject per sensor</td></tr>
+          <tr><td>Fusion</td><td>Python + filterpy</td><td>Reference Kalman/EKF implementations, easy to instrument</td></tr>
+          <tr><td>Storage</td><td>PostgreSQL</td><td>Tracks, alerts, and operator labels in one queryable store</td></tr>
+          <tr><td>Dashboard</td><td>FastAPI + Leaflet</td><td>Live map, alert queue, and explanation panel</td></tr>
+          <tr><td>Orchestration</td><td>Docker Compose (homelab)</td><td>Whole sim reproducible with one compose up</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="how-building">
+      <h2>How I'm Building It</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>SITL truth source</strong>
+            <p>ArduPilot SITL runs headless in a container; MAVProxy scripts fly repeatable missions (approach, loiter, retreat) and the vehicle state is logged as ground truth for later scoring against what the sensors "saw".</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>Sensor simulators</strong>
+            <p>Each modality is a small Python process that samples the truth on its own cadence, applies range-based detection probability, Gaussian measurement noise, and a configurable false-alarm rate, then publishes detections to the bus.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>Fusion core</strong>
+            <p>A tracker maintains tentative and confirmed tracks, runs gating and Kalman updates, and handles coasting and deletion. This is where most of the tuning lives: gate sizes, confirmation windows, coast limits.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>Confidence scoring and explanation</strong>
+            <p>Each confirmed track gets a 0-100 score assembled from named factors, and the dashboard shows the factor breakdown alongside the track so a human can audit why an alert fired.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Triage dashboard and feedback loop</strong>
+            <p>A FastAPI + Leaflet UI shows the live picture and an alert queue. Operator decisions are stored as labels, and I replay recorded scenarios against new thresholds to measure false-positive rate changes before adopting them.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="military">
+      <h2>How Defence Could Implement This</h2>
+      <p>
+        Counter-UAS is an active CAF and NORAD concern, from base defence to protecting deployed
+        forces and critical infrastructure. A system like this maps onto that context honestly:
+      </p>
+      <ul>
+        <li><strong>Same fusion, real sensors</strong>: the architecture does not care whether a detection came from my Python noise model or a real radar, RF sensor, or acoustic array. An operational system would keep the gating, tracking, and scoring layers and swap the sensor connectors.</li>
+        <li><strong>Layered detection for fixed sites</strong>: CAF bases and critical infrastructure (the kind of sites Operation LENTUS deploys to support during domestic emergencies) need exactly this layered model: wide-area radar, RF cueing, and camera confirmation, fused into one picture so a small operations room is not watching four separate screens.</li>
+        <li><strong>False-positive discipline as a requirement</strong>: in a real operations centre, alarm fatigue is a security failure. The tentative-track and human-triage design here reflects how these systems actually have to work: detection and tracking can be automated, engagement authority cannot.</li>
+        <li><strong>Explainability for after-action review</strong>: every alert keeping its factor breakdown and score history means a false alarm can be diagnosed and the threshold change justified, which matters for DND procurement and audit culture.</li>
+        <li><strong>Simulation for training and procurement</strong>: a SITL-based simulator like this is legitimately useful to defence as a training and evaluation tool: operators can be trained, and vendor fusion engines can be benchmarked against recorded scenarios, without flying anything.</li>
+      </ul>
+      <p>
+        The deliberate boundary: this project stops at detection, tracking, and alerting. Anything
+        beyond that (interdiction, jamming, kinetic response) is a separate, regulated domain that
+        this simulator neither models nor enables.
+      </p>
+    </section>
+
+    <section id="build-yourself">
+      <h2>How to Build This Yourself</h2>
+      <ol>
+        <li><strong>Get SITL flying first.</strong> Run <code>sim_vehicle.py -v ArduCopter</code> from the ArduPilot tree, connect MAVProxy, and fly one waypoint mission. Log the vehicle state; that log is your ground truth.</li>
+        <li><strong>Simulate one sensor.</strong> Write a radar model: sample truth at 1 Hz, apply range-based detection probability and Gaussian noise, add random clutter hits. Do not build all four sensors yet.</li>
+        <li><strong>Build the tracker against that one sensor.</strong> A Kalman filter with gating (filterpy gets you there quickly) plus a tentative-track rule. Get single-sensor tracking solid before fusing anything.</li>
+        <li><strong>Record and replay.</strong> Persist every detection so you can replay a scenario against new tracker parameters. Fusion tuning without replay is guesswork.</li>
+        <li><strong>Add confusers before sensors.</strong> Inject bird-like tracks (fast, erratic, low altitude) into the scenario engine early, so your scoring logic grows up fighting false positives instead of meeting them later.</li>
+        <li><strong>Add a second modality.</strong> An RF detector that only fires within range of a known-protocol drone is the easiest second sensor, and immediately shows why multi-modal agreement belongs in the score.</li>
+        <li><strong>Score with named factors.</strong> Build the confidence score as a sum of individually visible factors from day one; retrofitting explainability is painful.</li>
+        <li><strong>Build the triage UI last.</strong> A Leaflet map plus an alert queue is a weekend of FastAPI once the backend emits clean, scored, explained alerts.</li>
+      </ol>
+      <div class="note">
+        <strong>Legality and ethics:</strong> this project is simulation-only. It transmits nothing,
+        receives nothing from real spectrum, and flies nothing. Do not point real sensors at
+        airspace without authorization, and note that in Canada jamming or otherwise interfering
+        with any radio transmission (including drone control links) is illegal for civilians under
+        the Radiocommunication Act. Detection and tracking in simulation is the safe, legal, and
+        genuinely educational version.
+      </div>
+    </section>
+
+    <section id="status">
+      <h2>Status &amp; Roadmap</h2>
+      <ul>
+        <li><strong>Done</strong>: architecture design, sensor model specifications, common detection schema, ArduPilot SITL environment running headless in Docker.</li>
+        <li><strong>In progress</strong>: radar sensor simulator with noise and clutter models, single-sensor Kalman tracker with gating, scenario replay harness.</li>
+        <li><strong>Next</strong>: tentative-track confirmation logic, RF and acoustic sensor models, multi-modal confidence scoring, then the triage dashboard and operator feedback loop.</li>
+      </ul>
+    </section>
+
+</div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

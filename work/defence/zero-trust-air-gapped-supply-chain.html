@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zero-Trust Air-Gapped Software Supply Chain | TYFSADIK</title>
+  <meta name="description" content="SBOM generation with syft, sigstore/cosign signing, and reproducible builds, moved across a simulated data diode into an offline Harbor registry, with controls mapped to Canadian Centre for Cyber Security guidance.">
+  <link rel="canonical" href="https://tyfsadik.org/work/defence/zero-trust-air-gapped-supply-chain.html">
+  <meta property="og:title" content="Zero-Trust Air-Gapped Software Supply Chain">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://tyfsadik.org/work/defence/zero-trust-air-gapped-supply-chain.html">
+  <meta property="og:image" content="https://tyfsadik.org/favicon.png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"CreativeWork","name":"Zero-Trust Air-Gapped Software Supply Chain","author":{"@type":"Person","name":"MD. Taki Yasir Faraji Sadik","url":"https://tyfsadik.org/about.html"}}</script>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional - North York, ON, Canada</div>
+    </div>
+    <a href="../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
+        <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content">
+  <div class="container">
+    <div class="content-box">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Defence</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Zero-Trust Air-Gapped Software Supply Chain</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Zero-Trust Air-Gapped Software Supply Chain</h1>
+      <p class="subtitle">A pipeline that builds container images reproducibly, generates SBOMs with syft, signs everything with sigstore/cosign, then transfers artifacts across a simulated one-way data diode into an offline Harbor registry, with controls mapped to Canadian Centre for Cyber Security guidance.</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2026</span>
+      <span class="meta-category">Defence</span>
+      <span class="meta-category">In Progress</span>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        Software that ends up on disconnected networks, ships, forward operating bases, classified
+        enclaves, still has to come from somewhere. This project builds the <strong>supply chain
+        that gets it there safely</strong>: every artifact is built reproducibly, inventoried with a
+        software bill of materials (SBOM), cryptographically signed, and only then moved across a
+        simulated one-way transfer (a data diode) into an offline registry that disconnected
+        environments pull from.
+      </p>
+      <p>
+        The core problem is trust across a boundary you cannot query back through. Once an artifact
+        crosses into the air-gapped side, the low side can never ask "did you get it intact?", so
+        every check, hash verification, signature validation, SBOM diff, has to happen either before
+        the transfer or entirely on the receiving side. That constraint shapes the whole design, and
+        it is exactly the constraint real isolated networks live with.
+      </p>
+      <p>
+        This is a DevOps-engineering take on a defence-grade problem. I am mapping each control to
+        published <strong>Canadian Centre for Cyber Security</strong> guidance, including ITSAP.10.096
+        (how supply chain attacks work and how to defend against them) and the Cyber Centre's
+        recommendations on verifying software integrity, so the project doubles as a practical study
+        of how that guidance turns into pipeline code. Everything runs on open-source tooling in my
+        homelab; there is no weapons logic, no classified data, and nothing here touches a real
+        operational network.
+      </p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid" role="img" aria-label="Supply chain architecture">
+flowchart LR
+  subgraph Low["Connected Side (Low)"]
+    GIT["Git repo<br/>(pinned deps,<br/>lockfiles)"]
+    CI["CI runner<br/>(reproducible build,<br/>SOURCE_DATE_EPOCH)"]
+    SBOM["SBOM generation<br/>(syft, SPDX + CycloneDX)"]
+    SIGN["Signing<br/>(cosign, keyless<br/>+ local key)"]
+    ATT["Attestations<br/>(SLSA provenance,<br/>in-toto)"]
+    QA{"Verification gate<br/>signatures + scan<br/>+ SBOM policy"}
+  end
+  DIODE[["Data diode simulation<br/>(one-way UDP,<br/>no return path)"]]
+  subgraph High["Disconnected Side (High)"]
+    RX["Receiver / importer<br/>hash-chain check"]
+    HARBOR[("Harbor registry<br/>(offline, internal CA)")]
+    SCAN2["Offline re-scan<br/>(grype, cached DB)"]
+    DEPLOY["Disconnected consumers<br/>(k3s, workstations)"]
+  end
+  GIT --> CI
+  CI --> SBOM
+  CI --> SIGN
+  CI --> ATT
+  SBOM --> QA
+  SIGN --> QA
+  ATT --> QA
+  QA -->|approved bundle| DIODE
+  DIODE --> RX
+  RX --> HARBOR
+  HARBOR --> SCAN2
+  HARBOR --> DEPLOY
+      </div>
+      <p class="diagram-label">Figure 1: build, attest, verify, one-way transfer, and offline distribution stages.</p>
+      <p>
+        The low side is a normal CI pipeline with one extra property: the build is reproducible,
+        meaning the same source and pinned toolchain produce a bit-identical image digest. The
+        verification gate refuses to release anything whose cosign signature, vulnerability scan,
+        or SBOM policy check fails. The bundle that crosses the diode is a tarball containing the
+        image, its SBOM, its signatures and attestations, and a manifest that ties them together by
+        digest, so the high side can re-verify everything without ever talking back.
+      </p>
+    </section>
+
+    <section id="diode-transfer">
+      <h2>One-Way Transfer and Verification</h2>
+      <div class="mermaid" role="img" aria-label="Store and forward transfer across the simulated diode">
+sequenceDiagram
+  participant CI as CI verification gate
+  participant TX as Diode sender (low)
+  participant RX as Diode receiver (high)
+  participant H as Offline Harbor
+  CI->>CI: build manifest.json<br/>(digests of image, SBOM, sigs)
+  CI->>TX: release approved bundle
+  TX->>TX: chunk bundle,<br/>number every chunk
+  loop One-way stream, no ACKs
+    TX->>RX: chunk N (SHA-256 of chunk)
+  end
+  TX->>RX: manifest + hash chain root
+  RX->>RX: reassemble, verify every<br/>chunk hash and chain root
+  alt verification fails
+    RX->>RX: quarantine bundle,<br/>flag for next transfer window
+  else verification passes
+    RX->>H: cosign verify against<br/>bundled public key + Rekor log entry
+    RX->>H: push image, SBOM, attestations
+    H->>H: offline grype scan with<br/>cached vulnerability DB
+  end
+      </div>
+      <p class="diagram-label">Figure 2: store-and-forward transfer with hash-chain integrity checking and re-verification on the high side.</p>
+      <ul>
+        <li><strong>No acknowledgements</strong>: a real data diode physically cannot send data back, so the sender retransmits on a schedule and the receiver detects gaps by chunk numbering rather than requesting resends.</li>
+        <li><strong>Hash chain</strong>: each chunk carries the hash of the previous chunk, so a missing or corrupted chunk anywhere invalidates the chain root and the bundle is quarantined, never partially imported.</li>
+        <li><strong>Re-verification on arrival</strong>: the high side runs <code>cosign verify</code> and <code>cosign verify-attestation</code> itself, because trusting the low side's checks would defeat the point of a zero-trust boundary.</li>
+        <li><strong>Simulation approach</strong>: my homelab diode is two VMs connected by a UDP-only forwarder with firewall rules blocking all return traffic, plus a small forwarder daemon doing the chunking. Not hardware, but it enforces the same one-way contract.</li>
+      </ul>
+    </section>
+
+    <section id="stack">
+      <h2>Stack</h2>
+      <table>
+        <thead><tr><th>Layer</th><th>Technology</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Build</td><td>GitHub Actions / GitLab CI + BuildKit</td><td>Pinned base images, <code>SOURCE_DATE_EPOCH</code> for reproducibility</td></tr>
+          <tr><td>SBOM</td><td>syft (SPDX + CycloneDX)</td><td>Standard formats, diffable between releases</td></tr>
+          <tr><td>Signing and provenance</td><td>cosign (sigstore), in-toto attestations</td><td>Keyless signing plus offline local keys for the air-gapped case</td></tr>
+          <tr><td>Vulnerability scanning</td><td>trivy (low side), grype with cached DB (high side)</td><td>grype consumes the syft SBOM and works fully offline</td></tr>
+          <tr><td>One-way transfer</td><td>Custom UDP forwarder (Python), UDPcast for bulk</td><td>Simulates a data diode on commodity VMs</td></tr>
+          <tr><td>Offline registry</td><td>Harbor (internal CA, robot accounts)</td><td>Artifact plus signature plus SBOM storage with RBAC</td></tr>
+          <tr><td>Verification and policy</td><td>cosign verify, OPA/Conftest on SBOM</td><td>Policy-as-code release gate</td></tr>
+          <tr><td>Orchestration</td><td>Kubernetes (homelab cluster) + Terraform</td><td>Whole environment reproducible from Git</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="how-building">
+      <h2>How I'm Building It</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>Reproducible builds</strong>
+            <p>A reference service builds through BuildKit with pinned base-image digests, locked dependency files, and <code>SOURCE_DATE_EPOCH</code> set from the commit timestamp. Two clean builds must produce the same image digest before anything else proceeds.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>SBOM generation</strong>
+            <p><code>syft</code> runs against the built image and emits both SPDX and CycloneDX documents, stored as registry artifacts alongside the image so consumers get the inventory without re-deriving it.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>Signing and attestation</strong>
+            <p><code>cosign sign</code> covers the image digest, and <code>cosign attest</code> attaches SLSA-style provenance (builder identity, source commit, build parameters) as an in-toto attestation. I use keyless signing on the connected side and a local key pair whose public half crosses with the bundle.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>Diode simulation</strong>
+            <p>A Python forwarder on the low VM chunks the release bundle, hashes each chunk, and streams over UDP to the high VM. nftables rules on the receiver block every outbound packet, enforcing the one-way property at the firewall, not just by convention.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Offline registry and re-verification</strong>
+            <p>The receiver verifies the hash chain, runs <code>cosign verify</code> and <code>cosign verify-attestation</code> locally, pushes to Harbor, and re-scans with grype using a vulnerability database that itself crossed the diode on a schedule.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">06</div>
+          <div class="step-body">
+            <strong>Guidance mapping</strong>
+            <p>Each control is documented against the Cyber Centre publication it implements, so the repo reads as both a working pipeline and a traceable compliance artifact.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="military">
+      <h2>How Defence Could Implement This</h2>
+      <p>
+        Disconnected and classified networks are the norm in Canadian defence, not the exception,
+        and they all face the same question this project answers: how do you patch and update
+        software you cannot reach. A realistic implementation looks like:
+      </p>
+      <ul>
+        <li><strong>Classified enclave updates</strong>: DND networks at different classification levels already exchange data through accredited cross-domain solutions and hardware diodes. A signed, SBOM-inventoried bundle format gives the receiving enclave independent proof of what it just imported, instead of trusting the transfer process alone.</li>
+        <li><strong>Ships and deployed platforms</strong>: RCN vessels and forward units under operations like LENTUS or deployed task groups sync over intermittent satellite links. A store-and-forward model with hash-chain integrity tolerates dropouts, and reproducible builds let a ship verify that the update it received matches the exact bits the vendor or ADM(IM) produced.</li>
+        <li><strong>NORAD modernization and infrastructure hardening</strong>: the Cyber Centre's guidance on supply chain integrity (ITSAP.10.096, plus its advice on verifying software updates) maps directly onto SBOM generation, signature verification, and provenance attestation. A pipeline like this is how that guidance becomes an auditable control rather than a checklist item.</li>
+        <li><strong>Coalition interoperability</strong>: SBOMs in SPDX or CycloneDX are the emerging common language for allied software exchange, so a Canadian pipeline that already speaks them slots into combined programs without translation work.</li>
+      </ul>
+      <p>
+        The homelab version uses simulation throughout. An operational version swaps my UDP
+        forwarder for an accredited hardware diode and my self-signed CA for the departmental PKI,
+        while the pipeline stages stay identical.
+      </p>
+    </section>
+
+    <section id="build-yourself">
+      <h2>How to Build This Yourself</h2>
+      <ol>
+        <li><strong>Get reproducibility first.</strong> Pin every base image by digest, lock your dependencies, set <code>SOURCE_DATE_EPOCH</code>, and build twice in clean environments. If the digests differ, diff the layers and fix that before anything else.</li>
+        <li><strong>Generate an SBOM on every build.</strong> <code>syft registry.example/app:1.2.3 -o spdx-json</code> takes minutes to add and immediately shows you what you are actually shipping.</li>
+        <li><strong>Sign digests, not tags.</strong> Tags move; digests do not. <code>cosign sign</code> the digest and store the signature next to the image so it travels with it.</li>
+        <li><strong>Attach provenance.</strong> An in-toto attestation recording the source commit and build parameters is what lets a reviewer answer "where did this binary come from" without trusting you.</li>
+        <li><strong>Simulate the diode with two VMs.</strong> A UDP-only forwarder plus firewall rules blocking return traffic reproduces the real constraint. Do not cheat with TCP, the lack of ACKs is the whole lesson.</li>
+        <li><strong>Verify on the receiving side.</strong> Re-run <code>cosign verify</code> and the hash-chain check after transfer. Zero-trust means the high side trusts the math, not the sender.</li>
+        <li><strong>Stand up Harbor offline.</strong> It stores images, signatures, and SBOMs together, and its robot accounts model the pull credentials a disconnected cluster would use.</li>
+        <li><strong>Map controls to published guidance.</strong> Read the Cyber Centre's supply chain and patch management guidance and write one line per control saying where your pipeline implements it. That document is half the value of the project.</li>
+      </ol>
+      <div class="note">
+        <strong>Scope and ethics:</strong> this is a personal homelab project using open-source tools,
+        sample applications, and simulated network isolation. It contains no weapons logic, no
+        targeting, and no classified material; it is a DevSecOps pipeline study.
+      </div>
+    </section>
+
+    <section id="status">
+      <h2>Status &amp; Roadmap</h2>
+      <ul>
+        <li><strong>Done</strong>: reference service with reproducible BuildKit build (matching digests across clean builds), syft SBOM generation in both formats, cosign keyless signing in CI.</li>
+        <li><strong>In progress</strong>: in-toto provenance attestation, two-VM UDP diode simulator with chunk hash chain, Harbor deployment on the isolated VM with internal CA.</li>
+        <li><strong>Next</strong>: high-side re-verification automation, offline grype scanning with a diode-transferred vulnerability database, OPA policy gate on SBOM contents, and the full Cyber Centre guidance mapping document.</li>
+      </ul>
+    </section>
+
+</div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

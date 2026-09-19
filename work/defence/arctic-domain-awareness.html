@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arctic Domain Awareness Digital Twin | TYFSADIK</title>
+  <meta name="description" content="Streaming pipeline fusing open ADS-B aircraft data, AIS ship tracking, and Sentinel-1 radar imagery over Canada's North, with anomaly detection for dark ships and route deviations.">
+  <link rel="canonical" href="https://tyfsadik.org/work/defence/arctic-domain-awareness.html">
+  <meta property="og:title" content="Arctic Domain Awareness Digital Twin">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://tyfsadik.org/work/defence/arctic-domain-awareness.html">
+  <meta property="og:image" content="https://tyfsadik.org/favicon.png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"CreativeWork","name":"Arctic Domain Awareness Digital Twin","author":{"@type":"Person","name":"MD. Taki Yasir Faraji Sadik","url":"https://tyfsadik.org/about.html"}}</script>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional - North York, ON, Canada</div>
+    </div>
+    <a href="../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
+        <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content">
+  <div class="container">
+    <div class="content-box">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Defence</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Arctic Domain Awareness Digital Twin</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Arctic Domain Awareness Digital Twin</h1>
+      <p class="subtitle">Streaming pipeline that fuses open ADS-B aircraft data, public AIS ship tracking, and Sentinel-1 satellite radar imagery over Canada's North, and flags anomalies such as ships that go dark or aircraft that deviate from known routes.</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2026</span>
+      <span class="meta-category">Defence</span>
+      <span class="meta-category">In Progress</span>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        Canada's Arctic is vast, remote, and increasingly busy. This project builds a
+        <strong>digital twin of the air and maritime picture over the North</strong> using nothing but
+        open data: ADS-B aircraft beacons, AIS ship transponders, and Sentinel-1 synthetic-aperture
+        radar imagery. All three streams flow into one pipeline that maintains a live picture of who
+        is where, and raises flags when something looks wrong.
+      </p>
+      <p>
+        The two flagship anomaly detectors are <strong>dark-vessel detection</strong> (a ship that stops
+        transmitting AIS but keeps appearing in radar imagery) and <strong>route deviation</strong>
+        (an aircraft leaving its filed or historical corridor). Both are classic sovereignty and
+        safety concerns in the Arctic, and both can be prototyped entirely with public data.
+      </p>
+      <p>
+        This is directly relevant to <strong>NORAD modernization</strong> and Canada's Arctic
+        sovereignty agenda: the hard part is not sensors, it is fusing heterogeneous feeds into one
+        trustworthy, queryable picture. That is a data-engineering and DevOps problem, and that is
+        what this project practices.
+      </p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid" role="img" aria-label="Pipeline architecture">
+flowchart LR
+  subgraph Sources["Open Data Sources"]
+    ADSB["ADS-B aircraft beacons<br/>(adsb.fi / OpenSky)"]
+    AIS["AIS ship tracks<br/>(aisstream.io)"]
+    S1["Sentinel-1 SAR imagery<br/>(Copernicus Data Space)"]
+  end
+  subgraph Ingest["Ingestion"]
+    P1["Poller / websocket<br/>connectors"]
+  end
+  K[("Kafka<br/>topics per source")]
+  SP["Stream processor<br/>(Flink / Faust)<br/>normalise + geofence Arctic bbox"]
+  TS[("Time-series store<br/>(TimescaleDB)")]
+  AD["Anomaly detectors<br/>dark-ship, route deviation"]
+  AL[("Alert log")]
+  UI["Map UI<br/>(Leaflet + deck.gl)"]
+  G["Grafana dashboards"]
+  ADSB --> P1
+  AIS --> P1
+  S1 --> P1
+  P1 --> K
+  K --> SP
+  SP --> TS
+  SP --> AD
+  AD --> AL
+  TS --> UI
+  AD --> UI
+  TS --> G
+      </div>
+      <p class="diagram-label">Figure 1: sources, streaming backbone, storage, detection, and presentation layers.</p>
+      <p>
+        Every source gets its own Kafka topic so a slow or broken feed never blocks the others.
+        The stream processor normalises all three into a common track model
+        (<code>id, lat, lon, speed, heading, timestamp, source</code>) and filters to an Arctic
+        bounding box before anything hits storage, which keeps the dataset small and cheap.
+      </p>
+    </section>
+
+    <section id="detection">
+      <h2>Anomaly Detection Logic</h2>
+      <div class="mermaid" role="img" aria-label="Dark vessel detection logic">
+flowchart TD
+  A["AIS track stops transmitting"] --> T{"Timer &gt; threshold<br/>(e.g. 30 min)"}
+  T -->|no| OK["No alert"]
+  T -->|yes| Q["Query Sentinel-1 SAR detections<br/>in last-known area + drift cone"]
+  Q --> M{"Radar contact<br/>with no AIS match?"}
+  M -->|no| OK2["Likely anchored / docked<br/>log only"]
+  M -->|yes| ALERT["ALERT: dark vessel<br/>confidence scored by distance + course"]
+      </div>
+      <p class="diagram-label">Figure 2: dark-vessel detection correlates a silent AIS track with radar-only contacts.</p>
+      <ul>
+        <li><strong>Dark vessel</strong>: AIS gap + SAR contact inside the vessel's drift cone (last position plus max speed times elapsed time) raises a scored alert.</li>
+        <li><strong>Route deviation</strong>: aircraft tracks are compared against historical corridors; a deviation beyond a configurable distance or a heading inconsistent with the destination airport triggers review.</li>
+        <li><strong>Confidence scoring</strong>: distance, elapsed silence, weather/ice season, and historical behaviour combine into a 0-100 score so analysts see the most likely anomalies first.</li>
+      </ul>
+    </section>
+
+    <section id="stack">
+      <h2>Stack</h2>
+      <table>
+        <thead><tr><th>Layer</th><th>Technology</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Streaming backbone</td><td>Kafka (KRaft mode)</td><td>Durable, replayable, one topic per source</td></tr>
+          <tr><td>Stream processing</td><td>Faust (Python) or Flink</td><td>Stateful windowing for gap detection</td></tr>
+          <tr><td>Storage</td><td>TimescaleDB + MinIO</td><td>Tracks in hypertables, SAR scenes as objects</td></tr>
+          <tr><td>Orchestration</td><td>Kubernetes (my homelab cluster)</td><td>Same cluster that runs my production services</td></tr>
+          <tr><td>Infrastructure as Code</td><td>Terraform + Helm</td><td>Whole stack reproducible from Git</td></tr>
+          <tr><td>Visualisation</td><td>Grafana + Leaflet map UI</td><td>Dashboards for metrics, map for the live picture</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="how-building">
+      <h2>How I'm Building It</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>Ingestion connectors</strong>
+            <p>Python connectors subscribe to the public AIS websocket stream and poll ADS-B APIs, publishing raw messages to Kafka. Sentinel-1 scenes are pulled from the Copernicus Data Space API on a schedule for the Arctic bounding box.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>Normalisation and geofencing</strong>
+            <p>A stream processor maps every message to the common track model and drops anything outside the area of interest. This keeps storage and detection costs flat.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>Detection jobs</strong>
+            <p>Stateful jobs hold the last-seen state of every vessel and aircraft, run the gap and deviation checks, and write scored alerts.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>Map UI and dashboards</strong>
+            <p>A Leaflet/deck.gl front end renders live tracks and alert markers; Grafana covers pipeline health (lag, throughput, alert rate).</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Deploy with Terraform + Helm</strong>
+            <p>The full stack (Kafka, processors, TimescaleDB, UI) is declared as code and deploys to my Kubernetes homelab with one apply.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="military">
+      <h2>How Defence Could Implement This</h2>
+      <p>
+        The same architecture scales from my homelab to an operational setting with mostly
+        configuration changes:
+      </p>
+      <ul>
+        <li><strong>Sensor upgrade, same pipeline</strong>: swap or add feeds (military radar, satellite tasking, allied data) as additional Kafka topics. The fusion and detection logic does not change.</li>
+        <li><strong>Classification boundaries</strong>: the open-data prototype runs on the public internet; an operational version would run on classified networks with the same store-and-forward pattern, bridging via one-way data diodes where required.</li>
+        <li><strong>Redundancy for the North</strong>: Kafka's replication and Kubernetes rescheduling map directly onto the reality of remote northern sites with intermittent links; regional clusters can buffer locally and sync when links return.</li>
+        <li><strong>Auditability</strong>: every alert keeps its evidence chain (raw messages, detector version, confidence inputs), which matters for sovereignty reporting and after-action review.</li>
+      </ul>
+      <p>
+        NORAD modernization explicitly calls for better domain awareness in the Arctic. The
+        contribution a system like this makes is not a new sensor; it is a cheap, fast way to turn
+        existing sensors into one shared, alertable picture.
+      </p>
+    </section>
+
+    <section id="build-yourself">
+      <h2>How to Build This Yourself</h2>
+      <ol>
+        <li><strong>Start with one feed.</strong> Subscribe to a free AIS websocket or ADS-B API and print messages. Do not design the whole system before a single message flows.</li>
+        <li><strong>Add Kafka early.</strong> Even a single-node Kafka (or Redpanda) gives you replay, which you will need constantly while tuning detectors.</li>
+        <li><strong>Define one common track model.</strong> Every source maps into it. This one decision is what makes fusion possible later.</li>
+        <li><strong>Geofence at ingest.</strong> Keeping only your area of interest cuts data volume by orders of magnitude.</li>
+        <li><strong>Build gap detection first.</strong> It is the simplest stateful check (last-seen timestamp vs now) and immediately produces interesting alerts.</li>
+        <li><strong>Add SAR correlation second.</strong> Pull Sentinel-1 scenes for the area around a gap and run a simple ship detector; even a bright-pixel threshold works at prototype scale.</li>
+        <li><strong>Draw it on a map.</strong> A Leaflet page reading from your API makes the project real and demoable.</li>
+        <li><strong>Infrastructure as code from day one.</strong> Terraform + Helm from the first service, so the demo environment is never snowflake infrastructure.</li>
+      </ol>
+      <div class="note">
+        <strong>Legality and ethics:</strong> all data used here is openly published. Nothing in this
+        project decodes restricted transmissions or interferes with any system; it is a monitoring
+        and analysis pipeline over public information.
+      </div>
+    </section>
+
+    <section id="status">
+      <h2>Status &amp; Roadmap</h2>
+      <ul>
+        <li><strong>Done</strong>: architecture design, source evaluation, common track model, homelab Kubernetes target.</li>
+        <li><strong>In progress</strong>: AIS + ADS-B ingestion connectors, geofenced normaliser.</li>
+        <li><strong>Next</strong>: gap detection, map UI, then Sentinel-1 correlation and confidence scoring.</li>
+      </ul>
+    </section>
+
+</div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

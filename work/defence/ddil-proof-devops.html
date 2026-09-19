@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DDIL-Proof DevOps | TYFSADIK</title>
+  <meta name="description" content="A CI/CD and telemetry system designed for denied, degraded, intermittent, and limited networks: store-and-forward queues, delta updates, cosign-signed artifacts, and k3s edge nodes, with resilience proven through chaos engineering.">
+  <link rel="canonical" href="https://tyfsadik.org/work/defence/ddil-proof-devops.html">
+  <meta property="og:title" content="DDIL-Proof DevOps">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://tyfsadik.org/work/defence/ddil-proof-devops.html">
+  <meta property="og:image" content="https://tyfsadik.org/favicon.png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"CreativeWork","name":"DDIL-Proof DevOps","author":{"@type":"Person","name":"MD. Taki Yasir Faraji Sadik","url":"https://tyfsadik.org/about.html"}}</script>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional - North York, ON, Canada</div>
+    </div>
+    <a href="../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
+        <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content">
+  <div class="container">
+    <div class="content-box">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Defence</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>DDIL-Proof DevOps</span>
+    </div>
+
+    <div class="page-header">
+      <h1>DDIL-Proof DevOps</h1>
+      <p class="subtitle">A CI/CD and telemetry system that keeps working when the network does not: store-and-forward queues, delta updates, cosign-signed artifacts, and edge nodes running k3s, with resilience proven by simulating link loss through chaos engineering.</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2026</span>
+      <span class="meta-category">Defence</span>
+      <span class="meta-category">In Progress</span>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        Most CI/CD tooling assumes a reliable network: runners always reach the registry, agents
+        always reach the control plane, telemetry always reaches the dashboard. That assumption
+        fails exactly where the software matters most. <strong>DDIL stands for denied, degraded,
+        intermittent, and limited communications</strong>, the network conditions faced by ships at
+        sea, forward operating locations, disaster-response teams, and honestly my own homelab when
+        the ISP has a bad day. This project is my attempt to build a deployment and observability
+        pipeline that treats connectivity as a bonus, not a requirement.
+      </p>
+      <p>
+        The design has four pillars. <strong>Store-and-forward queues</strong> buffer commits,
+        artifacts, and telemetry locally until a link appears. <strong>Delta updates</strong> ship
+        only the changed layers of a container image instead of multi-gigabyte tarballs.
+        <strong>Cosign-signed artifacts</strong> mean the edge node can verify supply-chain integrity
+        offline, without phoning home to a transparency log. And <strong>k3s edge nodes</strong>
+        run workloads autonomously with a local SQLite-backed datastore when the control plane is
+        unreachable.
+      </p>
+      <p>
+        The part I care about most is proof. Resilience claims are cheap, so the whole system is
+        tested with chaos engineering: <code>tc netem</code> to inject latency, jitter, and packet
+        loss, and Toxiproxy to sever links between components on a schedule or at random. This
+        mirrors exactly what deployed forces face at the edge, but everything here is a simulation
+        in my homelab using open tooling. There is no weapons logic, no targeting, and nothing
+        classified: it is plumbing, built and broken deliberately so the failure modes are
+        understood before they matter.
+      </p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid" role="img" aria-label="DDIL CI/CD and telemetry architecture">
+flowchart LR
+  subgraph Hub["Hub (homelab core, well-connected)"]
+    GIT["Gitea<br/>git hosting"]
+    CI["CI runners<br/>(Woodpecker / GitLab Runner)"]
+    REG[("OCI registry<br/>(Harbor / Zot)")]
+    COSIGN["cosign sign<br/>+ attestations"]
+    OBS["Grafana + Loki<br/>telemetry"]
+  end
+  subgraph Buffer["Store-and-Forward Layer"]
+    Q1[("Artifact queue<br/>NATS JetStream")]
+    Q2[("Telemetry spool<br/>Grafana Agent<br/>write-ahead log")]
+  end
+  subgraph Edge["Edge Nodes (DDIL)"]
+    K3S1["k3s node A<br/>SQLite datastore"]
+    K3S2["k3s node B<br/>SQLite datastore"]
+    LREG[("Local registry mirror<br/>(Zot, pull-through cache)")]
+  end
+  GIT --> CI
+  CI --> COSIGN
+  COSIGN --> REG
+  REG --> Q1
+  Q1 -.->|"sync when link up<br/>(delta layers only)"| LREG
+  LREG --> K3S1
+  LREG --> K3S2
+  K3S1 --> Q2
+  K3S2 --> Q2
+  Q2 -.->|"replay when link up"| OBS
+      </div>
+      <p class="diagram-label">Figure 1: the hub builds and signs artifacts; queues and spools bridge the DDIL gap to autonomous k3s edge nodes.</p>
+      <p>
+        The dotted links are the ones that fail in testing, deliberately and often. When they are
+        down, the hub keeps building and the edge keeps running; the queues simply grow. When a
+        link returns, JetStream replays pending artifact references and the Grafana Agent's
+        write-ahead log drains its spooled metrics and logs, so nothing built or observed during
+        the outage is lost. The edge registry mirror is a pull-through cache, so a node that has
+        never seen the hub can still start any workload its mirror has already fetched.
+      </p>
+    </section>
+
+    <section id="sync">
+      <h2>Store-and-Forward Sync and Verification</h2>
+      <div class="mermaid" role="img" aria-label="Store and forward sync sequence">
+sequenceDiagram
+  participant CI as CI Runner
+  participant REG as Hub Registry
+  participant Q as JetStream Queue
+  participant E as Edge Mirror
+  participant K as k3s Node
+  CI->>REG: push image layers + manifest
+  CI->>REG: cosign sign (keyless OIDC identity)
+  CI->>Q: publish artifact event (digest, repo, tag)
+  Note over Q,E: link down: events accumulate,<br/>nothing is lost
+  E->>Q: consume pending events on reconnect
+  Q-->>E: replay in order (durable consumer)
+  E->>REG: pull only missing layers (delta)
+  REG-->>E: layers + manifest + signature bundle
+  E->>E: cosign verify --offline<br/>reject if signature invalid
+  K->>E: pull image from local mirror
+  K->>E: verify digest matches signed manifest
+  K-->>K: rollout workload
+      </div>
+      <p class="diagram-label">Figure 2: the store-and-forward sync loop, with offline signature verification at the edge.</p>
+      <p>
+        Two properties make this safe. First, the queue is a <strong>durable consumer</strong>:
+        JetStream tracks exactly which events the edge mirror has acknowledged, so a crash
+        mid-sync just resumes where it left off. Second, verification is <strong>offline-capable</strong>:
+        cosign signatures and the Rekor inclusion proof are stored as OCI artifacts next to the
+        image, so the edge mirror can run <code>cosign verify</code> against a local bundle without
+        reaching the internet. An unsigned or tampered image never reaches a k3s node, even during
+        an outage.
+      </p>
+      <ul>
+        <li><strong>Delta updates</strong>: registries deduplicate layers by digest, so syncing a new release usually moves megabytes, not gigabytes. For the worst case I am experimenting with <code>zot</code> sync policies and OCI artifact references to ship only changed blobs.</li>
+        <li><strong>Backpressure</strong>: when the spool grows past a threshold, telemetry degrades gracefully: metrics drop to longer scrape intervals and logs switch to sampling, instead of OOM-ing the edge node.</li>
+        <li><strong>Ordering</strong>: artifact events carry monotonic sequence numbers, so the mirror applies releases in order even if replay is bursty.</li>
+      </ul>
+    </section>
+
+    <section id="stack">
+      <h2>Stack</h2>
+      <table>
+        <thead><tr><th>Layer</th><th>Technology</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Edge orchestration</td><td>k3s (SQLite datastore)</td><td>Single binary, runs autonomous with no external etcd</td></tr>
+          <tr><td>Messaging / queueing</td><td>NATS JetStream</td><td>Durable store-and-forward, tiny footprint, offline-friendly</td></tr>
+          <tr><td>Artifact registry</td><td>Harbor at hub, Zot at edge</td><td>Pull-through caching and OCI-native sync policies</td></tr>
+          <tr><td>Supply-chain signing</td><td>cosign (Sigstore)</td><td>Offline verification with bundled Rekor proofs</td></tr>
+          <tr><td>Telemetry</td><td>Grafana Agent + Loki + Prometheus</td><td>Write-ahead log spools metrics and logs through outages</td></tr>
+          <tr><td>Chaos engineering</td><td>tc netem, Toxiproxy</td><td>Kernel-level and application-level link failure injection</td></tr>
+          <tr><td>Infrastructure as Code</td><td>Terraform + Ansible + Helm</td><td>Edge nodes reproducible from a USB stick and a git repo</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="how-building">
+      <h2>How I'm Building It</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>Two-zone lab</strong>
+            <p>The hub runs on my main homelab cluster. The "edge" is two small k3s nodes on a separate VLAN, so I can cut the link between zones with one firewall rule or a Toxiproxy toggle and watch what happens.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>Signing pipeline</strong>
+            <p>CI builds images and signs them with cosign using keyless OIDC identity, attaching the Rekor bundle to the registry so the edge never needs the transparency log online to verify.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>Store-and-forward sync</strong>
+            <p>A small Go service consumes JetStream artifact events and drives the Zot mirror sync. Durable consumers give exactly-once-ish semantics: replay after an outage, never a skipped release.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>Spooled telemetry</strong>
+            <p>Grafana Agent on each edge node writes metrics and logs to a local write-ahead log and remote-writes to Loki and Prometheus when the link is up. Disk-backed, restart-safe, and honest about what it has flushed.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Chaos harness</strong>
+            <p>A test suite wraps <code>tc netem</code> (for example <code>tc qdisc add dev eth0 root netem delay 800ms 200ms loss 15%</code>) and Toxiproxy toxicity controls, running scheduled chaos scenarios: 30-minute blackouts, 2 kbps trickle links, 40% packet loss, then asserting that queues drain and signatures still verify.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">06</div>
+          <div class="step-body">
+            <strong>Resilience scorecard</strong>
+            <p>Each chaos run produces a report: max queue depth, time to catch up after reconnect, whether any workload restarted, whether any unsigned artifact was ever served. The scorecard is the deliverable, not the uptime claim.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="military">
+      <h2>How Defence Could Implement This</h2>
+      <p>
+        The CAF operates exactly the environments DDIL describes: Arctic Forward Operating
+        Locations, ships on Operation REASSURANCE or in the Indo-Pacific, and deployed
+        headquarters on SATCOM links that degrade with weather and congestion. A pattern like this
+        maps directly onto that reality:
+      </p>
+      <ul>
+        <li><strong>Shipboard and forward k3s clusters</strong>: lightweight Kubernetes at the edge runs local mission-support applications autonomously, receiving updates as delta-synced, signed artifacts whenever the link allows, instead of waiting for a port visit.</li>
+        <li><strong>Assured software supply chain</strong>: cosign verification at the edge means DND can prove that what runs on a forward node is exactly what was built and approved, even after weeks of disconnection, with a local audit trail.</li>
+        <li><strong>Operations LENTUS and disaster response</strong>: when domestic disaster relief knocks out terrestrial networks, store-and-forward telemetry keeps a common operating picture syncing between field nodes and command, filling in the gap retroactively as links recover.</li>
+        <li><strong>NORAD modernization</strong>: remote northern radar and sensor sites are the canonical intermittent-link case; local buffering plus opportunistic sync is the difference between losing telemetry and merely delaying it.</li>
+        <li><strong>Test before trust</strong>: chaos-engineered acceptance criteria (maximum tolerable outage, catch-up time, zero unsigned artifacts) give procurement and certification teams measurable resilience requirements instead of vendor promises.</li>
+      </ul>
+      <p>
+        Everything in this project is unclassified open tooling and simulation. The value it
+        demonstrates is an engineering discipline, not a capability: assume the link dies, design
+        for it, and prove the design by breaking it on purpose.
+      </p>
+    </section>
+
+    <section id="build-yourself">
+      <h2>How to Build This Yourself</h2>
+      <ol>
+        <li><strong>Stand up two zones.</strong> A "hub" and an "edge" on separate networks or VMs. You cannot test disconnection until disconnection is a real thing you can do.</li>
+        <li><strong>Put k3s on the edge.</strong> A single-node install with the default SQLite datastore takes minutes and immediately teaches you what breaks when the control plane is remote.</li>
+        <li><strong>Add a real registry and sign things.</strong> Run Harbor or Zot, build a trivial image, and sign it with cosign. Verify it once online, then learn how to verify it offline with a bundled Rekor proof.</li>
+        <li><strong>Insert a queue between hub and edge.</strong> NATS JetStream is a single binary. Publish an event per artifact and write the smallest possible consumer that syncs your edge mirror.</li>
+        <li><strong>Spool your telemetry.</strong> Point Grafana Agent at a remote Loki/Prometheus, then unplug the link for an hour and confirm the write-ahead log replays cleanly.</li>
+        <li><strong>Break the link on purpose.</strong> Start gentle: <code>tc qdisc add dev eth0 root netem delay 500ms loss 5%</code>. Then graduate to full blackouts and Toxiproxy scenarios at random times.</li>
+        <li><strong>Measure, do not vibes-test.</strong> Record queue depth, catch-up time, and whether anything unsigned ever ran. If you cannot state a number, the resilience is not proven.</li>
+        <li><strong>Codify everything.</strong> Terraform, Ansible, and Helm from the start, so an edge node can be rebuilt from scratch during your next simulated outage.</li>
+      </ol>
+      <div class="note">
+        <strong>Scope and ethics:</strong> this is a homelab simulation using only open-source tools
+        and self-generated test traffic. There is no weapons logic, no targeting, no real
+        operational data, and nothing classified. Chaos experiments run only against my own
+        infrastructure.
+      </div>
+    </section>
+
+    <section id="status">
+      <h2>Status &amp; Roadmap</h2>
+      <ul>
+        <li><strong>Done</strong>: two-zone lab topology, k3s edge nodes, hub registry, cosign keyless signing pipeline, basic tc netem chaos scripts.</li>
+        <li><strong>In progress</strong>: JetStream artifact queue and edge mirror sync service, Grafana Agent write-ahead spooling, offline signature verification at the edge.</li>
+        <li><strong>Next</strong>: Toxiproxy scenario suite with scheduled random blackouts, resilience scorecard reporting, and full Terraform/Ansible codification of the edge build.</li>
+      </ul>
+    </section>
+
+</div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

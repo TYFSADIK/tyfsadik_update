@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Operation LENTUS-Style Disaster Response Drone Mapping | TYFSADIK</title>
+  <meta name="description" content="Simulated drone flights (ArduPilot SITL / Gazebo) map floods or wildfires, edge computer vision detects affected areas, and results feed a live situational-awareness map. A safe, simulation-only homelab project inspired by Operation LENTUS.">
+  <link rel="canonical" href="https://tyfsadik.org/work/defence/lentus-drone-mapping.html">
+  <meta property="og:title" content="Operation LENTUS-Style Disaster Response Drone Mapping">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://tyfsadik.org/work/defence/lentus-drone-mapping.html">
+  <meta property="og:image" content="https://tyfsadik.org/favicon.png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"CreativeWork","name":"Operation LENTUS-Style Disaster Response Drone Mapping","author":{"@type":"Person","name":"MD. Taki Yasir Faraji Sadik","url":"https://tyfsadik.org/about.html"}}</script>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional - North York, ON, Canada</div>
+    </div>
+    <a href="../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
+        <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content">
+  <div class="container">
+    <div class="content-box">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Defence</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Operation LENTUS-Style Disaster Response Drone Mapping</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Operation LENTUS-Style Disaster Response Drone Mapping</h1>
+      <p class="subtitle">Simulated drone flights with ArduPilot SITL and Gazebo survey a flood or wildfire scenario, an edge computer-vision pipeline detects affected areas from the simulated camera feed, and detections stream into a live situational-awareness map.</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2026</span>
+      <span class="meta-category">Defence</span>
+      <span class="meta-category">In Progress</span>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        When floods hit the Fraser Valley or wildfires threaten a northern community, the first
+        question incident command asks is simple: <strong>where is the damage right now?</strong>
+        This project builds a prototype answer: a simulated quadcopter flies a survey pattern over
+        a synthetic disaster area, detects affected zones (floodwater, burned ground, blocked
+        roads) with computer vision running on an edge device, and publishes every detection to a
+        live web map that an incident commander could watch in real time.
+      </p>
+      <p>
+        The whole thing runs in <strong>simulation</strong>. ArduPilot SITL (software in the loop)
+        provides the autopilot, Gazebo provides the world and the camera feed, and open data
+        (OpenStreetMap road networks, public flood extent layers) shapes the scenario. No real
+        aircraft, no restricted data, no weapons logic of any kind. Everything is reproducible on
+        a laptop and safe to publish.
+      </p>
+      <p>
+        The framing is deliberately Canadian: the Canadian Armed Forces regularly support domestic
+        disaster response under <strong>Operation LENTUS</strong>, and small uncrewed aircraft are
+        exactly the kind of asset that gets tasked for rapid damage assessment. This project is my
+        way of learning the full chain, from flight planning to detection to common operating
+        picture, that such a mission depends on.
+      </p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid" role="img" aria-label="System architecture from simulator to situational-awareness map">
+flowchart LR
+  subgraph Sim["Simulation"]
+    GZ["Gazebo world<br/>(flood / wildfire scenario)"]
+    SITL["ArduPilot SITL<br/>quadcopter"]
+    CAM["Simulated camera<br/>(gimballed, downward)"]
+  end
+  subgraph GCS["Mission Control"]
+    MP["Mission Planner script<br/>lawnmower survey grid"]
+  end
+  subgraph Edge["Edge Node (Jetson-class)"]
+    CV["CV pipeline<br/>OpenCV + ONNX Runtime"]
+  end
+  MQ[("MQTT broker<br/>(Mosquitto)")]
+  DB[("PostGIS<br/>detections + tracks")]
+  MAP["Live map UI<br/>(Leaflet)"]
+  DASH["Grafana<br/>mission metrics"]
+  MP -->|MAVLink| SITL
+  SITL <--> GZ
+  GZ --> CAM
+  CAM -->|RTSP stream| CV
+  CV -->|JSON detections| MQ
+  SITL -->|telemetry| MQ
+  MQ --> DB
+  DB --> MAP
+  MQ --> DASH
+      </div>
+      <p class="diagram-label">Figure 1: simulated flight, edge detection, and the path from detection to the shared map.</p>
+      <p>
+        The autopilot, the world, and the detector are three separate processes talking over
+        standard protocols, which is the point. MAVLink carries flight commands and telemetry,
+        the camera publishes an RTSP video stream, and detections travel as small JSON messages
+        over MQTT (<code>detections/flood</code>, <code>detections/fire</code>). Because the
+        interfaces are standard, the SITL instance can later be swapped for a real airframe
+        without touching the detection or mapping code.
+      </p>
+    </section>
+
+    <section id="cv-pipeline">
+      <h2>Edge Detection Pipeline</h2>
+      <div class="mermaid" role="img" aria-label="Edge computer vision pipeline from video frame to georeferenced detection">
+flowchart TD
+  F["Grab frame<br/>(RTSP, 10 fps downsampled to 2 fps)"] --> PRE["Preprocess<br/>resize 640x640, normalise"]
+  PRE --> SEG["Segmentation model<br/>(ONNX, flood / fire / smoke classes)"]
+  SEG --> TH{"Affected area<br/>&gt; min pixel threshold?"}
+  TH -->|no| SKIP["Discard frame<br/>log heartbeat only"]
+  TH -->|yes| GEO["Georeference<br/>pixel centroid + drone pose<br/>+ terrain height"]
+  GEO --> DD["De-duplicate<br/>skip if within 25 m of<br/>recent detection"]
+  DD --> PUB["Publish MQTT detection<br/>{class, lat, lon, confidence,<br/>frame_id, timestamp}"]
+  PUB --> ANN["Save annotated frame<br/>for review"]
+      </div>
+      <p class="diagram-label">Figure 2: each video frame becomes a georeferenced, de-duplicated detection or is dropped.</p>
+      <p>
+        Georeferencing is the part people underestimate. A pixel in the camera frame means
+        nothing until it is combined with the drone's telemetry at that exact instant: position,
+        altitude, attitude, and camera gimbal angles. I pull the matching telemetry record from
+        the MAVLink stream by timestamp, project the detection centroid through a simple
+        pinhole-camera model onto the ground plane, and get a lat/lon that lands within a few
+        metres of the true location in simulation.
+      </p>
+      <p>
+        The model itself is a small segmentation network (a YOLOv8-seg variant trained on public
+        datasets such as FloodNet for water and the FLAME dataset for fire), exported to ONNX so
+        it runs on CPU or a Jetson's GPU without a deep-learning framework installed. Precision
+        matters more than recall here: a false flooded street sends responders the wrong way,
+        while a missed patch gets picked up on the next survey pass.
+      </p>
+    </section>
+
+    <section id="stack">
+      <h2>Stack</h2>
+      <table>
+        <thead><tr><th>Layer</th><th>Technology</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Autopilot simulation</td><td>ArduPilot SITL</td><td>The same firmware that flies real aircraft, running as a process</td></tr>
+          <tr><td>World simulation</td><td>Gazebo Garden</td><td>Physics, camera models, and a scenario I can damage on purpose</td></tr>
+          <tr><td>Flight control link</td><td>MAVLink (pymavlink / MAVProxy)</td><td>Standard UAV protocol, scriptable survey missions</td></tr>
+          <tr><td>Edge inference</td><td>ONNX Runtime + OpenCV</td><td>Portable model format, runs on Jetson or plain CPU</td></tr>
+          <tr><td>Messaging</td><td>MQTT (Mosquitto)</td><td>Lightweight pub/sub that tolerates flaky links</td></tr>
+          <tr><td>Storage</td><td>PostGIS</td><td>Spatial queries (near, within, intersects) out of the box</td></tr>
+          <tr><td>Map UI</td><td>Leaflet + OpenStreetMap tiles</td><td>Zero-dependency live map in the browser</td></tr>
+          <tr><td>Route optimization (extension)</td><td>Google OR-Tools</td><td>Vehicle routing for resupply / casualty-evacuation planning</td></tr>
+          <tr><td>Deployment</td><td>Docker Compose on my homelab</td><td>Whole stack reproducible from one compose file</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="how-building">
+      <h2>How I'm Building It</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>Simulation environment</strong>
+            <p>ArduPilot SITL and Gazebo run in Docker on my homelab. I built a custom Gazebo world based on a real Ontario flood scenario footprint, with water planes and smoke emitters marking the affected zones so the camera has something true to detect.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>Survey mission scripting</strong>
+            <p>A Python script (pymavlink) generates a lawnmower survey pattern over the area of interest with configurable altitude, speed, and camera overlap, then uploads and flies it through SITL. Telemetry streams out over the same MAVLink connection.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>Detection pipeline</strong>
+            <p>An OpenCV consumer reads the camera stream, runs the ONNX segmentation model, and georeferences hits using synchronized telemetry. Output is MQTT JSON plus annotated frames saved for spot-checking precision.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>Situational-awareness map</strong>
+            <p>A small FastAPI service reads detections from PostGIS and serves them to a Leaflet page: live drone position as a moving marker, detections as coloured polygons and points, and a layer toggle for flood versus fire.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Store-and-forward for bad links</strong>
+            <p>MQTT with persistent sessions and queued messages models what happens when a drone loses its link mid-mission: detections buffer on the edge node and flush when the connection returns, which is exactly the constraint at a real disaster site.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">06</div>
+          <div class="step-body">
+            <strong>Resupply route extension (next)</strong>
+            <p>Feed the detected blocked roads and safe zones into a Google OR-Tools vehicle-routing model to plan medical resupply and casualty-evacuation routes around the mapped damage.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="military">
+      <h2>How Defence Could Implement This</h2>
+      <p>
+        Operation LENTUS is the CAF's standing framework for helping civilian authorities during
+        domestic disasters: floods, wildfires, ice storms, hurricanes. A system like this maps
+        directly onto how that support actually works:
+      </p>
+      <ul>
+        <li><strong>Rapid damage assessment</strong>: small UAS already get tasked to survey flooded towns and fire perimeters in the first hours of a LENTUS deployment. An automated detection-to-map pipeline turns hours of video review into minutes of map updates for the joint incident command post.</li>
+        <li><strong>Common operating picture</strong>: detections published to a shared map layer can be consumed by the same geospatial tools provincial emergency operations centres and CAF headquarters already use, rather than living in one pilot's laptop.</li>
+        <li><strong>Degraded communications</strong>: disaster zones rarely have reliable networks. The store-and-forward pattern (buffer at the edge, sync when the link returns) is designed for exactly the intermittent SATCOM and cellular reality of a domestic operation.</li>
+        <li><strong>Training value</strong>: because this prototype is pure simulation with open data, the same stack works as a training sandbox for UAS operators and headquarters staff without range time, airspace coordination, or any sensitive information.</li>
+        <li><strong>Logistics follow-on</strong>: once damage is mapped, route optimization for medical resupply and casualty evacuation (the OR-Tools extension) is a natural DND/CAF use case, getting supplies into and patients out of affected areas around blocked roads.</li>
+      </ul>
+      <p>
+        Nothing here touches weapons, targeting, or classified systems. It is the humanitarian
+        assistance and disaster relief side of defence, and it is intentionally built on open
+        tools so the lessons transfer.
+      </p>
+    </section>
+
+    <section id="build-yourself">
+      <h2>How to Build This Yourself</h2>
+      <ol>
+        <li><strong>Get SITL flying first.</strong> Run ArduPilot SITL standalone (<code>sim_vehicle.py -v ArduCopter --console --map</code>) and fly a few waypoints before adding anything else.</li>
+        <li><strong>Connect Gazebo.</strong> Use the ardupilot_gazebo plugin so SITL flies inside a Gazebo world with a simulated camera publishing a video stream.</li>
+        <li><strong>Script one survey mission.</strong> Write a pymavlink script that generates a lawnmower grid over a bounding box and flies it. Print telemetry as you go; you will need it for georeferencing later.</li>
+        <li><strong>Detect before you model.</strong> Start with classical CV (colour thresholding for water or smoke works surprisingly well in simulation) and only bring in a trained ONNX model once the pipeline around it works.</li>
+        <li><strong>Georeference with timestamps.</strong> Log every telemetry message and every frame with a common clock, then join them. Skipping this discipline is where most drone-mapping prototypes break.</li>
+        <li><strong>Publish detections over MQTT.</strong> Small JSON messages to Mosquitto keep the detector decoupled from everything downstream.</li>
+        <li><strong>Draw the map early.</strong> A Leaflet page polling a tiny API makes progress visible and gives you something to demo at every stage.</li>
+        <li><strong>Add OR-Tools last.</strong> Once damage polygons exist, feed blocked roads into an OR-Tools vehicle-routing problem for resupply or casualty-evacuation routes. It is a satisfying, self-contained extension.</li>
+      </ol>
+      <div class="note">
+        <strong>Legality and ethics:</strong> everything in this project is simulation and open
+        data. There is no real aircraft, no flight over people or property, and no sensitive
+        data involved. If you ever take a stack like this outdoors in Canada, Transport Canada
+        drone regulations (registration, pilot certification, airspace rules) apply in full.
+      </div>
+    </section>
+
+    <section id="status">
+      <h2>Status &amp; Roadmap</h2>
+      <ul>
+        <li><strong>Done</strong>: architecture design, SITL + Gazebo environment running in Docker, scripted lawnmower survey missions, RTSP camera feed into OpenCV.</li>
+        <li><strong>In progress</strong>: ONNX segmentation model selection and evaluation on FloodNet/FLAME, telemetry-synced georeferencing, MQTT detection publishing.</li>
+        <li><strong>Next</strong>: Leaflet situational-awareness map with live track and detection layers, de-duplication logic, then the OR-Tools resupply and casualty-evacuation route extension.</li>
+      </ul>
+    </section>
+
+</div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

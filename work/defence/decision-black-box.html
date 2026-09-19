@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Decision Black Box | TYFSADIK</title>
+  <meta name="description" content="A tamper-evident audit layer for human-in-the-loop decisions in a simulated airspace-deconfliction scenario: hash-chained, signed, append-only log with Merkle consistency proofs, a decision replay tool, and OPA policy-as-code checks.">
+  <link rel="canonical" href="https://tyfsadik.org/work/defence/decision-black-box.html">
+  <meta property="og:title" content="Decision Black Box">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://tyfsadik.org/work/defence/decision-black-box.html">
+  <meta property="og:image" content="https://tyfsadik.org/favicon.png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"CreativeWork","name":"Decision Black Box","author":{"@type":"Person","name":"MD. Taki Yasir Faraji Sadik","url":"https://tyfsadik.org/about.html"}}</script>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional - North York, ON, Canada</div>
+    </div>
+    <a href="../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
+        <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content">
+  <div class="container">
+    <div class="content-box">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Defence</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Decision Black Box</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Decision Black Box</h1>
+      <p class="subtitle">A tamper-evident audit layer for human-in-the-loop decisions in a simulated airspace-deconfliction scenario: a hash-chained, signed, append-only log in the style of certificate transparency, a replay tool that reconstructs any decision state, and OPA policy-as-code checks on every entry.</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2026</span>
+      <span class="meta-category">Defence</span>
+      <span class="meta-category">In Progress</span>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        When a decision support system recommends something and a human approves it, someone has to
+        be able to answer afterwards: what did the operator see, what did the system recommend,
+        which policy version was in force, and who signed off? This project is a
+        <strong>flight recorder for decisions</strong>, built around a fictional
+        airspace-deconfliction simulator. Every recommendation, override, and approval is written
+        to an append-only log that cannot be edited or quietly reordered after the fact.
+      </p>
+      <p>
+        The core is a <strong>hash-chained, signed log</strong> modelled on certificate
+        transparency (RFC 6962): each entry includes the hash of the previous one, the log operator
+        signs Merkle tree heads, and auditors can request inclusion and consistency proofs. On top
+        of that sit two tools: a <strong>replay engine</strong> that rebuilds the exact state of the
+        simulated airspace picture at any entry in the log, and <strong>OPA policy-as-code
+        checks</strong> that evaluate every decision against the rules of engagement simulated for
+        the scenario (for example: no deconfliction approval without two-operator confirmation).
+      </p>
+      <p>
+        Why bother: accountability and responsible AI are treated seriously in Canadian defence
+        circles, and DND/CAF has published AI strategy commitments around traceability and human
+        oversight. I wanted to practice the engineering behind those commitments. Everything here
+        runs on simulated data I generate myself. There is no weapons logic, no real targeting
+        information, and nothing classified anywhere in this project.
+      </p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid" role="img" aria-label="Audit pipeline architecture">
+flowchart LR
+  subgraph Sim["Simulation (open data only)"]
+    SIM["Airspace scenario generator<br/>(fictional tracks, Python)"]
+    REC["Decision support stub<br/>(rule-based recommender)"]
+  end
+  subgraph Audit["Audit Layer"]
+    API["Ingestion API<br/>(Go, HTTP + gRPC)"]
+    LOG[("Append-only log<br/>hash chain + Merkle tree")]
+    SIGN["Signer<br/>(Ed25519, key in KMS-style seal)"]
+    OPA["OPA sidecar<br/>(Rego policies)"]
+  end
+  DB[("Event store<br/>(PostgreSQL, WORM semantics)")]
+  STH[("Signed tree heads<br/>gossip endpoint")]
+  RPL["Replay tool<br/>rebuild state at entry N"]
+  DASH["Audit dashboard<br/>(proofs, policy verdicts)"]
+  SIM --> REC
+  REC --> API
+  SIM --> API
+  API --> OPA
+  OPA --> API
+  API --> LOG
+  LOG --> SIGN
+  SIGN --> STH
+  LOG --> DB
+  DB --> RPL
+  STH --> DASH
+  DB --> DASH
+      </div>
+      <p class="diagram-label">Figure 1: simulated sources feed the ingestion API; every event is policy-checked, chained, signed, and stored before it can be replayed or audited.</p>
+      <p>
+        The ingestion API is the only writer. An event (sensor observation, recommendation,
+        operator decision) is validated, sent to the OPA sidecar for a policy verdict, then
+        appended to the log. The append is atomic with the hash-chain link: the new entry commits
+        the SHA-256 of its canonical JSON encoding plus the previous entry's hash, so any edit to
+        history invalidates every subsequent link. Periodically the signer folds the log into a
+        Merkle tree, signs the tree head with an Ed25519 key, and publishes it, which is what lets
+        an outside auditor verify the log without trusting me.
+      </p>
+    </section>
+
+    <section id="verification">
+      <h2>Hash-Chain Verification and Replay</h2>
+      <div class="mermaid" role="img" aria-label="Verification and replay flow">
+flowchart TD
+  A["Auditor requests proof<br/>for entry N"] --> B["Fetch Merkle inclusion proof<br/>entry N vs signed tree head"]
+  B --> C{"Hash path recomputes<br/>to signed root?"}
+  C -->|no| BAD["TAMPER: entry or tree<br/>does not match signed head"]
+  C -->|yes| D["Fetch signed tree heads<br/>T_old and T_new"]
+  D --> E{"Consistency proof valid?<br/>(T_old is a prefix of T_new)"}
+  E -->|no| BAD2["TAMPER: history was rewritten<br/>or forked"]
+  E -->|yes| OK["Log verified:<br/>append-only, untampered"]
+  OK --> R["Replay: fold events 1..N<br/>through the state machine"]
+  R --> S["Reconstructed decision state:<br/>tracks, recommendations, approvals,<br/>policy verdicts at that moment"]
+      </div>
+      <p class="diagram-label">Figure 2: verification proves the log is append-only before replay reconstructs the state at any entry.</p>
+      <ul>
+        <li><strong>Inclusion proof</strong>: an auditor gets the Merkle path for a single entry and checks it against a signed tree head, the same proof a certificate transparency monitor runs.</li>
+        <li><strong>Consistency proof</strong>: two signed tree heads are compared to prove the log only ever grew; this is the property that catches silent history rewrites.</li>
+        <li><strong>Replay</strong>: events are folded in order through a deterministic state machine, so state at entry N is always reproducible. The same code path backs the audit dashboard and any after-action review.</li>
+      </ul>
+    </section>
+
+    <section id="stack">
+      <h2>Stack</h2>
+      <table>
+        <thead><tr><th>Layer</th><th>Technology</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Audit log core</td><td>Go (stdlib crypto, x/crypto Ed25519)</td><td>Static binaries, strong typing for a component that must not be ambiguous</td></tr>
+          <tr><td>Transparency design</td><td>RFC 6962-style Merkle tree (Trillian-inspired)</td><td>Battle-tested inclusion and consistency proofs</td></tr>
+          <tr><td>Policy as code</td><td>Open Policy Agent (Rego), sidecar over HTTP</td><td>Policies versioned in Git, evaluated per decision, independently auditable</td></tr>
+          <tr><td>Event store</td><td>PostgreSQL (append-only table, no UPDATE/DELETE grants)</td><td>WORM semantics with boring, well-understood tooling</td></tr>
+          <tr><td>Simulation</td><td>Python scenario generator (fictional tracks)</td><td>Deterministic seeded runs so reviews are reproducible</td></tr>
+          <tr><td>Deployment</td><td>Docker Compose on my homelab, Terraform later</td><td>Whole stack reproducible from Git</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="how-building">
+      <h2>How I'm Building It</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>Event schema and append-only store</strong>
+            <p>A versioned JSON schema for the three event types (observation, recommendation, decision), stored in PostgreSQL with a role that physically cannot run UPDATE or DELETE. Inserts compute the chain hash in a trigger-checked transaction.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>Merkle tree and signer</strong>
+            <p>A Go service that folds pending entries into a Merkle tree every N seconds, signs the tree head with an Ed25519 key held behind a software seal, and publishes signed heads to a gossip-style endpoint so forks are detectable.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>OPA policy gate</strong>
+            <p>Rego policies evaluate every decision event before it is committed. Current example: a simulated deconfliction approval requires two distinct operator identities within a time window. The verdict (allow/deny plus policy version) is logged alongside the event, so policy changes are visible in history.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>Scenario simulator</strong>
+            <p>A seeded Python generator produces fictional aircraft tracks, the rule-based stub issues recommendations (re-route, hold, handoff), and scripted operators approve or override. Deterministic seeds mean any reviewer can reproduce an incident exactly.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Replay tool and audit dashboard</strong>
+            <p>A CLI (<code>replay --entry N</code>) folds events through the state machine and renders the picture at that moment; a small web UI shows the log, proof status, and policy verdicts per decision.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="military">
+      <h2>How Defence Could Implement This</h2>
+      <p>
+        The accountability pattern here is deliberately generic, which is what makes it transferable
+        to real CAF and NORAD contexts:
+      </p>
+      <ul>
+        <li><strong>Command and control audit</strong>: any C2 system that surfaces machine recommendations (air tasking, track classification aids, logistics triage) could write the same three event types to a tamper-evident log, giving boards of inquiry and after-action reviews a trustworthy record of who saw what and decided what.</li>
+        <li><strong>Responsible AI assurance</strong>: DND/CAF AI strategy commitments call for traceable, human-accountable AI. OPA-style policy gates are a concrete mechanism: rules like "human confirmation required" stop being documentation and become enforced, logged code.</li>
+        <li><strong>Cross-network integrity</strong>: signed tree heads are small and one-way friendly. A consistency proof can cross a classification boundary where the full log cannot, so a higher-side auditor can verify a lower-side log was not rewritten without the data itself moving.</li>
+        <li><strong>Multi-party verification</strong>: in NORAD or coalition settings, each party can hold signed tree heads from the others, so no single operator can quietly edit a shared decision record.</li>
+        <li><strong>Domestic operations</strong>: the same pattern applies outside combat contexts, for example Operation LENTUS tasking, where provincial and military decisions interleave and a clean audit trail matters for public accountability.</li>
+      </ul>
+      <p>
+        None of this requires new sensors or new platforms. It is an integrity layer over systems
+        that already exist, and it can be prototyped at homelab scale, which is exactly what I am
+        doing with simulated data.
+      </p>
+    </section>
+
+    <section id="build-yourself">
+      <h2>How to Build This Yourself</h2>
+      <ol>
+        <li><strong>Define your events first.</strong> Pick three event types for your scenario (I use observation, recommendation, decision) and write a versioned JSON schema before any storage code.</li>
+        <li><strong>Make the store append-only for real.</strong> In PostgreSQL, create a writer role with INSERT and SELECT only, no UPDATE, DELETE, or TRUNCATE. Test that deletion fails; do not assume it.</li>
+        <li><strong>Add the hash chain on insert.</strong> Each row stores the SHA-256 of its canonical encoding plus the previous row's hash. Verify with a full-table rescan that recomputes every link.</li>
+        <li><strong>Read RFC 6962, then build the Merkle tree.</strong> Implement leaf hashing with domain separation prefixes, fold entries into a tree, sign the tree head with Ed25519, and expose inclusion and consistency proof endpoints.</li>
+        <li><strong>Write one OPA policy early.</strong> A single Rego rule (for example, two-person approval) wired into the write path teaches you the whole pattern. Log the verdict and policy version with every event.</li>
+        <li><strong>Build replay as a fold, not a query.</strong> State at entry N is a pure function of events 1 through N. Deterministic seeds in your simulator make replay output reproducible for reviewers.</li>
+        <li><strong>Attack your own log.</strong> Write a test that edits a middle row, one that deletes rows, and one that forks the tree. All three must be caught by verification, or the design is decoration.</li>
+      </ol>
+      <div class="note">
+        <strong>Scope and ethics:</strong> the scenario is fictional and the tracks are generated.
+        There is no weapons logic, no real targeting data, and nothing classified in this project.
+        The point is the integrity and accountability machinery, which applies to any
+        human-in-the-loop decision system.
+      </div>
+    </section>
+
+    <section id="status">
+      <h2>Status &amp; Roadmap</h2>
+      <ul>
+        <li><strong>Done</strong>: event schema, append-only PostgreSQL store with insert-time hash chaining, chain rescan verifier, Docker Compose baseline.</li>
+        <li><strong>In progress</strong>: Merkle tree and Ed25519 tree-head signer, inclusion proof endpoint, first OPA policy (two-person approval) on the write path.</li>
+        <li><strong>Next</strong>: consistency proofs and gossip endpoint, seeded scenario simulator, replay CLI, then the audit dashboard.</li>
+      </ul>
+    </section>
+
+</div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>
