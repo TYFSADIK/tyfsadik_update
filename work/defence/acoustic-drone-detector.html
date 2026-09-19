@@ -15,7 +15,7 @@
   <meta property="og:image" content="https://tyfsadik.org/Prove/Passive%20acoustic%20drone%20detector.jpeg">
   <meta name="twitter:card" content="summary_large_image">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"CreativeWork","name":"Passive Acoustic Drone Detector","author":{"@type":"Person","name":"MD. Taki Yasir Faraji Sadik","url":"https://tyfsadik.org/about.html"},"dateCreated":"2026","inLanguage":"en-CA","keywords":"acoustic drone detection, MEMS microphone array, rotor harmonics, beamforming, GCC-PHAT, direction of arrival, counter-drone, passive sensor, NRC DRDC, Raspberry Pi"}</script>
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Build a Passive Acoustic Drone Detector","description":"A ReSpeaker-class 4-mic USB array on a Raspberry Pi detects drone rotor harmonic combs, classifies them against birds and aircraft, beamforms direction of arrival, and reports signed detections over MQTT.","step":[{"@type":"HowToStep","name":"Array bring-up","text":"Connect the 4-mic USB array to the Pi, verify per-channel capture with arecord, and confirm channel sync."},{"@type":"HowToStep","name":"Signal chain","text":"Compute STFT spectrograms and look for the rotor harmonic comb: a ~100-500 Hz fundamental plus evenly spaced, persistent harmonics."},{"@type":"HowToStep","name":"Classification","text":"Separate drones from birds and aircraft using harmonic-comb persistence and spacing features - thresholds/SVM first, compact neural net later."},{"@type":"HowToStep","name":"Direction of arrival","text":"Beamform across the 4-mic array with GCC-PHAT / SRP-PHAT to estimate azimuth and display it on a polar plot."},{"@type":"HowToStep","name":"Test protocol","text":"Test only against my own drones and recorded samples; log detection rate versus distance and false-alarm sources."},{"@type":"HowToStep","name":"Reporting","text":"Publish signed detections over MQTT into the common operating picture, fused with the passive radar node."}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Build a Passive Acoustic Drone Detector","description":"A ReSpeaker-class 4-mic USB array on a Raspberry Pi detects drone rotor harmonic combs, classifies them against birds and aircraft, beamforms direction of arrival, and reports signed detections over MQTT.","step":[{"@type":"HowToStep","name":"Array bring-up","text":"Connect the 4-mic USB array to the Pi, flash the 48 kHz raw firmware if needed, and capture all four channels with arecord."},{"@type":"HowToStep","name":"Per-channel verification","text":"Inspect the captured WAV channel by channel in Python and confirm every mic is alive, unswapped, and at a sane level."},{"@type":"HowToStep","name":"Channel sync check","text":"Cross-correlate the channels against a recorded tone to confirm the inter-channel delays match the array geometry."},{"@type":"HowToStep","name":"Real-time capture loop","text":"Stream 4-channel audio with sounddevice, hand blocks to a worker thread through a queue, and surface overruns."},{"@type":"HowToStep","name":"Spectrogram and noise floor","text":"Compute STFT spectrograms and track an adaptive per-bin noise floor so detection survives wind and traffic."},{"@type":"HowToStep","name":"Harmonic-comb detector","text":"Find peaks and score the rotor comb: a ~100-500 Hz fundamental plus evenly spaced harmonics persisting over time."},{"@type":"HowToStep","name":"Classifier","text":"Train an SVM on comb features to separate drones from birds, aircraft, and lawn equipment."},{"@type":"HowToStep","name":"Direction of arrival","text":"Beamform with GCC-PHAT delays and an SRP-PHAT azimuth scan to estimate bearing; display on a polar plot."},{"@type":"HowToStep","name":"Signed MQTT reporting","text":"Publish signed JSON detections over MQTT into the common operating picture, buffering through link drops."},{"@type":"HowToStep","name":"Field hardening","text":"Run the detector as a systemd service, seal it in an IP65 enclosure, and power it from USB-C PD."}]}</script>
   <link rel="stylesheet" href="../../css/style.css">
   <link rel="icon" href="../../favicon.png" type="image/png">
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
@@ -121,6 +121,25 @@
       </p>
     </section>
 
+    <section id="wiring">
+      <h2>Wiring &amp; Connections</h2>
+      <p>
+        There is deliberately little to wire - no SDR front end, no antennas, no RF anything. The
+        whole node is the array, the Pi, and power; everything else is network.
+      </p>
+      <table>
+        <thead><tr><th>From</th><th>To</th><th>Cable or interface</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>4-mic MEMS array</td><td>Pi 5 USB-A port</td><td>USB-C to USB-A cable (direct)</td><td>Enumerates as a USB Audio Class device; plug directly into the Pi, never through an unpowered hub - brownouts corrupt audio streams silently</td></tr>
+          <tr><td>Pi 5</td><td>Official 27 W supply / PD power bank</td><td>USB-C PD</td><td>Must negotiate the 5 V / 5 A profile; check for undervoltage with <code>vcgencmd get_throttled</code></td></tr>
+          <tr><td>Pi 5</td><td>Bench laptop</td><td>Ethernet (gigabit)</td><td>SSH for development, <code>scp</code> for pulling test recordings, polar-plot dashboard over LAN</td></tr>
+          <tr><td>Pi 5</td><td>MQTT broker (homelab)</td><td>Wi-Fi or Ethernet LAN</td><td>Detections only; node buffers to local disk when the link drops and forwards on reconnect</td></tr>
+          <tr><td>Mic array</td><td>Bench stand / enclosure lid</td><td>1/4&quot; thread + standoffs</td><td>Mounted clear of the bench so reflections off the tabletop do not smear the DoA solution</td></tr>
+          <tr><td>Pi 5</td><td>Laptop acoustic view</td><td>SSH + X-forwarded matplotlib / web dashboard</td><td>The four-channel scope-style view in the bench photo is rendered from the captured USB stream, not from probe leads - there is nothing analog to probe</td></tr>
+        </tbody>
+      </table>
+    </section>
+
     <section id="architecture">
       <h2>Architecture</h2>
       <div class="mermaid" role="img" aria-label="Signal flow from microphone array to the common operating picture">
@@ -153,71 +172,467 @@ flowchart LR
     <section id="how-building">
       <h2>How I Built It</h2>
       <div class="steps">
+
         <div class="step">
           <div class="step-num">01</div>
           <div class="step-body">
             <strong>Array bring-up</strong>
-            <p>The ReSpeaker-class 4-mic USB array enumerates on the Pi 5 as a standard USB Audio Class device - no vendor drivers needed. I confirmed it with <code>arecord -l</code>, then captured all four channels at once with <code>arecord -D hw:1,0 -f S32_LE -r 48000 -c 4 test.wav</code> and inspected the WAV channel by channel in Python (<code>scipy.io.wavfile</code>) to make sure no channel is dead or swapped.</p>
-            <p>Channel sync is the thing that makes beamforming possible: all four mics must sample from the same clock, which they do on this class of array (one shared ADC stream). I verified it empirically - play a tone from a speaker at a known position and confirm the inter-channel delays are small, stable, and consistent with the mic geometry.</p>
+            <p>
+              The ReSpeaker-class 4-mic USB array enumerates on the Pi 5 as a standard USB Audio
+              Class device - no vendor drivers needed, which is exactly why I picked this class of
+              hardware. Mine shipped with the 16 kHz voice-assistant firmware, so I flashed the
+              vendor's 48 kHz raw firmware first; 16 kHz would cap the usable comb at 8 kHz and
+              throw away harmonics that carry detection range. Some firmware variants expose 6
+              channels (4 mics + 2 playback loopback) - I capture 4 and ignore the loopback pair.
+            </p>
+            <p class="code-label">ENUMERATE AND CAPTURE ALL FOUR CHANNELS</p>
+            <pre><code>$ arecord -l
+**** List of CAPTURE Hardware Devices ****
+card 1: ArrayUAC10 [ReSpeaker 4 Mic Array (UAC1.0)], device 0: USB Audio [USB Audio]
+  Subdevices: 1/1
+  Subdevice #0: subdevice #0
+$ arecord -D hw:1,0 -f S32_LE -r 48000 -c 4 -d 10 capture_test.wav
+Recording WAVE 'capture_test.wav' : Signed 32 bit Little Endian, Rate 48000 Hz, Channels 4</code></pre>
+            <p>
+              <strong>What can go wrong:</strong> the card index is not stable across reboots -
+              <code>hw:1,0</code> can become <code>hw:2,0</code> if something else grabs card 1.
+              I verify by listing <code>/dev/snd/by-id/</code> and referencing the device by name
+              in the detector config instead of by number.
+            </p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">02</div>
           <div class="step-body">
-            <strong>Signal chain: spectrograms and the harmonic comb</strong>
-            <p>The DSP pipeline runs in Python with NumPy/SciPy: audio arrives in ~1-second windows, each window gets a Hann-windowed STFT (<code>scipy.signal.stft</code>, 4096-point FFT for ~12 Hz bins at 48 kHz), and the magnitude spectrogram is converted to dB. A noise floor is tracked per bin with a slow moving average so detection adapts to wind and distant traffic.</p>
-            <p>Rotor detection looks for the comb: a candidate fundamental in the ~100-500 Hz band, then a check for evenly spaced peaks at 2x, 3x, 4x... that <em>persist</em> across consecutive windows. A single-frame peak is not enough - rotors hold their speed for seconds, which is exactly what separates them from birdsong chirps.</p>
+            <strong>Per-channel verification</strong>
+            <p>
+              Before any DSP, I need to know all four mics are alive, unswapped, and at sane
+              levels. A dead or swapped channel does not break capture - it silently poisons
+              beamforming later, which is much worse. I inspect the test WAV channel by channel in
+              Python with <code>scipy.io.wavfile</code>, tapping each mic while recording so the
+              channel map is proven, not assumed.
+            </p>
+            <p class="code-label">CHANNEL HEALTH CHECK (PYTHON)</p>
+            <pre><code>import numpy as np
+from scipy.io import wavfile
+
+sr, data = wavfile.read("capture_test.wav")
+print(sr, data.shape)            # expect 48000 (480000, 4)
+for ch in range(data.shape[1]):
+    x = data[:, ch].astype(np.float64)
+    rms = np.sqrt(np.mean(x**2))
+    print(f"ch{ch}: rms={rms:12.1f}  peak={np.abs(x).max():12.0f}")</code></pre>
+            <p>
+              <strong>How I verified:</strong> each channel shows a clear RMS spike at the moment I
+              tapped its mic, and no channel sits at digital zero. The tap map gets written into
+              the config as the channel-to-geometry assignment - step 08 depends on it.
+            </p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">03</div>
           <div class="step-body">
-            <strong>Classification: drone vs bird vs aircraft</strong>
-            <p>Comb detections become feature vectors: fundamental frequency, number of visible harmonics, comb persistence time, harmonic-to-noise ratio, and bandwidth. Birds fail on persistence and spacing; distant fixed-wing aircraft sit below the drone band and fail on fundamental range; helicopters are a genuinely hard case and get their own class label for now.</p>
-            <p>I started with hand-set thresholds, then a small SVM (<code>scikit-learn</code>) trained on recordings of my own drones plus negative samples (park ambience, traffic, birds, a lawnmower - the classic false friend). The escape hatch is a compact 1D CNN or tiny spectrogram CNN exported to ONNX if the SVM's false-alarm rate won't come down; the Pi 5 has the headroom for either.</p>
+            <strong>Channel sync check</strong>
+            <p>
+              Beamforming is the reason this array exists, and it only works if all four mics
+              sample from the same clock. On this class of array they do - one shared ADC stream -
+              but I verify it empirically anyway, because a firmware quirk here would invalidate
+              every azimuth the node ever reports. The test: play a tone from a speaker at a known
+              position, record all channels, and cross-correlate each against channel 0.
+            </p>
+            <p class="code-label">INTER-CHANNEL DELAY CHECK (PYTHON)</p>
+            <pre><code>import numpy as np
+from scipy.signal import correlate
+
+x = data[:, :4].astype(np.float64)   # tone recorded on all 4 channels
+ref = x[:, 0]
+for ch in range(1, 4):
+    c = correlate(x[:, ch], ref, mode="full")
+    lag = np.argmax(np.abs(c)) - (len(ref) - 1)
+    print(f"ch{ch} vs ch0: {lag:+d} samples = {lag / 48.0:+.3f} ms")</code></pre>
+            <p>
+              <strong>How I verified:</strong> the lags come out small, stable across repeats, and
+              consistent with the array geometry - a circular array tens of millimetres across can
+              only produce delays of a few samples at 48 kHz. A lag that jumps around between
+              recordings would mean resampling or clock drift, and the array would go back.
+            </p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">04</div>
           <div class="step-body">
-            <strong>Direction of arrival by beamforming</strong>
-            <p>With four mics in a known circular geometry, azimuth falls out of the phase differences between channels. I use GCC-PHAT (generalized cross-correlation with phase transform) to estimate time delays between mic pairs, then SRP-PHAT (steered response power) to scan candidate azimuths and pick the direction that maximizes steered energy. PHAT weighting whitens the spectrum, which is what makes it robust against the comb's narrowband peaks.</p>
-            <p>DoA is computed only on windows where the classifier says "drone", which keeps the polar plot clean. The tracker draws azimuth against time on a polar display (matplotlib on the dev laptop; a lightweight web dashboard for the field node), with the comb fundamental shown alongside - that is the view in the bench photo, locked near 660 Hz on one of my quads.</p>
+            <strong>Real-time capture loop</strong>
+            <p>
+              Bench WAV files prove the hardware; the field node needs a stream. I use
+              <code>sounddevice</code> (PortAudio) with a callback that does the absolute minimum -
+              copy the block into a queue - and a worker thread that consumes blocks, assembles
+              ~1-second analysis windows, and runs the DSP. This split matters: if the classifier
+              ever runs inside the audio callback, a slow frame stalls the stream and ALSA starts
+              dropping audio.
+            </p>
+            <p class="code-label">STREAMING CAPTURE (PYTHON, SOUNDDEVICE)</p>
+            <pre><code>import queue
+import sounddevice as sd
+
+q = queue.Queue()
+
+def callback(indata, frames, time, status):
+    if status:
+        print(status)          # input overflows surface here - never ignore
+    q.put(indata.copy())       # hand off; DSP happens in the worker thread
+
+stream = sd.InputStream(device="ReSpeaker", channels=4, samplerate=48000,
+                        blocksize=4096, dtype="float32", callback=callback)
+stream.start()</code></pre>
+            <p>
+              <strong>What can go wrong:</strong> <code>input overflow</code> status lines mean the
+              worker fell behind and audio was lost mid-window. I treat any overflow as a
+              measurement-destroying event: the run is marked invalid rather than silently
+              analysed with gaps.
+            </p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">05</div>
           <div class="step-body">
-            <strong>Test protocol</strong>
-            <p>Test targets are my own drones only, plus recorded samples - never other people's aircraft. The protocol: hover and fly-past runs at measured distances with a line of sight, logging detection yes/no per run, first-detection distance, and DoA error against the drone's true bearing. Negative-source runs (park, traffic, birds, lawn equipment) log false-alarm rate per hour.</p>
-            <p>Every run records conditions (wind, background noise, drone model, throttle state) so results are comparable over time. Results stay unpublished until there are enough runs to be honest - the numbers below are stated as protocol and targets, not measurements.</p>
+            <strong>Spectrogram and adaptive noise floor</strong>
+            <p>
+              Detection lives in the frequency domain. Each analysis window gets a Hann-windowed
+              STFT (<code>scipy.signal.stft</code>, 4096-point FFT for ~12 Hz bins at 48 kHz) and
+              the magnitude goes to dB. The critical extra is a <em>per-bin noise floor</em>
+              tracked with a slow rolling median: quiet-room thresholds are useless outdoors,
+              where wind and distant traffic raise the low-frequency floor by tens of dB. Every
+              later stage works on signal-above-floor, not absolute level.
+            </p>
+            <p class="code-label">STFT + NOISE FLOOR (PYTHON)</p>
+            <pre><code>from scipy.signal import stft
+
+f, t, Z = stft(window_mono, fs=48000, window="hann",
+               nperseg=4096, noverlap=3072)
+S = 20 * np.log10(np.abs(Z) + 1e-9)      # magnitude spectrogram, dB
+band = (f &gt;= 50) &amp; (f &lt;= 2000)           # rotor band of interest
+floor = np.median(S_history[band], axis=1)   # slow per-bin rolling median
+Sn = S[band] - floor[:, None]            # signal-above-floor, dB</code></pre>
+            <p>
+              <strong>How I verified:</strong> with a recorded drone fly-past, the comb stands out
+              of <code>Sn</code> clearly even in sections where wind has raised the raw floor -
+              while on raw dB the same harmonics are buried. I keep a debug plot of floor vs.
+              signal for every test run.
+            </p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">06</div>
           <div class="step-body">
-            <strong>Reporting into the common operating picture</strong>
-            <p>Detections are published over MQTT as signed JSON events (node ID, timestamp, azimuth, comb fundamental, confidence, signature) using the same signing discipline as the rest of the fleet. The broker feeds the multi-domain common operating picture, where this node's acoustic tracks are fused with the passive radar node's RF tracks - two sensors that share the property of emitting nothing.</p>
-            <p>The node buffers detections locally when the link drops and forwards on reconnect, following the same store-and-forward pattern as the other field nodes. The simulation sibling of this fusion work is the counter-drone sensor fusion simulator.</p>
+            <strong>Harmonic-comb detector</strong>
+            <p>
+              Rotor detection looks for the comb: a candidate fundamental in the ~100-500 Hz band,
+              then evenly spaced peaks at 2x, 3x, 4x... that <em>persist</em> across consecutive
+              windows. Persistence is the discriminator - a single-frame peak is not enough, and
+              rotors hold their speed for seconds while birdsong chirps come and go in tens of
+              milliseconds. Peaks come from <code>scipy.signal.find_peaks</code> with a height
+              set relative to the noise floor and a minimum spacing so one wide peak cannot
+              count as two harmonics.
+            </p>
+            <p class="code-label">COMB SCORING (PYTHON)</p>
+            <pre><code>from scipy.signal import find_peaks
+
+peaks, props = find_peaks(Sn_mean, height=9, distance=4)  # 9 dB above floor
+
+def comb_score(f0_bin, peaks, max_harmonic=8, tol=1):
+    """Count how many multiples of f0 have a peak within +/- tol bins."""
+    hits = 0
+    for k in range(2, max_harmonic + 1):
+        if np.any(np.abs(peaks - k * f0_bin) &lt;= tol):
+            hits += 1
+    return hits
+
+# candidates: peaks whose bin lands in the ~100-500 Hz fundamental band
+candidates = [b for b in peaks if 8 &lt;= b &lt;= 42]   # 12 Hz/bin at 48 kHz
+best = max(candidates, key=lambda b: comb_score(b, peaks))</code></pre>
+            <p>
+              <strong>What can go wrong:</strong> a 50/60 Hz mains hum and its harmonics form a
+              beautiful comb too. Mains sits below the drone band and its spacing is fixed, so it
+              is excluded by the candidate range - but I logged it as a deliberate negative case
+              during bench testing rather than trusting the math.
+            </p>
           </div>
         </div>
+
+        <div class="step">
+          <div class="step-num">07</div>
+          <div class="step-body">
+            <strong>Classifier: drone vs bird vs aircraft</strong>
+            <p>
+              Comb detections become feature vectors: fundamental frequency, number of visible
+              harmonics, comb persistence time, harmonic-to-noise ratio, and occupied bandwidth.
+              Birds fail on persistence and spacing; distant fixed-wing aircraft sit below the
+              drone band and fail on fundamental range; helicopters are a genuinely hard case and
+              get their own label for now. I started with hand-set thresholds to establish a
+              baseline, then trained a small SVM (<code>scikit-learn</code>) on recordings of my
+              own drones plus negative samples - park ambience, traffic, birds, and a lawnmower,
+              the classic false friend.
+            </p>
+            <p class="code-label">SVM TRAINING (PYTHON, SCIKIT-LEARN)</p>
+            <pre><code>from sklearn.svm import SVC
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import cross_val_score
+
+clf = make_pipeline(StandardScaler(),
+                    SVC(kernel="rbf", class_weight="balanced"))
+scores = cross_val_score(clf, X, y, cv=5, scoring="f1_macro")
+print("CV f1_macro:", scores.mean(), "+/-", scores.std())
+clf.fit(X, y)</code></pre>
+            <p>
+              <strong>What can go wrong:</strong> a small, self-recorded dataset overfits easily,
+              and cross-validation on adjacent windows of the same flight leaks. I split by
+              <em>recording session</em>, not by window, so the model is always tested on flights
+              it has never heard. If the SVM's false-alarm rate will not come down, the escape
+              hatch is a compact spectrogram CNN exported to ONNX - the Pi 5 has the headroom for
+              either.
+            </p>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">08</div>
+          <div class="step-body">
+            <strong>Direction of arrival by beamforming</strong>
+            <p>
+              With four mics in a known circular geometry, azimuth falls out of the phase
+              differences between channels. I use GCC-PHAT (generalized cross-correlation with
+              phase transform) to estimate time delays between mic pairs; PHAT weighting whitens
+              the spectrum, which is what makes it robust against the comb's narrowband peaks
+              instead of locking onto whichever harmonic is loudest. SRP-PHAT then scans candidate
+              azimuths, applies the theoretical per-mic delays for each candidate, and picks the
+              direction that maximizes steered energy.
+            </p>
+            <p class="code-label">GCC-PHAT DELAY ESTIMATE (PYTHON)</p>
+            <pre><code>def gcc_phat(sig, ref, fs, max_tau=3e-4):
+    """Time delay of sig relative to ref, PHAT-weighted."""
+    n = sig.size + ref.size
+    SIG = np.fft.rfft(sig, n=n)
+    REF = np.fft.rfft(ref, n=n)
+    R = SIG * np.conj(REF)
+    R /= np.abs(R) + 1e-15              # PHAT whitening
+    cc = np.fft.irfft(R, n=n)
+    shift = n // 2
+    cc = np.concatenate((cc[-shift:], cc[:shift]))
+    tau = (np.argmax(cc) - shift) / fs
+    assert abs(tau) &lt; max_tau           # geometry cannot allow more
+    return tau</code></pre>
+            <p>
+              DoA is computed only on windows where the classifier says "drone", which keeps the
+              polar plot clean. The tracker draws azimuth against time on a polar display
+              (matplotlib on the dev laptop; a lightweight web dashboard for the field node), with
+              the comb fundamental alongside - that is the view in the bench photo, locked near
+              660 Hz on one of my quads.
+            </p>
+            <p>
+              <strong>How I verified:</strong> a speaker playing a recorded drone track at known
+              azimuths on the bench (0, 45, 90... degrees by protractor) must land on the matching
+              spokes of the polar plot. This test is also what caught a left/right channel swap -
+              see Troubleshooting below.
+            </p>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">09</div>
+          <div class="step-body">
+            <strong>Signed MQTT reporting</strong>
+            <p>
+              Detections are published over MQTT as signed JSON events (node ID, timestamp,
+              azimuth, comb fundamental, confidence, signature) using the same Ed25519 signing
+              discipline as the rest of the fleet - a detection the common operating picture
+              cannot attribute to a specific node is noise, not data. The broker feeds the
+              multi-domain common operating picture, where this node's acoustic tracks fuse with
+              the passive radar node's RF tracks - two sensors that share the property of emitting
+              nothing. The simulation sibling of that fusion logic is the counter-drone sensor
+              fusion simulator.
+            </p>
+            <p class="code-label">SIGNED DETECTION EVENT (PYTHON, PAHO + PYNACL)</p>
+            <pre><code>import json, time
+import paho.mqtt.client as mqtt
+from nacl.signing import SigningKey
+
+event = {"node": "acoustic-01", "ts": time.time(),
+         "azimuth_deg": az, "fundamental_hz": f0, "confidence": conf}
+payload = json.dumps(event, sort_keys=True).encode()
+event["sig"] = SigningKey(open("node.key", "rb").read()) \
+    .sign(payload).signature.hex()
+
+client = mqtt.Client()
+client.connect("broker.homelab", 1883)
+client.publish("cop/detections/acoustic-01", json.dumps(event))</code></pre>
+            <p>
+              <strong>What can go wrong:</strong> the broker will be down at exactly the wrong
+              moment - that is the DDIL reality the whole program is built around. When
+              <code>publish()</code> fails, events are appended to a local SQLite outbox and
+              replayed in order on reconnect, following the same store-and-forward pattern as the
+              other field nodes. Clock skew also matters: the Pi has no RTC, so timestamps are
+              only trustworthy after NTP sync, which the service waits for at boot.
+            </p>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">10</div>
+          <div class="step-body">
+            <strong>Field hardening: service, enclosure, power</strong>
+            <p>
+              A bench script is not a sensor. The detector runs as a systemd service so it
+              survives reboots and crashes, mounts read-only where it can (high-endurance storage
+              still dislikes power cuts), and waits for time sync before trusting its own
+              timestamps. The field kit is the IP65 box with cable glands and a USB-C PD power
+              bank; the array mounts through the lid on standoffs with a foam windscreen over the
+              mics.
+            </p>
+            <p class="code-label">SYSTEMD UNIT (/etc/systemd/system/acoustic-detector.service)</p>
+            <pre><code>[Unit]
+Description=Passive acoustic drone detector
+After=sound.target network-online.target time-sync.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/acoustic/detector.py
+WorkingDirectory=/opt/acoustic
+Restart=always
+RestartSec=5
+User=acoustic
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+            <p>
+              <strong>How I verified:</strong> <code>systemctl enable --now</code>, then deliberate
+              abuse - <code>kill -9</code> the process (service restarts in 5 s), pull the network
+              (events pile up in the outbox), yank power mid-run (node comes back up and resumes
+              without manual SSH). A field node that needs babysitting is not finished.
+            </p>
+          </div>
+        </div>
+
       </div>
     </section>
 
     <section id="testing">
       <h2>Testing &amp; Metrics</h2>
-      <p>The test protocol and what is being measured:</p>
-      <ul>
-        <li><strong>Detection rate vs distance</strong>: fraction of runs with a detection, bucketed by slant range. Target: a clear, repeatable detection envelope against my own quads in quiet suburban conditions; the specific distances stay unpublished until the run count is honest.</li>
-        <li><strong>DoA accuracy</strong>: angular error between the estimated azimuth and the drone's true bearing (from its logged GPS track). Target: useful sector-level accuracy - tens of degrees is enough to cue a camera or a second sensor.</li>
-        <li><strong>False-alarm rate</strong>: alarms per hour against negative sources (birds, traffic, lawn equipment, voices). Target: low enough that a human reviewing the alert queue is not numbed by noise; measured, not assumed.</li>
-        <li><strong>Classification confusion</strong>: the bird / drone / aircraft confusion matrix on held-out recordings, tracked per classifier version.</li>
-      </ul>
       <p>
-        All measured results are <strong>in progress</strong>: the bench rig detects and tracks rotor
-        harmonics (see the photo above), but field-range numbers will be published only after a
-        proper run series, not from a handful of anecdotes.
+        Test targets are my own drones and recorded samples only - never other people's aircraft.
+        Every run logs conditions (wind, background noise, drone model, throttle state, distance)
+        so results are comparable over time. Results stay unpublished until the run count is
+        honest; everything below is protocol and targets, not measurements.
       </p>
+
+      <h3>Test Runs</h3>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">T1</div>
+          <div class="step-body">
+            <strong>Bench DoA calibration</strong>
+            <p><strong>Setup:</strong> array on the bench stand, speaker playing a recorded drone track at measured azimuths (0, 45, 90, ... 315 degrees, by protractor, ~2 m). <strong>Procedure:</strong> 30 seconds per position, tracker logging. <strong>Metric:</strong> reported azimuth vs. known bearing, per position.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">T2</div>
+          <div class="step-body">
+            <strong>Hover detection envelope</strong>
+            <p><strong>Setup:</strong> my quad hovering at a series of measured distances along a line of sight, in quiet suburban conditions. <strong>Procedure:</strong> repeated hover runs per distance, alternating direction. <strong>Metric:</strong> detection yes/no per run; first-detection distance on approach runs.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">T3</div>
+          <div class="step-body">
+            <strong>Fly-past tracking</strong>
+            <p><strong>Setup:</strong> the quad flying past the node at a fixed altitude and offset, logging its own GPS track. <strong>Procedure:</strong> repeated passes at different speeds. <strong>Metric:</strong> track continuity (fraction of flight with a live track) and DoA error against the true bearing computed from the drone's GPS log.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">T4</div>
+          <div class="step-body">
+            <strong>Negative-source false alarms</strong>
+            <p><strong>Setup:</strong> node running in ordinary environments with no drone present - park ambience, road traffic, birds, and a gas lawnmower at measured distances. <strong>Procedure:</strong> timed sessions per source. <strong>Metric:</strong> false alarms per hour, by source type.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">T5</div>
+          <div class="step-body">
+            <strong>Long soak</strong>
+            <p><strong>Setup:</strong> node on power-bank power, running unattended. <strong>Procedure:</strong> continuous operation with health logging (CPU, temperature, memory, outbox depth). <strong>Metric:</strong> uptime, restart count, memory growth, battery runtime.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">T6</div>
+          <div class="step-body">
+            <strong>Fusion dry run</strong>
+            <p><strong>Setup:</strong> this node and the passive radar node pointed at the same airspace during a T3-style fly-past. <strong>Procedure:</strong> both publish to the common operating picture. <strong>Metric:</strong> time from detection to fused track, and agreement between the acoustic azimuth and the RF track.</p>
+          </div>
+        </div>
+      </div>
+
+      <h3>Targets &amp; Current Status</h3>
+      <table>
+        <thead><tr><th>Metric</th><th>Target</th><th>Current status</th></tr></thead>
+        <tbody>
+          <tr><td>Bench DoA error (T1)</td><td>Sector-level agreement with known bearings - accurate enough to cue a camera or second sensor</td><td>In progress - calibration rig works, full 8-position series not yet logged</td></tr>
+          <tr><td>Detection envelope (T2)</td><td>A clear, repeatable detection range against my own quads in quiet conditions</td><td>In progress - bench detection confirmed, outdoor run series not yet done</td></tr>
+          <tr><td>Track continuity (T3)</td><td>A continuous track through a fly-past, with DoA error bounded against GPS truth</td><td>In progress - tracker locks on the bench; fly-past series not yet done</td></tr>
+          <tr><td>False-alarm rate (T4)</td><td>Low enough that a human reviewing the alert queue is not numbed by noise; measured per source, not assumed</td><td>In progress - lawnmower and traffic sessions collected, more sources pending</td></tr>
+          <tr><td>Long-soak stability (T5)</td><td>Multi-day unattended uptime with no manual intervention</td><td>In progress - service hardening done, soak runs not yet logged</td></tr>
+          <tr><td>Fusion latency (T6)</td><td>Acoustic and RF tracks fused into one track in the common operating picture</td><td>Next - waiting on the passive radar node's reporting feed</td></tr>
+        </tbody>
+      </table>
+      <p>
+        The bench rig detects and tracks rotor harmonics today (see the photo above), but no
+        field-range numbers are published here yet - they land only after the T2/T3 run series,
+        not from a handful of anecdotes.
+      </p>
+    </section>
+
+    <section id="troubleshooting">
+      <h2>Troubleshooting &amp; Lessons</h2>
+      <ul>
+        <li>
+          <strong>The capture device moved after a reboot.</strong> <code>hw:1,0</code> became
+          <code>hw:2,0</code> and the detector captured silence from the wrong device. Fix: resolve
+          the array by name from <code>/dev/snd/by-id/</code> at startup and fail loudly if it is
+          absent, instead of opening whatever card 1 happens to be.
+        </li>
+        <li>
+          <strong>Input overflows corrupted analysis windows.</strong> Early versions ran the STFT
+          inside the audio callback; one slow frame stalled the stream and PortAudio dropped
+          blocks mid-window, producing spectrograms with invisible gaps. Fix: the callback now only
+          copies to a queue, a worker thread does the DSP, and any overflow invalidates the run.
+          Lesson: never do arithmetic in a real-time callback.
+        </li>
+        <li>
+          <strong>Wind looked like a drone.</strong> Strong gusts raised the sub-100 Hz floor and
+          the peak picker found phantom "fundamentals" in the rumble. Fix: an 80 Hz high-pass
+          before the STFT, the adaptive per-bin noise floor, and a foam windscreen on the array.
+          Verified with a bench fan aimed at the mics - gusty, but no combs.
+        </li>
+        <li>
+          <strong>A gas lawnmower passed every threshold.</strong> It is a real engine with real
+          harmonics - persistence and spacing alone could not reject it. Fix: lawnmower sessions
+          went into the training set as hard negatives, and the SVM (with
+          <code>class_weight="balanced"</code>) learned the differences in harmonic count and
+          bandwidth. It remains the hardest negative source; helicopters are the next one.
+        </li>
+        <li>
+          <strong>The azimuth was mirrored.</strong> Bench calibration showed tracks moving
+          clockwise on the plot while the source moved counterclockwise - two channels were swapped
+          relative to the assumed geometry. Fix: the tap-test channel map from step 02 is now
+          printed at startup and asserted against the config, and the speaker-at-known-bearing
+          test (T1) runs after any hardware change. Lesson: calibrate the geometry with sound,
+          not with the datasheet.
+        </li>
+      </ul>
     </section>
 
     <section id="notes">
@@ -238,9 +653,9 @@ flowchart LR
     <section id="status">
       <h2>Status &amp; Roadmap</h2>
       <ul>
-        <li><strong>Done</strong>: array bring-up and per-channel capture verified with arecord; channel sync confirmed; STFT + harmonic-comb detector running on the Pi; polar-plot tracker tracking my own drones on the bench (photo above); MQTT event schema defined.</li>
-        <li><strong>In progress</strong>: classifier training set (own drones + negative samples); SVM tuning against the threshold baseline; SRP-PHAT azimuth accuracy checks against known bearings.</li>
-        <li><strong>Next</strong>: outdoor run series for detection-rate-vs-distance and false-alarm logging; IP65 enclosure and power-bank field kit; signed MQTT feed into the common operating picture and fusion with the passive radar node.</li>
+        <li><strong>Done</strong>: array flashed to 48 kHz firmware; per-channel capture verified with arecord and the tap-test map; channel sync confirmed by cross-correlation; streaming capture loop with overflow handling; STFT + adaptive noise floor + harmonic-comb detector running on the Pi; GCC-PHAT/SRP-PHAT polar-plot tracker tracking my own drones on the bench (photo above); systemd service with restart and NTP wait; signed MQTT event schema defined.</li>
+        <li><strong>In progress</strong>: classifier training set (own drones + negative sources, split by session); SVM tuning against the threshold baseline; T1 bench azimuth calibration series; negative-source false-alarm sessions (T4).</li>
+        <li><strong>Next</strong>: outdoor T2/T3 run series for detection envelope and tracking accuracy; long-soak runs (T5); IP65 enclosure and power-bank field kit; signed MQTT feed into the common operating picture and the T6 fusion dry run with the passive radar node.</li>
       </ul>
     </section>
 

@@ -15,7 +15,7 @@
   <meta property="og:image" content="https://tyfsadik.org/Prove/Cold-soak%20characterization%20rig.jpeg">
   <meta name="twitter:card" content="summary_large_image">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"CreativeWork","name":"Cold-Soak Battery Characterization Rig","author":{"@type":"Person","name":"MD. Taki Yasir Faraji Sadik","url":"https://tyfsadik.org/about.html"},"dateCreated":"2026","inLanguage":"en-CA","keywords":"cold-soak battery testing, LiPo characterization, drone battery heater, voltage sag, runtime vs temperature, Arctic ISR, MINERVA challenge, Defence Drone Initiative"}</script>
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"How to Characterize Drone Battery Performance in the Cold","description":"Build an instrumented, heated battery bay and log runtime, voltage sag, and failure modes across cold-soak temperatures in a freezer and real Canadian winter.","step":[{"@type":"HowToStep","name":"Instrumented bay","text":"Bond Kapton heater pads to the battery bay, drive them through a MOSFET, wrap the bay in foam insulation, and mount DS18B20 sensors on the cell surface, bay wall, heater pad, and ambient."},{"@type":"HowToStep","name":"Power logging","text":"Log pack voltage, current, and accumulated mAh with INA228 power monitors over I2C to the logging host."},{"@type":"HowToStep","name":"Freezer protocol","text":"Soak the pack at setpoints (0, -10, -20, -30 C) until the core temperature stabilizes, then discharge at a fixed load while logging voltage sag, runtime, and cutoff behaviour."},{"@type":"HowToStep","name":"Winter runs","text":"Repeat the protocol outdoors in real Canadian winter conditions to validate the freezer data against reality."},{"@type":"HowToStep","name":"Heater strategies","text":"Compare unheated vs thermostat-controlled vs pre-heat-and-fly, quantifying the energy cost of heating against the capacity recovered."},{"@type":"HowToStep","name":"Publish","text":"Release the dataset - runtime, voltage sag, and failure mode vs temperature - with the full protocol so others can reproduce it."}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"How to Characterize Drone Battery Performance in the Cold","description":"Build an instrumented, heated battery bay and log runtime, voltage sag, and failure modes across cold-soak temperatures in a freezer and real Canadian winter.","step":[{"@type":"HowToStep","name":"Instrumented bay","text":"Bond Kapton heater pads to the battery bay, drive them through a logic-level MOSFET with a gate pull-down, wrap the bay in foam insulation, and fuse the heater feed close to the pack."},{"@type":"HowToStep","name":"Temperature sensor harness","text":"Wire six DS18B20 sensors in powered 3-wire mode on one 1-Wire bus with a 4.7 kohm pull-up, enable the w1-therm driver, and map each serial number to a physical position."},{"@type":"HowToStep","name":"INA228 power logging","text":"Put one INA228 on the discharge path and one on the heater branch, set separate I2C addresses, configure averaging and shunt calibration, and verify readings against a Fluke multimeter."},{"@type":"HowToStep","name":"Logging service","text":"Run a Python logger as a systemd service that samples all sensors once per second and appends timestamped rows to per-run CSV files on the Pi's NVMe storage."},{"@type":"HowToStep","name":"Heater control","text":"Drive the heater MOSFET from a GPIO with a hysteresis thermostat loop on the pad sensor, plus a hard over-temperature cutoff on the cell sensor."},{"@type":"HowToStep","name":"Fixed discharge load","text":"Build a roughly 4 A resistive load from series power resistors on a heatsink, mounted outside the bay, and verify the actual draw with the multimeter."},{"@type":"HowToStep","name":"Freezer soak protocol","text":"Soak at 0, -10, -20, and -30 C until the cell-surface sensor holds within half a degree of setpoint for fifteen minutes, then discharge to cutoff while logging."},{"@type":"HowToStep","name":"Winter runs","text":"Repeat the protocol outdoors in real Canadian winter weather, tagging every run with observed temperature, wind, and humidity."},{"@type":"HowToStep","name":"Heater strategies","text":"Run a matrix of unheated vs thermostat-controlled vs pre-heat-and-fly at every setpoint, using the heater-branch INA228 to cost heating energy honestly."},{"@type":"HowToStep","name":"Publish","text":"Release per-run CSVs, the plotting code, and the full protocol so anyone can regenerate every figure and reproduce or extend the dataset."}]}</script>
   <link rel="stylesheet" href="../../css/style.css">
   <link rel="icon" href="../../favicon.png" type="image/png">
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
@@ -80,16 +80,17 @@
       <p>
         So this build is not a drone - it is the measurement rig that tells you whether a drone's power
         system survives the cold. A battery bay on a quadcopter frame carries <strong>Kapton heater pads</strong>,
-        foam insulation, six temperature sensors, and power monitors. The whole rig goes into a lab freezer
-        (and later, the actual Toronto winter), and every run logs pack voltage, current, accumulated mAh,
-        cell surface temperature, and bay temperature against time.
+        foam insulation, six temperature sensors, and two power monitors. The whole bay goes into a lab
+        freezer (and later, the actual Toronto winter), and every run logs pack voltage, discharge and
+        heater current, accumulated mAh, and four temperature channels against time.
       </p>
       <p>
         The deliverable is deliberately boring and valuable: a <strong>clean, public dataset of battery
         behaviour versus temperature</strong>, measured on a stated Army pain point, with a full protocol
         anyone can reproduce. Vendors publish marketing numbers; hobbyists publish anecdotes; a controlled,
         documented dataset at 0, -10, -20, and -30 &deg;C is rare, easy to explain, and directly useful to
-        anyone sizing an Arctic-capable platform.
+        anyone sizing an Arctic-capable platform - including the thermal SAR drone in this same program,
+        whose packs are the test subjects here.
       </p>
     </section>
 
@@ -140,75 +141,307 @@ flowchart LR
   HOST --> DATA
       </div>
       <p class="diagram-label">Figure 1: the instrumented bay is sensed over 1-Wire and I2C; the logging host drives the heater MOSFET and writes every run to the dataset.</p>
+      <p>
+        One design decision shapes everything else: <strong>the logging host never enters the cold
+        chamber.</strong> The Pi sits on the bench at room temperature; only the sensor leads, the heater
+        feed, and the discharge leads pass into the freezer through the door gasket. Consumer SD cards,
+        crystal oscillators, and USB hubs all get flaky below -20 &deg;C, and a logger that dies at
+        minute forty of a -30 &deg;C soak is a wasted evening. Keeping the compute warm and the
+        instruments cold is what makes the dataset trustworthy.
+      </p>
+    </section>
+
+    <section id="wiring">
+      <h2>Wiring &amp; Connections</h2>
+      <table>
+        <thead><tr><th>From</th><th>To</th><th>Cable or interface</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>DS18B20 harness (VDD, GND, DATA)</td><td>Pi GPIO4 (pin 7), 3V3 (pin 1), GND (pin 6)</td><td>1-Wire bus, 3-conductor 22 AWG</td><td>Powered 3-wire mode, 4.7 k&Omega; pull-up between 3V3 and DATA at the Pi end; leads pass through the freezer door gasket</td></tr>
+          <tr><td>INA228 #1 (discharge path)</td><td>Pi I2C1: SDA (pin 3), SCL (pin 5)</td><td>I2C, address 0x40</td><td>A0/A1 tied to GND; sits in series between the pack and the fixed load</td></tr>
+          <tr><td>INA228 #2 (heater branch)</td><td>Same I2C1 bus</td><td>I2C, address 0x41</td><td>A0 tied to VS+ to move it off 0x40; measures heater voltage, current, and mAh separately</td></tr>
+          <tr><td>Pi GPIO17 (pin 11)</td><td>MOSFET gate</td><td>Gate signal wire</td><td>100 &Omega; series resistor at the gate, 10 k&Omega; pull-down to GND so the heater fails off during boot</td></tr>
+          <tr><td>4S pack positive</td><td>Kapton pads positive</td><td>18 AWG silicone, 5 A fuse inline</td><td>Fuse within 5 cm of the pack lead; heater energy comes from the pack itself, like a real aircraft</td></tr>
+          <tr><td>MOSFET drain</td><td>Kapton pads negative</td><td>18 AWG silicone</td><td>Source to common GND shared with the Pi; low-side switching</td></tr>
+          <tr><td>Pack discharge lead (XT60)</td><td>Load resistor bank</td><td>14 AWG silicone</td><td>Load mounted on a heatsink outside the bay - a 60+ W heat source inside the bay would corrupt the thermal data</td></tr>
+          <tr><td>Bench USB-C wall power</td><td>Pi 5 V rail</td><td>Official 27 W USB-C supply</td><td>The Pi stays on the bench at room temperature for every run</td></tr>
+        </tbody>
+      </table>
     </section>
 
     <section id="how-building">
       <h2>How I Built It</h2>
       <div class="steps">
+
         <div class="step">
           <div class="step-num">01</div>
           <div class="step-body">
             <strong>Instrumented bay</strong>
-            <p>Kapton heater pads are bonded directly to the battery bay of the quadcopter frame with polyimide tape, driven through a logic-level MOSFET on a heatsink, and the whole bay is wrapped in foam insulation so the heat budget is measurable rather than leaking to ambient.</p>
-            <p>Six DS18B20 digital sensors go where the physics matters: taped to the cell surface, on the bay wall, on the heater pad itself, in ambient air, and spares for cross-checking. On the Raspberry Pi they hang off one 1-Wire bus with a 4.7 k&Omega; pull-up, read through the <code>w1-therm</code> kernel driver via <code>/sys/bus/w1/devices/</code>.</p>
+            <p>The battery bay on the quadcopter frame gets the full treatment: Kapton heater pads bonded flat against the bay walls with polyimide tape, a logic-level N-MOSFET switching the pads on the low side, and foam insulation wrapped around the whole bay. The insulation is not there to keep the pack warm for free - it is there to make the heat budget <em>measurable</em>, so watts in maps predictably to degrees gained instead of leaking into the freezer.</p>
+            <p>Safety and failure behaviour are designed in, not added on: a fuse within centimetres of the pack lead, and a gate pull-down so the heater is physically off until software says otherwise. If the Pi crashes mid-run, the rig defaults to a cold, passive pack - never to a runaway heater in an insulated box.</p>
+            <p class="code-label">HEATER DRIVER WIRING - IRLZ44N LOGIC-LEVEL N-MOSFET</p>
+            <pre><code>IRLZ44N (logic-level gate, Vgs(th) 1-2 V)
+  Gate   -&gt; GPIO17 (Pi pin 11) via 100 ohm series resistor
+  Gate   -&gt; 10 kohm pull-down to GND   (fails OFF at boot)
+  Drain  -&gt; Kapton pads (-)
+  Source -&gt; GND (common with Pi ground)
+Kapton pads (+) -&gt; 4S pack (+) via 5 A fuse
+Heater feed measured by INA228 #2 on the high side</code></pre>
+            <p><strong>What can go wrong:</strong> bonding pads before testing them is the classic mistake - I bench-ran each pad through the MOSFET first and checked for even heating by hand (and against the Fluke's thermocouple) before anything got taped down permanently.</p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">02</div>
           <div class="step-body">
-            <strong>Power logging</strong>
-            <p>Two INA228 power monitors sit in series with the pack and the load, logging bus voltage, shunt current, and accumulated charge (mAh) over I2C at a fixed sample rate. One watches the discharge path; the second watches the heater circuit so heating energy is costed separately from flight energy.</p>
-            <p>The logger is a small Python service using <code>smbus2</code>, writing timestamped rows to CSV on the Pi's NVMe storage, with the Pico datalogger and Fluke multimeter as independent sanity references on the bench.</p>
+            <strong>Temperature sensor harness</strong>
+            <p>Six DS18B20 sensors go where the physics actually happens: taped to the cell surface, on the bay wall, directly on the heater pad, in ambient air inside the freezer, plus two spares for cross-checking. All six share one 1-Wire bus on GPIO4 with a single 4.7 k&Omega; pull-up, in powered 3-wire mode - parasite power over long freezer leads is asking for dropouts.</p>
+            <p>The Pi reads them through the kernel's <code>w1-therm</code> driver, which exposes each probe as a file under <code>/sys/bus/w1/devices/</code>. Reading a sensor is literally <code>cat</code>-ing a file - no libraries, no daemons, and nothing to debug at -30 &deg;C.</p>
+            <p class="code-label">ENABLE 1-WIRE - /boot/firmware/config.txt</p>
+            <pre><code>dtoverlay=w1-gpio,gpiopin=4</code></pre>
+            <p class="code-label">VERIFY ALL SIX PROBES ENUMERATE AND READ</p>
+            <pre><code>$ sudo modprobe w1-gpio &amp;&amp; sudo modprobe w1-therm
+$ ls /sys/bus/w1/devices/
+28-00000a4f11c3  28-00000a51e907  28-00000b02d44a
+28-00000b7c31e8  28-00000c19f0b2  28-00000c52aa61
+w1_bus_master1
+$ cat /sys/bus/w1/devices/28-00000a4f11c3/temperature
+21375</code></pre>
+            <p><strong>How I verified:</strong> each sensor got a warm finger while watching its file - that maps serial number to physical position, and the mapping is written into the logger config. A sensor stuck at exactly 85.000 &deg;C is the DS18B20's power-on default and means the last conversion failed, i.e. a wiring problem, not a coincidence.</p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">03</div>
           <div class="step-body">
-            <strong>Freezer protocol</strong>
-            <p>Each run soaks the fully charged pack in the freezer at a fixed setpoint - 0, -10, -20, -30 &deg;C - and waits until the cell-surface sensor (not the air sensor) has stabilized at the target, because the core temperature is what the chemistry feels.</p>
-            <p>The pack then discharges through a fixed resistive load while the logger captures the full voltage-sag curve, runtime to cutoff, and exactly how the cutoff behaves - graceful sag or a hard collapse. Every run repeats so the dataset carries variance, not single anecdotes.</p>
+            <strong>INA228 power logging</strong>
+            <p>Two INA228 power monitors do the electrical accounting. One sits in series between the pack and the discharge load and logs bus voltage, shunt current, and accumulated charge; the second sits in the heater feed, so the energy spent on heating is costed separately from the energy delivered to the load. That separation is what makes the heater-strategy comparison in step 09 honest instead of hand-wavy.</p>
+            <p>Both chips share the Pi's I2C1 bus, so the second one needs its address moved off the 0x40 default by tying A0 to VS+ (0x41). The INA228's configuration is a few register writes: continuous shunt+bus conversion, the longest conversion time for noise rejection, modest averaging, and the shunt calibration value computed from the 2 m&Omega; shunt and the expected maximum current.</p>
+            <p class="code-label">CONFIRM BOTH CHIPS ON THE BUS</p>
+            <pre><code>$ sudo i2cdetect -y 1
+     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
+40: 40 41 -- -- -- -- -- -- -- -- -- -- -- -- -- --</code></pre>
+            <p class="code-label">INA228 INIT + CALIBRATION (PYTHON / smbus2)</p>
+            <pre><code>from smbus2 import SMBus
+
+ADDR    = 0x40        # discharge monitor; heater monitor is 0x41
+R_SHUNT = 0.002       # 2 mOhm shunt on the breakout board
+I_MAX   = 25.0        # worst-case expected current, A
+CURRENT_LSB = I_MAX / 2**19
+
+bus = SMBus(1)
+
+def wr16(reg, val):
+    bus.write_i2c_block_data(ADDR, reg, [(val &gt;&gt; 8) &amp; 0xFF, val &amp; 0xFF])
+
+# ADC_CONFIG (0x01): continuous shunt+bus, 4.12 ms conversions, 16x averaging
+wr16(0x01, (0xF &lt;&lt; 12) | (0x7 &lt;&lt; 9) | (0x7 &lt;&lt; 6) | (0x7 &lt;&lt; 3) | 0x2)
+# SHUNT_CAL (0x02) = 13107.2e6 * CURRENT_LSB * R_SHUNT   (ADCRANGE = 0)
+wr16(0x02, int(13107.2e6 * CURRENT_LSB * R_SHUNT) &amp; 0x7FFF)</code></pre>
+            <p><strong>How I verified:</strong> the Fluke went in series with the load for a full discharge at room temperature; the INA228's current track had to agree before any cold data counted. What can go wrong: a swapped shunt sense lead gives perfectly smooth <em>negative</em> current readings - plausible-looking garbage, which is worse than no data.</p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">04</div>
           <div class="step-body">
-            <strong>Winter runs</strong>
-            <p>The freezer is a controlled stand-in, not the real thing. The same protocol repeats outdoors through a Toronto winter - porch and balcony runs at whatever the weather gives - to validate the freezer data against reality and catch what a chest freezer misses: wind stripping heat from the bay, humidity, and snow on the insulation.</p>
+            <strong>Logging service</strong>
+            <p>The logger is a small Python service on the Pi: once per second it reads all six <code>w1-therm</code> files and both INA228s, integrates current into accumulated mAh, and appends one timestamped row to the run's CSV on the Pi's NVMe drive. One flat CSV per run, one schema for the whole dataset - no database, because a dataset people can open in anything is a dataset people actually check.</p>
+            <p>It runs under <code>systemd</code> with <code>Restart=always</code>, because freezer sessions are long and unattended: if the process dies at hour two of a soak, it comes back and keeps appending to the same run file instead of silently losing the night.</p>
+            <p class="code-label">CSV SCHEMA - ONE ROW PER SECOND, ONE FILE PER RUN</p>
+            <pre><code>timestamp,setpoint_c,strategy,v_pack,a_discharge,mah_discharge,v_heater,a_heater,mah_heater,t_cell,t_bay,t_pad,t_ambient,run_id
+2026-09-14T21:03:12-04:00,-20,thermostat,16.71,4.02,3.4,16.68,1.21,0.9,-19.8,-18.2,-12.5,-20.1,run-014</code></pre>
+            <p class="code-label">/etc/systemd/system/coldsoak-logger.service</p>
+            <pre><code>[Unit]
+Description=Cold-soak battery logger
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/taki/coldsoak/logger.py --out /data/coldsoak
+WorkingDirectory=/home/taki/coldsoak
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+            <pre><code>$ sudo systemctl enable --now coldsoak-logger
+$ journalctl -u coldsoak-logger -f</code></pre>
+            <p><strong>How I verified:</strong> I killed the process mid-run on purpose (<code>sudo kill -9</code>) and confirmed the service restarted and resumed appending without corrupting the header or duplicating rows. What can go wrong: logging to the SD card instead of NVMe fills or wears the card during multi-hour runs - the dataset lives on the NVMe from day one.</p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">05</div>
           <div class="step-body">
-            <strong>Heater strategies</strong>
-            <p>Three strategies get compared at each temperature: <strong>unheated</strong> (the baseline), <strong>thermostat-controlled</strong> (the MOSFET holds the bay at a setpoint with a hysteresis band driven from the pad sensor), and <strong>pre-heat-and-fly</strong> (heat on the ground, disconnect, fly on stored warmth).</p>
-            <p>The point of the comparison is an honest energy accounting: the INA228 on the heater circuit measures exactly how many mAh heating costs, so the dataset can say whether heating recovered more capacity than it consumed at each setpoint.</p>
+            <strong>Heater control</strong>
+            <p>The thermostat strategy is a hysteresis (bang-bang) controller: heat on when the pad sensor falls below the band, off when it rises above it. Hysteresis instead of a single threshold keeps the MOSFET from chattering at the boundary, which both wears nothing mechanical but does pollute the current trace with switching noise the INA228 then has to average out.</p>
+            <p>Two independent protections sit outside the strategy logic: a hard cutoff that forces the heater off if the <em>cell</em> sensor ever exceeds a safe limit, and a watchdog that cuts heat if sensor reads go stale - a crashed loop must equal a cold heater, matching the hardware fails-off from step 01.</p>
+            <p class="code-label">HYSTERESIS THERMOSTAT LOOP (gpiozero)</p>
+            <pre><code>from gpiozero import OutputDevice
+
+heater = OutputDevice(17, active_high=True, initial_value=False)
+SETPOINT, HYST = 15.0, 1.5     # pad temperature band, deg C
+CELL_HARD_LIMIT = 45.0         # cell surface hard cutoff, deg C
+
+def control(t_pad, t_cell):
+    if t_cell is None or t_cell &gt; CELL_HARD_LIMIT:
+        heater.off()           # stale or hot: always off
+    elif t_pad &lt; SETPOINT - HYST:
+        heater.on()
+    elif t_pad &gt; SETPOINT + HYST:
+        heater.off()</code></pre>
+            <p><strong>How I verified:</strong> the loop was exercised with the pad sensor in ice water and then under a hair dryer, watching the GPIO state flip at both band edges - no battery involved. What can go wrong: the pad sensor responds faster than the cell surface, so a naive setpoint on the pad overshoots the cell temperature; that is exactly why the hard limit reads the cell, not the pad.</p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">06</div>
           <div class="step-body">
-            <strong>Publish</strong>
-            <p>The end product is the dataset itself: per-run CSVs, plotted voltage-sag curves, runtime and failure mode versus temperature, plus the full protocol - setpoints, soak criteria, load value, sensor placement, and code - so anyone with a freezer and fifty dollars of sensors can reproduce or extend it.</p>
+            <strong>Fixed discharge load</strong>
+            <p>Every comparison in the dataset is only meaningful if the load is identical across runs, so the pack discharges through a fixed resistive bank sized for roughly a quarter-C draw on the drone packs - close to a cruise-level pull rather than a full-throttle burst. The bank is series-wired chassis-mount power resistors bolted to a heatsink, and it lives <em>outside</em> the insulated bay: a 60-watt heater inside the bay would be the single best way to destroy the dataset's credibility.</p>
+            <p class="code-label">LOAD SIZING (4S PACK, ~4 A TARGET)</p>
+            <pre><code>Target draw: ~0.25C on the 4S packs -&gt; ~4 A
+R = V / I = 16.0 V / 4.0 A = 4 ohm
+P = V * I = 16.0 V * 4.0 A = 64 W
+Build: 4x 1 ohm 25 W chassis-mount resistors in series (100 W total rating)
+       bolted to a finned heatsink, mounted outside the bay
+Cutoff: logger flags pack &lt;= 12.8 V (3.2 V/cell) and the run ends</code></pre>
+            <p><strong>How I verified:</strong> before trusting the INA228 at all, the actual draw went through the Fluke in series at room temperature - measured current has to match the design math within tolerance or the resistor bank gets re-checked. What can go wrong: resistor values drift when hot; the bank is rated at well over the dissipated power and gets a warm-up settle before logging starts, so early-run current matches late-run current.</p>
           </div>
         </div>
+
+        <div class="step">
+          <div class="step-num">07</div>
+          <div class="step-body">
+            <strong>Freezer soak protocol</strong>
+            <p>Each run soaks a fully charged pack in the freezer at a fixed setpoint - 0, -10, -20, -30 &deg;C - and waits until the <strong>cell-surface sensor</strong> (not the freezer's air, not the freezer's own display) has held within half a degree of the target for fifteen consecutive minutes. The core temperature is what the chemistry feels; air temperature in a frost-free freezer swings several degrees with the defrost cycle, which is precisely why the freezer's thermostat is never part of the criterion.</p>
+            <p>Only then does the load connect, and the logger captures the full discharge: initial voltage sag under load, any recovery as the discharge self-heats the cell, runtime to the 12.8 V cutoff, and how the cutoff behaves - a graceful knee or a hard cliff.</p>
+            <p class="code-label">SOAK CRITERION CHECK (runs on the Pi, watches the cell sensor)</p>
+            <pre><code>#!/usr/bin/env bash
+# Soak = cell sensor within +/-0.5 C of setpoint for 15 straight minutes
+CELL=/sys/bus/w1/devices/28-00000a4f11c3/temperature
+TARGET=-20; TOL=0.5; HOLD=900; STABLE=0
+while :; do
+  T=$(awk '{print $1/1000}' "$CELL")
+  OK=$(awk -v t="$T" -v g="$TARGET" -v e="$TOL" \
+       'BEGIN{print (t &gt; g-e &amp;&amp; t &lt; g+e) ? 1 : 0}')
+  [ "$OK" = 1 ] &amp;&amp; STABLE=$((STABLE+10)) || STABLE=0
+  [ "$STABLE" -ge "$HOLD" ] &amp;&amp; { echo "soaked at $T C - connect load"; break; }
+  sleep 10
+done</code></pre>
+            <p><strong>What can go wrong:</strong> trusting the freezer's front-panel display - mine reads several degrees off the air sensor at the cold end, and the defrost cycle can break a "stable" soak mid-hold. The script above resets the stability timer on any excursion, so a marginal soak simply takes longer instead of quietly passing.</p>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">08</div>
+          <div class="step-body">
+            <strong>Winter runs</strong>
+            <p>The freezer is a controlled stand-in, not the real thing. The same protocol repeats outdoors through a Toronto winter - porch and balcony runs at whatever the weather delivers - to validate the freezer data against reality and to catch what a chest freezer physically cannot: wind stripping heat from the insulation, humidity and snow on the connectors, and the slow radiative chill of a clear night.</p>
+            <p>Every outdoor run gets tagged with observed weather at run start, pulled from Open-Meteo (no API key needed) and stored next to the CSV, so a windier -15 &deg;C night is never averaged blindly against a calm one.</p>
+            <p class="code-label">TAG EACH OUTDOOR RUN WITH REAL WEATHER (OPEN-METEO, NORTH YORK)</p>
+            <pre><code>$ curl -s "https://api.open-meteo.com/v1/forecast?latitude=43.77&amp;longitude=-79.41&amp;current=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_gusts_10m" \
+    | tee /data/coldsoak/run-021.weather.json</code></pre>
+            <p><strong>How I will verify:</strong> each outdoor run is matched against its nearest freezer setpoint curve - agreement within the run-to-run spread validates the freezer as a proxy; systematic divergence (for example, only on windy nights) becomes its own finding in the dataset. What can go wrong: melted snow wicking into sensor joints - outdoor harness joints get heat shrink and dielectric grease before the first snow run.</p>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">09</div>
+          <div class="step-body">
+            <strong>Heater strategies</strong>
+            <p>Three strategies run at every setpoint, three repeats each: <strong>unheated</strong> (the baseline), <strong>thermostat-controlled</strong> (the step-05 loop holds the bay through the soak and discharge), and <strong>pre-heat-and-fly</strong> (heat on the ground, disconnect the heater, then discharge on stored warmth - the way a real drone actually launches). The matrix lives in a config file so the runs are driven by data, not by memory.</p>
+            <p>The point is honest energy accounting: the heater-branch INA228 measures exactly how many mAh heating consumed, so each strategy is scored on <em>net</em> recovered capacity - capacity gained back from the cold minus capacity spent on heat. A heater that recovers 20% capacity but costs 25% is a worse battery, and the dataset should be allowed to say so.</p>
+            <p class="code-label">RUN MATRIX - matrix.yaml</p>
+            <pre><code>setpoints_c: [0, -10, -20, -30]
+strategies: [unheated, thermostat, preheat]
+repeats: 3
+cutoff_v: 12.8          # 3.2 V/cell on the 4S packs
+load_a: 4.0             # fixed resistive bank from step 06
+thermostat:
+  setpoint_c: 15.0
+  hysteresis_c: 1.5
+preheat:
+  ground_minutes: 20
+  disconnect_before_discharge: true</code></pre>
+            <p><strong>How I verify the accounting:</strong> after every run the pack is recharged on the balance charger, and the charger's returned mAh is cross-checked against the INA228's discharged mAh - the two should bracket the same number, and a growing gap between them flags a sick pack before it contaminates the matrix.</p>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">10</div>
+          <div class="step-body">
+            <strong>Publish</strong>
+            <p>The end product is the dataset itself: per-run CSVs, the weather tags, the run matrix, the plotting code, and the written protocol - setpoints, soak criterion, load sizing, sensor placement, and safety rules - so anyone with a freezer and fifty dollars of sensors can reproduce or extend it. Every published figure regenerates from the raw CSVs with one script; there are no hand-edited plots, because a reviewer should be able to recompute every line on every graph.</p>
+            <p class="code-label">PLOT ONE RUN (pandas + matplotlib)</p>
+            <pre><code>import pandas as pd
+import matplotlib.pyplot as plt
+
+df = pd.read_csv("run-014.csv", parse_dates=["timestamp"])
+
+fig, ax1 = plt.subplots()
+ax1.plot(df["timestamp"], df["v_pack"], label="pack V")
+ax1.set_ylabel("pack voltage (V)")
+
+ax2 = ax1.twinx()
+ax2.plot(df["timestamp"], df["t_cell"], color="orange", label="cell C")
+ax2.set_ylabel("cell temperature (deg C)")
+
+fig.tight_layout()
+fig.savefig("run-014.png")</code></pre>
+            <p><strong>How I will verify before publishing:</strong> a clean-checkout test - clone the dataset repo into a fresh directory, run the plot script, and diff the regenerated figures against the published ones. If the numbers in the write-up do not fall out of the CSVs untouched, the write-up gets fixed, not the data.</p>
+          </div>
+        </div>
+
       </div>
     </section>
 
     <section id="testing">
       <h2>Testing &amp; Metrics</h2>
-      <p>The protocol is fixed before the numbers are collected, so the results - whatever they are - mean something:</p>
-      <ul>
-        <li><strong>Setpoints</strong>: 0, -10, -20, -30 &deg;C, with the soak criterion defined on the cell-surface sensor stabilizing, not the freezer's own thermostat.</li>
-        <li><strong>Runtime to cutoff</strong>: discharge at a fixed load from full charge to the pack's cutoff voltage, per temperature, per strategy (unheated / thermostat / pre-heat).</li>
-        <li><strong>Voltage sag curve</strong>: the full V(t) trace at each setpoint - how deep the initial sag is under load and whether the pack recovers as discharge self-heats it.</li>
-        <li><strong>Delivered capacity</strong>: accumulated mAh per run, reported as a fraction of the room-temperature baseline.</li>
-        <li><strong>Failure mode</strong>: graceful sag vs hard cutoff vs heater unable to hold setpoint, logged per run.</li>
-        <li><strong>Heating energy cost</strong>: mAh spent on the heater circuit, so strategies are scored on net recovered capacity.</li>
-      </ul>
       <p>
-        Freezer runs are under way; the plotted dataset is not published yet - nothing here reports
-        measured numbers until the repeated runs and outdoor validation are complete.
+        The protocol is fixed before the numbers are collected, so the results - whatever they turn out
+        to be - mean something. Every run follows the same skeleton: charge, rest, soak (or weather),
+        discharge at the fixed load, log everything, warm to room temperature, recharge, cross-check.
       </p>
+
+      <h3>Run Plan</h3>
+      <ol>
+        <li><strong>Run 1 - Room-temperature baseline.</strong> Setup: pack charged to 16.8 V, rested one hour at room temperature, no heater. Procedure: discharge through the fixed 4 A bank to the 12.8 V cutoff while logging. Metric: delivered mAh, runtime, and the reference V(t) curve - every later run is normalized against this one.</li>
+        <li><strong>Run 2 - Freezer ladder, unheated.</strong> Setup: soak per the step-07 criterion at 0, -10, -20, and -30 &deg;C. Procedure: identical discharge to Run 1. Metric: runtime and delivered capacity vs. setpoint, initial sag depth, self-heating recovery, and the failure mode (graceful knee vs. hard cliff) at each temperature.</li>
+        <li><strong>Run 3 - Freezer ladder, thermostat.</strong> Setup: same ladder, thermostat loop active through soak and discharge. Procedure: identical discharge. Metric: capacity recovered vs. Run 2, plus heater mAh from INA228 #2 - the net gain or loss per setpoint.</li>
+        <li><strong>Run 4 - Freezer ladder, pre-heat-and-fly.</strong> Setup: same ladder; heater warms the pack for the configured ground time, then disconnects. Procedure: discharge on stored warmth. Metric: capacity vs. Run 3 at zero in-flight heating cost, and how fast the bay bleeds heat after disconnect.</li>
+        <li><strong>Run 5 - Outdoor winter validation.</strong> Setup: porch/balcony runs at real conditions, weather-tagged per step 08. Procedure: identical discharge. Metric: agreement between outdoor curves and the nearest freezer setpoint - this validates (or indicts) the freezer as a proxy.</li>
+        <li><strong>Run 6 - Heater energy accounting.</strong> Setup: aggregated across Runs 3-4. Procedure: heater-branch mAh vs. recovered capacity per setpoint. Metric: the break-even temperature - below which heating pays for itself, above which it does not.</li>
+      </ol>
+
+      <h3>Targets &amp; Current Status</h3>
+      <p>Honest bookkeeping: targets and progress states only. No measured numbers are published until the full matrix and the outdoor validation are complete.</p>
+      <table>
+        <thead><tr><th>Metric</th><th>Target</th><th>Current status</th></tr></thead>
+        <tbody>
+          <tr><td>Room-temperature baseline (Run 1)</td><td>3+ repeats to bound run-to-run spread</td><td>Done - baseline runs logged</td></tr>
+          <tr><td>Freezer ladder, unheated (Run 2)</td><td>4 setpoints x 3 repeats</td><td>In progress - warmer setpoints logged, cold end pending</td></tr>
+          <tr><td>Freezer ladder, thermostat (Run 3)</td><td>4 setpoints x 3 repeats</td><td>In progress - hysteresis tuning under way</td></tr>
+          <tr><td>Freezer ladder, pre-heat (Run 4)</td><td>4 setpoints x 3 repeats</td><td>Next - follows Run 3 tuning</td></tr>
+          <tr><td>Outdoor validation (Run 5)</td><td>2+ runs per winter condition band, weather-tagged</td><td>Next - waiting on sustained sub-zero weather</td></tr>
+          <tr><td>Break-even analysis (Run 6)</td><td>Net recovered capacity quantified per strategy and setpoint</td><td>Pending - derived from Runs 2-4</td></tr>
+          <tr><td>Published dataset</td><td>CSVs + protocol + plotting code in a public repo</td><td>Not yet published</td></tr>
+        </tbody>
+      </table>
+      <p>
+        Freezer runs are under way; the plotted dataset is not published yet - nothing on this page
+        reports measured numbers until the repeated runs and outdoor validation are complete.
+      </p>
+    </section>
+
+    <section id="troubleshooting">
+      <h2>Troubleshooting &amp; Lessons</h2>
+      <ul>
+        <li><strong>Every sensor read exactly 85.000 &deg;C after wiring.</strong> That value is the DS18B20's power-on default, not a real temperature - the bus was up but conversions were failing because the pull-up was at the far end of a long harness. Fix: moved the 4.7 k&Omega; pull-up to the Pi end. Lesson: finger-test every sensor and log the serial-to-position map <em>before</em> taping anything into the bay.</li>
+        <li><strong>Sensors vanished mid-run at freezer temperatures.</strong> Parasite power over long cold leads dropped the bus under load. Fix: rewired to powered 3-wire mode (VDD to 3V3) and shortened stub lengths. Lesson: parasite power is for short bench runs, not for a metre of wire into a -30 &deg;C box.</li>
+        <li><strong>The heater came on for a second during Pi boot.</strong> The GPIO floats until the OS configures it, and the MOSFET gate happily followed the float. Fix: the 10 k&Omega; gate pull-down from step 01. Lesson: hardware fails-off first, software safety second - the control loop should never be the only thing between a LiPo and an unattended heater.</li>
+        <li><strong>Condensation attacked the bay on pull-out.</strong> Taking a -20 &deg;C bay into room air frosts it instantly, and frost inside foam insulation becomes water inside foam insulation. Fix: the whole bay goes into a sealed bag before it leaves the cold, and warms up inside the bag - which dovetails with the never-charge-cold rule, since the pack cannot charge until it has warmed anyway.</li>
+        <li><strong>Both INA228s answered on 0x40.</strong> Two identical breakouts, one default address - the bus scans were chaos until A0 on the heater monitor went to VS+ for 0x41. Lesson: run <code>i2cdetect -y 1</code> after every wiring change, not just when something breaks.</li>
+      </ul>
     </section>
 
     <section id="canada-notes">
@@ -226,9 +459,9 @@ flowchart LR
     <section id="status">
       <h2>Status &amp; Roadmap</h2>
       <ul>
-        <li><strong>Done</strong>: heater pads and MOSFET driver benched; 1-Wire sensor harness installed and reading; INA228 logging service writing CSVs; first freezer runs logged at the warmer setpoints; fixed discharge load verified against the Fluke and Pico references.</li>
-        <li><strong>In progress</strong>: repeated runs across the full setpoint ladder; thermostat-control firmware tuning (hysteresis band and setpoint); plot tooling for the voltage-sag curves.</li>
-        <li><strong>Next</strong>: outdoor winter validation runs; the three-strategy heating comparison; publish the dataset and full protocol.</li>
+        <li><strong>Done</strong>: heater pads and MOSFET driver benched with fails-off gate pull-down; 1-Wire sensor harness installed in powered mode with serial-to-position map; both INA228s addressed, calibrated, and cross-checked against the Fluke; logging service running under systemd with restart-on-failure; room-temperature baseline and first freezer runs at the warmer setpoints logged; fixed discharge load verified against design math.</li>
+        <li><strong>In progress</strong>: repeated runs across the full setpoint ladder; thermostat-control tuning (hysteresis band and setpoint); plotting tooling for the voltage-sag curves.</li>
+        <li><strong>Next</strong>: pre-heat-and-fly matrix runs; outdoor winter validation with weather tagging; the break-even analysis; publish the dataset and full protocol.</li>
       </ul>
     </section>
 

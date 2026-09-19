@@ -9,13 +9,13 @@
   <meta name="author" content="MD. Taki Yasir Faraji Sadik">
   <link rel="canonical" href="https://tyfsadik.org/work/defence/multi-domain-common-operating-picture.html">
   <meta property="og:title" content="Multi-Domain Common Operating Picture">
-  <meta property="og:description" content="The fusion layer tying every sensor build together: signed detections over MQTT/Zenoh, buffering through dead links, a Kalman-filter tracker fusing air, water, and ground tracks, and a human making every decision from one dashboard.">
+  <meta property="og:description" content="The fusion layer tying every sensor build together: signed detections over MQTT/Zenoh, buffering through dead links, a Kalman-filter tracker fuses air, water, and ground tracks, and a human making every decision from one dashboard.">
   <meta property="og:type" content="article">
   <meta property="og:url" content="https://tyfsadik.org/work/defence/multi-domain-common-operating-picture.html">
   <meta property="og:image" content="https://tyfsadik.org/Prove/Ground%20seismic%20and%20acoustic%20perimeter%20mesh.jpeg">
   <meta name="twitter:card" content="summary_large_image">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"CreativeWork","name":"Multi-Domain Common Operating Picture","author":{"@type":"Person","name":"MD. Taki Yasir Faraji Sadik","url":"https://tyfsadik.org/about.html"},"dateCreated":"2026","inLanguage":"en-CA","keywords":"common operating picture, sensor fusion, MQTT, Kalman filter, DDIL, store-and-forward, defence technology Canada"}</script>
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"How I Built a Multi-Domain Common Operating Picture","description":"Sensor nodes publish Ed25519-signed detections over MQTT, buffer through dead links, sync disciplined clocks over GNSS PPS, and feed a central Kalman-filter tracker that fuses air, water, and ground tracks into one human-operated dashboard.","step":[{"@type":"HowToStep","name":"Signed detections bus","text":"Every node publishes detections over MQTT (Zenoh evaluated as the alternative) with per-node Ed25519 signatures so any consumer can verify who said what."},{"@type":"HowToStep","name":"Disciplined time","text":"u-blox M9N GNSS modules with PPS discipline node clocks, because multi-sensor fusion is meaningless without aligned timestamps."},{"@type":"HowToStep","name":"Store-and-forward","text":"Nodes buffer detections locally and sync when links return, applying DDIL patterns proven with tc netem chaos tests."},{"@type":"HowToStep","name":"Central fusion","text":"A Kalman-filter tracker associates detections from air (passive radar, acoustic), water (hydrophone), and ground (seismic mesh) into single tracks with confidence scores."},{"@type":"HowToStep","name":"One dashboard","text":"A single map shows air, water, and ground tracks plus an alert queue; a human makes every decision and the system only cues."},{"@type":"HowToStep","name":"Evidence chain","text":"Every alert keeps its evidence chain: raw detection, node signature, and tracker version, written to a tamper-evident log."},{"@type":"HowToStep","name":"Chaos testing","text":"Cut links, kill nodes, and corrupt a node clock, then measure time-to-recover and track continuity and publish the metrics."}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"How I Built a Multi-Domain Common Operating Picture","description":"Sensor nodes publish Ed25519-signed detections over MQTT, buffer through dead links, sync disciplined clocks over GNSS PPS, and feed a central Kalman-filter tracker that fuses air, water, and ground tracks into one human-operated dashboard.","step":[{"@type":"HowToStep","name":"Provision node identity","text":"Generate a per-node Ed25519 keypair at provisioning time; the public half is registered with every consumer so any detection can be traced to the node that signed it."},{"@type":"HowToStep","name":"MQTT broker on NVMe","text":"Run a Mosquitto broker on the Pi 5 with persistence on the 256 GB NVMe, ACLs limiting each gateway to its own topic subtree, and QoS 1 everywhere."},{"@type":"HowToStep","name":"Detection schema and signing","text":"Define a small canonical JSON detection schema, sign each payload on the node with libsodium before it leaves, and verify signatures at the tracker."},{"@type":"HowToStep","name":"GNSS PPS time discipline","text":"Discipline aggregator clocks with a u-blox M9N PPS output through gpsd and chrony so multi-sensor timestamps are aligned well under a millisecond."},{"@type":"HowToStep","name":"Node store-and-forward queue","text":"Keep a local outbound queue on every node (SQLite WAL on Pi-class nodes, ring buffer on ESP32) and replay the backlog in order when links return."},{"@type":"HowToStep","name":"LoRa gateway bridge","text":"Bridge ESP32 LoRa mesh detections into MQTT at a gateway, checking frame CRCs and stamping gateway-corrected time for nodes without their own GNSS."},{"@type":"HowToStep","name":"Kalman-filter fusion tracker","text":"Associate signed detections from air, water, and ground into single tracks with a FilterPy Kalman filter, gated by Mahalanobis distance, with confidence scores."},{"@type":"HowToStep","name":"COP dashboard on Kubernetes","text":"Serve one Leaflet map with air, water, and ground tracks plus an alert queue from the homelab cluster; Grafana watches broker and clock health."},{"@type":"HowToStep","name":"Tamper-evident evidence chain","text":"Append every alert with its raw detections, node signatures, and tracker version to a hash-chained, append-only evidence log."},{"@type":"HowToStep","name":"Chaos test harness","text":"Script tc netem link cuts, pod kills, node power pulls, and clock corruption, then measure time-to-recover and track continuity and publish the metrics."}]}</script>
   <link rel="stylesheet" href="../../css/style.css">
   <link rel="icon" href="../../favicon.png" type="image/png">
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
@@ -96,6 +96,11 @@
         is trusted. And the system <strong>cues, it never acts</strong> - every decision is made by
         a human looking at the dashboard.
       </p>
+      <p>
+        Everything below is the real build: the actual configs on my broker, the actual schema on
+        the wire, and the actual chaos scripts, written so a reader could reproduce the pipeline
+        end to end on their own bench.
+      </p>
     </section>
 
     <section id="proof">
@@ -155,6 +160,34 @@ flowchart LR
         That keeps the LoRa and Wi-Fi links cheap and the broker load flat, and it means a dead
         link only delays data - it never loses it.
       </p>
+      <p>
+        Topic layout mirrors the physical world:
+        <code>cop/&lt;domain&gt;/&lt;sensor-type&gt;/&lt;node-id&gt;</code>, so
+        <code>cop/ground/seismic/seismic-node-03</code> is exactly what it sounds like. The tracker
+        subscribes to <code>cop/+/+/+</code>, the audit log subscribes to everything, and ACLs stop
+        any gateway from writing outside its own subtree.
+      </p>
+    </section>
+
+    <section id="wiring">
+      <h2>Wiring &amp; Connections</h2>
+      <p>
+        The physical side of a software project: how the clock, radios, storage, and network
+        actually connect on the bench.
+      </p>
+      <table>
+        <thead><tr><th>From</th><th>To</th><th>Cable / interface</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>u-blox M9N UART</td><td>Pi 5 GPIO14/15 (UART0)</td><td>4-wire Dupont (TX, RX, 3V3, GND)</td><td>NMEA at 38,400 baud; <code>enable_uart=1</code> in config.txt</td></tr>
+          <tr><td>u-blox M9N PPS pin</td><td>Pi 5 GPIO18</td><td>Single Dupont + shared GND</td><td><code>dtoverlay=pps-gpio,gpiopin=18</code>; this is the line that disciplines the clock</td></tr>
+          <tr><td>ESP32 node (Heltec V3 class)</td><td>SX1262 LoRa radio</td><td>On-board SPI</td><td>915 MHz North America band plan; 868 MHz boards are for Europe</td></tr>
+          <tr><td>ESP32 nodes</td><td>LoRa gateway Pi</td><td>LoRa RF link</td><td>One detection per frame; CRC-checked at the gateway before bridging to MQTT</td></tr>
+          <tr><td>Pi 5</td><td>NVMe HAT</td><td>PCIe FPC ribbon</td><td>OS, Mosquitto persistence, and node SQLite queues live on the NVMe, not the SD</td></tr>
+          <tr><td>Broker Pi</td><td>Homelab gigabit switch</td><td>Cat6</td><td>Static DHCP lease as <code>broker.lan</code>; all gateways point here</td></tr>
+          <tr><td>Bench laptop</td><td>Kubernetes cluster</td><td>LAN</td><td>Dashboard over HTTPS via the cluster ingress; nothing exposed off-LAN</td></tr>
+          <tr><td>Solar field node</td><td>18650 pack + charge board</td><td>JST + XT60</td><td>Small panel, MPPT board; node sleeps between detections to hold power budget</td></tr>
+        </tbody>
+      </table>
     </section>
 
     <section id="how-building">
@@ -163,56 +196,232 @@ flowchart LR
         <div class="step">
           <div class="step-num">01</div>
           <div class="step-body">
-            <strong>The bus: signed detections over MQTT</strong>
-            <p>Every node publishes its detections to a Mosquitto broker over MQTT, with per-node Ed25519 keypairs generated at provisioning time. The payload is signed before it leaves the node, so any consumer - the tracker, the audit log, a future third party - can verify exactly which node said what with libsodium (PyNaCl on the Pi-side services, the Arduino Crypto library on ESP32).</p>
-            <p>I evaluated Zenoh as the alternative transport: its built-in store-and-forward and peer-to-peer mode are genuinely attractive for DDIL links, but MQTT's tooling, broker maturity, and the fact my existing services already speak it won the first iteration. Zenoh stays on the bench as the candidate for a brokerless version.</p>
+            <strong>Provision identity: one Ed25519 keypair per node</strong>
+            <p>Before a node is allowed to say anything, it gets an identity. Each node has its own Ed25519 keypair, generated once at provisioning time on the bench laptop - never on the node, so the entropy source is a real machine. The secret key is flashed into the node's firmware image or dropped into its config partition; the public half goes into a registry file that the tracker, the audit log, and any future consumer load at startup. The payoff is that any detection can be traced to the exact node that signed it, and a cloned or spoofed node fails verification instead of poisoning the picture.</p>
+            <p class="code-label">BASH - provisioning a new node keypair (run once per node)</p>
+            <pre><code>python3 - &lt;&lt;'EOF'
+from nacl.signing import SigningKey
+import pathlib
+node = "seismic-node-03"
+sk = SigningKey.generate()
+d = pathlib.Path(f"keys/{node}")
+d.mkdir(parents=True, exist_ok=True)
+(d / "secret.key").write_bytes(bytes(sk))
+(d / "public.hex").write_text(sk.verify_key.encode().hex())
+print(node, sk.verify_key.encode().hex())
+EOF
+chmod 600 keys/seismic-node-03/secret.key</code></pre>
+            <p><strong>How I verified:</strong> I signed a known payload with the secret key and confirmed <code>nacl.signing.VerifyKey</code> accepts it, then flipped one byte of the public key and confirmed verification now fails. What can go wrong here is boring and fatal: shipping the same key to two nodes, which makes attribution meaningless - the registry file is checked into Git so duplicates show up in review.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">02</div>
           <div class="step-body">
-            <strong>Time: GNSS PPS clock discipline</strong>
-            <p>Multi-sensor fusion is meaningless without aligned timestamps - a 200 ms skew between a seismic node and an acoustic node can flip which detection the tracker thinks came first. Each aggregator node carries a u-blox M9N module, and its pulse-per-second output drives <code>gpsd</code> feeding <code>chronyd</code> with the PPS refclock, disciplining the system clock to well under a millisecond.</p>
-            <p>ESP32 mesh nodes without their own GNSS inherit time from their gateway over LoRa and stamp detections with both their local tick and the gateway-corrected estimate, so the tracker can weight them accordingly.</p>
+            <strong>The broker: Mosquitto on the Pi 5 NVMe</strong>
+            <p>The bus is a single Mosquitto broker on the Pi 5, with its persistence directory on the 256 GB NVMe so retained messages and queued QoS 1 traffic survive reboots without eating an SD card. Every gateway authenticates, and an ACL pins each one to its own topic subtree - the seismic gateway physically cannot publish as a hydrophone node. I evaluated Zenoh as the alternative transport: its built-in store-and-forward and peer-to-peer mode are genuinely attractive for DDIL links, but MQTT's tooling, broker maturity, and the fact my existing services already speak it won the first iteration. Zenoh stays on the bench as the candidate for a brokerless version.</p>
+            <p class="code-label">MOSQUITTO - /etc/mosquitto/conf.d/cop.conf</p>
+            <pre><code>listener 1883 0.0.0.0
+protocol mqtt
+allow_anonymous false
+password_file /etc/mosquitto/passwd
+acl_file /etc/mosquitto/cop.acl
+persistence true
+persistence_location /var/lib/mosquitto/   # mounted on the NVMe
+max_queued_messages 10000
+log_type error
+log_type warning</code></pre>
+            <p class="code-label">ACL - /etc/mosquitto/cop.acl (one gateway, one subtree)</p>
+            <pre><code>user gw-seismic
+topic write cop/ground/seismic/#
+topic read cop/sys/time
+
+user gw-hydro
+topic write cop/water/hydrophone/#
+topic read cop/sys/time</code></pre>
+            <p><strong>How I verified:</strong> <code>mosquitto_pub</code> as <code>gw-seismic</code> into <code>cop/water/...</code> is rejected, and <code>mosquitto_sub -t 'cop/#' -v</code> from the tracker account sees every domain. The classic failure is forgetting <code>persistence_location</code> points at the SD card; I confirmed the mount with <code>df -h /var/lib/mosquitto</code> before load-testing.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">03</div>
           <div class="step-body">
-            <strong>Store-and-forward: buffering through dead links</strong>
-            <p>This is the DDIL pattern from my <a href="ddil-proof-devops.html">DDIL-Proof DevOps</a> work applied to physical nodes. Each node keeps a local outbound queue - SQLite with the WAL journal on the Pi-class nodes, a ring buffer on high-endurance SD for the ESP32s - and publishes with MQTT QoS 1. When the link drops, detections pile up locally; when it returns, the node replays the backlog in order and the broker sees late data clearly marked by its original timestamps.</p>
-            <p>The whole behaviour was proven before any sensor went outside, with <code>tc netem</code> chaos tests on the bench: inject 40% packet loss, a 30-second full outage, or 2 s of latency, and confirm nothing is lost and nothing is acknowledged twice.</p>
+            <strong>The wire format: canonical JSON, signed on the node</strong>
+            <p>Every detection, from every domain, is the same small JSON object: <code>node_id</code>, ISO-8601 timestamp, detection <code>class</code>, a bearing or position estimate with its covariance, a confidence value, and the Ed25519 signature over the canonicalized bytes. Canonicalization matters: keys are sorted and whitespace stripped before signing, because a re-serialized payload must verify byte-for-byte. The signature is produced on the node before the payload touches the radio, so the signature covers the original timestamp - which is what lets the tracker trust late, replayed data after an outage.</p>
+            <p class="code-label">JSON - one detection on the wire</p>
+            <pre><code>{"bearing_deg":214,"class":"vehicle","confidence":0.82,
+ "cov":[3.1],"node_id":"seismic-node-03",
+ "ts":"2026-09-19T14:03:22.184Z",
+ "sig":"Zk9...base64..."}</code></pre>
+            <p class="code-label">BASH - signing and publishing one detection (QoS 1)</p>
+            <pre><code>payload=$(python3 sign_detection.py \
+  --node seismic-node-03 --class vehicle --bearing 214 --conf 0.82)
+mosquitto_pub -h broker.lan -u gw-seismic -P "$GW_PASS" \
+  -t cop/ground/seismic/seismic-node-03 -q 1 -m "$payload"</code></pre>
+            <p><strong>How I verified:</strong> the tracker verifies every message with PyNaCl on arrival; I hand-edited one byte of a logged payload and confirmed it is rejected and counted in a <code>signature_failures_total</code> metric. What goes wrong: float re-serialization differences between MicroPython and CPython breaking canonical form - solved by fixing the field order and precision in the schema, not in each signer.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">04</div>
           <div class="step-body">
-            <strong>Fusion: one Kalman-filter tracker</strong>
-            <p>A central Python service subscribes to every domain topic and runs a Kalman-filter tracker (built on FilterPy) that associates incoming detections with existing tracks. Air detections come in from the passive radar node and the acoustic drone detector, water contacts from the hydrophone monitor, and ground activity from the seismic mesh; each arrives as a position or bearing estimate with a covariance, so the filter can weigh a sharp bearing cut against a noisy position fix honestly.</p>
-            <p>The output is a single track table - track ID, state estimate, uncertainty ellipse, contributing sensors, and a confidence score - published back onto the bus so the dashboard and the audit log both consume the same truth.</p>
+            <strong>Time: GNSS PPS clock discipline</strong>
+            <p>Multi-sensor fusion is meaningless without aligned timestamps - a 200 ms skew between a seismic node and an acoustic node can flip which detection the tracker thinks came first, and bearing-only fusion is even more sensitive. Each aggregator node carries a u-blox M9N module; its pulse-per-second output lands on a Pi GPIO, and <code>gpsd</code> hands both the NMEA sentences and the PPS edge to <code>chronyd</code>, which disciplines the system clock. NMEA alone has hundreds of milliseconds of jitter, so NMEA names the second and PPS marks its start.</p>
+            <p class="code-label">CONFIG - /boot/firmware/config.txt and gpsd unit on the aggregator Pi</p>
+            <pre><code># /boot/firmware/config.txt
+enable_uart=1
+dtoverlay=pps-gpio,gpiopin=18
+
+# /etc/default/gpsd
+DEVICES="/dev/ttyAMA0 /dev/pps0"
+GPSD_OPTIONS="-n"</code></pre>
+            <p class="code-label">CONFIG - /etc/chrony/chrony.conf (NMEA names the second, PPS marks it)</p>
+            <pre><code>refclock SHM 0 refid NMEA precision 1e-1 offset 0.0 delay 0.2 noselect
+refclock PPS /dev/pps0 refid PPS lock NMEA prefer
+makestep 1.0 3</code></pre>
+            <p><strong>How I verified:</strong> <code>ppstest /dev/pps0</code> shows a clean once-per-second assert, and <code>chronyc sources -v</code> shows the PPS refclock selected (<code>*</code>) with NMEA locked but not selected. ESP32 mesh nodes without their own GNSS inherit time from their gateway over LoRa and stamp detections with both their local tick and the gateway-corrected estimate, so the tracker can weight them accordingly. What goes wrong: chrony locking onto NMEA instead of PPS - see the troubleshooting section, because it happened to me.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">05</div>
           <div class="step-body">
-            <strong>Dashboard: one map, one alert queue, one human</strong>
-            <p>The COP itself is a Leaflet map served from the homelab Kubernetes cluster, showing air, water, and ground tracks with their confidence scores and uncertainty, next to a live alert queue and per-node signal panels. Grafana covers the plumbing health behind it: broker lag, buffer depths, clock offsets, and node last-seen times.</p>
-            <p>The design constraint is deliberate: the system cues, it never acts. Alerts are presented with their confidence and evidence, and a human decides what - if anything - happens next. There is no automated response path, by design.</p>
+            <strong>Store-and-forward: the node-side outbox</strong>
+            <p>This is the DDIL pattern from my <a href="ddil-proof-devops.html">DDIL-Proof DevOps</a> work applied to physical nodes. Every node keeps a local outbound queue: a SQLite database in WAL mode on the Pi-class nodes, a ring buffer in flash on the ESP32s. A detection is written to the outbox <em>first</em>, then published with MQTT QoS 1, and only marked acknowledged when the PUBACK arrives. When the link drops, rows pile up; when it returns, the node replays the backlog in ID order, and the broker sees late data clearly marked by its original signed timestamps.</p>
+            <p class="code-label">SQL - the outbox schema on every Pi-class node</p>
+            <pre><code>PRAGMA journal_mode=WAL;
+PRAGMA synchronous=NORMAL;
+CREATE TABLE IF NOT EXISTS outbox (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  topic      TEXT    NOT NULL,
+  payload    BLOB    NOT NULL,
+  created_ms INTEGER NOT NULL,
+  acked      INTEGER NOT NULL DEFAULT 0
+);</code></pre>
+            <p class="code-label">PYTHON - the replay loop (runs whenever the broker is reachable)</p>
+            <pre><code>rows = db.execute(
+    "SELECT id, topic, payload FROM outbox "
+    "WHERE acked = 0 ORDER BY id LIMIT 100").fetchall()
+for row_id, topic, payload in rows:
+    info = client.publish(topic, payload, qos=1)
+    info.wait_for_publish()          # returns after PUBACK
+    db.execute("UPDATE outbox SET acked = 1 WHERE id = ?", (row_id,))
+db.commit()</code></pre>
+            <p><strong>How I verified:</strong> I pulled the Ethernet cable for two minutes while a node fired test detections, reconnected, and confirmed via <code>mosquitto_sub</code> that every message arrived exactly once, in order, with original timestamps. The failure mode to design for is a full SD card mid-outage, which is why the queues live on NVMe/high-endurance media and the schema caps retained rows.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">06</div>
           <div class="step-body">
-            <strong>Audit: every alert keeps its evidence chain</strong>
-            <p>Every alert carries its full evidence chain: the raw detection payloads it was fused from, the node signatures that authenticate them, the tracker version and parameters that produced it, and the operator's disposition. All of it is appended to the tamper-evident log from my <a href="decision-black-box.html">Decision Black Box</a> build - a hash-chained, append-only record where each entry includes the hash of the previous one, so silent edits are detectable.</p>
+            <strong>The LoRa gateway bridge</strong>
+            <p>The seismic mesh nodes are ESP32s on 915 MHz LoRa - they cannot reach the broker directly, so a gateway Pi terminates the LoRa link and re-publishes their frames to MQTT. The ESP32 signs the detection with its own Ed25519 key using the Arduino Crypto library, then ships one compact frame: payload, signature, and a CRC. The gateway checks the CRC, stamps the gateway-corrected time next to the node's own estimate, and publishes to the node's topic under the gateway's ACL. The signature still belongs to the node - the gateway is a courier, not an author, and a compromised gateway can drop or delay messages but cannot forge them.</p>
+            <p class="code-label">ARDUINO - signing on the ESP32 before the LoRa transmit</p>
+            <pre><code>#include &lt;Crypto.h&gt;
+#include &lt;Ed25519.h&gt;
+
+uint8_t sig[64];
+Ed25519::sign(sig, secretKey, publicKey,
+              payload, payloadLen);
+// frame = [payloadLen | payload | sig | crc16] -&gt; LoRa transmit</code></pre>
+            <p class="code-label">PYTHON - the gateway bridge, receive side</p>
+            <pre><code>frame = lora.recv(timeout=5)
+if frame and crc16(frame[:-2]) == struct.unpack("&lt;H", frame[-2:])[0]:
+    det = parse_frame(frame)
+    det["gw_ts"] = iso_now()          # PPS-disciplined gateway clock
+    client.publish(f"cop/ground/seismic/{det['node_id']}",
+                   json.dumps(det), qos=1)</code></pre>
+            <p><strong>How I verified:</strong> I corrupted one byte of a frame in firmware and confirmed the gateway drops it (CRC) and logs the event rather than bridging garbage. What goes wrong: LoRa's low duty cycle means a backlog replay can starve new detections, so the gateway round-robins between old and fresh frames instead of draining oldest-first blindly.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">07</div>
           <div class="step-body">
+            <strong>Fusion: one Kalman-filter tracker</strong>
+            <p>The tracker is a Python service on the broker Pi that subscribes to <code>cop/+/+/+</code>, verifies signatures, and maintains a track table. Each track is a constant-velocity Kalman filter over position and velocity (built on FilterPy). Air detections come in from the passive radar node and the acoustic drone detector, water contacts from the hydrophone monitor, and ground activity from the seismic mesh; every detection arrives with its own covariance, so the filter can weigh a sharp bearing cut against a noisy position fix honestly. Association is gated by Mahalanobis distance: a detection attaches to the nearest track inside the gate, or starts a tentative new track that must be confirmed by a second hit before it appears on the map.</p>
+            <p class="code-label">PYTHON - the per-track filter (FilterPy)</p>
+            <pre><code>from filterpy.kalman import KalmanFilter
+from filterpy.common import Q_discrete_white_noise
+import numpy as np
+
+kf = KalmanFilter(dim_x=4, dim_z=2)      # state: x, y, vx, vy
+kf.F = np.array([[1,0,1,0],
+                 [0,1,0,1],
+                 [0,0,1,0],
+                 [0,0,0,1]])             # constant velocity, dt=1s
+kf.H = np.array([[1,0,0,0],
+                 [0,1,0,0]])             # we observe position only
+kf.P *= 100.0                            # big initial uncertainty
+kf.R = det_cov                           # from the detection itself
+kf.Q = Q_discrete_white_noise(dim=2, dt=1.0, var=0.5, block_size=2)</code></pre>
+            <p class="code-label">PYTHON - Mahalanobis gating before association</p>
+            <pre><code>d2 = mahalanobis(det_xy, kf.x[:2], kf.P[:2,:2] + kf.R)
+if d2 &lt; 9.0:          # ~chi2 gate, 2 dof, ~99%
+    kf.update(det_xy)  # attach to this track
+else:
+    spawn_tentative(det)  # needs a second hit to go firm</code></pre>
+            <p>The output is a single track table - track ID, state estimate, uncertainty ellipse, contributing sensors, and a confidence score - published back onto the bus at <code>cop/fused/tracks</code> so the dashboard and the audit log both consume the same truth. <strong>How I verified:</strong> I replayed logged detections from two bench nodes watching the same walked perimeter path and confirmed they associate into one track instead of two; what goes wrong is over-tight gating splitting one target into many tentative tracks, which is why association tuning is still in progress.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">08</div>
+          <div class="step-body">
+            <strong>Dashboard: one map, one alert queue, one human</strong>
+            <p>The COP itself is a Leaflet map served from the homelab Kubernetes cluster, showing air, water, and ground tracks with confidence scores and uncertainty ellipses, next to a live alert queue and per-node signal panels. A small FastAPI backend subscribes to <code>cop/fused/tracks</code> and the domain topics and pushes updates to the browser over a websocket, so the map updates without polling. Grafana covers the plumbing health behind it: broker queue depth, outbox backlog per node, chrony offsets, and node last-seen times. The design constraint is deliberate: the system cues, it never acts - there is no automated response path, and every alert ends at a person.</p>
+            <p class="code-label">YAML - the dashboard deployment on the homelab cluster</p>
+            <pre><code>apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cop-dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: cop-dashboard }
+  template:
+    metadata:
+      labels: { app: cop-dashboard }
+    spec:
+      containers:
+        - name: web
+          image: registry.lan/cop-dashboard:0.4.2
+          ports:
+            - containerPort: 8080
+          env:
+            - name: MQTT_HOST
+              value: broker.lan</code></pre>
+            <p><strong>How I verified:</strong> with a node firing test detections, I watch the track appear on the map within a couple of seconds and the Grafana last-seen panel tick with it; <code>kubectl rollout status deploy/cop-dashboard</code> after each image bump keeps the deploy honest. What goes wrong: a reconnecting node replaying a two-minute backlog can flood the websocket and freeze the map - fixed by server-side batching of replay bursts, the hard way.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">09</div>
+          <div class="step-body">
+            <strong>Audit: every alert keeps its evidence chain</strong>
+            <p>Every alert carries its full evidence chain: the raw detection payloads it was fused from, the node signatures that authenticate them, the tracker version and parameters that produced it, and the operator's disposition. All of it is appended to the tamper-evident log from my <a href="decision-black-box.html">Decision Black Box</a> build - a hash-chained, append-only file where each line embeds the SHA-256 of the previous line, so any silent edit, deletion, or reorder breaks the chain and is detectable on audit.</p>
+            <p class="code-label">PYTHON - hash-chained append (the whole trick is prev_hash)</p>
+            <pre><code>import hashlib, json, os
+
+def append_alert(log_path, record):
+    prev = b""
+    if os.path.getsize(log_path):
+        prev = open(log_path, "rb").read().strip().split(b"\n")[-1]
+    record["prev_hash"] = hashlib.sha256(prev).hexdigest() if prev else "0" * 64
+    with open(log_path, "ab") as f:
+        f.write(json.dumps(record, sort_keys=True).encode() + b"\n")</code></pre>
+            <p><strong>How I verified:</strong> a verifier script re-walks the chain and recomputes every <code>prev_hash</code>; I edited one historical line with <code>sed</code> and the verifier flags exactly that line and everything after it. The one that bites in practice is log rotation breaking the chain across files, so rotation renames only completed, sealed files and the new file's first <code>prev_hash</code> points at the last line of the sealed one.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">10</div>
+          <div class="step-body">
             <strong>Chaos testing: break it on purpose</strong>
-            <p>The acceptance test for this system is failure. I cut links with <code>tc netem</code>, kill broker and tracker pods to let Kubernetes reschedule them, pull power on individual nodes, and corrupt one node's clock to watch the tracker down-weight its skewed detections instead of poisoning the picture.</p>
-            <p>The two metrics that matter are <strong>time-to-recover</strong> (how long until a domain is back on the map after its link or node dies) and <strong>track continuity</strong> (whether the same physical target keeps the same track ID across the outage). The protocol is scripted so the numbers can be re-run after every change, and the results will be published with the build.</p>
+            <p>The acceptance test for this system is failure. The chaos harness is a set of scripts that cut links with <code>tc netem</code>, kill broker and tracker pods to let Kubernetes reschedule them, pull power on individual nodes, and corrupt one node's clock to watch the tracker down-weight its skewed detections instead of poisoning the picture. The two metrics that matter are <strong>time-to-recover</strong> (how long until a domain is back on the map after its link or node dies) and <strong>track continuity</strong> (whether the same physical target keeps the same track ID across the outage).</p>
+            <p class="code-label">BASH - the chaos toolkit</p>
+            <pre><code># degrade the link to the broker: 40% loss, 800ms +/- 200ms delay
+sudo tc qdisc add dev eth0 root netem loss 40% delay 800ms 200ms
+sleep 120
+sudo tc qdisc del dev eth0 root
+
+# kill the tracker; kubernetes reschedules it
+kubectl delete pod -l app=cop-tracker
+
+# corrupt one node's clock by +47 seconds
+ssh node3 'sudo date -s "+47 seconds"'</code></pre>
+            <p><strong>How I verified:</strong> the harness records broker timestamps, outbox depths, and track IDs before/during/after each scenario into a run directory, so every change to the system can be regression-tested against the same failure matrix. What can go wrong: forgetting to delete the <code>tc</code> qdisc after a run and then "discovering" a phantom performance bug - the harness now asserts a clean qdisc on exit.</p>
           </div>
         </div>
       </div>
@@ -221,19 +430,63 @@ flowchart LR
     <section id="testing">
       <h2>Testing &amp; Metrics</h2>
       <p>
-        Testing runs at three levels, all scripted so they can be re-run after any change:
+        The test protocol is five scripted runs, each with a fixed setup, procedure, and metric,
+        each writing its raw measurements into a run directory so the whole matrix can be re-run
+        after any change. Everything below is the protocol and the targets - published numbers
+        come only after the outdoor nodes are all feeding the bus.
       </p>
+
+      <h3>Run T1 - Clean-link baseline</h3>
       <ul>
-        <li><strong>Link chaos</strong>: <code>tc netem</code> scenarios for loss, latency, jitter, and full outages of increasing duration. Target: zero lost detections and zero duplicate acknowledgements across any outage the node's buffer can hold.</li>
-        <li><strong>Node and service failure</strong>: killed pods, pulled node power, and broker restarts. Target: the dashboard shows the domain as stale (not silent), and time-to-recover is measured from link restoration to first fused track update.</li>
-        <li><strong>Clock corruption</strong>: one node's clock deliberately offset. Target: the tracker detects the skew (via timestamp residuals), down-weights that node, and the fused track stays continuous on the remaining sensors.</li>
-        <li><strong>Track quality</strong>: track continuity (same physical target keeps the same ID across outages) and false-track rate during scripted scenarios with known ground truth.</li>
+        <li><strong>Setup</strong>: all nodes on the bench LAN, no impairments; one scripted target event per domain per minute.</li>
+        <li><strong>Procedure</strong>: run 30 minutes; log publish-to-map latency, outbox depth, and tracker update rate.</li>
+        <li><strong>Metric</strong>: median and p95 end-to-end latency (detection signed on node to track update on the dashboard).</li>
       </ul>
+
+      <h3>Run T2 - Degraded link</h3>
+      <ul>
+        <li><strong>Setup</strong>: <code>tc netem</code> on the gateway link: 40% packet loss, 800 ms &plusmn; 200 ms delay.</li>
+        <li><strong>Procedure</strong>: same event script as T1, two-hour window.</li>
+        <li><strong>Metric</strong>: zero lost detections after replay, zero duplicate track updates; latency distribution vs the T1 baseline.</li>
+      </ul>
+
+      <h3>Run T3 - Full outage and recovery</h3>
+      <ul>
+        <li><strong>Setup</strong>: events continue while the gateway link is fully cut for 60 seconds, then restored.</li>
+        <li><strong>Procedure</strong>: repeat with 60 s, 10 min, and 1 h outages (within outbox capacity).</li>
+        <li><strong>Metric</strong>: backlog drains in ID order with original timestamps; <strong>time-to-recover</strong> from link restoration to first fused track update; dashboard shows the domain stale during the gap, never silent.</li>
+      </ul>
+
+      <h3>Run T4 - Node and service failure</h3>
+      <ul>
+        <li><strong>Setup</strong>: full system running, scripted events.</li>
+        <li><strong>Procedure</strong>: <code>kubectl delete pod</code> on the tracker and broker; pull power on one field node mid-run; restore.</li>
+        <li><strong>Metric</strong>: pod rescheduling time to first consumed message; node power-on to first signed detection; no evidence-chain gaps in the audit log.</li>
+      </ul>
+
+      <h3>Run T5 - Clock corruption</h3>
+      <ul>
+        <li><strong>Setup</strong>: three nodes feeding one fused track with known ground truth (a walked perimeter path).</li>
+        <li><strong>Procedure</strong>: offset one node's clock by +47 s mid-run, then restore.</li>
+        <li><strong>Metric</strong>: tracker detects the skew via timestamp residuals and down-weights the bad node; <strong>track continuity</strong> - the target keeps one track ID across the whole run on the remaining sensors.</li>
+      </ul>
+
+      <h3>Targets and current status</h3>
+      <table>
+        <thead><tr><th>Test</th><th>Target</th><th>Current status</th></tr></thead>
+        <tbody>
+          <tr><td>T1 baseline</td><td>p95 publish-to-map latency in the low seconds on LAN</td><td>Harness built; scripted event generator done; baseline runs pending</td></tr>
+          <tr><td>T2 degraded link</td><td>Zero lost detections, zero duplicates at 40% loss</td><td>Bench proof-of-concept passed informally; scripted runs pending</td></tr>
+          <tr><td>T3 outage</td><td>In-order replay with original timestamps; stale-not-silent display</td><td>60 s outage path bench-verified; 10 min and 1 h runs pending</td></tr>
+          <tr><td>T4 failure</td><td>Automatic recovery with no audit-chain gaps</td><td>Pod-kill path exercised; field-node power-pull runs pending</td></tr>
+          <tr><td>T5 clock corruption</td><td>Skew detected and down-weighted; single track ID maintained</td><td>Residual-based detection implemented; tuning in progress, not yet run end-to-end</td></tr>
+        </tbody>
+      </table>
       <p>
-        Numeric results are <strong>in progress</strong>: the chaos harness and the metric
-        collection are built, and the full published run set - time-to-recover, track continuity,
-        and buffer behaviour per scenario - comes after the outdoor nodes are all feeding the bus.
-        Nothing here is quoted until it is measured.
+        Nothing in the table above is a measured result - targets are targets, and every
+        "pending" stays pending until the run directory exists. The full published run set
+        (time-to-recover, track continuity, buffer behaviour per scenario) comes after the
+        outdoor nodes are all feeding the bus, and it will be published with the raw logs.
       </p>
       <div class="note">
         <strong>Defensive and consensual by design:</strong> every sensor feeding this picture is my
@@ -246,12 +499,23 @@ flowchart LR
       </div>
     </section>
 
+    <section id="troubleshooting">
+      <h2>Troubleshooting &amp; Lessons</h2>
+      <ul>
+        <li><strong>chrony kept disciplining to NMEA, not PPS.</strong> Symptom: <code>chronyc sources</code> showed the NMEA refclock selected and offsets wandering by tens of milliseconds - useless for fusion. Cause: NMEA was marked selectable, so chrony preferred the "stable-looking" source. Fix: <code>noselect</code> on the SHM refclock, <code>lock NMEA prefer</code> on the PPS refclock, and <code>ppstest /dev/pps0</code> to prove the edge was even reaching the pin before blaming chrony.</li>
+        <li><strong>Duplicate detections after every reconnect.</strong> QoS 1 is at-least-once: a PUBACK lost on a dying link means the node re-sends, and the tracker double-counted the same event. Fix: the tracker intake deduplicates on the <code>(node_id, ts)</code> pair with a unique index - idempotency at the consumer, not hope at the transport.</li>
+        <li><strong>SD card corruption after power-pull tests.</strong> The very first node power-pull test corrupted the outbox database. Fix: queues moved to WAL mode with <code>synchronous=NORMAL</code>, high-endurance cards on the ESP32-adjacent storage, NVMe for the broker, and read-only root with a small writable data partition on field Pis.</li>
+        <li><strong>The map froze during backlog replay.</strong> A node returning from a two-minute outage dumped its entire outbox in seconds; the websocket pushed every message to the browser and the Leaflet tab locked up. Fix: server-side batching - the backend coalesces replay bursts into one frame per 250 ms, and the map treats replayed data as history, not live updates.</li>
+        <li><strong>A phantom "performance regression" that was my own netem rule.</strong> After a chaos run I spent an evening chasing a latency bug that was actually the <code>tc qdisc</code> I forgot to delete. Fix: the harness asserts a clean qdisc on exit, and the first diagnostic for any weird latency is now <code>tc qdisc show</code>.</li>
+      </ul>
+    </section>
+
     <section id="status">
       <h2>Status &amp; Roadmap</h2>
       <ul>
-        <li><strong>Done</strong>: Mosquitto broker with per-node Ed25519 signing and verification; PPS-disciplined clocks via gpsd + chrony on the aggregator nodes; store-and-forward queues with <code>tc netem</code> proof on the bench; the perimeter COP dashboard live on the homelab cluster with the seismic mesh feeding it.</li>
-        <li><strong>In progress</strong>: Kalman tracker association tuning across domains; audit-log integration with the Decision Black Box hash chain; chaos harness scripting for the full failure matrix.</li>
-        <li><strong>Next</strong>: hydrophone and passive-radar feeds onto the bus; full published chaos-test metrics (time-to-recover, track continuity); Zenoh brokerless prototype as a second-transport experiment.</li>
+        <li><strong>Done</strong>: Mosquitto broker with per-node Ed25519 signing and verification; PPS-disciplined clocks via gpsd + chrony on the aggregator nodes; store-and-forward outbox with <code>tc netem</code> bench proof; the perimeter COP dashboard live on the homelab cluster with the seismic mesh feeding it; hash-chained evidence log with a working verifier.</li>
+        <li><strong>In progress</strong>: Kalman tracker association and gating tuning across domains; chaos harness scripting for the full T1-T5 failure matrix; audit-log integration of tracker-version records.</li>
+        <li><strong>Next</strong>: hydrophone and passive-radar feeds onto the bus; full published chaos-test metrics (time-to-recover, track continuity) with raw logs; Zenoh brokerless prototype as a second-transport experiment.</li>
       </ul>
     </section>
 

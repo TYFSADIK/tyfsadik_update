@@ -358,6 +358,20 @@ flowchart TD
           <tr><td>Beacons</td><td>4 cheap ESP32 boards for airspace-deconfliction simulation</td><td>6-12 each</td></tr>
         </tbody>
       </table>
+      <p>
+        <strong>Phase notes:</strong> the 915 MHz boards are non-negotiable - that is the North
+        American ISM band, and the 868 MHz variants that dominate European tutorials are the wrong
+        hardware for Canada. Between Heltec V3 and LilyGO T-Beam I went with whichever was in stock
+        in Canada at the time; the firmware targets the common SX1262 radio either way. The ADXL355
+        breakouts are the honest starting sensor: cheap, low-noise for a MEMS part, and good enough
+        to prove the edge-classification pipeline before spending on real geophones - the SM-24s are
+        the upgrade path, not the starting point, because a precision ADC front end doubles the cost
+        of each node. The four bare ESP32 beacons are deliberately the cheapest boards in the whole
+        program; they only need to blink a position report for the deconfliction simulation. The
+        node boards arrived first, sensors a week later. This phase is consumed by the
+        <a href="ground-seismic-perimeter-mesh.html">ground seismic perimeter mesh</a> and the
+        <a href="airspace-deconfliction-manager.html">mini airspace deconfliction manager</a>.
+      </p>
 
       <h3>Phase 4 - Rovers: GPS-Denied Navigation &amp; Convoy (~US$800-1,300)</h3>
       <table>
@@ -373,6 +387,20 @@ flowchart TD
         </tbody>
       </table>
       <p>Software is ROS 2 on Ubuntu 24.04 (free). The Phase 0 GNSS module provides ground truth - then gets switched off to measure drift.</p>
+      <p>
+        <strong>Phase notes:</strong> the chassis choice was driven by one requirement - encoders on
+        every wheel - because wheel odometry is an input to the EKF, not an accessory. Two identical
+        chassis were bought so the convoy build has a matched pair; running a convoy of two different
+        platforms turns every tuning problem into a two-variable problem. The BNO085 was chosen over
+        cheaper MPU-class IMUs because it runs its own sensor fusion on-chip and outputs quaternions
+        directly, which removes a whole calibration rabbit hole from the rover pipeline. The LiDAR
+        was bought for one rover first - deliberately - so the EKF could be tuned with and without it
+        before duplicating the cost. The 8 GB Pi 5s were picked over 4 GB because SLAM and
+        visualization on the robot eat RAM, and the physical e-stop switch is in the BOM because a
+        software stop is not a stop. This phase is consumed by the
+        <a href="gps-denied-navigation-rover.html">GPS-denied navigation rover</a> and the
+        <a href="convoy-robots-degraded-mesh.html">convoy robots on a degraded mesh</a>.
+      </p>
 
       <h3>Phase 5 - Drone: Thermal SAR + Acoustic Detector (~US$1,300-1,950)</h3>
       <table>
@@ -389,6 +417,22 @@ flowchart TD
         </tbody>
       </table>
       <p>First weeks happen in simulation - ArduPilot SITL and Gazebo, both free - before flight hardware leaves the bench.</p>
+      <p>
+        <strong>Phase notes:</strong> the X500-class kit was chosen because it is the airframe the
+        ArduPilot documentation and the Gazebo simulation models are built around - matching the
+        sim to the real frame means the SITL tuning transfers instead of starting over. The FLIR
+        Lepton 3.5 is the expensive-but-right option for thermal; the USB thermal camera alternative
+        (256x192 class) is listed because it gets the detection pipeline running at a third of the
+        price while the Lepton waits in the budget. The Hailo AI HAT+ exists in this BOM because
+        running person-detection inference on the Pi's CPU alone does not leave headroom for anything
+        else on a flying platform. Four LiPo packs is the minimum for a useful field day - one in the
+        air, one on the charger, one cooling, one spare. The ELRS radio arrived first (it also works
+        with the simulator for stick time), the airframe second, and the thermal camera last. This
+        phase is consumed by the <a href="thermal-sar-drone.html">thermal SAR drone</a> and the
+        <a href="acoustic-drone-detector.html">passive acoustic drone detector</a> - the ReSpeaker
+        array lives in this phase because it shares the drone's bench time, though the detector
+        itself is a ground node.
+      </p>
 
       <h3>Phase 6 - Cold-Soak Testing &amp; Secure Updates (~US$200-550)</h3>
       <table>
@@ -401,6 +445,121 @@ flowchart TD
           <tr><td>Signing keys</td><td>2 YubiKeys (one backup)</td><td>100-110</td></tr>
         </tbody>
       </table>
+      <p>
+        <strong>Phase notes:</strong> this is the cheapest phase and the one that makes the rest of
+        the program credible. The DS18B20 sensors were picked for boring reasons - one-wire bus,
+        waterproof probe variants, Linux kernel support without any driver work - and the INA228
+        monitors give bus voltage and current over I2C so the voltage-sag curves need no analog
+        front end. The cold chamber line is honest: a chest freezer is the controlled environment,
+        and January in Toronto is the field trial. The two YubiKeys are not a luxury - a signing
+        key with no backup is a single point of failure that bricks your own fleet, so one lives
+        on the bench and one lives in a drawer off-site. The TPM board was the last item to arrive
+        and the only one that needed a cross-border order. This phase is consumed by the
+        <a href="cold-soak-battery-rig.html">cold-soak characterization rig</a> and the
+        <a href="secure-fleet-updates.html">secure robot-fleet updates</a> build pages.
+      </p>
+    </section>
+
+    <section id="workshop">
+      <h2>Workshop Setup and Safety</h2>
+      <p>
+        A program with this many parallel builds lives or dies on bench discipline, so the workshop
+        got set up like a small lab rather than a desk with a soldering iron on it. The bench is
+        split into three zones: a <strong>solder zone</strong> (iron, fume extraction, task light,
+        heat-resistant mat), an <strong>RF zone</strong> (SDRs, antennas, and coax kept physically
+        away from the soldering iron and the bench supply, because stray noise and ESD both kill RF
+        front ends), and a <strong>clean assembly zone</strong> where drones and rovers get worked
+        on without solder splatter or metal filings. The floor beside the bench is the robot test
+        area - rovers never get powered with wheels on the bench.
+      </p>
+      <p>
+        <strong>ESD:</strong> the assembly zone has a grounded ESD mat and a wrist strap, and they
+        get used every time a bare board is handled - the ADXL355 breakouts, the Hailo HAT+, and the
+        KrakenSDR's RF inputs are all the kind of parts that die silently and fail mysteriously a
+        week later. The strap gets a continuity check with the multimeter before the first session
+        of the day, not just the first session ever.
+      </p>
+      <p>
+        <strong>LiPo charging station:</strong> the drone batteries have their own rules, written
+        on an index card taped above the charger:
+      </p>
+      <ul>
+        <li>Charge only on a concrete or tile surface, inside a LiPo bag, with nothing flammable within a metre.</li>
+        <li>Never charge unattended - if I leave the room, the charger stops.</li>
+        <li>Never charge a cold or frozen pack; after a cold-soak or winter field run, the pack warms to room temperature first.</li>
+        <li>Balance charge, always; storage-charge to ~3.8 V per cell for anything sitting more than a few days.</li>
+        <li>Any pack that is puffed, dented, or crashed is retired to the discharge bucket, not back to the shelf.</li>
+      </ul>
+      <p>
+        <strong>Fume extraction:</strong> a small solder fume extractor with a carbon filter sits
+        behind the iron, and rosin-core work also gets the window cracked - the filter slows the
+        exposure, it does not eliminate it. <strong>Fire:</strong> an ABC dry-chemical extinguisher
+        hangs within arm's reach of the bench (not across the room), and the LiPo bag lives beside
+        the charger, not in a drawer. A LiPo fire is a class-B-ish metal-adjacent fire you do not
+        fight with water; the plan is bag, distance, extinguisher if it is small, and the door if
+        it is not.
+      </p>
+      <p>
+        <strong>Checkout procedure:</strong> every new board meets the multimeter before it meets
+        power - continuity between the power rails to rule out a dead short, then a first power-up
+        from the bench supply with the current limit set low, so a mistake costs a current-limited
+        brown-out instead of a dead board. The bench supply's voltage display gets verified against
+        the multimeter before I trust it for the day. That routine is written down as a checklist,
+        because the day you skip it is the day you need it:
+      </p>
+      <p class="code-label">BENCH POWER-ON CHECKLIST</p>
+      <pre><code># Bench power-on checklist - run at the start of every work session
+# 1. Bench supply OFF, voltage knob at minimum, current limit at minimum
+# 2. Verify supply display against multimeter (set 5.00 V, compare readings)
+# 3. ESD strap: continuity check strap -&gt; mat -&gt; ground point (&lt; 1 Mohm expected)
+# 4. New board: meter in continuity mode, check VCC-GND rails for shorts
+#    - any beep on power rails = stop, find the short before powering
+# 5. First power-up: set current limit to ~100 mA for a bare board,
+#    ~500 mA for a Pi, never straight to full current
+# 6. Power on, watch the current draw for 10 seconds before touching anything
+#    - near-zero draw or pegged-at-limit both mean: power off, investigate
+# 7. LiPo check: charger on concrete, LiPo bag open and ready,
+#    extinguisher pin checked, nothing flammable within 1 m
+# 8. Log the session start in the lab notebook (date, boards on bench, goal)</code></pre>
+      <p>
+        None of this is glamorous, and that is the point: the checklist exists so the boring safety
+        steps happen on the exciting days too - the day the KrakenSDR arrives, the day the drone
+        first arms.
+      </p>
+    </section>
+
+    <section id="procurement">
+      <h2>Procurement Notes for Canada</h2>
+      <p>
+        The headline total of <strong>US$5,250-7,950</strong> is only the start of the real number.
+        Buying this program in Canada adds three layers on top: <strong>13% HST</strong> in Ontario
+        on essentially everything, <strong>shipping</strong> that is rarely free at this basket size
+        for heavy items like chassis and batteries, and <strong>duties and brokerage</strong> on
+        anything that crosses the border. The duty itself is often zero under the electronics
+        tariff headings - the sting is the courier brokerage fee, a flat charge for "clearing" your
+        own parcel that can add a meaningful percentage to a small US order. The practical rule:
+        one consolidated cross-border order beats five small ones, and Canadian stock beats US
+        stock even at a slightly higher sticker price.
+      </p>
+      <p>What was bought where:</p>
+      <ul>
+        <li><strong>PiShop.ca</strong> - all four Pi 5 boards, the official 27 W power supplies, active coolers, the M.2 HAT, and Pi Camera Module 3. Canadian Pi stock with no border risk; this was the single largest domestic order.</li>
+        <li><strong>RobotShop</strong> (Quebec) - the two 4WD rover chassis with encoders, the BTS7960 motor driver, and misc brackets. Domestic robotics stock, reasonable shipping to Ontario, and no brokerage surprises.</li>
+        <li><strong>Digi-Key Canada</strong> - the ADXL355 breakouts' companion parts, INA228 modules, DS18B20 probes, connectors, and the resistor/cap kits. Digi-Key's Canadian site prices in CAD with duties handled at checkout, which makes the landed cost predictable.</li>
+        <li><strong>Mouser Canada</strong> - the TPM 2.0 board and some RF connectors that nobody else had in stock domestically.</li>
+        <li><strong>Amazon.ca</strong> - the unglamorous bulk: IP65/IP67 enclosures, cable glands, heat shrink, the ESD mat, the LiPo bags, the ABC extinguisher, and the heat gun. Not the cheapest per item, but fast and returnable when a box arrives the wrong size.</li>
+        <li><strong>KrakenRF</strong> - the KrakenSDR and its five-antenna set sell through <strong>Crowd Supply</strong> and <strong>Mouser</strong>; this was the one unavoidable cross-border order, and it went through Mouser's Canadian checkout so the landed cost was known up front instead of being a roulette wheel at the door.</li>
+        <li><strong>Direct</strong> - the two YubiKeys came from Yubico's store; security keys are not something to buy from a marketplace reseller.</li>
+      </ul>
+      <p>
+        Two Canada-specific traps worth recording. First, <strong>radio band plans</strong>: LoRa
+        gear listed on marketplaces is often the 868 MHz European variant, and Canadian listings are
+        not always labelled clearly - every board in Phase 3 was checked for 915 MHz before checkout.
+        Second, <strong>winter shipping and batteries</strong>: LiPo and Li-ion packs have carrier
+        restrictions, and a pack that sits in a frozen depot over a weekend arrives cold-soaked -
+        which, per the safety rules, means it warms to room temperature before its first charge,
+        not straight onto the charger.
+      </p>
     </section>
 
     <section id="canada-notes">
@@ -442,6 +601,58 @@ flowchart TD
         <li><strong>Doing</strong>: KrakenSDR passive-radar processing chain (range-Doppler plots scored against ADS-B); rover EKF tuning with GNSS-cut drift tests; hydrophone + AIS capture rig; ESP32 LoRa mesh firmware; thermal detection pipeline on the Hailo HAT+.</li>
         <li><strong>Next</strong>: publish the cold-soak dataset (runtime, voltage sag, failure mode vs temperature); multi-node passive-radar fusion; signed OTA rollout across the rover fleet with cold-chamber rollback tests; the multi-domain common operating picture tying every node together with chaos tests.</li>
       </ul>
+
+      <h3>Build Log (Narrative)</h3>
+      <p>
+        The Did/Doing/Next list is the snapshot; this is the trail. Weeks are approximate - some
+        ran long, some overlapped - but the order is real, and the order was the strategy.
+      </p>
+      <p>
+        <strong>Weeks 1-2 - the bench before the builds.</strong> Phase 0 arrived in a stack of
+        boxes and the first two weeks went entirely into infrastructure: bench zones laid out, ESD
+        mat grounded, network switch and OpenWrt router configured, the Pi 5s imaged onto NVMe
+        instead of microSD, and the power-on checklist written down and actually followed. Nothing
+        glamorous got built; everything later got easier. The lesson of the fortnight: imaging and
+        inventorying ten builds' worth of compute up front is slower than doing it per-build, but
+        only once.
+      </p>
+      <p>
+        <strong>Weeks 3-4 - something on the screen.</strong> The ADS-B kit was the first build to
+        go live, deliberately: an RTL-SDR, a 1090 MHz antenna, and an evening of decoder setup put
+        a real-time aircraft map on the dashboard. This mattered beyond morale - the ground-truth
+        log started accumulating weeks before the radar processing chain existed, so by the time
+        passive-radar detections appear there is already history to score them against.
+      </p>
+      <p>
+        <strong>Weeks 5-6 - simulation before hardware risk.</strong> While the cross-border orders
+        were in transit, the software spine went up on the homelab cluster: ROS 2 on Ubuntu 24.04,
+        Gazebo, and ArduPilot SITL. The drone's flight logic and the rover's EKF scaffolding were
+        both written and exercised here, where a crash costs a restarted container instead of a
+        broken airframe. This is also when the MQTT/Zenoh bus design was sketched, because every
+        later node had to publish into it.
+      </p>
+      <p>
+        <strong>Weeks 7-8 - the radar problem gets real.</strong> The KrakenSDR arrived and bench
+        bring-up started: five channels, phase calibration with the built-in noise source, and the
+        slow realization that passive radar is mostly a data-engineering problem wearing an RF
+        costume - moving IQ samples around fast enough, then doing the cross-correlation math. The
+        pyAPRiL processing chain is the current long pole and is where the "Doing" list lives.
+      </p>
+      <p>
+        <strong>Weeks 9-10 - winter as free lab equipment.</strong> The cold-soak rig was assembled
+        and the first freezer runs were logged: instrumented battery, temperature probes, power
+        monitors, and a notebook of procedural mistakes that became the rig's checklist. A real
+        cold snap doubled as the field trial. No dataset is published yet - that is a "Next" item,
+        and it stays there until the numbers are worth publishing.
+      </p>
+      <p>
+        <strong>Weeks 11+ - everything in parallel.</strong> The program is now in its steady state:
+        five workstreams advancing in parallel (radar processing, rover EKF tuning, hydrophone
+        capture, LoRa mesh firmware, thermal pipeline), each documented on its own build page as it
+        matures. The pattern that keeps working: hardware arrives, it gets benched against the
+        checklist, it earns a simulation twin if it can hurt itself, and it does not get called
+        "done" until there is a dataset or a dashboard to point at.
+      </p>
     </section>
 
     <section id="related">

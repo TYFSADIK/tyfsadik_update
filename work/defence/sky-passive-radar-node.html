@@ -184,56 +184,198 @@ flowchart LR
           <div class="step-num">01</div>
           <div class="step-body">
             <strong>ADS-B ground truth first (~US$100)</strong>
-            <p>Before any radar work, I put up the truth receiver: an RTL-SDR Blog V4 with a 1090 MHz antenna, running the readsb/dump1090-fa decoder on the mini PC, with tar1090 serving a live aircraft map in the browser. The decoder writes aircraft positions (lat, lon, altitude, heading, speed, ICAO24) to JSON history files, and I log those continuously.</p>
-            <p>This log is the scoring key for everything that follows: for any timestamp, I can say exactly which cooperative aircraft were actually in the airspace and where.</p>
+            <p>Before any radar work, I put up the truth receiver: an RTL-SDR Blog V4 with a 1090 MHz antenna, decoding Mode S / ADS-B with readsb (the maintained fork of dump1090) and serving a live map with tar1090. The decoder writes aircraft state - ICAO24, position, altitude, heading, speed - to <code>/run/readsb/aircraft.json</code> every second, and tar1090 archives rolling history under <code>/run/tar1090/</code>. This log is the scoring key for everything that follows: for any timestamp I can say exactly which cooperative aircraft were actually overhead and where.</p>
+            <p>Both services install from wiedehopf's one-liners on the mini PC's Ubuntu install, and they survive reboots via systemd:</p>
+            <p class="code-label">Installing the ADS-B decoder and live map</p>
+            <pre><code>sudo bash -c "$(wget -O - https://raw.githubusercontent.com/wiedehopf/adsb-scripts/master/readsb-install.sh)"
+sudo bash -c "$(wget -O - https://raw.githubusercontent.com/wiedehopf/tar1090/master/install.sh)"
+systemctl status readsb tar1090
+# sanity check: how many aircraft are being decoded right now?
+curl -s http://127.0.0.1/tar1090/data/aircraft.json | jq '.aircraft | length'</code></pre>
+            <p><strong>How I verified:</strong> the tar1090 map at <code>http://mini-pc:8080/</code> showed live tracks matching what I could hear on approach frequencies, and <code>aircraft.json</code> updated every second. What can go wrong: a badly sited 1090 antenna gives you five aircraft and a false sense of failure later - I moved it to a window with sky view before trusting the log.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">02</div>
           <div class="step-body">
             <strong>Illuminator survey</strong>
-            <p>Passive radar is only as good as its illuminators of opportunity, so I mapped my local broadcast landscape: FM stations in 88-108 MHz and UHF TV transmitters around 470-600 MHz, noting each one's frequency, bearing, and received power with the RTL-SDR and a simple spectrum scan. FM gives wide bandwidth-modulated content and long range; UHF TV (ATSC) gives better range resolution.</p>
-            <p>I tuned the two directional antennas - a Yagi for the FM band and a log-periodic covering UHF - with the NanoVNA, checking SWR across each target band and trimming element lengths where needed before committing to a mount.</p>
+            <p>Passive radar is only as good as its illuminators of opportunity, so before mounting anything directional I mapped my local broadcast landscape with <code>rtl_power</code>: which FM stations (88-108 MHz) and UHF TV transmitters (~470-600 MHz, ATSC) are receivable here, at what power, and on which exact frequencies. FM offers long range and strong signals; 8-VSB/ATSC TV has more bandwidth and therefore better range resolution. I cross-checked the strongest peaks against public transmitter databases to get each station's location - the bistatic geometry later depends on knowing precisely where the transmitter is.</p>
+            <p class="code-label">Band surveys with rtl_power</p>
+            <pre><code># FM broadcast band: 200 kHz bins, 5 minutes of integration
+rtl_power -f 88M:108M:200k -i 10 -c 50% -e 5m -g 40 fm_survey.csv
+
+# UHF TV band: 1 MHz bins
+rtl_power -f 470M:608M:1M -i 10 -c 50% -e 5m -g 40 uhf_survey.csv
+
+# render a quick heatmap to eyeball the strongest transmitters
+python3 heatmap.py fm_survey.csv fm_survey.png</code></pre>
+            <p><strong>What can go wrong:</strong> the strongest station is not always the best illuminator - one 100 kW FM station a few kilometres away saturated the front end and created intermod products across the band (see <a href="#troubleshooting">Troubleshooting</a>). I picked illuminators that are strong but not co-located with my receiver.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">03</div>
           <div class="step-body">
-            <strong>KrakenSDR bring-up</strong>
-            <p>The KrakenSDR is five RTL-SDR-class coherent receivers in one box, covering 24-1766 MHz with a shared clock so all channels stay phase-aligned - the property that makes direction-finding and multi-channel passive radar possible at this price. I run the open-source KrakenSDR software stack on the mini PC (a Raspberry Pi 4/5 also works) with the <code>krakensdr_doa</code> software and its GNU Radio-companion DSP chain.</p>
-            <p>The critical step is phase calibration: the unit has a built-in noise source that injects a common signal into all five channels, and the software measures and nulls out per-channel phase and amplitude offsets. I re-run this calibration after any frequency change or cable swap, because correlation quality collapses if the channels drift out of alignment.</p>
+            <strong>Antenna tuning with the NanoVNA</strong>
+            <p>A passive radar lives on faint echoes, so every dB lost to a mistuned antenna hurts twice (once on the reference, once on the echo). I swept the FM Yagi and the UHF log-periodic with the NanoVNA from the bench using NanoVNASaver, checking SWR across each target band and trimming the Yagi's driven element until the dip sat inside the FM band rather than at its edge. Target: SWR under 2:1 across the whole illuminator band, ideally under 1.5:1 at the chosen station's frequency.</p>
+            <p class="code-label">NanoVNASaver setup on Ubuntu</p>
+            <pre><code>sudo apt install python3-pyqt5 libxcb-xinerama0
+pip3 install nanovna-saver
+NanoVNASaver   # connect the VNA over USB, calibrate open/short/load first</code></pre>
+            <p><strong>How I verified:</strong> after tuning, the reference-channel spectrum in the KrakenSDR UI showed the target station several dB stronger than before, and the survey peaks matched step 02's expectations. What can go wrong: tuning indoors lies - the SWR dip moved when the antenna went up near metal, so I re-swept it in its final position before sealing the coax.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">04</div>
           <div class="step-body">
-            <strong>Passive radar chain</strong>
-            <p>Two channels carry the geometry. The <strong>reference</strong> channel points a Yagi directly at the broadcast transmitter and captures the clean direct signal. The <strong>surveillance</strong> channel points at the area of interest and captures that same signal delayed and Doppler-shifted by reflections off aircraft. Cross-correlating surveillance against reference over a bank of Doppler shifts produces a <strong>range-Doppler map</strong>: bistatic range on one axis, Doppler speed on the other, with aircraft appearing as peaks above the clutter ridge at zero Doppler.</p>
-            <p>The bistatic geometry matters: range here is the extra path length (transmitter-to-aircraft-to-receiver minus the direct path), so converting a detection into a map position requires knowing the transmitter location and solving the bistatic ellipse - which is exactly what the processing library in the next step handles.</p>
+            <strong>KrakenSDR bring-up</strong>
+            <p>The KrakenSDR is five RTL-SDR-class receivers in one box sharing one clock, covering 24-1766 MHz - the shared clock is what keeps all channels phase-aligned, which is the whole point for passive radar and direction finding. I run the open-source <code>krakensdr_doa</code> stack (HeIMDALL DAQ firmware plus the DSP/web layer) on the mini PC; a Raspberry Pi 4/5 works too, but the x86 box has the headroom for the processing chain in later steps.</p>
+            <p class="code-label">Installing and starting the KrakenSDR stack</p>
+            <pre><code>git clone https://github.com/krakenrf/krakensdr_doa.git
+cd krakensdr_doa
+# install dependencies per the repo README for your platform, then:
+./kraken_doa_start.sh   # starts the HeIMDALL DAQ core + DSP + web UI
+./kraken_doa_stop.sh    # clean shutdown between config changes</code></pre>
+            <p>The web UI comes up on port 8080; from there I set the centre frequency to the chosen FM station, set gain, and confirmed all five channels streaming.</p>
+            <p><strong>What can go wrong:</strong> undervoltage on the USB-C power line causes random channel drops that look exactly like software bugs. I power the KrakenSDR from a proper 5 V supply, not a hub port, and check <code>dmesg</code> for USB resets after any weird behaviour.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">05</div>
           <div class="step-body">
-            <strong>Processing with pyAPRiL</strong>
-            <p>For the heavy DSP I use <strong>pyAPRiL</strong>, an open-source Python passive-radar library available on PyPI. It implements the full chain: coherent processing interval selection, the cross-ambiguity function for range-Doppler surfaces, clutter filtering (suppressing the direct-path breakthrough and stationary echoes that otherwise swamp aircraft returns), direction-of-arrival estimation across the coherent channels, and target localization from the bistatic geometry.</p>
-            <p>My pipeline streams IQ from the KrakenSDR into pyAPRiL processing blocks on the mini PC's Ubuntu install, with NumPy under the hood; the N100-class CPU keeps up at moderate sample rates, and the 16 GB of RAM matters more than cores because range-Doppler surfaces accumulate in memory.</p>
+            <strong>Phase calibration - and keeping it valid</strong>
+            <p>Five receivers sharing a clock are frequency-coherent, but each channel still has its own phase and amplitude offset from mixer and path differences. The KrakenSDR's built-in noise source injects a common wideband signal into all five channels, and the software measures and nulls those offsets. The critical operational rule: the R820T tuners lose phase sync every time the PLL relocks, so <strong>every retune, gain change, or sample-rate change invalidates the calibration</strong> and it must be re-run. I log the calibration timestamp alongside every capture so I can prove later that a capture was taken in a calibrated state.</p>
+            <p class="code-label">DAQ configuration (key fields) and calibration flow</p>
+            <pre><code># _daq_core/daq_chain_config.ini - key fields for an FM illuminator
+[daq]
+center_freq = 98.1        # MHz - the chosen FM station
+sample_rate = 2400000     # Hz
+rx_gain = 40.2            # dB, all channels
+# Then in the web UI (http://mini-pc:8080):
+#   1. enable the noise source  2. run calibration  3. disable noise source
+#   4. confirm per-channel phase offsets read near zero</code></pre>
+            <p><strong>How I verified:</strong> with the noise source on, the calibrated channels report near-zero residual phase spread; a deliberately skipped calibration shows up immediately as garbage correlation. This failure mode - silently uncalibrated captures - is exactly why the timestamp logging exists.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">06</div>
           <div class="step-body">
-            <strong>Scoring against ADS-B truth</strong>
-            <p>Every candidate detection from the range-Doppler processing gets compared against the logged ADS-B truth from step 01. For each ADS-B aircraft in view, I compute where it should appear in bistatic range-Doppler space given the illuminator geometry, then check whether the radar actually produced a detection there - and whether it produced detections where no aircraft was.</p>
-            <p>That yields the three numbers that define a radar: <strong>detection rate</strong>, <strong>false-alarm rate</strong>, and <strong>effective range per illuminator</strong>. FM versus UHF TV get scored separately, because the honest answer is usually "it depends on the transmitter."</p>
+            <strong>Reference and surveillance antenna geometry</strong>
+            <p>Two antenna roles carry the radar geometry. The <strong>reference</strong> Yagi points at the broadcast transmitter and captures the clean direct signal on channel 1. The <strong>surveillance</strong> antennas point at the area of interest on channels 2-5 and capture that same signal delayed and Doppler-shifted by aircraft reflections. Spacing between surveillance elements matters for direction-of-arrival work: the rule of thumb is half-wavelength spacing to avoid grating lobes, which is band-dependent - at FM frequencies the elements sit far apart, at UHF TV they pack tightly.</p>
+            <p class="code-label">Element spacing per band</p>
+            <pre><code>python3 - &lt;&lt;'EOF'
+c = 299792458
+for f in (98.1e6, 550e6):
+    lam = c / f
+    print(f"{f/1e6:6.1f} MHz: lambda = {lam:.2f} m, half-lambda = {lam/2:.2f} m")
+EOF
+#  98.1 MHz: lambda = 3.06 m, half-lambda = 1.53 m
+# 550.0 MHz: lambda = 0.55 m, half-lambda = 0.27 m</code></pre>
+            <p>I also placed the reference antenna so its pattern nulls toward the surveillance array - direct-path breakthrough leaking into the surveillance channels is the number-one enemy of a small passive radar.</p>
+            <p><strong>What can go wrong:</strong> at FM wavelengths the "array" is over a metre per element, so my first indoor layout had the elements coupled to each other and to the room. Moving the surveillance antennas away from walls and large metal objects visibly cleaned up the clutter floor.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">07</div>
           <div class="step-body">
-            <strong>Multi-node fusion</strong>
-            <p>One node gives range-Doppler blips; two or three nodes at different locations give positions by intersection. The plan is to stand up additional nodes and have each publish its detections over MQTT - the same signed-detections bus the rest of the hardware program uses - into the <a href="multi-domain-common-operating-picture.html">multi-domain common operating picture</a>, where a Kalman-filter tracker fuses them with the water and ground node outputs.</p>
-            <p>Store-and-forward applies here too: nodes buffer detections through dead links and sync on reconnect, the DDIL pattern the rest of the program is built around.</p>
+            <strong>Coherent IQ capture</strong>
+            <p>Processing development needs repeatable data, so before tuning anything live I built a recorder that pulls synchronized IQ frames from the HeIMDALL DAQ's network IQ interface (the same output the KrakenSDR mobile app consumes) and writes per-channel interleaved float32 files plus a small JSON sidecar with centre frequency, sample rate, gain, and calibration timestamp. A 10-30 second capture at 2.4 MHz sample rate is a few hundred MB across five channels - big enough to develop against, small enough to keep a library of.</p>
+            <p class="code-label">record_iq.py (simplified capture loop)</p>
+            <pre><code>import json, socket, time
+import numpy as np
+
+N_CH, N_SAMPLES = 5, 1 &lt;&lt; 22          # ~1.7 s per CPI block at 2.4 MHz
+sock = socket.create_connection(("127.0.0.1", 5000))   # DAQ IQ interface
+
+def read_exact(n):
+    buf = b""
+    while len(buf) &lt; n:
+        buf += sock.recv(n - len(buf))
+    return buf
+
+stamp = int(time.time())
+raw = read_exact(N_CH * N_SAMPLES * 2 * 4)             # complex float32
+iq = np.frombuffer(raw, dtype=np.complex64).reshape(N_CH, N_SAMPLES)
+iq.tofile(f"captures/iq_{stamp}.cf32")
+json.dump({"fc_hz": 98.1e6, "fs_hz": 2.4e6, "gain_db": 40.2,
+           "cal_ts": last_calibration_ts},
+          open(f"captures/iq_{stamp}.json", "w"))</code></pre>
+            <p><strong>How I verified:</strong> every capture gets opened in a waterfall before being filed - a capture with USB dropouts shows visible streaks and gets deleted, because training a clutter filter on corrupted data wastes days.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">08</div>
+          <div class="step-body">
+            <strong>Range-Doppler processing with pyAPRiL</strong>
+            <p>The core DSP runs on <strong>pyAPRiL</strong>, the open-source Python passive-radar library on PyPI (<code>pip install pyapril</code>). The chain per coherent processing interval (CPI): prepare the reference and surveillance channels, suppress the direct-path breakthrough and stationary clutter with an adaptive filter (the ECA family - Extensive Cancellation Algorithm), compute the cross-ambiguity surface (surveillance correlated against reference over a bank of Doppler shifts), and run CA-CFAR detection over the resulting range-Doppler map. Aircraft appear as peaks at a bistatic range (extra path length vs the direct signal) and a Doppler speed. With multiple surveillance channels calibrated, pyAPRiL also estimates direction of arrival, which turns a blip into a bearing.</p>
+            <p class="code-label">rd_pipeline.py - one CPI through the chain (wrapper calls, simplified)</p>
+            <pre><code>import numpy as np
+
+ref  = load_cf32("iq_1695600000.cf32")[0]     # channel 1: reference
+surv = load_cf32("iq_1695600000.cf32")[1]     # channel 2: surveillance
+
+# 1. ECA clutter cancellation: project direct path + static clutter out
+surv_clean = eca_filter(ref, surv, n_filter_taps=10)
+
+# 2. cross-ambiguity: bistatic range vs Doppler
+rd_map = cross_ambiguity(ref, surv_clean, fs=2.4e6,
+                         max_doppler_hz=600, cpi_s=0.5)
+
+# 3. CA-CFAR hit detection over the range-Doppler surface
+hits = ca_cfar(np.abs(rd_map), guard=2, train=8, pfa=1e-4)</code></pre>
+            <p><strong>What can go wrong:</strong> with insufficient clutter cancellation the zero-Doppler ridge swamps everything and CFAR declares hundreds of false hits - the tuning loop is filter order vs false-alarm rate, judged on recorded captures before ever running live. Memory is the other constraint: full CPI surfaces accumulate fast, which is why the mini PC has 16 GB.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">09</div>
+          <div class="step-body">
+            <strong>Scoring harness against ADS-B truth</strong>
+            <p>A radar page without numbers is marketing, so the scoring harness is a first-class part of the build. For each logged ADS-B aircraft at each capture timestamp, I compute where it <em>should</em> appear in bistatic range-Doppler space - the extra path length via the known transmitter location, and the Doppler from its velocity projected onto the transmitter-aircraft and aircraft-receiver legs - then check whether the radar produced a CFAR hit there, and whether it produced hits where no aircraft existed. That yields the three numbers that define the radar: detection rate, false-alarm rate, and effective range per illuminator. FM and UHF TV get scored separately, because the honest answer is usually "it depends on the transmitter."</p>
+            <p class="code-label">score_run.py - aligning detections with truth (simplified)</p>
+            <pre><code>import glob, json
+import pandas as pd
+
+truth = pd.concat(pd.read_json(f)
+                  for f in sorted(glob.glob("adsb_history/*.json")))
+hits  = pd.read_json("captures/run_012_hits.json")   # CFAR hits, this run
+
+for _, ac in truth[truth.run_id == RUN_ID].iterrows():
+    bistatic_r = extra_path(tx_pos, ac.pos, rx_pos)  # known TX + RX sites
+    doppler    = bistatic_doppler(tx_pos, ac, rx_pos)
+    hit = hits.query("abs(range_m - @bistatic_r) &lt; TOL_R and "
+                     "abs(doppler_hz - @doppler) &lt; TOL_D")
+    record(ac.icao24, detected=not hit.empty)</code></pre>
+            <p><strong>How I verified:</strong> the harness is only trustworthy if its clock is - both the ADS-B log and the captures come off the same chrony-disciplined mini PC, and I reject any run where the truth log has gaps in the scoring window.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">10</div>
+          <div class="step-body">
+            <strong>Automation, logging, and multi-node fusion</strong>
+            <p>A sensor node you have to babysit is a demo, not a node. The DAQ, recorder, and processing chain run as a systemd service that starts on boot and restarts on failure; captures and score summaries rotate to the archive disk nightly. The endgame is 2-3 nodes at different sites publishing detections over MQTT - the same signed-detections bus the rest of the hardware program uses - into the <a href="multi-domain-common-operating-picture.html">multi-domain common operating picture</a>, where intersecting range-Doppler-DoA solutions from multiple nodes become actual positions. Store-and-forward applies here too: nodes buffer through dead links and sync on reconnect, the DDIL pattern the rest of the program is built around.</p>
+            <p class="code-label">/etc/systemd/system/sky-node.service</p>
+            <pre><code>[Unit]
+Description=Sky passive radar node (HeIMDALL DAQ + processing)
+After=network-online.target
+
+[Service]
+User=taki
+WorkingDirectory=/home/taki/sky-node
+ExecStart=/home/taki/sky-node/run_node.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+            <p class="code-label">Publishing a detection to the fusion bus</p>
+            <pre><code>import json, paho.mqtt.client as mqtt
+
+client = mqtt.Client("sky-node-01")
+client.connect("cop-broker.local", 1883)
+client.publish("defence/sky/detections", json.dumps({
+    "node": "sky-node-01", "ts": capture_ts,
+    "range_m": bistatic_r, "doppler_hz": doppler, "doa_deg": bearing,
+}), qos=1)</code></pre>
+            <p><strong>What can go wrong:</strong> a node that silently stops publishing looks identical to empty sky. The service logs a heartbeat metric, and the COP side flags any node that goes quiet - the same health-check discipline as any production fleet.</p>
           </div>
         </div>
       </div>
@@ -242,15 +384,36 @@ flowchart LR
     <section id="testing">
       <h2>Testing &amp; Metrics</h2>
       <p>
-        The test protocol is built around the ADS-B ground truth, and every run is logged so results
-        are reproducible rather than anecdotal:
+        The protocol is built around the ADS-B ground truth, and every run is logged with its
+        configuration (illuminator, gain, filter order, calibration timestamp) so results are
+        reproducible rather than anecdotal. Each numbered run below is a repeatable procedure; runs
+        get re-executed after any antenna, gain, or filter change.
       </p>
-      <ul>
-        <li><strong>Detection rate</strong>: for each logged ADS-B aircraft track, did the passive radar produce a corresponding range-Doppler detection within tolerance? Reported as a percentage per illuminator (FM vs UHF TV) and per range band.</li>
-        <li><strong>False-alarm rate</strong>: detections with no matching ADS-B track, per hour of observation. Clutter-filter tuning is judged mostly on this number.</li>
-        <li><strong>Effective range per illuminator</strong>: the furthest bistatic range at which the detection rate stays useful, measured against ADS-B positions - reported per transmitter, not as one number.</li>
-        <li><strong>Calibration stability</strong>: how long phase calibration holds before range-Doppler quality measurably degrades, which sets the re-calibration interval.</li>
-      </ul>
+
+      <h3>Test runs</h3>
+      <ol>
+        <li><strong>T1 - ADS-B truth completeness.</strong> Setup: readsb/tar1090 running for a full week. Procedure: count daily decoded aircraft and check the history files for gaps. Metric: log uptime and messages/second. This has to be solid first - every later score inherits its errors.</li>
+        <li><strong>T2 - Calibration hold time.</strong> Setup: KrakenSDR calibrated, then left streaming untouched. Procedure: re-check residual phase spread between channels at increasing intervals without recalibrating. Metric: time until range-Doppler quality measurably degrades. Output: the re-calibration interval the node enforces in software.</li>
+        <li><strong>T3 - FM illuminator detection run.</strong> Setup: reference Yagi on the chosen FM station, surveillance antennas on the approach corridor, fresh calibration. Procedure: record captures across several busy traffic windows, process with the fixed pipeline, score against the truth log. Metric: detection rate per range band, and false alarms per hour.</li>
+        <li><strong>T4 - UHF TV illuminator comparison.</strong> Setup: identical to T3 but on an ATSC transmitter. Procedure and metrics identical - the point is a per-illuminator comparison, because bandwidth and transmitter geometry differ.</li>
+        <li><strong>T5 - False-alarm soak.</strong> Setup: pipeline running with CFAR at its working threshold during a quiet-traffic window (overnight). Procedure: count hits with no matching ADS-B track. Metric: false alarms per hour; this is what clutter-filter tuning is judged on.</li>
+        <li><strong>T6 - Multi-node dry run.</strong> Setup: planned second node on the same illuminator. Procedure: both nodes record simultaneously, fuse detections over MQTT, and compare the intersected position with ADS-B truth. Metric: position error vs single-node geometry. Status: pending the second node.</li>
+      </ol>
+
+      <h3>Targets vs current status</h3>
+      <table>
+        <thead><tr><th>Metric</th><th>Target</th><th>Current status</th></tr></thead>
+        <tbody>
+          <tr><td>ADS-B truth log uptime</td><td>&gt; 95% over any scoring week</td><td>Running; uptime tracked, scoring weeks being selected</td></tr>
+          <tr><td>Detection rate (FM illuminator)</td><td>&gt; 70% of ADS-B tracks in the primary coverage band</td><td>In progress - T3 runs underway, not yet scored</td></tr>
+          <tr><td>Detection rate (UHF TV illuminator)</td><td>Comparable to FM within its coverage band</td><td>Not yet measured - T4 pending</td></tr>
+          <tr><td>False-alarm rate</td><td>&lt; 10 per hour at the working CFAR threshold</td><td>In progress - clutter filter still being tuned</td></tr>
+          <tr><td>Effective bistatic range</td><td>Establish per illuminator, then publish</td><td>Not yet measured - follows from T3/T4</td></tr>
+          <tr><td>Calibration hold time</td><td>Quantify, then automate re-calibration on that interval</td><td>In progress - T2 data being collected</td></tr>
+          <tr><td>Multi-node position error</td><td>Meaningfully better than single-node geometry</td><td>Not started - second node not yet built</td></tr>
+        </tbody>
+      </table>
+
       <p>
         <strong>Results are in progress and not yet published.</strong> The ADS-B truth log has been
         accumulating since the receiver went live; the range-Doppler chain is producing plots on the
@@ -276,12 +439,23 @@ flowchart LR
       </div>
     </section>
 
+    <section id="troubleshooting">
+      <h2>Troubleshooting &amp; Lessons</h2>
+      <ul>
+        <li><strong>USB dropouts ruining coherent captures.</strong> Symptom: streaks across the waterfall and correlation that dies mid-CPI. Cause: both SDRs streaming through one overloaded USB controller, and an undervolted KrakenSDR. Fix: separate USB buses for the KrakenSDR and the RTL-SDR, a quality 5 V supply, short good cables, and <code>dmesg -w</code> watching for xHCI errors during every capture. Any capture with a dropout gets deleted, not processed.</li>
+        <li><strong>Range-Doppler map is all clutter ridge, no aircraft.</strong> The direct-path signal leaking into the surveillance channels was stronger than the echoes by orders of magnitude. Fixes, in the order that worked: physically separate and null the antennas (reference pattern null toward the surveillance array), then raise the ECA filter order in the processing chain, then confirm the calibration was current. If the zero-Doppler ridge still dominates, the geometry - not the code - is the problem.</li>
+        <li><strong>Coherence "randomly" lost after working an hour ago.</strong> Not random: any retune, gain change, or sample-rate change relocks the R820T PLLs and invalidates phase calibration. Fix: treat calibration as part of the run configuration, re-run it on every change, and log its timestamp with every capture so stale-calibration data can be filtered out of scoring.</li>
+        <li><strong>A nearby powerhouse FM station saturating the front end.</strong> A very strong local transmitter raised the noise floor across the band and produced intermod ghosts. Fix: back the gain down (coherence matters more than gain), pick an illuminator that is strong-but-distant, and if needed put an FM band-stop filter on the surveillance channels only - never on the reference.</li>
+        <li><strong>Detections that don't line up with ADS-B truth.</strong> First suspect was the algorithm; the actual cause was clock disagreement between the radar captures and the truth log - a few seconds of drift moves a fast aircraft well outside the tolerance window. Fix: chrony on the mini PC disciplining both pipelines off NTP, and a scoring-harness check that rejects runs where the truth log has gaps.</li>
+      </ul>
+    </section>
+
     <section id="status">
       <h2>Status &amp; Roadmap</h2>
       <ul>
-        <li><strong>Done</strong>: full BOM purchased and on the bench; ADS-B ground-truth receiver live with tar1090 map and continuous position logging; illuminator survey of local FM and UHF TV transmitters; Yagi and log-periodic antennas tuned with the NanoVNA; KrakenSDR phase-calibrated and streaming coherent IQ.</li>
-        <li><strong>In progress</strong>: pyAPRiL range-Doppler chain on the mini PC; clutter-filter tuning against recorded captures; scoring harness that aligns passive-radar detections with the ADS-B truth log.</li>
-        <li><strong>Next</strong>: publish the scored detection-rate / false-alarm / effective-range dataset per illuminator; stand up a second node and fuse detections over MQTT into the multi-domain common operating picture; export-control review with Global Affairs Canada before any radar code is published.</li>
+        <li><strong>Done</strong>: full BOM purchased and on the bench; ADS-B ground-truth receiver (readsb + tar1090) live with continuous position logging; FM and UHF TV illuminator survey with rtl_power; Yagi and log-periodic tuned with the NanoVNA; KrakenSDR streaming coherent IQ with the calibration discipline (recalibrate on every retune) in place; capture recorder writing CF32 plus metadata sidecars.</li>
+        <li><strong>In progress</strong>: pyAPRiL range-Doppler chain with ECA clutter filtering tuned against recorded captures; the T2 calibration-hold and T3 FM detection test runs; the scoring harness that aligns CFAR hits with the ADS-B truth log.</li>
+        <li><strong>Next</strong>: finish the T3-T5 scoring runs and publish the per-illuminator dataset (detection rate, false-alarm rate, effective range); systemd-managed always-on node with MQTT publishing; second node and the T6 multi-node fusion dry run into the common operating picture; export-control review with Global Affairs Canada before any radar code is published.</li>
       </ul>
     </section>
 

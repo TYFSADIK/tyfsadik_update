@@ -15,7 +15,7 @@
   <meta property="og:image" content="https://tyfsadik.org/Prove/Thermal%20search-and-rescue%20drone.jpeg">
   <meta name="twitter:card" content="summary_large_image">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"CreativeWork","name":"Thermal Search-and-Rescue Drone","author":{"@type":"Person","name":"MD. Taki Yasir Faraji Sadik","url":"https://tyfsadik.org/about.html"},"dateCreated":"2026","inLanguage":"en-CA","keywords":"thermal search and rescue drone, FLIR Lepton, Hailo AI HAT+, ArduPilot, edge AI, Arctic ISR, georeferenced detections, MQTT live map"}</script>
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"How I built a thermal search-and-rescue drone","description":"X500-class quadcopter with a FLIR Lepton thermal camera and Hailo AI HAT+ edge person detection, georeferenced and pushed to a live map, built against the Army MINERVA Arctic ISR requirement.","step":[{"@type":"HowToStep","name":"Simulation first","text":"Run ArduPilot SITL and Gazebo to develop mission logic, geofences, and failsafes before any flight hardware is powered."},{"@type":"HowToStep","name":"Airframe build","text":"Assemble the X500-class kit with Pixhawk-class flight controller, GPS, ELRS radio link, props, and guards."},{"@type":"HowToStep","name":"Companion computer","text":"Connect a Raspberry Pi 5 to the flight controller over UART with MAVLink, using mavlink-router to split telemetry to the ground station."},{"@type":"HowToStep","name":"Thermal pipeline","text":"Stream FLIR Lepton 3.5 (or 256x192 USB thermal) frames into the Pi and run person detection at the edge on the Hailo AI HAT+ via HailoRT."},{"@type":"HowToStep","name":"Georeferencing","text":"Fuse detections with telemetry (position, altitude, gimbal attitude) into lat/lon points."},{"@type":"HowToStep","name":"Live map","text":"Publish detections over MQTT to a Leaflet situational-awareness map with confidence scores; a human confirms every detection."},{"@type":"HowToStep","name":"Compliance gate","text":"Complete Transport Canada registration and pilot certification plus a NAV CANADA airspace check before any outdoor flight."}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"How I built a thermal search-and-rescue drone","description":"X500-class quadcopter with a FLIR Lepton thermal camera and Hailo AI HAT+ edge person detection, georeferenced and pushed to a live map, built against the Army MINERVA Arctic ISR requirement.","step":[{"@type":"HowToStep","name":"Simulation first","text":"Run ArduPilot SITL and Gazebo to develop mission logic, geofences, and failsafes before any flight hardware is powered."},{"@type":"HowToStep","name":"Airframe build","text":"Assemble the X500-class kit with Pixhawk-class flight controller, GPS, motors, and ESCs; verify motor order and direction with props off."},{"@type":"HowToStep","name":"Radio link and failsafes","text":"Bind the ELRS receiver to the RadioMaster-class transmitter, configure CRSF input on the flight controller, and set throttle failsafes."},{"@type":"HowToStep","name":"Power system and battery discipline","text":"Set up the 4S LiPo fleet, balance charger, and battery failsafe thresholds; first power-up through a smoke stopper."},{"@type":"HowToStep","name":"Companion computer link","text":"Connect a Raspberry Pi 5 to the flight controller over UART with MAVLink, using mavlink-router to split telemetry to the ground station."},{"@type":"HowToStep","name":"Thermal capture pipeline","text":"Stream FLIR Lepton 3.5 (or 256x192 USB thermal) frames into the Pi and verify the raw 16-bit capture path."},{"@type":"HowToStep","name":"Edge person detection","text":"Run person detection on the Hailo AI HAT+ via HailoRT, fine-tuned on thermal imagery of people in snow and brush."},{"@type":"HowToStep","name":"Georeferencing","text":"Fuse detections with telemetry (position, altitude, gimbal attitude) into lat/lon points."},{"@type":"HowToStep","name":"Live map","text":"Publish detections over MQTT to a Leaflet situational-awareness map with confidence scores; a human confirms every detection."},{"@type":"HowToStep","name":"Compliance gate","text":"Complete Transport Canada registration and pilot certification plus a NAV CANADA airspace check before any outdoor flight."}]}</script>
   <link rel="stylesheet" href="../../css/style.css">
   <link rel="icon" href="../../favicon.png" type="image/png">
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
@@ -138,63 +138,342 @@ flowchart LR
       <p class="diagram-label">Figure 1: thermal frames run through edge detection on the Hailo HAT+, fuse with flight telemetry on the Pi, and land on a live map where a human confirms each detection.</p>
     </section>
 
+    <section id="wiring">
+      <h2>Wiring &amp; Connections</h2>
+      <p>
+        The whole payload chain fits on the X500's top and bottom plates. The two rules that
+        saved me the most pain: <strong>common ground everywhere</strong> (the FC, the Pi, and the
+        receiver must share a ground or serial links misbehave in ways that look like software
+        bugs), and <strong>the Pi gets its own regulator</strong> - never power it from the flight
+        controller's USB port.
+      </p>
+      <table>
+        <thead><tr><th>From</th><th>To</th><th>Cable / interface</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Pixhawk TELEM2</td><td>Pi 5 GPIO UART (GPIO14/15)</td><td>JST-GH 6-pin to Dupont</td><td>Cross TX to RX; common GND; 921600 baud, MAVLink 2</td></tr>
+          <tr><td>ELRS receiver</td><td>Pixhawk RC input UART</td><td>JST servo-style</td><td>CRSF protocol; receiver antennas at 90 degrees to each other</td></tr>
+          <tr><td>GPS/compass module</td><td>Pixhawk GPS1 + I2C1</td><td>JST-GH 6-pin and 4-pin</td><td>Mast-mounted, away from the power distribution board</td></tr>
+          <tr><td>4S LiPo</td><td>Power distribution board</td><td>XT60</td><td>First power-up through a smoke stopper, always</td></tr>
+          <tr><td>5 V / 5 A BEC</td><td>Pi 5 USB-C power input</td><td>Buck converter, USB-C pigtail</td><td>Separate regulator; the Pi 5 browns out under 5 V with the HAT+ loaded</td></tr>
+          <tr><td>PureThermal 3 board (Lepton 3.5)</td><td>Pi 5 USB-A</td><td>USB 2.0</td><td>Streams raw 16-bit (Y16) frames over UVC</td></tr>
+          <tr><td>Hailo AI HAT+</td><td>Pi 5 40-pin header + PCIe FFC</td><td>M.2 HAT ribbon</td><td>Hailo-8L over PCIe; gen 3 negotiated in config.txt</td></tr>
+          <tr><td>Camera gimbal (pitch)</td><td>Pixhawk AUX out</td><td>PWM servo lead</td><td>Driven by ArduPilot mount parameters; nadir for search profile</td></tr>
+        </tbody>
+      </table>
+    </section>
+
     <section id="how-building">
       <h2>How I Built It</h2>
       <div class="steps">
+
         <div class="step">
           <div class="step-num">01</div>
           <div class="step-body">
             <strong>Simulation first</strong>
-            <p>Before any flight hardware was powered, I stood up ArduPilot SITL and Gazebo (both free) on the homelab cluster and developed the mission logic there: lawn-mower search patterns, geofences, and failsafes for link loss, low battery, and geofence breach. This builds directly on the simulation environment from my <a href="lentus-drone-mapping.html">LENTUS-style drone mapping</a> work.</p>
-            <p>The payoff is that every behaviour that could cost me an airframe got exercised in Gazebo first - <code>sim_vehicle.py -v ArduCopter</code> against a Gazebo world, with Mission Planner connected as the ground station, exactly as it will be flown for real.</p>
+            <p>
+              Before any flight hardware was powered, I stood up ArduPilot SITL and Gazebo (both
+              free) on the homelab cluster and developed the mission logic there: lawn-mower search
+              patterns, geofences, and failsafes for link loss, low battery, and geofence breach.
+              This builds directly on the simulation environment from my
+              <a href="lentus-drone-mapping.html">LENTUS-style drone mapping</a> work. The payoff is
+              that every behaviour that could cost me an airframe got exercised in Gazebo first,
+              with Mission Planner connected as the ground station, exactly as it will be flown for real.
+            </p>
+            <p class="code-label">SITL + Gazebo bring-up, and the geofence as flown in simulation</p>
+            <pre><code># one-time toolchain + build
+git clone --recurse-submodules https://github.com/ArduPilot/ardupilot.git
+cd ardupilot
+./waf configure --board sitl
+./waf copter
+
+# launch a simulated quad in a Gazebo world
+sim_vehicle.py -v ArduCopter -f gazebo-iris --console --map
+
+# in the MAVProxy console: the Arctic-search geofence profile
+param set FENCE_ENABLE 1
+param set FENCE_TYPE 7        # altitude + circle + polygon
+param set FENCE_RADIUS 300    # metres, stays well inside the test area
+param set FENCE_ALT_MAX 120   # metres AGL, the Canadian basic ceiling
+param set FS_GCS_ENABLE 1     # GCS-loss failsafe</code></pre>
+            <p>
+              What can go wrong: a <code>--recurse-submodules</code>-less clone builds nothing useful
+              (missing <code>MAVLink</code> and <code>gazebo</code> submodules), and the failsafes
+              only count if you actually test them - I kill the simulated GCS link and watch the
+              quad RTL before calling the profile done.
+            </p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">02</div>
           <div class="step-body">
             <strong>Airframe build</strong>
-            <p>I assembled the X500-class kit: frame, motors, ESCs, Pixhawk-class flight controller, GPS, and the ELRS radio link (RadioMaster-class transmitter plus receiver) for control. Props went on last, after bench checks of motor order and direction, and prop guards stay on for any early flight.</p>
-            <p>ArduPilot on the flight controller handles all stabilization and navigation; the companion computer never touches the control loop directly - it only asks for missions and reads telemetry.</p>
+            <p>
+              I assembled the X500-class kit: frame, motors, ESCs, Pixhawk-class flight controller,
+              and GPS. ArduPilot on the flight controller handles all stabilization and navigation;
+              the companion computer never touches the control loop directly - it only asks for
+              missions and reads telemetry. Props went on last, after bench checks of motor order
+              and direction, and prop guards stay on for any early flight.
+            </p>
+            <p class="code-label">Motor order and direction test, props OFF (MAVProxy console)</p>
+            <pre><code># spin each motor at 10% for 2 seconds, in order A-D,
+# and check it matches the quad-X diagram (A=rear-right CCW, etc.)
+motortest 1 0 10 2
+motortest 2 0 10 2
+motortest 3 0 10 2
+motortest 4 0 10 2</code></pre>
+            <p>
+              How I verified: a fingertip on each motor bell during its spin confirms direction; if
+              a motor runs backwards I swap any two of its three ESC leads rather than trusting a
+              software reversal. Getting this wrong is the classic first-flight flip, and it is
+              free to check on the bench.
+            </p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">03</div>
           <div class="step-body">
-            <strong>Companion computer link</strong>
-            <p>The Pi 5 4 GB talks MAVLink to the flight controller over UART. On the Pi, <strong>mavlink-router</strong> splits the telemetry stream so the ground station gets its copy while the onboard detection pipeline consumes its own - one serial link, multiple consumers, no conflicts.</p>
-            <p>This is the same companion-computer pattern ArduPilot documents for Pi-class computers: serial telemetry at 921600 baud, with the Pi receiving attitude, position, and GPS state at a steady rate for the fusion step below.</p>
+            <strong>Radio link and failsafes</strong>
+            <p>
+              Control runs over ELRS: a RadioMaster-class transmitter and a receiver wired to a
+              flight-controller UART running the CRSF protocol. ELRS gives me a long-range,
+              low-latency link with real telemetry back to the handset, which matters when the
+              whole concept is a wide-area search. Binding is done with a shared phrase, so the
+              receiver and transmitter pair on power-up with no button dance.
+            </p>
+            <p class="code-label">CRSF input and throttle failsafe parameters</p>
+            <pre><code>SERIAL5_PROTOCOL 23    # RC input (CRSF) on the receiver UART
+RSSI_TYPE 3            # RSSI comes from the receiver protocol
+FS_THR_ENABLE 1        # throttle/radio failsafe action: RTL
+FS_THR_VALUE 975       # PWM below which radio-loss is declared</code></pre>
+            <p>
+              How I verified: with props off and the drone on the bench, I power the transmitter
+              down and watch the flight mode flip to RTL in Mission Planner. A failsafe you have
+              never deliberately triggered is a failsafe you do not have.
+            </p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">04</div>
           <div class="step-body">
-            <strong>Thermal pipeline</strong>
-            <p>The FLIR Lepton 3.5 (a 256x192-class USB thermal camera is the fallback) streams frames into the Pi. The <strong>Hailo AI HAT+</strong> runs person detection at the edge via <strong>HailoRT</strong>, so inference happens on the drone with no video downlink required.</p>
-            <p>The model is tuned for thermal signatures in snow and brush - a warm human shape against a cold, low-clutter background is actually an easier detection problem than visible-light SAR, which is exactly why the MINERVA requirement points this way. Detections carry a bounding box and a confidence score.</p>
+            <strong>Power system and battery discipline</strong>
+            <p>
+              Four 4S LiPo packs feed the power distribution board over XT60, and a balance charger
+              keeps the fleet healthy. The first power-up of any new wiring goes through a smoke
+              stopper - a current-limiting bulb in series with the battery that turns a dead short
+              into a lit bulb instead of a burnt ESC. Battery failsafe thresholds are set so the
+              drone comes home with margin, not on vapour.
+            </p>
+            <p class="code-label">Battery failsafe profile for 4S packs</p>
+            <pre><code>BATT_LOW_VOLT 14.8    # low warning, start heading home
+BATT_CRT_VOLT 14.0    # critical: land now
+BATT_FS_LOW_ACT 2     # low action: RTL
+BATT_FS_CRT_ACT 1     # critical action: land
+BATT_CAPACITY 5200    # mAh, used for consumed-mAh tracking</code></pre>
+            <p>
+              What can go wrong: LiPos die quietly from bad storage habits, so every pack lives at
+              storage voltage (about 3.85 V per cell) on the charger, in a fire bag, and a cold
+              pack from an outdoor session warms to room temperature before it ever sees the
+              charger - same discipline as my <a href="cold-soak-battery-rig.html">cold-soak rig</a>.
+            </p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">05</div>
           <div class="step-body">
-            <strong>Georeferencing</strong>
-            <p>Each detection is fused with the drone's telemetry at that instant - position, altitude, and gimbal/camera attitude - to project the bounding-box centre into a lat/lon point on the ground. With the camera pointing near-nadir and altitude from the flight controller, a pinhole-camera projection is good enough for cueing a ground team.</p>
+            <strong>Companion computer link</strong>
+            <p>
+              The Pi 5 4 GB talks MAVLink to the flight controller over UART. On the Pi,
+              <strong>mavlink-router</strong> splits the telemetry stream so the ground station gets
+              its copy while the onboard detection pipeline consumes its own - one serial link,
+              multiple consumers, no conflicts. This is the same companion-computer pattern
+              ArduPilot documents for Pi-class computers: serial telemetry at 921600 baud, with the
+              Pi receiving attitude, position, and GPS state at a steady rate for the fusion step below.
+            </p>
+            <p class="code-label">/etc/mavlink-router/main.conf on the Pi</p>
+            <pre><code>[General]
+TcpServerPort=5760
+ReportStats=false
+
+[UartEndpoint fc]
+Device=/dev/serial0
+Baud=921600
+
+[UdpEndpoint gcs]
+Mode=normal
+Address=192.168.1.50
+Port=14550</code></pre>
+            <p class="code-label">Matching flight-controller side (TELEM2)</p>
+            <pre><code>SERIAL2_PROTOCOL 2    # MAVLink 2
+SERIAL2_BAUD 921      # 921600
+SR2_POSITION 10       # stream rates (Hz) the fusion step relies on
+SR2_EXTRA1 10         # attitude</code></pre>
+            <p>
+              What can go wrong: the Pi's serial console claims <code>/dev/serial0</code> by default
+              - it must be disabled in <code>raspi-config</code> with the hardware UART left enabled
+              (<code>enable_uart=1</code> in <code>/boot/firmware/config.txt</code>). Until I did
+              that, MAVLink heartbeats arrived garbled and I spent an evening blaming the cable.
+            </p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">06</div>
           <div class="step-body">
-            <strong>Live map</strong>
-            <p>Georeferenced detections are published over <strong>MQTT</strong> to a <strong>Leaflet</strong> situational-awareness map. Each marker carries its confidence score and a cropped thermal thumbnail, and the planned flight path renders alongside so the operator can see what has been covered.</p>
-            <p>A human confirms every detection; the system does nothing beyond cueing. In a real search, that map is what the Ranger team lead watches.</p>
+            <strong>Thermal capture pipeline</strong>
+            <p>
+              The FLIR Lepton 3.5 rides a PureThermal 3 board, which presents the sensor as a
+              standard UVC camera streaming raw 16-bit (Y16) frames - every pixel is a radiometric
+              value, not a false-colour picture. A 256x192-class USB thermal camera is the fallback
+              path. Getting clean raw frames into Python is the foundation everything else stands
+              on, so I proved this step on the bench before any AI entered the picture.
+            </p>
+            <p class="code-label">Raw 16-bit capture from the Lepton with OpenCV</p>
+            <pre><code>import cv2
+
+cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+cap.set(cv2.CAP_PROP_FOURCC,
+        cv2.VideoWriter.fourcc('Y', '1', '6', ' '))
+cap.set(cv2.CAP_PROP_CONVERT_RGB, 0)   # keep raw radiometry
+
+ok, frame = cap.read()                 # frame is uint16, 160x120
+assert ok and frame.dtype == 'uint16'</code></pre>
+            <p>
+              How I verified: I point the camera at a mug of hot water and at a cold pack and check
+              that the raw pixel means differ by the expected direction and rough magnitude. If the
+              frame looks like 8-bit grey noise, the FOURCC or <code>CONVERT_RGB</code> flag is wrong
+              and the radiometry is being thrown away upstream.
+            </p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">07</div>
           <div class="step-body">
-            <strong>Compliance gate before flight</strong>
-            <p>The airframe is well over 250 g, so outdoor flight waits on <strong>Transport Canada registration and a pilot certificate</strong>, plus a <strong>NAV CANADA airspace check</strong> of the intended test area. Until that gate clears, everything flies in SITL and the payload pipeline gets exercised on bench and ground runs.</p>
+            <strong>Edge person detection on the Hailo AI HAT+</strong>
+            <p>
+              The <strong>Hailo AI HAT+</strong> (Hailo-8L) runs person detection at the edge via
+              <strong>HailoRT</strong>, so inference happens on the drone with no video downlink
+              required. The starting point is a YOLOv8s person model, fine-tuned on thermal imagery
+              of people in snow and brush (the free FLIR ADAS thermal dataset plus my own captures),
+              then compiled to a HEF for the 8L with the Hailo Dataflow Compiler. A warm human shape
+              against a cold, low-clutter background is actually an easier detection problem than
+              visible-light SAR, which is exactly why the MINERVA requirement points this way.
+            </p>
+            <p class="code-label">Hailo stack bring-up and model compile</p>
+            <pre><code>sudo apt install hailo-all          # HailoRT, PCIe driver, Tappas
+hailortcli fw-control identify      # verify the HAT+ enumerates
+
+# fine-tune on thermal person imagery, export, compile for the 8L
+yolo train model=yolov8s.pt data=thermal-person.yaml imgsz=640 epochs=100
+yolo export model=runs/detect/train/weights/best.pt format=onnx
+hailomz compile yolov8s --ckpt best.onnx --hw-arch hailo8l \
+    --calib-path calib-thermal/</code></pre>
+            <p>
+              What can go wrong: the Pi 5's PCIe link defaults off, so
+              <code>dtparam=pciex1</code> (and <code>dtparam=pciex1_gen=3</code> for full speed) must
+              be set in <code>config.txt</code> before the HAT+ enumerates at all. Also, calibrating
+              quantization on daylight visible images instead of thermal frames wrecks accuracy -
+              the calibration set has to look like the deployment data.
+            </p>
           </div>
         </div>
+
+        <div class="step">
+          <div class="step-num">08</div>
+          <div class="step-body">
+            <strong>Georeferencing</strong>
+            <p>
+              Each detection is fused with the drone's telemetry at that instant - position,
+              altitude, and gimbal/camera attitude - to project the bounding-box centre into a
+              lat/lon point on the ground. With the camera pointing near-nadir and altitude from the
+              flight controller, a pinhole-camera projection is good enough for cueing a ground team.
+            </p>
+            <p class="code-label">Telemetry sync and ground projection (pymavlink)</p>
+            <pre><code>from pymavlink import mavutil
+import math
+
+conn = mavutil.mavlink_connection('/dev/serial0', baud=921600)
+pos = conn.recv_match(type='GLOBAL_POSITION_INT', blocking=True)
+att = conn.recv_match(type='ATTITUDE', blocking=True)
+
+def project(cx, cy, w, h, alt_m, fov_deg, pitch_rad):
+    # pixel offset from frame centre - ground offset, small-angle model
+    half = math.radians(fov_deg) / 2
+    north_m = alt_m * math.tan(pitch_rad + half * (0.5 - cy / h) * 2)
+    east_m  = alt_m * math.tan(half * (cx / w - 0.5) * 2)
+    return north_m, east_m   # converted to lat/lon via local tangent plane</code></pre>
+            <p>
+              What can go wrong: fusing a detection with telemetry that is even a second stale puts
+              the marker tens of metres off at survey speed, so the pipeline timestamps frames at
+              capture and matches them against the telemetry buffer by time, not by arrival order.
+            </p>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">09</div>
+          <div class="step-body">
+            <strong>Live map over MQTT</strong>
+            <p>
+              Georeferenced detections are published over <strong>MQTT</strong> to a
+              <strong>Leaflet</strong> situational-awareness map. Each marker carries its confidence
+              score and a cropped thermal thumbnail, and the planned flight path renders alongside
+              so the operator can see what has been covered. A human confirms every detection; the
+              system does nothing beyond cueing. In a real search, that map is what the Ranger team
+              lead watches.
+            </p>
+            <p class="code-label">Broker, test publish, and the map client</p>
+            <pre><code>sudo apt install mosquitto mosquitto-clients
+mosquitto_pub -h localhost -t sar/detections \
+    -m '{"lat":43.7735,"lon":-79.4158,"conf":0.83,"ts":1760000000}'</code></pre>
+            <pre><code>const map = L.map('map').setView([43.7735, -79.4158], 15);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+const client = mqtt.connect('ws://192.168.1.50:9001');
+client.subscribe('sar/detections');
+client.on('message', (topic, payload) =&gt; {
+  const d = JSON.parse(payload.toString());
+  L.circleMarker([d.lat, d.lon],
+    {radius: 8, color: d.conf &gt; 0.7 ? 'red' : 'orange'}).addTo(map)
+    .bindPopup('confidence ' + d.conf + ' - human confirm required');
+});</code></pre>
+            <p>
+              What can go wrong: field Wi-Fi drops constantly, so the Pi buffers unsent detections
+              to disk and republishes on reconnect with QoS 1; a detection that silently vanishes is
+              worse than a delayed one. The map renders the marker exactly as published - the human
+              decides what it means.
+            </p>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">10</div>
+          <div class="step-body">
+            <strong>Compliance gate before flight</strong>
+            <p>
+              The airframe is well over 250 g, so outdoor flight waits on <strong>Transport Canada
+              registration and a pilot certificate</strong>, plus a <strong>NAV CANADA airspace
+              check</strong> of the intended test area. Until that gate clears, everything flies in
+              SITL and the payload pipeline gets exercised on bench and ground runs.
+            </p>
+            <p class="code-label">Pre-flight compliance checklist - the gate</p>
+            <pre><code>[ ] Drone registered - Transport Canada Drone Management Portal
+[ ] Pilot Certificate (Basic minimum; Advanced for the sites I want)
+[ ] NAV CANADA Drone Site Selection Tool - airspace class checked
+[ ] RPAS flight authorization if the site is controlled airspace
+[ ] Visual observers, site survey, and bystander distance planned
+[ ] Failsafes re-verified on the day, props off first</code></pre>
+            <p>
+              What can go wrong: treating registration as paperwork to do later. In Canada it is
+              the flight itself that is illegal without it, so the checklist blocks outdoor power-up,
+              not just the paperwork folder.
+            </p>
+          </div>
+        </div>
+
       </div>
     </section>
 
@@ -202,20 +481,116 @@ flowchart LR
       <h2>Testing &amp; Metrics</h2>
       <p>
         The test protocol mirrors how a real SAR sensor would be evaluated, scaled down to what a
-        bench and a backyard allow:
+        bench and a backyard allow. Each run has a defined setup, procedure, and metric; nothing
+        counts as measured until it is logged from an actual run. Flight-derived numbers are
+        pending - the airframe is still inside the compliance gate, so results to date come from
+        SITL and bench/ground payload runs.
       </p>
-      <ul>
-        <li><strong>Detection performance</strong>: recall and false-alarm rate of the thermal person detector against staged targets - a person standing, kneeling, and lying in snow and in brush, at increasing slant ranges. Targets: high recall at short ranges with a false-alarm rate low enough that the human confirmer is not flooded.</li>
-        <li><strong>Georeferencing error</strong>: measured distance between reported lat/lon and the target's true GPS position across altitude and off-nadir angle. Target: error small enough to walk a ground team to the marker.</li>
-        <li><strong>End-to-end latency</strong>: thermal frame to map marker, measured on the live pipeline. Target: seconds, not minutes.</li>
-        <li><strong>Mission endurance</strong>: flight time per LiPo pack at a search-pattern profile, including the companion computer and Hailo load. The cold-weather derating for these packs comes from my <a href="cold-soak-battery-rig.html">cold-soak characterization rig</a> dataset.</li>
-        <li><strong>Failsafe behaviour</strong>: link-loss, low-battery, and geofence-breach scenarios verified in SITL first, then in controlled flight after the compliance gate.</li>
-      </ul>
+
+      <h3>Test Runs</h3>
+      <ol>
+        <li>
+          <strong>T1 - Bench thermal capture.</strong> Setup: Lepton on the Pi, known hot and cold
+          references (mug of water at measured temperature, ice pack). Procedure: capture raw
+          16-bit frames at each reference, record pixel means. Metric: capture rate in frames per
+          second and monotonic response of pixel mean to reference temperature.
+        </li>
+        <li>
+          <strong>T2 - Detection performance, ground runs.</strong> Setup: a person standing,
+          kneeling, and lying in snow and in brush, with the payload walked or tripod-mounted at
+          increasing slant ranges. Procedure: run the Hailo pipeline on recorded and live frames,
+          log every detection with confidence. Metric: recall per range band and false alarms per
+          hour of empty-background footage. Target: high recall at short ranges with a false-alarm
+          rate low enough that the human confirmer is not flooded.
+        </li>
+        <li>
+          <strong>T3 - Georeferencing error.</strong> Setup: a ground marker surveyed with the
+          u-blox GNSS from my rover kit as truth. Procedure: ground runs at several altitudes and
+          off-nadir angles (payload elevated, not yet flown), compare reported lat/lon against
+          truth. Metric: horizontal error in metres, binned by altitude and angle. Target: error
+          small enough to walk a ground team to the marker.
+        </li>
+        <li>
+          <strong>T4 - End-to-end latency.</strong> Setup: full live pipeline - camera, Hailo,
+          fusion, MQTT broker, map - on the bench network. Procedure: introduce a warm target on a
+          known timestamp and time its appearance as a map marker. Metric: frame-to-marker latency
+          in seconds. Target: seconds, not minutes.
+        </li>
+        <li>
+          <strong>T5 - Failsafe behaviour.</strong> Setup: SITL first, then the real airframe with
+          props off, then controlled flight after the compliance gate. Procedure: trigger link
+          loss, low battery, and geofence breach in turn. Metric: correct mode transition (RTL or
+          land) in every case, with the transition logged.
+        </li>
+        <li>
+          <strong>T6 - Mission endurance.</strong> Setup: fully loaded aircraft (payload, Pi, Hailo
+          running) after the compliance gate. Procedure: fly the search pattern on one pack until
+          the low-battery failsafe. Metric: usable minutes per pack; the cold-weather derating for
+          these packs comes from my <a href="cold-soak-battery-rig.html">cold-soak
+          characterization rig</a> dataset rather than being invented here.
+        </li>
+      </ol>
+
+      <h3>Targets and Current Status</h3>
+      <table>
+        <thead><tr><th>Metric</th><th>Target</th><th>Current status</th></tr></thead>
+        <tbody>
+          <tr><td>Thermal capture rate (T1)</td><td>Sustained sensor-native frame rate with no dropped frames in 10-minute runs</td><td>In progress - capture path proven on the bench, long runs ongoing</td></tr>
+          <tr><td>Detection recall, short range (T2)</td><td>High recall on standing/kneeling/lying targets in snow and brush</td><td>In progress - model fine-tuning and ground-run data collection underway</td></tr>
+          <tr><td>False-alarm rate (T2)</td><td>Low enough that every alarm gets a human look without fatigue</td><td>In progress - empty-background soak tests running</td></tr>
+          <tr><td>Georeferencing error (T3)</td><td>Marker accuracy a ground team can walk to</td><td>In progress - ground-run setup built, measurements not yet published</td></tr>
+          <tr><td>Frame-to-marker latency (T4)</td><td>Seconds on the live pipeline</td><td>In progress - pipeline integrated, timing harness next</td></tr>
+          <tr><td>Failsafe correctness (T5)</td><td>Correct RTL/land in 100% of triggered scenarios</td><td>SITL scenarios exercised; real-airframe triggers pending</td></tr>
+          <tr><td>Endurance per pack (T6)</td><td>Search-pattern flight time with reserve margin, warm and cold</td><td>Not yet flown - blocked on the compliance gate; cold derating comes from the cold-soak dataset</td></tr>
+        </tbody>
+      </table>
       <p>
-        Flight-derived numbers are pending: the airframe is still inside the compliance gate, so
-        published results to date are from SITL and bench/ground payload runs. Measured figures will
-        be published here once outdoor testing is lawful and complete.
+        Measured figures will be published here once outdoor testing is lawful and complete. Until
+        then, every number above is a target, not a result.
       </p>
+    </section>
+
+    <section id="troubleshooting">
+      <h2>Troubleshooting &amp; Lessons</h2>
+      <ul>
+        <li>
+          <strong>Garbled or zero MAVLink on the Pi.</strong> Symptom: mavlink-router connects but
+          heartbeats never parse. Causes found: the Pi's serial console still owned
+          <code>/dev/serial0</code>, and TX/RX were not crossed on the JST-GH-to-Dupont adapter.
+          Fix: disable the serial console in <code>raspi-config</code>, keep
+          <code>enable_uart=1</code>, cross the lines, and share ground between FC and Pi. Lesson:
+          with serial, verify the physical layer with a loopback test before touching software.
+        </li>
+        <li>
+          <strong>Hailo AI HAT+ invisible to the OS.</strong> Symptom:
+          <code>hailortcli fw-control identify</code> finds nothing. Cause: the Pi 5 ships with the
+          external PCIe lane off, and a loosely seated FFC ribbon looks identical to a dead board.
+          Fix: <code>dtparam=pciex1</code> and <code>dtparam=pciex1_gen=3</code> in
+          <code>config.txt</code>, reseat the ribbon, then re-check enumeration.
+        </li>
+        <li>
+          <strong>Thermal frames freeze for a beat, mid-run.</strong> Symptom: the Lepton stream
+          stalls for a fraction of a second at intervals. Cause: the sensor's flat-field correction
+          (FFC) shutter events - normal Lepton behaviour, not a bug. Fix: schedule FFC during
+          non-critical moments (on the ground, or between search legs) and have the pipeline tag
+          frames around FFC as degraded rather than feeding them to the detector.
+        </li>
+        <li>
+          <strong>Radio failsafe triggers during a range walk.</strong> Symptom: RTL declared at a
+          shorter distance than expected with the transmitter live. Cause: receiver antennas
+          parallel to each other and shadowed by the frame. Fix: mount the two ELRS antennas at 90
+          degrees, clear of carbon and the battery, then re-run the range check with props off.
+          Lesson: a failsafe that fires early in testing is doing its job - fix the RF, not the
+          threshold.
+        </li>
+        <li>
+          <strong>Detections vanish when the field Wi-Fi drops.</strong> Symptom: markers stop
+          appearing on the map and never catch up after reconnect. Cause: fire-and-forget MQTT
+          publishes with no local buffer. Fix: QoS 1 plus an on-disk spool on the Pi that
+          republishes in order on reconnect - the store-and-forward discipline from my DDIL work,
+          applied at drone scale.
+        </li>
+      </ul>
     </section>
 
     <section id="canada-notes">
@@ -237,8 +612,8 @@ flowchart LR
     <section id="status">
       <h2>Status &amp; Roadmap</h2>
       <ul>
-        <li><strong>Done</strong>: all components purchased and on the bench; ArduPilot SITL + Gazebo environment running on the homelab cluster with search patterns, geofences, and failsafes exercised; airframe assembled; Pi 5 talking MAVLink over UART through mavlink-router.</li>
-        <li><strong>In progress</strong>: thermal detection pipeline on the Hailo AI HAT+ (model tuning for snow and brush signatures); georeferencing against telemetry; Leaflet map consuming MQTT detections.</li>
+        <li><strong>Done</strong>: all components purchased and on the bench; ArduPilot SITL + Gazebo environment running on the homelab cluster with search patterns, geofences, and failsafes exercised; airframe assembled with motor order/direction and radio failsafe bench-verified; Pi 5 talking MAVLink over UART through mavlink-router; raw 16-bit Lepton capture proven in Python.</li>
+        <li><strong>In progress</strong>: thermal person model fine-tuning and Hailo compilation; ground-run detection and georeferencing test runs (T2/T3); Leaflet map consuming MQTT detections; end-to-end latency harness.</li>
         <li><strong>Next</strong>: Transport Canada registration and pilot certificate; NAV CANADA airspace check for the test area; first outdoor flight; measured detection and georeferencing results published here; feed detections into the multi-domain common operating picture.</li>
       </ul>
     </section>

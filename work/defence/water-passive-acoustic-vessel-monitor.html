@@ -15,7 +15,7 @@
   <meta property="og:image" content="https://tyfsadik.org/Prove/Water%20passive%20acoustic%20vessel%20monitor.jpeg">
   <meta name="twitter:card" content="summary_large_image">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"CreativeWork","name":"Water: Passive Acoustic Vessel Monitor","author":{"@type":"Person","name":"MD. Taki Yasir Faraji Sadik","url":"https://tyfsadik.org/about.html"},"dateCreated":"2026","inLanguage":"en-CA","keywords":"passive acoustics, hydrophone, vessel classification, AIS ground truth, RTL-SDR, spectrogram, underwater surveillance, Canada"}</script>
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Build a Passive Acoustic Vessel Monitor","description":"Dock-mounted hydrophone node that detects and classifies passing vessels from underwater sound, using an RTL-SDR AIS receiver as ground truth.","step":[{"@type":"HowToStep","name":"Capture chain","text":"Connect the hydrophone to a USB audio interface (48 V phantom power for the XLR H2d) and record on a Pi 5 with arecord/sox at 48-96 kHz."},{"@type":"HowToStep","name":"Bench validation","text":"Validate the whole chain in a glass test tank on the bench before any field deployment."},{"@type":"HowToStep","name":"AIS ground truth","text":"Run rtl_ais/AISdecoder on an RTL-SDR Blog V4 with a 162 MHz marine antenna; log MMSI, position, and timestamps to label acoustic events."},{"@type":"HowToStep","name":"Features and classification","text":"Convert audio to spectrograms with librosa/scipy and train a small classifier for boat type and approach/departure via Doppler shift and amplitude envelope."},{"@type":"HowToStep","name":"Field housing and power","text":"Pack the node in an IP67 box with cable glands and a weighted hydrophone assembly; power from 12 V battery, 30-50 W solar, MPPT controller, and DC-DC buck."},{"@type":"HowToStep","name":"Store-and-forward","text":"Buffer detections and audio snippets on high-endurance storage and sync to the common operating picture over MQTT when the link is up."},{"@type":"HowToStep","name":"Docking-node extension","text":"Mount the sensor on a small autonomous boat that returns to a dock node to recharge and upload data - the Dalhousie docking-node pattern."}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Build a Passive Acoustic Vessel Monitor","description":"Dock-mounted hydrophone node that detects and classifies passing vessels from underwater sound, using an RTL-SDR AIS receiver as ground truth.","step":[{"@type":"HowToStep","name":"Capture chain: hydrophone to Pi","text":"Connect the hydrophone to a USB audio interface (48 V phantom power for the XLR H2d) and record on a Pi 5 with arecord/sox at 48-96 kHz."},{"@type":"HowToStep","name":"Bench validation in the test tank","text":"Validate the whole chain in a glass test tank with swept tones and recorded vessel signatures before any field deployment."},{"@type":"HowToStep","name":"AIS ground truth receiver","text":"Run rtl_ais/AISdecoder on an RTL-SDR Blog V4 with a 162 MHz marine antenna; log MMSI, position, and timestamps."},{"@type":"HowToStep","name":"Labelling: join AIS tracks to acoustic events","text":"Match each acoustic detection to AIS tracks inside a time window and range gate to build a labelled dataset."},{"@type":"HowToStep","name":"Feature extraction: spectrograms and narrowband lines","text":"Convert audio to mel spectrograms with librosa and track narrowband propeller lines with scipy; direction from Doppler shift and amplitude envelope."},{"@type":"HowToStep","name":"Train and run the classifier on the Pi 5","text":"Train a small scikit-learn classifier on the labelled dataset, split by passage, and run inference on the Pi 5 per detected event."},{"@type":"HowToStep","name":"Field housing and solar power","text":"IP67 box, cable glands, weighted hydrophone assembly; 12 V battery, 30-50 W solar, MPPT controller, and DC-DC buck sized from a measured power budget."},{"@type":"HowToStep","name":"Store-and-forward over MQTT","text":"Buffer detections and audio snippets on high-endurance storage and sync to the common operating picture over MQTT when the link is up."},{"@type":"HowToStep","name":"Keep the node alive","text":"systemd services with auto-restart, the Pi hardware watchdog, and log rotation so the node survives weeks unattended."},{"@type":"HowToStep","name":"Docking-node extension","text":"Mount the sensor on a small autonomous boat that returns to a dock node to recharge and upload data - the Dalhousie docking-node pattern."}]}</script>
   <link rel="stylesheet" href="../../css/style.css">
   <link rel="icon" href="../../favicon.png" type="image/png">
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
@@ -149,6 +149,25 @@ flowchart LR
       <p class="diagram-label">Figure 1: two receive-only sensors feed the Pi; the AIS stream labels and scores the acoustic classifier; everything buffers locally and syncs over MQTT when a link exists.</p>
     </section>
 
+    <section id="wiring">
+      <h2>Wiring &amp; Connections</h2>
+      <table>
+        <thead><tr><th>From</th><th>To</th><th>Cable / interface</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Hydrophone (H2d-XLR)</td><td>USB audio interface, XLR input</td><td>Balanced XLR, 3 m stock cable</td><td>48 V phantom power ON. The A5 variant is 3.5 mm TRS into the line input instead - no phantom.</td></tr>
+          <tr><td>USB audio interface</td><td>Pi 5 USB-A</td><td>USB 2.0 cable</td><td>Shows up as an ALSA card; the index varies with boot order, so the recorder addresses it by card name (see Troubleshooting).</td></tr>
+          <tr><td>RTL-SDR Blog V4</td><td>Pi 5 USB-A</td><td>Direct, on a short USB extension</td><td>The extension moves the dongle away from the Pi's USB/HDMI noise and keeps it off the audio interface's port pair.</td></tr>
+          <tr><td>VHF marine antenna</td><td>RTL-SDR</td><td>RG-58 coax, BNC-to-SMA adapter</td><td>162 MHz; mounted outside, above roofline, coax drip loop before the gland.</td></tr>
+          <tr><td>Hydrophone cable</td><td>IP67 box</td><td>Cable gland sized to the cable OD</td><td>Gland on the bottom face of the box so it never sits in pooled water; weight assembly on the hydrophone lead below the dock.</td></tr>
+          <tr><td>Solar panel (30-50 W)</td><td>MPPT controller PV input</td><td>2-core 16 AWG</td><td>Fused at the panel, separate from the battery fuse.</td></tr>
+          <tr><td>MPPT controller</td><td>12 V battery</td><td>Fused 14 AWG</td><td>Battery profile set to LiFePO4 on the controller; charge current logged for a week before field trust.</td></tr>
+          <tr><td>12 V battery</td><td>DC-DC buck converter</td><td>Fused 16 AWG</td><td>Buck output adjusted to 5.1 V under full load before the Pi is ever connected.</td></tr>
+          <tr><td>DC-DC buck</td><td>Pi 5</td><td>Short USB-C cable (or 18 AWG to GPIO 5 V/GND)</td><td>Powering via the header skips PD negotiation; voltage verified at the header pins, not at the buck output.</td></tr>
+          <tr><td>Pi 5</td><td>Uplink (MQTT broker)</td><td>Ethernet to a field router, or Wi-Fi</td><td>Optional by design - the node runs fully disconnected and syncs later.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
     <section id="how-building">
       <h2>How I Built It</h2>
       <div class="steps">
@@ -156,53 +175,179 @@ flowchart LR
           <div class="step-num">01</div>
           <div class="step-body">
             <strong>Capture chain: hydrophone to Pi</strong>
-            <p>The hydrophone feeds a USB audio interface, which the Pi 5 sees as a standard ALSA device. For the XLR version of the H2d I enable the interface's 48 V phantom power; the 3.5 mm A5 variant needs no phantom. Recording is plain Linux tooling: <code>arecord</code> for scripted captures (<code>arecord -D hw:1,0 -f S32_LE -r 96000</code>) and <code>sox</code>/<code>rec</code> for quick clips, at 48-96 kHz depending on how much high-frequency content I want for propeller harmonics.</p>
-            <p>The higher sample rate matters: small-boat propellers and outboards put useful energy well above 20 kHz, and the 96 kHz capture keeps that in band for the classifier.</p>
+            <p>The hydrophone feeds a USB audio interface, which the Pi 5 sees as a standard ALSA capture device - no drivers to write, no vendor software. For the XLR version of the H2d I enable the interface's 48 V phantom power; the 3.5 mm A5 variant needs none. Recording is plain Linux tooling at 48-96 kHz. The higher rate is the point: small-boat outboards and propellers put useful energy well above 20 kHz, and 96 kHz keeps the blade-rate harmonics in band for the classifier.</p>
+            <p class="code-label">Find the interface, record 10 seconds at 96 kHz, check levels</p>
+            <pre><code>arecord -l
+arecord -D hw:CARD=USBAudio -f S32_LE -c 1 -r 96000 -d 10 tank_test.wav
+sox tank_test.wav -n stat</code></pre>
+            <p>Gain staging happens in <code>alsamixer</code>: I set the interface gain so a loud tank signal peaks around -12 dBFS, leaving headroom for a real vessel at close range. Verified from the <code>sox ... stat</code> output: healthy RMS level, "Maximum amplitude" well under 1.0 (no clipping). What can go wrong here is phantom power left off on the XLR path - you get a silent file that still looks like a successful recording.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">02</div>
           <div class="step-body">
             <strong>Bench validation in the test tank</strong>
-            <p>Before any field deployment, the whole chain gets validated in the glass test tank on my bench - the setup in the photo above. I play recorded vessel signatures and swept tones through a speaker coupled to the tank, check the noise floor, verify the phantom-powered path against the 3.5 mm path, and confirm the spectrogram pipeline sees what it should. If it cannot hear a known signal in a tank, it has no business on a dock.</p>
+            <p>Before any field deployment, the whole chain gets validated in the glass test tank on my bench - the setup in the photo above. I play swept tones and recorded vessel signatures through a speaker coupled to the tank, then confirm the captured spectrogram shows what was played. If the chain cannot hear a known signal in a tank, it has no business on a dock.</p>
+            <p class="code-label">Generate reference signals and measure the noise floor</p>
+            <pre><code>sox -n sweep.wav synth 30 sine 100-20000
+sox -n boatsig.wav synth 60 brownnoise lowpass 800 gain -6
+play boatsig.wav
+# quiet 60 s capture with nothing playing:
+sox quiet_60s.wav -n stat 2&gt;&amp;1 | grep -E 'RMS|Maximum'</code></pre>
+            <p>Verified by eyeballing the sweep on the live spectrogram (a clean diagonal from 100 Hz to 20 kHz) and by comparing the quiet-capture RMS against the with-signal RMS - the gap between them is the tank's usable dynamic range. The classic failure is the room's 60 Hz mains hum and its harmonics polluting the low end; see Troubleshooting.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">03</div>
           <div class="step-body">
-            <strong>AIS ground truth</strong>
-            <p>The RTL-SDR Blog V4 with a 162 MHz marine antenna runs <code>rtl_ais</code> (with <code>AISdecoder</code> as the alternative demodulator) covering both AIS channels at 161.975 and 162.025 MHz. Every decoded message gets logged with MMSI, position, speed, course, and timestamp.</p>
-            <p>That log is the labelling machine. A strong acoustic event whose window lines up with an AIS track passing the node becomes a labelled sample - vessel type from the AIS static data, approach versus departure from the range trend. This mirrors the DRDC-related work that pairs hydrophone arrays with AIS and ferry GPS as ground truth, minus the budget.</p>
+            <strong>AIS ground truth receiver</strong>
+            <p>The RTL-SDR Blog V4 with a 162 MHz marine antenna covers both AIS channels (161.975 and 162.025 MHz) at once. I run <code>rtl_ais</code>, a small C decoder built from source, which demodulates the two channels and emits standard NMEA <code>!AIVDM</code> sentences over UDP; <code>AISdecoder</code> is the alternative I keep around for comparison. Every decoded position report is logged with MMSI, position, speed over ground, course, and timestamp.</p>
+            <p class="code-label">Build rtl_ais and start the decoder</p>
+            <pre><code>git clone https://github.com/dgiardini/rtl_ais
+cd rtl_ais &amp;&amp; make
+./rtl_ais -d 0 -h 127.0.0.1 -P 10110</code></pre>
+            <p class="code-label">Capture the NMEA stream to a log file</p>
+            <pre><code>mkdir -p /var/log/ais
+nc -u -l -p 10110 &gt;&gt; /var/log/ais/nmea.log</code></pre>
+            <p>A small Python daemon parses the sentences, assembles multi-line messages, and writes one row per position report into a SQLite database. Verified by tailing the NMEA log and matching a decoded MMSI against a public AIS web map - same vessel, same place, same time. What can go wrong: an indoor antenna decodes almost nothing; AIS is short-range VHF and wants height and line of sight.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">04</div>
           <div class="step-body">
-            <strong>Features and classification</strong>
-            <p>Audio windows become mel spectrograms with <code>librosa</code> (and <code>scipy.signal</code> for narrowband line tracking of propeller blade-rate harmonics). A small classifier - deliberately small, it has to run on the Pi 5 - predicts vessel class from the labelled dataset built in step 03.</p>
-            <p>Direction comes free from physics: an approaching vessel's signature shows a slight Doppler upshift that relaxes downward at closest point of approach, and the amplitude envelope rises then falls. The classifier scores approach/departure from those two cues and the AIS log grades the answer.</p>
+            <strong>Labelling: join AIS tracks to acoustic events</strong>
+            <p>The AIS log is the labelling machine. A strong acoustic event whose time window lines up with an AIS track passing inside the node's listening gate becomes a labelled sample - vessel class from the AIS static data (ship type field), approach-versus-departure from the range trend of the track. This mirrors the DRDC-related work that pairs hydrophone arrays with AIS and ferry GPS as ground truth, minus the budget.</p>
+            <p class="code-label">Join acoustic events to AIS positions (Python + SQLite)</p>
+            <pre><code>import sqlite3
+db = sqlite3.connect("/data/ais/truth.db")
+q = """
+SELECT e.id, e.t_event, a.mmsi, a.lat, a.lon, a.sog, a.ship_type
+FROM events e
+JOIN ais a ON a.ts BETWEEN e.t_event - :pre AND e.t_event + :post
+"""
+rows = db.execute(q, {"pre": 300, "post": 300}).fetchall()
+# keep matches inside the range gate (haversine to the node), nearest-in-time wins</code></pre>
+            <p>Verified by hand-checking the first dozen labels against the audio - you can hear the Doppler sweep line up with the closest point of approach in the track. The failure mode to watch: two vessels overlapping in the window, which I resolve by keeping both candidate labels and flagging the sample as ambiguous instead of guessing.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">05</div>
           <div class="step-body">
-            <strong>Field housing and power</strong>
-            <p>Field kit is an IP67 box with cable glands for the hydrophone lead, antenna feed, and solar input. The hydrophone hangs on a weighted assembly so it sits below the surface and away from dock slap. Power is a 12 V battery charged by a 30-50 W panel through an MPPT controller, with a DC-DC buck delivering clean 5 V to the Pi 5 - sized for grey Canadian weeks, not best-case sun.</p>
+            <strong>Feature extraction: spectrograms and narrowband lines</strong>
+            <p>Every detected event (a window where the energy envelope crosses threshold) becomes a feature set. The main feature is a mel spectrogram computed with <code>librosa</code>; alongside it, <code>scipy.signal</code> tracks narrowband propeller blade-rate lines, which are stable per engine and carry a lot of class information. Direction comes free from physics: an approaching vessel's lines show a slight Doppler upshift that relaxes downward at closest point of approach, while the amplitude envelope rises and falls.</p>
+            <p class="code-label">Spectrogram + line tracking for one event</p>
+            <pre><code>import librosa, numpy as np
+from scipy.signal import spectrogram, find_peaks
+
+y, sr = librosa.load("event_0042.wav", sr=96000, mono=True)
+S = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=4096,
+                                   hop_length=1024, n_mels=128, fmax=20000)
+S_db = librosa.power_to_db(S, ref=np.max)
+
+f, t, Z = spectrogram(y, fs=sr, nperseg=8192)
+peaks, _ = find_peaks(Z[:, t.size // 2], prominence=10)
+blade_lines_hz = f[peaks]  # stable narrowband lines for this event</code></pre>
+            <p>Verified by plotting <code>S_db</code> next to the raw waveform for a labelled sample and confirming the blade lines sit where the AIS class says they should (a slow diesel's lines are low and dense; an outboard's are higher). What can go wrong: tank echoes smear the lines on the bench, so line-tracking thresholds get tuned on field audio, not tank audio.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">06</div>
           <div class="step-body">
-            <strong>Store-and-forward sync</strong>
-            <p>Detections, classifier confidence, and short audio snippets buffer locally on high-endurance storage (microSD now, NVMe on the M.2 HAT as the dataset grows). When a link is up, the node publishes signed detection messages over MQTT to the <a href="multi-domain-common-operating-picture.html">multi-domain common operating picture</a>; when the link is down, it keeps collecting and syncs the backlog on reconnect.</p>
-            <p>That store-and-forward discipline is the same pattern I work through in <a href="ddil-proof-devops.html">DDIL-Proof DevOps</a> - the water node is one of its field test cases.</p>
+            <strong>Train and run the classifier on the Pi 5</strong>
+            <p>The classifier is deliberately small - it has to run on the Pi 5 between recordings with power to spare. A random forest over the spectrogram statistics plus the blade-line features is the current choice: trains in seconds, infers in milliseconds, and returns a confidence I can threshold. Deep models are a later experiment, only if the simple one plateaus.</p>
+            <p class="code-label">Train, export, and score (scikit-learn)</p>
+            <pre><code>from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+import joblib
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, stratify=y, random_state=7)
+clf = RandomForestClassifier(n_estimators=200, max_depth=12, n_jobs=4)
+clf.fit(X_train, y_train)
+print(clf.score(X_test, y_test))
+joblib.dump(clf, "vessel_clf.joblib")</code></pre>
+            <p>On the node, the same <code>joblib</code> file loads once at boot and scores each event; direction is a separate two-class decision from the Doppler sign and envelope slope. Verified by scoring the held-out test split on the Pi itself, not the laptop, so the accuracy I see is the accuracy the field hardware delivers. The thing that can go wrong is dataset leakage - events from the same vessel passage landing in both train and test - so I split by passage, not by event.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">07</div>
           <div class="step-body">
-            <strong>Extension: the docking node</strong>
-            <p>The roadmap copies the Dalhousie pattern: mount the sensor package on a small autonomous boat that patrols, then returns to a dock node to recharge and upload its data physically - the seabed docking-node concept, at pond-and-lake scale. The dock node reuses everything above: same buffer format, same MQTT sync, just a hull that comes to the data link instead of waiting for one.</p>
+            <strong>Field housing and solar power</strong>
+            <p>Field kit is an IP67 box with cable glands for the hydrophone lead, antenna coax, and solar input, all on the bottom face. The hydrophone hangs on a weighted assembly so it sits below the surface and away from dock slap. Power is a 12 V battery charged by a 30-50 W panel through an MPPT controller, with a DC-DC buck delivering a solid 5.1 V to the Pi 5 - sized for grey Canadian weeks, not best-case sun.</p>
+            <p class="code-label">Power budget (measured draw, then sized)</p>
+            <pre><code>Pi 5, recording + inference bursts   ~6-8 W peak, ~4 W typical
+USB audio interface (bus powered)    ~2.5 W
+RTL-SDR Blog V4                      ~1.5 W
+--------------------------------------------------------
+continuous draw                      ~8 W  -&gt;  ~190 Wh/day
+12 V 50 Ah LiFePO4, 80% usable       ~480 Wh -&gt; ~2.5 days reserve
+40 W panel, ~3 sun-hours (poor day)  ~120 Wh/day -&gt; deficit
+40 W panel, summer day               covers load + recharges</code></pre>
+            <p>The honest conclusion from the budget: one 40 W class panel is marginal through a dark Canadian December, so the panel is oversized relative to summer need and the battery carries the grey weeks. Verified by logging battery voltage and charge current from the MPPT's data output for a full week before trusting it in the field. What can go wrong: the buck drifts under load and the Pi browns out mid-write - the buck is set to 5.1 V measured at the Pi's header with everything running, not on the bench with nothing attached.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">08</div>
+          <div class="step-body">
+            <strong>Store-and-forward over MQTT</strong>
+            <p>Detections, classifier confidence, and short audio snippets buffer locally on high-endurance storage (microSD now, NVMe on the M.2 HAT as the dataset grows). A sync daemon watches an outbox directory; when a link exists it publishes signed detection messages over MQTT to the <a href="multi-domain-common-operating-picture.html">multi-domain common operating picture</a> and moves the file to a sent archive; when the link is down it does nothing at all, and the backlog drains on reconnect. That discipline is the same pattern I work through in <a href="ddil-proof-devops.html">DDIL-Proof DevOps</a> - this node is one of its field test cases.</p>
+            <p class="code-label">Detection message schema (example shape)</p>
+            <pre><code>{
+  "node": "water1",
+  "ts": "2026-09-19T14:22:07Z",
+  "class": "small-power",
+  "direction": "approaching",
+  "confidence": 0.0,
+  "ais_mmsi": null,
+  "audio_ref": "snip/2026-09-19T14-22Z.flac",
+  "sig": "ed25519:..."
+}</code></pre>
+            <p class="code-label">Publish one buffered message when the link is up</p>
+            <pre><code>mosquitto_pub -h cop.local -t "nodes/water1/detections" \
+  -f outbox/2026-09-19T14-22Z.json -q 1</code></pre>
+            <p>QoS 1 plus the outbox archive means a message is only deleted after the broker acknowledges it. Verified by pulling the uplink for a day, generating events, reconnecting, and counting messages at the broker - the count must equal the outbox count exactly. Failure mode: a corrupt file blocking the queue, so the daemon quarantines unreadable files instead of dying on them.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">09</div>
+          <div class="step-body">
+            <strong>Keep the node alive: services, watchdog, rotation</strong>
+            <p>A dock node nobody visits for weeks dies boring deaths: a crashed recorder, a full SD card, a wedged USB device. So the recorder and decoder run under systemd with auto-restart, the Pi's hardware watchdog reboots a hung system, and rotated 10-minute audio files keep any single failure cheap.</p>
+            <p class="code-label">/etc/systemd/system/hydro-record.service</p>
+            <pre><code>[Unit]
+Description=Hydrophone recorder
+After=sound.target
+
+[Service]
+ExecStart=/usr/local/bin/hydro-record.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+            <p class="code-label">/usr/local/bin/hydro-record.sh + watchdog enable</p>
+            <pre><code>#!/bin/bash
+# rotated 10-minute files at 96 kHz; strftime names them by time
+exec arecord -D hw:CARD=USBAudio -f S32_LE -c 1 -r 96000 \
+  --max-file-time 600 /data/audio/%Y-%m-%d_%H-%M-%S.wav
+
+# /boot/firmware/config.txt gets:
+# dtparam=watchdog=on</code></pre>
+            <p>Note the device is addressed as <code>hw:CARD=USBAudio</code> (by name, pinned by a udev rule) not <code>hw:1,0</code> (by index, which shuffles between boots). Verified by killing the recorder with <code>kill -9</code> and watching systemd bring it back within seconds, and by forcing a hang on the bench to confirm the watchdog reboots. What can go wrong: <code>Restart=always</code> hiding a real fault, so restarts are logged and alerted on after the third in an hour.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">10</div>
+          <div class="step-body">
+            <strong>Extension roadmap: the docking node</strong>
+            <p>The roadmap copies the Dalhousie pattern: mount the sensor package on a small autonomous boat that patrols, then returns to a dock node to recharge and upload its data physically - the seabed docking-node concept at pond-and-lake scale. The dock reuses everything above: same buffer format, same MQTT sync, just a hull that comes to the data link instead of waiting for one.</p>
+            <p class="code-label">On the boat: upload when the dock's access point is in range</p>
+            <pre><code>#!/bin/bash
+if nmcli -t -f SSID dev wifi list | grep -q '^docknode$'; then
+  rsync -av --partial --remove-source-files \
+    /data/outbox/ pi@docknode:/data/incoming/water1/
+fi</code></pre>
+            <p>Recharge at the dock is pogo-pin contacts or an inductive pad - no underwater connectors at this scale if I can avoid them. Verified, once built, by timing a full patrol-dock-sync cycle and confirming zero outbox files left aboard. The known risk is docking alignment; that is a mechanical problem for a later page.</p>
           </div>
         </div>
       </div>
@@ -211,17 +356,40 @@ flowchart LR
     <section id="testing">
       <h2>Testing &amp; Metrics</h2>
       <p>
-        The test protocol has three phases, each with defined targets; results will be published with the
-        dataset as runs complete.
+        The protocol is five numbered runs, bench first, field later. Targets are stated up front;
+        nothing below is a reported result - where a run has not finished, the status says so.
       </p>
-      <ul>
-        <li><strong>Tank validation (bench)</strong>: known signals played into the test tank - swept tones and recorded vessel signatures. Target: the capture chain reproduces the reference spectrogram with no dropouts at 48 kHz and 96 kHz, and the noise floor stays stable across an overnight soak.</li>
-        <li><strong>Field detection vs AIS (dock deployment)</strong>: over multi-day collection windows, every AIS-logged vessel passage within the node's listening area is checked against the acoustic event log. Metrics: detection rate (fraction of AIS passages with a matching acoustic event), false-event rate per hour, and timestamp offset between acoustic detection and AIS position.</li>
-        <li><strong>Classification scoring</strong>: on the labelled dataset, per-class precision/recall for vessel type and approach/departure direction, reported as a confusion matrix - no single headline number.</li>
-      </ul>
+
+      <h3>T1 - Capture-chain soak (bench)</h3>
+      <p><strong>Setup:</strong> hydrophone in the test tank, Pi recording continuously at 96 kHz for 12 hours. <strong>Procedure:</strong> run the rotated recorder, then scan every file for gaps, ALSA <code>xrun</code> overruns, and drift between file-name timestamps and file lengths. <strong>Metric:</strong> zero dropped buffers; zero missing 10-minute files.</p>
+
+      <h3>T2 - Tank known-signal replay (bench)</h3>
+      <p><strong>Setup:</strong> reference sweep and recorded vessel signatures played into the tank. <strong>Procedure:</strong> capture each replay, compute the spectrogram, and compare against the reference; repeat the quiet-capture noise-floor measurement across an overnight soak. <strong>Metric:</strong> sweep visible across 100 Hz-20 kHz; noise floor stable within a few dB across the soak.</p>
+
+      <h3>T3 - AIS decode sanity (bench + roof antenna)</h3>
+      <p><strong>Setup:</strong> RTL-SDR with the marine antenna in its intended field position. <strong>Procedure:</strong> log for 48 hours, parse every sentence, and cross-check a sample of decoded MMSIs against a public AIS map. <strong>Metric:</strong> checksum-valid sentence rate (target above 95% while traffic is present); sampled vessels matching the public track.</p>
+
+      <h3>T4 - Field detection vs AIS (dock deployment)</h3>
+      <p><strong>Setup:</strong> node deployed at the dock for multi-day collection windows, AIS logging in parallel. <strong>Procedure:</strong> for every AIS-logged passage inside the listening gate, check the acoustic event log for a matching detection; count unmatched passages and unmatched events. <strong>Metric:</strong> detection rate (target: at least 80% of in-gate AIS passages matched to an acoustic event) and false-event rate (target: under 2 per hour). <strong>Status: not started - field collection has not begun, no numbers exist yet.</strong></p>
+
+      <h3>T5 - Classifier scoring and sync loss test</h3>
+      <p><strong>Setup:</strong> the labelled dataset from T4, split by passage. <strong>Procedure:</strong> score vessel class and direction with a per-class confusion matrix (no single headline number); separately, cut the uplink for 24 hours, generate events, reconnect, and reconcile broker messages against the outbox archive. <strong>Metric:</strong> per-class precision/recall (first bar: 80%+ macro recall); sync test target is exactly 100% backlog delivery - zero losses, zero duplicates.</p>
+
+      <h3>Targets at a glance</h3>
+      <table>
+        <thead><tr><th>Run</th><th>Target</th><th>Current status</th></tr></thead>
+        <tbody>
+          <tr><td>T1 capture soak</td><td>0 dropped buffers over 12 h</td><td>In progress - overnight soaks running</td></tr>
+          <tr><td>T2 tank replay</td><td>Sweep visible 100 Hz-20 kHz; stable noise floor</td><td>In progress - replay sessions on the bench</td></tr>
+          <tr><td>T3 AIS decode</td><td>&gt;95% checksum-valid sentences; sampled MMSIs match public tracks</td><td>In progress - logging and spot-checking</td></tr>
+          <tr><td>T4 detection vs AIS</td><td>&ge;80% in-gate passages detected; &lt;2 false events/hour</td><td>Not started - awaiting dock deployment</td></tr>
+          <tr><td>T5 classifier + sync</td><td>&ge;80% macro recall; 100% backlog delivery on resync</td><td>Not started - needs the T4 dataset</td></tr>
+        </tbody>
+      </table>
       <p>
-        As of writing, tank validation is running and field collection has not started; no detection-rate
-        numbers exist yet and I won't quote any until the AIS-scored windows are done.
+        As of writing, T1-T3 are running on the bench and T4-T5 have not started; I will publish the
+        dataset and the numbers with each completed run, and I won't quote a detection rate until it
+        comes out of a scored AIS window.
       </p>
       <div class="note">
         <strong>Passive listening only:</strong> this node never transmits in the marine bands - not on
@@ -236,12 +404,23 @@ flowchart LR
       </div>
     </section>
 
+    <section id="troubleshooting">
+      <h2>Troubleshooting &amp; Lessons</h2>
+      <ul>
+        <li><strong>Mains hum in the tank recordings.</strong> The first bench captures showed a hard 60 Hz line with harmonics marching up the low end - a ground loop between the interface, the bench supply, and the tank speaker amp. Fix: power the interface and Pi from the same supply, run the replay speaker on a separate circuit, and use the balanced XLR path end to end. Lesson: measure the noise floor before trusting any tank result.</li>
+        <li><strong>ALSA card index shuffles between boots.</strong> The interface was <code>hw:1,0</code> on one boot and <code>hw:2,0</code> on the next, and the recorder silently captured from the wrong device. Fix: address the card by name (<code>hw:CARD=USBAudio</code>) backed by a udev rule keyed to the USB vendor/product ID. The systemd unit now survives reboots without edits.</li>
+        <li><strong>Overruns at 96 kHz with the SDR on the same bus.</strong> Recording at 96 kHz while rtl_ais streamed over the same USB controller produced periodic <code>xrun</code> overruns. Fix: a larger ALSA buffer (<code>--buffer-time 200000</code>), the SDR on a different port via a short extension, and a scheduling-priority bump for the recorder. Fallback if it returns: drop to 48 kHz - the classifier loses little when the band above 24 kHz goes away.</li>
+        <li><strong>Timestamp mismatch between AIS and audio.</strong> Early labels were off by minutes because the Pi's clock drifted after sitting offline. Fix: chrony with NTP whenever the uplink exists, plus logging the monotonic clock next to wall time on every event so drift is measurable instead of invisible. Lesson: labelling errors from clock skew look exactly like classifier errors until you check the raw alignment by ear.</li>
+        <li><strong>Condensation in the IP67 box.</strong> A sealed box on a dock breathes with temperature swings and fogs from the inside. Fix: desiccant packs, a breathable waterproof vent gland, and all cable glands on the bottom face. Cheap insurance - water inside the box ends the node far more reliably than any software bug.</li>
+      </ul>
+    </section>
+
     <section id="status">
       <h2>Status &amp; Roadmap</h2>
       <ul>
-        <li><strong>Done</strong>: all components purchased and on the bench; capture chain working at 48/96 kHz through the USB interface; test-tank rig assembled; rtl_ais decoding live AIS traffic with MMSI/position/timestamp logging; spectrogram pipeline running on the Pi 5.</li>
-        <li><strong>In progress</strong>: tank validation soak tests; labelling pipeline that joins acoustic events to AIS tracks; first classifier training on the accumulating labelled dataset; IP67 housing and weighted hydrophone assembly.</li>
-        <li><strong>Next</strong>: solar/MPPT power integration and first dock deployment; AIS-scored detection-rate runs; MQTT sync into the common operating picture; then the autonomous-boat docking-node extension.</li>
+        <li><strong>Done</strong>: all components purchased and on the bench; capture chain working at 48/96 kHz through the USB interface; test-tank rig assembled; rtl_ais decoding live AIS traffic with MMSI/position/timestamp logging into SQLite; spectrogram + blade-line feature pipeline running on the Pi 5; systemd recorder with watchdog on the bench image.</li>
+        <li><strong>In progress</strong>: T1-T3 bench test runs; labelling join between acoustic events and AIS tracks; first classifier training as the labelled dataset accumulates; IP67 housing, weighted hydrophone assembly, and MPPT power logging.</li>
+        <li><strong>Next</strong>: solar/MPPT field integration and first dock deployment (T4); AIS-scored detection-rate runs and classifier confusion matrix (T5); MQTT sync into the common operating picture; then the autonomous-boat docking-node extension.</li>
       </ul>
     </section>
 

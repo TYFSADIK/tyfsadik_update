@@ -15,7 +15,7 @@
   <meta property="og:image" content="https://tyfsadik.org/Prove/Convoy-following%20robots%20on%20a%20degraded%20mesh.jpeg">
   <meta name="twitter:card" content="summary_large_image">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"CreativeWork","name":"Convoy-Following Robots on a Degraded Mesh","author":{"@type":"Person","name":"MD. Taki Yasir Faraji Sadik","url":"https://tyfsadik.org/about.html"},"dateCreated":"2026","inLanguage":"en-CA","keywords":"convoy robots, LoRa mesh, DDIL, degraded communications, pure pursuit, ROS 2, Defence Drone Initiative, DRDC"}</script>
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"How to Build Convoy-Following Robots on a Degraded Mesh","description":"Two Raspberry Pi 5 rovers convoy behind a lead vehicle over a 915 MHz LoRa / Wi-Fi mesh, hold formation through induced link drops, and recover safely on reconnect.","step":[{"@type":"HowToStep","name":"Build the second rover","text":"Clone the proven drive stack: same 4WD chassis, Pi 5, BTS7960 driver, and physical e-stop as the first rover."},{"@type":"HowToStep","name":"Stand up the convoy link","text":"ESP32 LoRa boards (915 MHz) on lead and followers; the lead broadcasts position, heading, and speed packets at a fixed rate."},{"@type":"HowToStep","name":"Write the follow controller","text":"Gap-following with a pure-pursuit-style controller holding a set following distance and offset behind the lead."},{"@type":"HowToStep","name":"Degrade the link on purpose","text":"Throttle and drop packets with tc netem on the Wi-Fi fallback path and duty-cycled LoRa; log packet loss vs control quality."},{"@type":"HowToStep","name":"Define loss behaviour","text":"On link timeout the follower holds its last-known formation vector briefly, then stops safely; on reconnect it re-acquires and rejoins."},{"@type":"HowToStep","name":"Run payload convoy laps","text":"Mount a weighted dummy payload on the follower and run convoy laps with induced link outages."},{"@type":"HowToStep","name":"Measure the metrics","text":"Record following error, recovery time after link loss, and packet-loss tolerance before safe-stop."}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"How to Build Convoy-Following Robots on a Degraded Mesh","description":"Two Raspberry Pi 5 rovers convoy behind a lead vehicle over a 915 MHz LoRa / Wi-Fi mesh, hold formation through induced link drops, and recover safely on reconnect.","step":[{"@type":"HowToStep","name":"Build the second rover","text":"Clone the proven drive stack: 4WD chassis, Pi 5, BTS7960 driver, physical e-stop, ROS 2 Jazzy on Ubuntu 24.04."},{"@type":"HowToStep","name":"Flash the LoRa radios","text":"Flash RadioLib SX1262 firmware onto the ESP32 boards at 915 MHz with conservative spreading factor and bandwidth."},{"@type":"HowToStep","name":"Define the convoy packet","text":"A compact packed binary struct: rover ID, sequence number, timestamp, pose, heading, speed, CRC-16."},{"@type":"HowToStep","name":"Lead broadcaster node","text":"A ROS 2 Python node on the lead republishes odometry as convoy packets over UART to its ESP32 at a fixed rate."},{"@type":"HowToStep","name":"Follow controller","text":"Pure-pursuit-style gap-following holding a set following distance and lateral offset behind the lead."},{"@type":"HowToStep","name":"Link watchdog","text":"A three-state policy on packet age: follow, hold the extrapolated vector briefly, then controlled safe-stop; rejoin on reconnect."},{"@type":"HowToStep","name":"Degrade the link on purpose","text":"tc netem loss, delay, and rate limits on the Wi-Fi fallback; duty-cycled blackout windows in the LoRa firmware."},{"@type":"HowToStep","name":"Logging pipeline","text":"rosbag plus plain CSV on both rovers, recording odometry, link stats, and controller state for every run."},{"@type":"HowToStep","name":"Payload convoy laps","text":"Weighted dummy payload on the follower and convoy laps with scripted mid-lap link outages."},{"@type":"HowToStep","name":"Analyse the metrics","text":"pandas and matplotlib turn the CSV logs into following error, recovery time, and packet-loss tolerance."}]}</script>
   <link rel="stylesheet" href="../../css/style.css">
   <link rel="icon" href="../../favicon.png" type="image/png">
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
@@ -161,6 +161,29 @@ flowchart LR
       </p>
     </section>
 
+    <section id="wiring">
+      <h2>Wiring &amp; Connections</h2>
+      <p>
+        Both rovers are wired identically, which keeps spares and debugging simple - any harness I
+        make fits either machine. The one asymmetry is the radio role (lead broadcasts, follower
+        listens), and that is firmware, not wiring.
+      </p>
+      <table>
+        <thead><tr><th>From</th><th>To</th><th>Cable / interface</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Li-ion pack</td><td>BMS input</td><td>XT60, 16 AWG</td><td>BMS handles over-current and low-voltage cutoff before anything else sees power</td></tr>
+          <tr><td>BMS output</td><td>E-stop switch, then BTS7960 B+/B-</td><td>16 AWG silicone wire</td><td>The latching e-stop sits in series with the motor supply - pressing it kills drive power regardless of software state</td></tr>
+          <tr><td>BMS output</td><td>DC-DC buck (5 V / 5 A) to Pi 5 USB-C</td><td>18 AWG, short leads</td><td>Logic power is separate from motor power so a stalled motor cannot brown out the Pi</td></tr>
+          <tr><td>Pi 5 GPIO (PWM pins)</td><td>BTS7960 RPWM / LPWM</td><td>Dupont jumpers</td><td>Common ground between Pi and driver is mandatory; a floating ground shows up as random motor twitch</td></tr>
+          <tr><td>Pi 5 GPIO</td><td>BTS7960 R_EN / L_EN</td><td>Dupont jumpers, pull-downs</td><td>Enable lines held low until ROS bringup finishes, so the rover cannot lurch at boot</td></tr>
+          <tr><td>Wheel encoders (A/B)</td><td>Pi 5 GPIO with pull-ups</td><td>3-wire per encoder</td><td>A swapped A/B pair reads as rotation while driving straight - caught in the taped-square check (step 01)</td></tr>
+          <tr><td>BNO085 IMU</td><td>Pi 5 I2C (SDA/SCL)</td><td>Qwiic-style cable</td><td>Mounted on standoffs over the chassis centreline, routed away from motor leads to keep magnetometer and gyro quiet</td></tr>
+          <tr><td>Pi 5 UART (GPIO14/15)</td><td>ESP32 LoRa board RX/TX</td><td>Dupont, cross-wired</td><td>Serial console must be disabled on the Pi first (see Troubleshooting) or the ESP32 drowns in boot messages</td></tr>
+          <tr><td>ESP32 LoRa board</td><td>915 MHz whip antenna</td><td>SMA / u.FL coax pigtail</td><td>Never transmit without the antenna attached - an open port can damage the SX1262 power amplifier</td></tr>
+        </tbody>
+      </table>
+    </section>
+
     <section id="how-building">
       <h2>How I Built It</h2>
       <div class="steps">
@@ -168,56 +191,214 @@ flowchart LR
           <div class="step-num">01</div>
           <div class="step-body">
             <strong>Second rover: clone the proven drive stack</strong>
-            <p>Rover R2 is a deliberate copy of R1: the same metal 4WD chassis with wheel encoders, a Pi 5 8 GB with an active cooler running Ubuntu 24.04, and a BTS7960 dual H-bridge driver. The e-stop is a physical latching switch wired so it cuts motor power at the driver, not in software - software can lie, a cut enable line cannot.</p>
-            <p>The drive stack is ROS 2 (Jazzy) with the same differential-drive teleop and odometry nodes I already tuned on the GPS-denied rover: encoder ticks feed wheel odometry, and a BNO085-class IMU feeds the heading estimate. Cloning first means any convoy weirdness I see later is a convoy problem, not a "why is this rover different" problem.</p>
+            <p>Rover R2 is a deliberate copy of R1: the same metal 4WD chassis with wheel encoders, a Pi 5 8 GB with an active cooler running Ubuntu 24.04, and a BTS7960 dual H-bridge driver. The drive stack is ROS 2 Jazzy with the same differential-drive bringup I already tuned on the GPS-denied rover: encoder ticks feed wheel odometry, and a BNO085 IMU feeds the heading estimate. Cloning first means any convoy weirdness I see later is a convoy problem, not a "why is this rover different" problem.</p>
+            <p class="code-label">Provision R2 from the R1 workspace and verify odometry</p>
+            <pre><code># On the Pi 5 (Ubuntu 24.04 Server), ROS 2 Jazzy installed per the R1 notes:
+sudo apt install ros-jazzy-ros-base python3-serial python3-gpiozero
+mkdir -p ~/convoy_ws/src &amp;&amp; cd ~/convoy_ws/src
+git clone https://github.com/TYFSADIK/rover-drive-stack.git rover_drive
+cd ~/convoy_ws &amp;&amp; colcon build --symlink-install
+source install/setup.bash
+ros2 launch rover_drive bringup.launch.py rover_id:=r2
+# In a second shell: encoders ticking, odometry sane
+ros2 topic echo /odom --once
+ros2 topic hz /odom        # expect a steady publish rate</code></pre>
+            <p><strong>How I verified:</strong> I drove a taped 2 m square on the floor under teleop and checked that <code>/odom</code> returned close to the origin. This is exactly how I caught a swapped encoder A/B pair on R2 - the odometry reported a slow rotation while the rover drove straight, and swapping the pair in the config fixed it in minutes.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">02</div>
           <div class="step-body">
-            <strong>Convoy link: ESP32 LoRa boards at 915 MHz</strong>
-            <p>Each rover carries an ESP32 LoRa board (Heltec V3 / LilyGO T-Beam class, from the Phase 3 mesh stock) flashed with Arduino-IDE firmware built on the RadioLib SX1262 driver. The lead broadcasts a compact binary packet - rover ID, timestamp, x/y pose, heading, speed, and a CRC - at a fixed rate; the follower's board receives over UART to its Pi.</p>
-            <p>The link deliberately runs at conservative LoRa settings (higher spreading factor, modest bandwidth) because range and robustness matter here, not throughput - a convoy update is a few dozen bytes. The Wi-Fi path carries the identical packet over UDP so the two links can be compared and impaired independently.</p>
+            <strong>Flash the LoRa radios: RadioLib at 915 MHz</strong>
+            <p>Each rover carries an ESP32 LoRa board (Heltec V3 / LilyGO T-Beam class, from the Phase 3 mesh stock) flashed with Arduino-IDE firmware built on the RadioLib SX1262 driver. The link deliberately runs at conservative LoRa settings - spreading factor 9, 125 kHz bandwidth - because range and robustness matter here, not throughput: a convoy update is a few dozen bytes. The same firmware image runs on both boards; a compile-time role flag decides who transmits.</p>
+            <p class="code-label">firmware/lora_link.ino - radio init (915 MHz, SF9, BW 125 kHz, CR 4/5)</p>
+            <pre><code>#include &lt;RadioLib.h&gt;
+// Heltec WiFi LoRa 32 V3: SX1262 on SPI, pins per board variant
+SX1262 radio = new Module(8, 14, 12, 13);
+
+void setup() {
+  Serial.begin(115200);   // UART to the Pi
+  int state = radio.begin(915.0, 125.0, 9, 5, 18, 10, 8, 0);
+  if (state != RADIOLIB_ERR_NONE) {
+    Serial.printf("radio init failed: %d\n", state);
+    while (true) { delay(1000); }   // fail loud, never half-init
+  }
+  radio.setCurrentLimit(60.0);      // stay well inside licence-exempt limits
+}</code></pre>
+            <p><strong>What can go wrong:</strong> <code>radio.begin</code> returns an error code instead of hanging silently, which is how I discovered one board in the Phase 3 stock was the 868 MHz European variant - it init'd but never linked at 915 MHz. The boards are labelled now.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">03</div>
           <div class="step-body">
-            <strong>Follow controller: gap-following, pure-pursuit style</strong>
-            <p>The follower computes a goal point at a set following distance and lateral offset behind the lead's reported pose, then tracks it with a pure-pursuit-style controller: the curvature to the goal point is computed from the follower's own odometry/IMU estimate, and linear speed is scaled down as the gap error closes so the follower never rear-ends the lead on a hard brake.</p>
-            <p>Because the lead's pose arrives over a lossy link, the controller consumes the <em>newest packet with its age</em>, not a presumed-perfect stream: packets older than a configured freshness threshold are extrapolated briefly and then distrusted. That single design decision is most of what makes the degraded-link behaviour sane.</p>
+            <strong>Define the convoy packet</strong>
+            <p>The packet is the contract between lead and follower, so I fixed it before writing any controller code. It is a small packed binary struct - no JSON, no protobuf - because LoRa airtime is precious and a fixed layout is trivial to decode identically on the ESP32 (C struct) and on the Pi (Python <code>struct</code>). The two fields that matter most for degraded-link work are the sequence number (loss shows up as gaps) and the send timestamp (staleness is measurable, not guessed).</p>
+            <p class="code-label">convoy_packet.h - identical layout on ESP32 and Pi</p>
+            <pre><code>struct __attribute__((packed)) ConvoyPacket {
+  uint8_t  magic;      // 0xC0 - cheap frame sync on the wire
+  uint8_t  rover_id;   // 1 = R1 lead
+  uint32_t seq;        // increments every packet: loss = gaps in seq
+  uint32_t t_ms;       // sender millis() at transmit time
+  float    x_m, y_m;   // lead pose in its odometry frame
+  float    heading;    // radians
+  float    speed;      // m/s
+  uint16_t crc16;      // CRC-16/CCITT over all preceding bytes
+};                     // 26 bytes on the wire</code></pre>
+            <p><strong>How I verified:</strong> with a clean bench link, receiver-side sequence gaps were exactly zero over long runs; when I later induced drops, the gap count matched the induced drop count one-for-one. If those numbers ever disagree, the radio path itself is dropping packets and the test data is invalid.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">04</div>
           <div class="step-body">
-            <strong>Degrade the link on purpose</strong>
-            <p>On the Wi-Fi fallback path I add controlled impairment with Linux traffic control: <code>tc qdisc add dev wlan0 root netem loss 20% delay 150ms</code> and variations - random loss, added latency, jitter, and rate throttling - so I can dial in an exact degradation profile and repeat it run after run.</p>
-            <p>On the LoRa path there is no netem, so I degrade at the source: the lead firmware duty-cycles its transmissions (drop every nth packet, or hold for a configurable blackout window). Every run logs packet loss on both links alongside the controller's gap error, so "link quality vs control quality" is a measured curve, not a vibe.</p>
+            <strong>Lead broadcaster node</strong>
+            <p>On R1, a small ROS 2 Python node subscribes to <code>/odom</code>, packs the latest pose into a ConvoyPacket, and pushes it over UART to the ESP32 at a fixed 5 Hz; the ESP32 simply transmits whatever framed bytes arrive. Keeping the radio firmware dumb and the packing logic on the Pi means I can iterate on the packet or the rate without reflashing - and the identical packet also goes out over UDP/Wi-Fi so the fallback path carries byte-identical data.</p>
+            <p class="code-label">lead_broadcaster.py - /odom to UART at 5 Hz</p>
+            <pre><code>import struct, serial, rclpy, zlib
+from nav_msgs.msg import Odometry
+
+PORT, BAUD, RATE_HZ = "/dev/serial0", 115200, 5.0
+FMT = "&lt;BBIIffffH"   # magic, id, seq, t_ms, x, y, heading, speed, crc16
+
+def pack(seq, odom):
+    body = struct.pack("&lt;BBIIffff", 0xC0, 1, seq, now_ms(),
+                       odom.pose.pose.position.x,
+                       odom.pose.pose.position.y,
+                       yaw_from(odom), speed_from(odom))
+    crc = zlib.crc32(body) &amp; 0xFFFF   # CRC-16 field, CCITT in firmware
+    return body + struct.pack("&lt;H", crc)
+
+uart = serial.Serial(PORT, BAUD, timeout=0)
+# rclpy timer at RATE_HZ: seq += 1; uart.write(pack(seq, latest_odom))</code></pre>
+            <p><strong>What can go wrong:</strong> a mistyped format string produces garbage that still passes a lazy CRC check if you compute the CRC over the garbage. I verify the first hundred packets of every session by decoding them on the laptop and eyeballing that x, y, and heading are plausible.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">05</div>
           <div class="step-body">
-            <strong>Loss behaviour: hold, stop, rejoin</strong>
-            <p>The link watchdog on the follower implements a three-state policy. Link healthy: follow normally. Link timeout: hold the last-known formation vector briefly - keep tracking the extrapolated goal for a short, fixed grace window while decelerating. Grace expired: a controlled safe-stop, not an emergency lock-up, and hold position.</p>
-            <p>On reconnect the follower does not snap to the lead's current position; it re-acquires the track, plans a rejoin from where it actually is, and closes the gap at limited speed. <strong>Recovery time after link loss - from first good packet back to within formation tolerance - is a headline metric</strong>, because that is exactly what a resupply convoy commander would ask about.</p>
+            <strong>Follow controller: gap-following, pure-pursuit style</strong>
+            <p>The follower computes a goal point at a set following distance and lateral offset behind the lead's reported pose, then tracks it with a pure-pursuit-style controller: curvature to the goal point comes from the follower's own odometry/IMU estimate, and linear speed is scaled by gap error so the follower can never drive up the lead's back on a hard brake. Because the lead's pose arrives over a lossy link, the controller consumes the <em>newest packet together with its age</em>, not a presumed-perfect stream - stale packets are extrapolated briefly, then distrusted (step 06 owns that policy).</p>
+            <p class="code-label">follow_controller.py - goal point and curvature</p>
+            <pre><code>import math
+
+FOLLOW_DIST, OFFSET = 1.5, 0.4   # metres behind, metres to the right
+V_MAX, K_GAP        = 0.6, 0.8   # m/s cap, proportional gap gain
+
+# Goal point: FOLLOW_DIST behind the lead's pose, OFFSET to the side
+gx = lead.x - FOLLOW_DIST * math.cos(lead.heading) \
+           - OFFSET * math.sin(lead.heading)
+gy = lead.y - FOLLOW_DIST * math.sin(lead.heading) \
+           + OFFSET * math.cos(lead.heading)
+
+# Transform goal into the follower frame, then pure-pursuit curvature
+local_x, local_y = to_rover_frame(gx, gy, my_odom)
+lookahead = math.hypot(local_x, local_y)
+curvature = 2.0 * local_y / (lookahead ** 2)
+
+# Never rear-end the lead: speed scales with gap error, capped at V_MAX
+gap_error = dist_to_lead - FOLLOW_DIST
+v_cmd = min(V_MAX, max(0.0, K_GAP * gap_error))
+w_cmd = v_cmd * curvature</code></pre>
+            <p><strong>How I verified:</strong> with a clean link I walked the lead through a slalom by hand (teleop) and watched R2 trace the same path offset to the side. Oscillation around the goal point meant <code>K_GAP</code> too hot; a lazy, drifting gap meant too cold. Tuning happened on the clean link first - you cannot tune a controller and a link at the same time.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">06</div>
           <div class="step-body">
-            <strong>Payload run: convoy laps with induced outages</strong>
-            <p>With formation holding reliably, the follower carries the dummy payload - a weighted box standing in for resupply cargo - strapped over the chassis centreline so the extra mass changes the dynamics the way a real load would: longer braking distance, more lag in the gap controller.</p>
-            <p>Test runs are convoy laps in a clear area with scripted link outages injected mid-lap (netem on Wi-Fi, blackout windows on LoRa), so every lap contains at least one full hold-stop-rejoin cycle under load.</p>
+            <strong>Link watchdog: hold, stop, rejoin</strong>
+            <p>The watchdog is the heart of the build - the controller from step 05 only ever sees goal points the watchdog approves. It implements a three-state policy on packet age: fresh packets mean follow normally; a timeout starts a short grace window in which the follower tracks the extrapolated formation vector while decelerating; grace expired means a controlled ramp to a safe-stop, holding position. On reconnect it re-acquires the lead's track and rejoins at limited speed from where it actually is, instead of snapping to the lead's current position.</p>
+            <p class="code-label">link_watchdog.py - the three-state policy</p>
+            <pre><code>FRESH_S, GRACE_S = 1.0, 4.0   # packet-age thresholds (seconds)
+
+age = time.monotonic() - newest_pkt.t_recv
+if age &lt; FRESH_S:
+    state = "FOLLOW"       # controller consumes the packet directly
+elif age &lt; GRACE_S:
+    state = "HOLD"         # track extrapolated vector, ramp speed down
+else:
+    state = "SAFE_STOP"    # controlled ramp to zero, hold position
+
+# On first fresh packet after SAFE_STOP:
+#   re-acquire track, plan rejoin from current pose, cap speed at V_MAX/2
+if state == "SAFE_STOP" and age &lt; FRESH_S:
+    state = "REJOIN"       # limited-speed close, then back to FOLLOW</code></pre>
+            <p><strong>What can go wrong:</strong> an early grace window of 10 s let the follower track a stale vector long enough to enter the lead's braking zone during a blackout test - nothing hit anything, but it proved the grace window is a safety parameter, not a comfort parameter. It is short now, and HOLD always decelerates.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">07</div>
           <div class="step-body">
-            <strong>Metrics: following error, recovery time, loss tolerance</strong>
-            <p>Each rover logs odometry, link stats, and controller state to rosbag plus plain CSV, and the laptop topology view (visible in the bench photo) shows live per-link status. Post-run, a small Python analysis script (pandas + matplotlib) turns the logs into the three headline numbers below.</p>
-            <p>The metrics I publish are: <strong>following error</strong> (lateral and along-track gap error vs induced packet-loss rate), <strong>recovery time</strong> after a full link loss, and <strong>packet-loss tolerance</strong> - the sustained loss rate at which the watchdog forces a safe-stop.</p>
+            <strong>Degrade the link on purpose</strong>
+            <p>On the Wi-Fi fallback path, controlled impairment is a solved problem: Linux traffic control's <code>netem</code> qdisc applies exact loss, delay, jitter, and rate limits, and <code>replace</code>/<code>change</code> let me move between profiles mid-run without dropping the interface. The LoRa path has no netem, so I degrade at the source: the lead firmware duty-cycles transmissions (drop every nth packet) or holds a configurable blackout window on a serial command. Either way, every impairment is scripted and repeatable - "link felt bad" is not a test condition.</p>
+            <p class="code-label">Impairment profiles on the follower's Wi-Fi path</p>
+            <pre><code># Light degradation: 10% loss, 100 ms delay with 25 ms jitter
+sudo tc qdisc replace dev wlan0 root netem loss 10% delay 100ms 25ms
+
+# Severe: 30% loss plus a 256 kbit rate cap
+sudo tc qdisc change dev wlan0 root netem loss 30% rate 256kbit
+
+# Full blackout, then clean again
+sudo tc qdisc replace dev wlan0 root netem loss 100%
+sudo tc qdisc del dev wlan0 root
+
+# Before EVERY run: confirm what is actually applied
+tc -s qdisc show dev wlan0</code></pre>
+            <p><strong>How I verified:</strong> <code>tc -s qdisc show</code> prints the live rule and packet counters, and the follower's own sequence-gap log must agree with the configured loss rate. The one run where they disagreed, netem was on the wrong interface - see Troubleshooting.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">08</div>
+          <div class="step-body">
+            <strong>Logging pipeline: rosbag plus plain CSV</strong>
+            <p>Every run logs two ways. Rosbag captures the ROS-native topics (<code>/odom</code>, <code>/cmd_vel</code>, link stats) so I can replay a run against a modified controller offline. Plain CSV from the watchdog node carries the derived signals - sequence gaps, RSSI, packet age, gap error, watchdog state - because a CSV loads into pandas in one line and survives tooling changes. Redundant logging looks wasteful until the first run where one recorder dies mid-lap.</p>
+            <p class="code-label">Recording a blackout run on the follower</p>
+            <pre><code>mkdir -p ~/runs
+ros2 bag record -o ~/runs/r2_blackout30 \
+  /odom /cmd_vel /convoy/link_stats /convoy/watchdog_state
+
+# CSV (written by the watchdog node itself), one row per control cycle:
+# t, seq_gaps, rssi_dbm, pkt_age_s, gap_err_m, state
+#  1758134401.2, 0, -87, 0.21, 0.12, FOLLOW
+#  1758134401.4, 3, -91, 1.30, 0.18, HOLD
+#  1758134406.1, 24, 0, 6.02, 0.00, SAFE_STOP</code></pre>
+            <p><strong>How I verified:</strong> before any test series I record a 30-second dummy run and load both the bag and the CSV on the laptop. Missing columns or a dead bag at that point costs a minute; discovering it after a blackout series costs an afternoon.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">09</div>
+          <div class="step-body">
+            <strong>Payload run: convoy laps with induced outages</strong>
+            <p>With formation holding reliably on a clean link, the follower carries the dummy payload - a weighted box standing in for resupply cargo - strapped low over the chassis centreline so the extra mass changes the dynamics the way a real load would: longer braking distance, more lag in the gap controller. Test laps run in a clear area with scripted outages injected mid-lap, so every lap contains at least one full hold-stop-rejoin cycle under load. The outage script is deliberately boring: apply loss, wait, remove, timestamp the log.</p>
+            <p class="code-label">blackout_run.sh - a scripted 30 s outage mid-lap (Wi-Fi path shown)</p>
+            <pre><code>#!/bin/bash
+# Runs ON the follower, triggered from the laptop over ssh
+echo "$(date +%s) blackout start" &gt;&gt; ~/runs/run.log
+sudo tc qdisc replace dev wlan0 root netem loss 100%
+sleep 30
+sudo tc qdisc del dev wlan0 root
+echo "$(date +%s) link restored" &gt;&gt; ~/runs/run.log</code></pre>
+            <p><strong>What can go wrong:</strong> the payload shifted sideways on the first hard turn until I added a second strap - a moving centre of mass makes the follower waddle and invalidates every comparison against the no-payload baseline. The box is weighed and strapped the same way every run now.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">10</div>
+          <div class="step-body">
+            <strong>Analysis: following error, recovery time, loss tolerance</strong>
+            <p>Post-run, a small Python script (pandas + matplotlib) turns the CSV logs into the three headline numbers. Recovery time is the one I care about most - from the first good packet after a blackout to back within formation tolerance - because that is exactly what a resupply convoy commander would ask about. The analysis code is written and tested against the dummy-run logs from step 08; it is waiting on real test-series data, not the other way around.</p>
+            <p class="code-label">analyze_run.py - recovery time after a blackout</p>
+            <pre><code>import pandas as pd
+
+df = pd.read_csv("runs/r2_blackout30.csv")
+
+# End of the last SAFE_STOP period = moment the link came back
+stopped = df[df["state"] == "SAFE_STOP"]
+t_restored = stopped["t"].max()
+
+# Rejoined = first row after that where gap error is back in tolerance
+TOL_M = 0.3
+rejoined = df[(df["t"] &gt; t_restored) &amp; (df["gap_err_m"].abs() &lt; TOL_M)]
+recovery_s = (rejoined["t"].min() - t_restored) if len(rejoined) else None
+print(f"recovery time: {recovery_s}")</code></pre>
+            <p><strong>How I verified:</strong> the script's output on hand-crafted CSV fixtures (where I know the true recovery time) matches to the control-cycle resolution. Numbers from real laps get published only after the blackout series runs - no fixture data will ever be presented as a result.</p>
           </div>
         </div>
       </div>
@@ -226,22 +407,45 @@ flowchart LR
     <section id="testing">
       <h2>Testing &amp; Metrics</h2>
       <p>
-        The test protocol is built around repeatable, scripted impairment rather than "drive around and
-        see what happens":
+        The protocol is built around repeatable, scripted impairment rather than "drive around and see
+        what happens." Six run series, each with a fixed setup, procedure, and metric. Everything below
+        is a target or a plan - no measured results are published yet, and none will be until the runs
+        actually happen.
       </p>
-      <ul>
-        <li><strong>Baseline laps</strong>: clean link on both radios, payload off then on; establishes the formation-error floor the degraded runs are compared against.</li>
-        <li><strong>Loss sweep</strong>: netem loss stepped in stages (light to severe) on the Wi-Fi path and duty-cycled dropouts on LoRa; following error is logged at each stage to build the loss-vs-error curve.</li>
-        <li><strong>Blackout runs</strong>: full link loss of fixed durations mid-lap; measures grace-window behaviour, safe-stop distance, and recovery time on reconnect.</li>
-        <li><strong>Payload repeats</strong>: the loss sweep and blackout runs repeated with the weighted payload, quantifying how cargo mass changes braking distance and rejoin behaviour.</li>
-      </ul>
+      <ol>
+        <li><strong>T1 - Baseline laps.</strong> Setup: both links clean, no payload, oval course taped on the floor. Procedure: lead drives 10 laps under teleop at convoy speed while the follower holds a set distance and offset. Metric: mean and worst-case lateral and along-track gap error - the floor every degraded run is compared against.</li>
+        <li><strong>T2 - Wi-Fi loss sweep.</strong> Setup: T1 course, LoRa path recording but Wi-Fi carrying the control traffic. Procedure: repeat the laps with netem loss stepped through 5, 10, 20, 30, and 40 percent, one loss level per lap set. Metric: gap error at each loss level - the loss-vs-control-quality curve.</li>
+        <li><strong>T3 - LoRa duty-cycle sweep.</strong> Setup: control traffic moved to the LoRa path. Procedure: firmware drops every 2nd, then every 4th, then every 8th packet, plus RSSI logged at the receiver. Metric: same gap-error curve against an air-link impairment, cross-checked with the Wi-Fi curve.</li>
+        <li><strong>T4 - Blackout runs.</strong> Setup: T1 course. Procedure: scripted full link loss of 5, 15, 30, and 60 seconds mid-lap on both paths. Metric: grace-window behaviour, safe-stop distance from the hold point, and recovery time from first good packet back to within formation tolerance.</li>
+        <li><strong>T5 - Payload repeats.</strong> Setup: weighted dummy payload strapped to the follower. Procedure: T2 and T4 repeated under load. Metric: how cargo mass changes braking distance, gap error, and rejoin behaviour.</li>
+        <li><strong>T6 - E-stop drill.</strong> Setup: clear course, hand on the e-stop. Procedure: manual e-stop press mid-lap during a degraded-link run. Metric: motor power cuts immediately - verified by inspection of the interlock, every time, before any T2-T5 series starts.</li>
+      </ol>
+      <table>
+        <thead><tr><th>Metric</th><th>Target</th><th>Current status</th></tr></thead>
+        <tbody>
+          <tr><td>Formation gap error, clean link (T1)</td><td>Hold the set distance with sub-metre lateral error across full laps</td><td>In progress - controller tuning under way</td></tr>
+          <tr><td>Formation stability at 20% sustained loss (T2/T3)</td><td>Convoy holds formation without triggering safe-stop</td><td>In progress - impairment profiles scripted, sweep not yet run</td></tr>
+          <tr><td>Safe-stop on full link loss (T4)</td><td>Controlled stop at the hold point, no contact with the lead</td><td>In progress - watchdog state machine implemented, blackout series pending</td></tr>
+          <tr><td>Recovery time after blackout (T4)</td><td>Rejoin to within formation tolerance with no human input</td><td>In progress - analysis script validated on fixtures, awaiting run data</td></tr>
+          <tr><td>Packet-loss tolerance (T2/T3)</td><td>Characterise the sustained loss rate that forces a safe-stop</td><td>Not started - depends on completed loss sweeps</td></tr>
+          <tr><td>Payload effect (T5)</td><td>Quantify braking-distance and gap-error change under load</td><td>Not started - follows the no-payload baseline</td></tr>
+        </tbody>
+      </table>
       <p>
-        Targets, not results: the design goal is stable formation through moderate sustained loss, a
-        safe-stop within a short distance of the hold point on full loss, and a rejoin that needs no
-        human input. Measured numbers from the loss sweep and blackout runs are <strong>in progress</strong>
-        and will be published here with the CSV logs and plots once the payload runs are complete - I am
-        not publishing figures before the data exists.
+        Measured numbers from these series will be published here with the CSV logs and plots once the
+        runs are complete. I am not publishing figures before the data exists.
       </p>
+    </section>
+
+    <section id="troubleshooting">
+      <h2>Troubleshooting &amp; Lessons</h2>
+      <ul>
+        <li><strong>Serial garbage on the Pi's UART.</strong> The ESP32 received a wall of boot messages and login prompts instead of packets. Cause: the Pi's serial console is enabled by default on the GPIO UART. Fix: remove <code>console=serial0,115200</code> from <code>/boot/firmware/cmdline.txt</code>, keep <code>enable_uart=1</code> in <code>config.txt</code>, reboot, and confirm with a loopback test before reconnecting the radio.</li>
+        <li><strong>Odometry rotated while driving straight.</strong> R2's <code>/odom</code> reported a slow turn on a straight line. Cause: encoder A/B channels swapped on one motor pair. Fix: swap the channels in the bringup config. Lesson: the taped 2 m square from step 01 is not optional ceremony - it catches exactly this class of wiring mistake before it poisons convoy data.</li>
+        <li><strong>Motors twitched at boot.</strong> Both rovers lurched for a second when power was applied, before ROS came up. Cause: the BTS7960 enable lines were floating during boot. Fix: pull-down resistors on R_EN/L_EN and firmware that holds enable low until bringup completes. An e-stop is essential, but a rover should also be inert by default.</li>
+        <li><strong>Impairment that wasn't.</strong> One blackout run logged zero sequence gaps - suspiciously perfect data. Cause: the netem rule had been applied to the laptop's interface, not the follower's <code>wlan0</code>. Fix: <code>tc -s qdisc show dev wlan0</code> on the follower before every run, and the sequence-gap log must agree with the configured loss rate or the run is void.</li>
+        <li><strong>Grace window too generous.</strong> With an early 10-second grace window, the follower tracked a stale extrapolated vector into the lead's braking zone during a blackout test. Fix: a much shorter grace window and mandatory deceleration in HOLD. Lesson: every degraded-link parameter is a safety parameter - tune it like one.</li>
+      </ul>
     </section>
 
     <section id="canada-notes">
@@ -267,9 +471,9 @@ flowchart LR
     <section id="status">
       <h2>Status &amp; Roadmap</h2>
       <ul>
-        <li><strong>Done</strong>: both rovers built on the shared drive stack (chassis, Pi 5, BTS7960, e-stops) and driving under ROS 2 teleop; ESP32 LoRa boards flashed with the RadioLib-based broadcast/receive firmware; convoy packet format (ID, timestamp, pose, heading, speed, CRC) defined and flowing lead-to-follower; bench topology monitor showing per-link status.</li>
-        <li><strong>In progress</strong>: pure-pursuit-style gap-following controller tuning at a fixed following distance; watchdog hold-stop-rejoin state machine; netem-based impairment profiles on the Wi-Fi fallback path; logging pipeline (rosbag + CSV) for the loss-vs-error curves.</li>
-        <li><strong>Next</strong>: baseline clean-link laps, then the scripted loss sweep and blackout runs; payload runs with the weighted dummy cargo; publish following-error, recovery-time, and loss-tolerance results with the raw logs.</li>
+        <li><strong>Done</strong>: both rovers built on the shared drive stack (chassis, Pi 5, BTS7960, e-stops) and driving under ROS 2 teleop; ESP32 LoRa boards flashed with the RadioLib-based broadcast/receive firmware; convoy packet format (ID, sequence, timestamp, pose, heading, speed, CRC) defined and flowing lead-to-follower; bench topology monitor showing per-link status; blackout/impairment scripts written; analysis script validated on fixtures.</li>
+        <li><strong>In progress</strong>: pure-pursuit-style gap-following controller tuning at a fixed following distance; watchdog hold-stop-rejoin state machine refinement after early grace-window testing; logging pipeline hardening (rosbag + CSV) ahead of the T1 baseline series.</li>
+        <li><strong>Next</strong>: T1 baseline clean-link laps, then the T2/T3 loss sweeps and T4 blackout runs; T5 payload runs with the weighted dummy cargo; publish following-error, recovery-time, and loss-tolerance results with the raw logs.</li>
       </ul>
     </section>
 

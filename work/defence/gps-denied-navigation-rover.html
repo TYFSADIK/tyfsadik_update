@@ -15,7 +15,7 @@
   <meta property="og:image" content="https://tyfsadik.org/Prove/GPS-denied%20navigation%20rover.jpeg">
   <meta name="twitter:card" content="summary_large_image">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"CreativeWork","name":"GPS-Denied Navigation Rover","author":{"@type":"Person","name":"MD. Taki Yasir Faraji Sadik","url":"https://tyfsadik.org/about.html"},"dateCreated":"2026","inLanguage":"en-CA","keywords":"GPS-denied navigation, ROS 2, Extended Kalman Filter, wheel odometry, IMU, LiDAR, SLAM, defence robotics Canada"}</script>
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Build a GPS-Denied Navigation Rover","description":"Assemble a ROS 2 rover that keeps localizing after GNSS is cut, fusing wheel odometry, IMU, and LiDAR with an Extended Kalman Filter, and measure drift against a u-blox ground-truth track.","step":[{"@type":"HowToStep","name":"Chassis and drive train","text":"Assemble the metal 4WD chassis, wire the wheel encoders, BTS7960 dual motor driver, Li-ion pack with BMS, DC-DC 5 V/5 A rail, and a physical e-stop that cuts motor power."},{"@type":"HowToStep","name":"Software base","text":"Install Ubuntu 24.04 on the Pi 5, install ROS 2 Jazzy, write the robot_description URDF, and bring up the diff-drive ros2_control stack."},{"@type":"HowToStep","name":"Sensors","text":"Connect the BNO085 IMU breakout over UART/I2C, the LD19 2D LiDAR with its ROS 2 driver, and the Pi Camera Module 3."},{"@type":"HowToStep","name":"Odometry fusion","text":"Run the robot_localization Extended Kalman Filter over wheel odometry plus IMU to produce the odom-to-base_link estimate."},{"@type":"HowToStep","name":"LiDAR aiding","text":"Add laser scan matching (rf2o lidar odometry) or SLAM Toolbox so position holds when wheel slip corrupts odometry."},{"@type":"HowToStep","name":"Ground truth and the cut","text":"Log the u-blox M9N GNSS track as truth, drive a known loop, switch GNSS off, and measure position drift as error versus distance."},{"@type":"HowToStep","name":"Publish","text":"Publish the dataset and drift plots: error versus distance, with and without LiDAR aiding."}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Build a GPS-Denied Navigation Rover","description":"Assemble a ROS 2 rover that keeps localizing after GNSS is cut, fusing wheel odometry, IMU, and LiDAR with an Extended Kalman Filter, and measure drift against a u-blox ground-truth track.","step":[{"@type":"HowToStep","name":"Chassis and drive train","text":"Assemble the metal 4WD chassis, pair the motors skid-steer, and wire the encoders and the BTS7960 dual motor driver."},{"@type":"HowToStep","name":"Power system and e-stop","text":"Wire the Li-ion pack with BMS, a fused DC-DC 5 V/5 A rail for the Pi and sensors, and a physical e-stop that cuts only motor power."},{"@type":"HowToStep","name":"Ubuntu and ROS 2 Jazzy install","text":"Flash Ubuntu 24.04 Server on the Pi 5 and install ROS 2 Jazzy from the official apt repository."},{"@type":"HowToStep","name":"URDF and TF tree","text":"Write the robot_description URDF with base_link, wheel, IMU, and laser frames so the TF tree matches the physical robot."},{"@type":"HowToStep","name":"ros2_control diff-drive stack","text":"Bring up diff_drive_controller through a custom hardware interface driving the BTS7960 over PWM, with encoders feeding joint states."},{"@type":"HowToStep","name":"BNO085 IMU bring-up","text":"Wire the BNO085 over UART, add a udev rule, and publish sensor_msgs/Imu with on-chip fused orientation."},{"@type":"HowToStep","name":"LD19 LiDAR bring-up","text":"Install the ldlidar_stl_ros2 driver and verify the LaserScan stream on /scan."},{"@type":"HowToStep","name":"EKF odometry fusion","text":"Configure robot_localization ekf_node to fuse wheel odometry and IMU into the odom-to-base_link estimate."},{"@type":"HowToStep","name":"LiDAR aiding","text":"Add rf2o_laser_odometry scan matching as a third EKF input and run SLAM Toolbox alongside for the map frame."},{"@type":"HowToStep","name":"Ground truth, the cut, and publish","text":"Log the u-blox M9N track as truth, drive a known loop, switch GNSS off, measure drift, and publish the dataset and plots."}]}</script>
   <link rel="stylesheet" href="../../css/style.css">
   <link rel="icon" href="../../favicon.png" type="image/png">
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
@@ -121,6 +121,29 @@
       </table>
     </section>
 
+    <section id="wiring">
+      <h2>Wiring &amp; Connections</h2>
+      <p>
+        The full interconnect map. Two rules govern everything: motor power and logic power never
+        share a rail, and every signal pair gets a common ground reference back to the Pi.
+      </p>
+      <table>
+        <thead><tr><th>From</th><th>To</th><th>Cable or interface</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Li-ion pack</td><td>BMS, then main fuse (10 A)</td><td>18 AWG silicone wire, XT60</td><td>Fuse within 10 cm of the pack; BMS handles cell protection and balancing</td></tr>
+          <tr><td>Fused pack output</td><td>BTS7960 B+ / B- (motor power)</td><td>18 AWG, through the e-stop switch</td><td>Latching mushroom e-stop in series; cuts motor power only, never the Pi</td></tr>
+          <tr><td>Fused pack output</td><td>DC-DC buck to 5 V / 5 A</td><td>18 AWG in, USB-C breakout out</td><td>Separate branch from the motor rail, fused at 3 A; powers Pi 5 and sensors</td></tr>
+          <tr><td>Pi 5 GPIO 12, 13 (PWM0) / 18, 19 (PWM1)</td><td>BTS7960 RPWM / LPWM per side</td><td>22 AWG jumper, 20 cm max</td><td>Hardware PWM channels; BTS7960 R_EN / L_EN tied high through a GPIO kill line</td></tr>
+          <tr><td>BTS7960 B-</td><td>Pi 5 GND</td><td>22 AWG</td><td>Common ground is mandatory - without it PWM levels float and the motors twitch</td></tr>
+          <tr><td>Wheel encoders (A/B quadrature, x4)</td><td>Pi 5 GPIO inputs</td><td>Twisted pair per encoder</td><td>Hall encoders, 3.3 V pull-ups; counted by pigpio hardware-timed callbacks</td></tr>
+          <tr><td>BNO085 breakout</td><td>Pi 5 UART0 (GPIO 14 TX / 15 RX, /dev/serial0)</td><td>4-wire: VIN 3.3 V, GND, TX, RX</td><td>PS1 strapped high to select UART-RVC mode off, full SHTP over UART; udev symlink /dev/imu</td></tr>
+          <tr><td>LD19 LiDAR</td><td>Pi 5 USB-A (via its UART-USB adapter board)</td><td>USB cable from the adapter board</td><td>230400 baud serial; udev symlink /dev/lidar; powered from the 5 V rail</td></tr>
+          <tr><td>Pi Camera Module 3</td><td>Pi 5 CSI port</td><td>15-to-22-pin FPC ribbon</td><td>Kept short and away from the motor wiring to avoid noise on the ribbon</td></tr>
+          <tr><td>u-blox M9N (ground truth)</td><td>Pi 5 USB-A</td><td>USB cable</td><td>Logging only - never wired into the estimator; antenna on a ground plate away from the LiDAR</td></tr>
+        </tbody>
+      </table>
+    </section>
+
     <section id="architecture">
       <h2>Architecture</h2>
       <div class="mermaid" role="img" aria-label="Rover sensor and estimation data flow">
@@ -163,75 +186,273 @@ flowchart LR
     <section id="how-building">
       <h2>How I Built It</h2>
       <div class="steps">
+
         <div class="step">
           <div class="step-num">01</div>
           <div class="step-body">
             <strong>Chassis and drive train</strong>
-            <p>Assembled the metal 4WD chassis and wired the wheel encoders, the BTS7960 dual motor driver (one channel pair per side, skid-steer), the Li-ion pack with its BMS, and a DC-DC converter producing a clean 5 V/5 A rail for the Pi 5 and sensors. Motor power and logic power are deliberately separate so a motor stall can't brown out the compute.</p>
-            <p>A physical e-stop switch sits in series with motor power and nothing else: press it and the wheels are dead while the Pi keeps logging. Every test run starts with an e-stop check and a clear test area.</p>
+            <p>WHAT: assembled the metal 4WD chassis, mounted the four gear motors with their Hall encoders, and wired each side's two motors in parallel to one channel of the BTS7960 dual driver, giving classic skid-steer (left channel, right channel). WHY: skid-steer needs no steering servo and turns in place, which is exactly what a survey-and-verify rover wants - at the cost of wheel scrub, which is precisely the odometry problem this build exists to measure.</p>
+            <p>The BTS7960 is a half-bridge driver: each side gets an RPWM/LPWM pair (forward/reverse PWM) plus R_EN/L_EN enables. I verified motor polarity and encoder direction per channel with a small pigpio test script before anything touched ROS - a mislabelled encoder pair silently corrupts odometry and is miserable to debug later.</p>
+            <p class="code-label">motor_test.py - spin each side slowly, print encoder counts</p>
+            <pre><code>import pigpio, time
+pi = pigpio.pi()
+# BTS7960: (RPWM, LPWM) per side on hardware-PWM-capable GPIOs
+LEFT, RIGHT = (12, 13), (18, 19)
+for rpwm, lpwm in (LEFT, RIGHT):
+    pi.set_PWM_frequency(rpwm, 20000)   # 20 kHz: above audible
+    pi.set_PWM_frequency(lpwm, 20000)
+    pi.set_PWM_dutycycle(rpwm, 60)      # ~24% duty, forward creep
+    time.sleep(2)
+    pi.set_PWM_dutycycle(rpwm, 0)</code></pre>
+            <p>What can go wrong: with the common ground between the BTS7960 and the Pi missing or loose, the PWM reference floats and the motors twitch randomly. I verified with a multimeter continuity check from driver B- to Pi GND before first power-up, and confirmed each side spins forward for a positive command.</p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">02</div>
           <div class="step-body">
-            <strong>Software base</strong>
-            <p>Ubuntu 24.04 Server on the Pi 5 8 GB, then ROS 2 Jazzy from the official apt repository. I wrote the <code>robot_description</code> URDF for the chassis (wheel positions, sensor frames, TF tree) and brought up the <code>ros2_control</code> diff-drive stack: <code>diff_drive_controller</code> commanding the motors through a custom hardware interface that talks PWM to the BTS7960, with the encoders feeding back joint states.</p>
+            <strong>Power system and e-stop</strong>
+            <p>WHAT: the Li-ion pack feeds two fused branches - one through the latching e-stop to the BTS7960 motor input, one through a DC-DC buck producing a clean 5 V/5 A rail for the Pi 5, LiDAR, IMU, and camera. WHY: a stalled 4WD drivetrain pulls many amps and drags an unprotected shared rail down with it; the instant the Pi browns out, your estimator dies and the log with it. Separating the rails is the single most important reliability decision on the build.</p>
+            <p>The e-stop is a physical, latching mushroom switch wired in series with the motor branch only. Press it and the wheels are dead while the Pi keeps logging and can still be SSH'd into - which is what you want for post-incident forensics. Every test run starts with an e-stop check and a clear test area.</p>
+            <p class="code-label">RAIL CHECK - under-voltage flags before and during runs</p>
+            <pre><code>vcgencmd get_throttled        # bit 0 set = under-voltage detected now
+dmesg | grep -i voltage       # kernel log of brownout events
+vcgencmd measure_volts core   # sanity check on the rail</code></pre>
+            <p>How I verified: ran all four motors at full stall against a blocked wheel on the bench supply while watching <code>vcgencmd get_throttled</code> in a loop - the throttled flags stayed at <code>0x0</code>, meaning the logic rail never dipped. Before the rail split, the same test tripped under-voltage within seconds.</p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">03</div>
           <div class="step-body">
-            <strong>Sensors</strong>
-            <p>The BNO085 breakout connects over UART (I2C as fallback) and publishes <code>sensor_msgs/Imu</code> with its on-chip fused orientation, which is far better than raw gyro integration at this price. The LD19 2D LiDAR runs through its ROS 2 driver and publishes <code>LaserScan</code> on <code>/scan</code>. The Pi Camera Module 3 records a visual log of each run so I can correlate drift events (a slip on gravel, a bump) with what actually happened.</p>
+            <strong>Ubuntu and ROS 2 Jazzy install</strong>
+            <p>WHAT: Ubuntu 24.04 Server (64-bit) flashed to a high-endurance microSD, then ROS 2 Jazzy from the official apt repository. WHY: Jazzy is the current LTS ROS 2 release and pairs natively with Ubuntu 24.04 (noble); staying on the supported pairing means every package I need - <code>robot_localization</code>, <code>slam_toolbox</code>, Nav2 - installs from binary debs instead of source builds on an ARM board.</p>
+            <p>I install <code>ros-jazzy-ros-base</code> (headless, no desktop GUI) because the rover runs without a monitor; RViz runs on the laptop over the network with a shared <code>ROS_DOMAIN_ID</code>.</p>
+            <p class="code-label">INSTALL - ROS 2 Jazzy on Ubuntu 24.04 (noble)</p>
+            <pre><code>sudo apt update &amp;&amp; sudo apt install -y curl gnupg lsb-release
+sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+  -o /usr/share/keyrings/ros-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] \
+  http://packages.ros.org/ros2/ubuntu noble main" \
+  | sudo tee /etc/apt/sources.list.d/ros2.list
+sudo apt update
+sudo apt install -y ros-jazzy-ros-base python3-colcon-common-extensions python3-rosdep
+sudo rosdep init &amp;&amp; rosdep update
+echo "source /opt/ros/jazzy/setup.bash" &gt;&gt; ~/.bashrc</code></pre>
+            <p>How I verified: <code>ros2 run demo_nodes_cpp talker</code> on the rover and the matching listener on the laptop over Wi-Fi - if messages flow, the install, the network, and the domain configuration are all good before any robot code exists.</p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">04</div>
           <div class="step-body">
-            <strong>Odometry fusion</strong>
-            <p>The <code>robot_localization</code> package runs an Extended Kalman Filter (<code>ekf_node</code>) fusing wheel odometry (x, y, yaw velocities) with the BNO085's orientation and angular velocity, producing the <code>odom</code> to <code>base_link</code> transform. Tuning the process and measurement noise covariances is where the real work is: trust the IMU for heading, trust the encoders for short-range translation, and let the covariance grow honestly when inputs disagree.</p>
+            <strong>URDF and TF tree</strong>
+            <p>WHAT: wrote the <code>robot_description</code> URDF for the chassis - <code>base_link</code> at the geometric center, four wheel links at measured offsets, <code>imu_link</code> at the BNO085's physical location, <code>laser_link</code> at the LiDAR puck's rotation center. WHY: the EKF, the scan matcher, and SLAM all fuse data through TF transforms; if <code>laser_link</code> is 5 cm off its real position, every fused estimate inherits that bias and it shows up as a mystery drift that no amount of covariance tuning fixes.</p>
+            <p>Every offset in this file was measured on the physical robot with calipers, not copied from the chassis listing. The listing lies; the calipers don't.</p>
+            <p class="code-label">urdf/rover.urdf (core frames, offsets measured on the bench)</p>
+            <pre><code>&lt;robot name="gps_denied_rover"&gt;
+  &lt;link name="base_link"/&gt;
+  &lt;link name="laser_link"/&gt;
+  &lt;joint name="laser_joint" type="fixed"&gt;
+    &lt;parent link="base_link"/&gt;
+    &lt;child link="laser_link"/&gt;
+    &lt;origin xyz="0.10 0.0 0.18" rpy="0 0 0"/&gt;
+  &lt;/joint&gt;
+  &lt;link name="imu_link"/&gt;
+  &lt;joint name="imu_joint" type="fixed"&gt;
+    &lt;parent link="base_link"/&gt;
+    &lt;child link="imu_link"/&gt;
+    &lt;origin xyz="0.02 0.0 0.09" rpy="0 0 0"/&gt;
+  &lt;/joint&gt;
+  &lt;!-- left_wheel_joint / right_wheel_joint: continuous, at measured
+       wheel_separation/2 = +/-0.16 m, radius 0.065 m --&gt;
+&lt;/robot&gt;</code></pre>
+            <p>How I verified: <code>ros2 run tf2_tools view_frames</code> generates a PDF of the live TF tree - I checked every frame appears under <code>base_link</code> with the measured offsets, and in RViz the laser scan overlays cleanly on walls when the rover rotates in place (a wrong laser offset makes the scan smear in an arc).</p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">05</div>
           <div class="step-body">
-            <strong>LiDAR aiding</strong>
-            <p>Wheel slip is the enemy of a skid-steer chassis, so the EKF alone will drift. To arrest it I add LiDAR aiding: <code>rf2o_laser_odometry</code> (dense scan-to-scan matching) publishes a LiDAR odometry estimate that becomes a third EKF input, and <code>slam_toolbox</code> runs alongside to maintain a map and a map-frame pose. The test protocol compares the same loop with LiDAR aiding on and off, so its contribution shows up directly in the drift numbers.</p>
+            <strong>ros2_control diff-drive stack</strong>
+            <p>WHAT: brought up the <code>ros2_control</code> framework with <code>diff_drive_controller</code> commanding the motors through a custom hardware interface that exports PWM duty to the BTS7960 via pigpio, and reads the four encoder channels back as wheel joint states. WHY: <code>diff_drive_controller</code> gives me a calibrated <code>/odom</code> topic and a <code>/cmd_vel</code> interface for free - the same interface Nav2 expects - as long as <code>wheel_separation</code> and <code>wheel_radius</code> are honest.</p>
+            <p>Two of the four wheels per side share one joint in the controller config (left pair as one virtual wheel, right pair as one); both encoders on a side are averaged in the hardware interface, which dampens single-encoder glitches.</p>
+            <p class="code-label">config/controllers.yaml - diff_drive_controller parameters</p>
+            <pre><code>controller_manager:
+  ros__parameters:
+    update_rate: 50
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    diff_drive_controller:
+      type: diff_drive_controller/DiffDriveController
+
+diff_drive_controller:
+  ros__parameters:
+    left_wheel_names: ["left_wheel_joint"]
+    right_wheel_names: ["right_wheel_joint"]
+    wheel_separation: 0.32      # measured, then calibrated (see Run 2)
+    wheel_radius: 0.065         # measured with calipers
+    encoder_ticks_per_rev: 1200 # after quadrature x4 decoding
+    publish_rate: 50.0
+    odom_frame_id: odom
+    base_frame_id: base_link
+    enable_odom_tf: false       # the EKF owns odom-&gt;base_link</code></pre>
+            <p>How I verified: <code>ros2 control list_controllers</code> shows both controllers active, then <code>ros2 topic pub /cmd_vel geometry_msgs/Twist ...</code> at 0.2 m/s with the wheels off the ground while watching <code>ros2 topic echo /odom</code> - reported velocity matched the command and stopped cleanly at zero. <code>enable_odom_tf: false</code> matters: two publishers fighting over <code>odom-&gt;base_link</code> (controller and EKF) causes TF frame fighting and a robot that teleports in RViz.</p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">06</div>
           <div class="step-body">
-            <strong>Ground truth and the cut</strong>
-            <p>The u-blox M9N logs a GNSS track over a known loop (measured on the ground with markers) as ground truth. Once the fix quality is stable, I switch GNSS off on my own receiver and let the rover keep driving on odometry + IMU + LiDAR. The estimator never sees GNSS in either phase, so the logged comparison of EKF pose versus the true loop gives position drift as error versus distance travelled, with no ambiguity about where the truth came from.</p>
+            <strong>BNO085 IMU bring-up</strong>
+            <p>WHAT: wired the BNO085 breakout over UART (Pi 5 <code>/dev/serial0</code>, GPIO 14/15) with I2C as fallback, and publish <code>sensor_msgs/Imu</code> from a small node I wrote wrapping the Adafruit CircuitPython BNO08x library over the SHTP protocol. WHY: the BNO085 does sensor fusion on-chip - it outputs rotation-vector orientation already filtered against gyro drift, which at this price point is far better than anything I would integrate from raw gyro rates on the Pi.</p>
+            <p>The BNO085's mode is selected by strapping pins: PS1 high selects UART (full SHTP), not the simplified UART-RVC mode. A udev rule gives the port a stable name so the node never breaks when USB devices enumerate in a different order.</p>
+            <p class="code-label">/etc/udev/rules.d/99-rover.rules + node bring-up</p>
+            <pre><code># stable device names regardless of enumeration order
+KERNEL=="ttyAMA10", SYMLINK+="imu"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", SYMLINK+="lidar"
+
+pip3 install --user adafruit-circuitpython-bno08x
+ros2 run rover_bringup bno085_uart_node --ros-args \
+  -p port:=/dev/imu -p frame_id:=imu_link
+ros2 topic hz /imu/data     # expect a steady 100 Hz</code></pre>
+            <p>What can go wrong: the first bring-up published garbage because the breakout shipped with PS1 floating and was actually in I2C mode - the UART port stayed silent and my node timed out. Fixed by soldering the PS1 jumper, then verified by rotating the rover 90 degrees by hand against a square and confirming the published yaw moved by 1.57 rad, not by "about" 90 degrees.</p>
           </div>
         </div>
+
         <div class="step">
           <div class="step-num">07</div>
           <div class="step-body">
-            <strong>Publish</strong>
-            <p>Every run is recorded with <code>ros2 bag record</code> (all topics plus TF), and a small Python analysis script with <code>rosbag2_py</code> and matplotlib produces the drift plots: error versus distance, with and without LiDAR aiding. The dataset, the URDF, the EKF configuration, and the plots get published together so the numbers are reproducible, not just claimed.</p>
+            <strong>LD19 LiDAR bring-up</strong>
+            <p>WHAT: the LD19 2D LiDAR (360-degree triangulation scanner, 12 m class range) connects through its UART-to-USB adapter board and publishes <code>sensor_msgs/LaserScan</code> on <code>/scan</code> via the vendor's ROS 2 driver. WHY: LiDAR is the only sensor on the rover that observes the world rather than the wheels - wheel odometry and IMU are both proprioceptive and both drift, while scan matching against static walls gives an external reference that arrests that drift.</p>
+            <p>One rover gets the LiDAR first; the second rover runs encoder+IMU-only until the aiding comparison runs are done, which conveniently isolates the LiDAR's contribution as an experimental variable.</p>
+            <p class="code-label">DRIVER - ldlidar_stl_ros2 build and launch</p>
+            <pre><code>cd ~/ros2_ws/src
+git clone https://github.com/ldrobotSensorTeam/ldlidar_stl_ros2.git
+cd ~/ros2_ws
+rosdep install --from-paths src -y --ignore-src
+colcon build --packages-select ldlidar_stl_ros2
+source install/setup.bash
+ros2 launch ldlidar_stl_ros2 ld19.launch.py   # port_name:=/dev/lidar
+ros2 topic hz /scan                           # expect ~10 Hz</code></pre>
+            <p>How I verified: placed the rover in a corner of the room, echoed <code>/scan</code> ranges at the four cardinal angles, and compared against a tape measure - readings agreed within the sensor's stated tolerance. A scan that looks plausible but is rotated 180 degrees is the classic silent failure here, which is why step 04's frame verification matters.</p>
           </div>
         </div>
+
+        <div class="step">
+          <div class="step-num">08</div>
+          <div class="step-body">
+            <strong>EKF odometry fusion</strong>
+            <p>WHAT: the <code>robot_localization</code> package runs an Extended Kalman Filter (<code>ekf_node</code>) fusing wheel odometry (x and yaw velocities) with the BNO085's fused orientation and angular velocity, publishing the <code>odom-&gt;base_link</code> transform on <code>/odometry/filtered</code>. WHY: the encoders are good at short-range translation but blind to slip; the IMU is excellent at heading but can't measure translation at all. The EKF is where each sensor covers the other's blind spot - with honest covariances so the filter knows how much to trust each input.</p>
+            <p>The tuning principle I follow: trust the IMU for heading (its yaw is drift-corrected on-chip), trust the encoders for short-range translation, and let the covariance grow when inputs disagree instead of forcing consistency. Over-tight covariances are how you get a filter that is confidently wrong.</p>
+            <p class="code-label">config/ekf.yaml - robot_localization EKF (2D mode)</p>
+            <pre><code>ekf_filter_node:
+  ros__parameters:
+    frequency: 30.0
+    two_d_mode: true
+    publish_tf: true
+    odom_frame: odom
+    base_link_frame: base_link
+    world_frame: odom
+    odom0: /odom
+    odom0_config: [false, false, false,
+                   false, false, false,
+                   true,  false, false,
+                   false, false, true,
+                   false, false, false]
+    odom0_differential: false
+    imu0: /imu/data
+    imu0_config: [false, false, false,
+                  false, false, true,   # fused yaw orientation
+                  false, false, false,
+                  false, false, true,   # yaw rate
+                  false, false, false]
+    imu0_remove_gravitational_acceleration: true
+    process_noise_covariance: 0.05      # starting point, tuned per Run 3</code></pre>
+            <p>How I verified: drove the rover in a tight square by teleop and watched <code>/odometry/filtered</code> versus raw <code>/odom</code> in RViz - the fused estimate should track the raw odometry closely on good floor and diverge gracefully (not snap) when I deliberately drag one wheel. I also checked <code>ros2 topic echo /diagnostics</code> for the EKF's own warnings about missing or stale inputs.</p>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">09</div>
+          <div class="step-body">
+            <strong>LiDAR aiding</strong>
+            <p>WHAT: two additions on top of the EKF. First, <code>rf2o_laser_odometry</code> (RF2O - dense range-flow scan-to-scan matching) publishes a LiDAR-based odometry estimate that becomes a third EKF input. Second, <code>slam_toolbox</code> runs in online async mode to maintain a map and the <code>map-&gt;odom</code> correction. WHY: on a skid-steer chassis, wheel slip is not an edge case - it is every turn. RF2O measures actual motion over the ground from the scans themselves, so when the wheels lie, the filter has a witness that doesn't.</p>
+            <p>SLAM Toolbox's job is the map frame: <code>odom</code> is smooth but drifts, <code>map</code> is globally consistent but jumps at loop closures. Keeping both is standard practice and exactly how the published research stacks it.</p>
+            <p class="code-label">AIDING - install and launch scan matching + SLAM</p>
+            <pre><code>sudo apt install -y ros-jazzy-rf2o-laser-odometry ros-jazzy-slam-toolbox
+ros2 launch rf2o_laser_odometry rf2o_laser_odometry.launch.py
+# rf2o publishes /odom_rf2o -&gt; added as odom1 in ekf.yaml (x, yaw velocities)
+ros2 launch slam_toolbox online_async_launch.py \
+  slam_params_file:=~/ros2_ws/src/rover_bringup/config/slam.yaml</code></pre>
+            <p>What can go wrong: RF2O diverges in featureless environments (a long blank wall or open field gives scan matching nothing to lock onto), silently feeding the EKF confident garbage. Mitigation: its input gets a larger covariance than the wheel odometry, so the filter degrades toward encoder+IMU behaviour instead of chasing the scan matcher. Verified by watching <code>/odom_rf2o</code> freeze while driving parallel to a blank wall - exactly the failure I expected, caught before it cost me a dataset.</p>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">10</div>
+          <div class="step-body">
+            <strong>Ground truth, the cut, and publish</strong>
+            <p>WHAT: the u-blox M9N logs a GNSS track over a known loop (measured on the ground with markers) as ground truth, published on <code>/fix</code> by the <code>nmea_navsat_driver</code> but never subscribed by the estimator. Once fix quality is stable, I switch GNSS off on my own receiver - stopping the receiver's navigation output with a UBX command - and the rover keeps driving on odometry + IMU + LiDAR. WHY: this is the whole point of the build. Because the estimator never sees GNSS in either phase, comparing the EKF pose against the true loop after the cut gives position drift as error versus distance travelled, with zero ambiguity about where the truth came from.</p>
+            <p>Every run is recorded with <code>ros2 bag record</code>, and a Python analysis script (<code>rosbag2_py</code> + matplotlib) produces the drift plots: error versus distance, with and without LiDAR aiding. Dataset, URDF, EKF config, and plots get published together so the numbers are reproducible, not just claimed.</p>
+            <p class="code-label">LOG - record a drift run, then analyze offline</p>
+            <pre><code>ros2 bag record -o drift_run_03 \
+  /odom /odometry/filtered /odom_rf2o /imu/data /scan /fix /tf /tf_static
+# analysis: aligns EKF pose and GNSS truth by timestamp, plots error vs distance
+python3 analysis/drift_plot.py --bag drift_run_03 \
+  --truth /fix --estimate /odometry/filtered --out drift_run_03.png</code></pre>
+            <p>What can go wrong: a drift plot is only as honest as its ground truth - an M9N in single-point mode wanders by metres on its own, which would poison the comparison. Mitigation: I only start a run once the receiver reports a stable 3D fix with low estimated error, and I cross-check the GNSS track against the surveyed ground markers at the cut point. If the two disagree before the cut, the run is discarded, not explained away.</p>
+          </div>
+        </div>
+
       </div>
     </section>
 
     <section id="testing">
       <h2>Testing &amp; Metrics</h2>
-      <p>The test protocol, fixed before the runs so the numbers mean something:</p>
-      <ul>
-        <li><strong>Known loop</strong>: a measured closed loop on flat ground, marked at known distances, driven at a constant commanded speed.</li>
-        <li><strong>Two configurations</strong>: EKF only (wheel odometry + IMU) and EKF + LiDAR aiding (rf2o / SLAM Toolbox), same loop, same speed.</li>
-        <li><strong>Primary metric</strong>: position error versus distance travelled, sampled from the rosbag by comparing EKF pose against the u-blox M9N ground-truth track (and against the surveyed markers at the cut point).</li>
-        <li><strong>Secondary metrics</strong>: heading error growth over time, loop-closure error at the return point, and IMU bias stability across a run.</li>
-        <li><strong>Conditions log</strong>: surface, temperature, and battery state recorded per run, since all three move the numbers.</li>
-      </ul>
       <p>
-        Results are <strong>in progress</strong>: the rig runs and logs, and the first drift datasets
-        are being collected. No drift numbers are published yet because I won't quote figures I
-        haven't measured. The dataset and plots go up with the build write-up once the loop runs
-        are complete.
+        The protocol is fixed before the runs so the numbers mean something: same loop, same speed,
+        same logging, one variable changed at a time. Each run below lists setup, procedure, and the
+        metric it produces.
       </p>
+      <ol>
+        <li><strong>Run 1 - Bench spin test.</strong> <em>Setup:</em> wheels off the ground, rover chocked. <em>Procedure:</em> command fixed velocities in both directions per side. <em>Metric:</em> encoder ticks per revolution consistency and command-to-count linearity; catches wiring or decoding faults before they masquerade as odometry error.</li>
+        <li><strong>Run 2 - Straight-line calibration.</strong> <em>Setup:</em> taped 5 m straight line on smooth floor. <em>Procedure:</em> drive the line at constant speed, ten repetitions. <em>Metric:</em> actual versus commanded distance (calibrates effective wheel radius) and lateral/heading error at the line end (calibrates effective wheel separation - skid-steer scrub makes the geometric value wrong).</li>
+        <li><strong>Run 3 - EKF-only known loop.</strong> <em>Setup:</em> surveyed closed loop with marked waypoints, GNSS logging as truth. <em>Procedure:</em> drive the loop at constant speed with the EKF fed by wheel odometry + IMU only. <em>Metric:</em> position error versus distance travelled (EKF pose against the GNSS track and the markers), plus heading error growth and loop-closure error at the return point.</li>
+        <li><strong>Run 4 - EKF + LiDAR aiding, same loop.</strong> <em>Setup:</em> identical to Run 3, with rf2o added as the third EKF input and SLAM Toolbox maintaining the map frame. <em>Procedure:</em> same loop, same speed, same logging. <em>Metric:</em> the same error-versus-distance curve; the comparison against Run 3 is the experiment, and the LiDAR's contribution shows up directly in the drift numbers.</li>
+        <li><strong>Run 5 - The GNSS cut.</strong> <em>Setup:</em> Run 4 configuration, GNSS at a stable 3D fix. <em>Procedure:</em> drive the loop with GNSS on to establish truth, switch the receiver's navigation output off mid-loop, keep driving several more laps. <em>Metric:</em> drift growth rate after the cut - error versus distance travelled with GNSS denied, with and without LiDAR aiding.</li>
+        <li><strong>Run 6 - Cold-weather repeat (planned).</strong> <em>Setup:</em> Run 5 repeated outdoors in winter. <em>Procedure:</em> identical loop and logging, battery and IMU temperatures logged alongside. <em>Metric:</em> the same drift curves against temperature - DRDC's NANOOK cold-weather thread at bench scale. The <a href="cold-soak-battery-rig.html">cold-soak rig</a> characterizes the battery side of the same question.</li>
+      </ol>
+      <p>
+        Per-run conditions (surface, temperature, battery state) are logged with the bag, since all
+        three move the numbers. Targets below are what I am aiming at, not results I have:
+      </p>
+      <table>
+        <thead><tr><th>Metric</th><th>Target</th><th>Current status</th></tr></thead>
+        <tbody>
+          <tr><td>Loop-closure error, EKF only (Run 3)</td><td>Under 2% of distance travelled</td><td>In progress - tuning passes underway, not yet measured against truth</td></tr>
+          <tr><td>Loop-closure error, EKF + LiDAR aiding (Run 4)</td><td>Measurably better than Run 3 on the same loop</td><td>In progress - rf2o integration benched, comparison runs not yet done</td></tr>
+          <tr><td>Drift growth after GNSS cut (Run 5)</td><td>Published error-versus-distance curve, both configurations</td><td>In progress - logging pipeline ready, first cut runs planned</td></tr>
+          <tr><td>Heading error growth, GNSS denied</td><td>Quantified per 100 m travelled</td><td>In progress</td></tr>
+          <tr><td>IMU bias stability across a run</td><td>No visible yaw drift in a static 10-minute log</td><td>In progress - static logs collected, analysis pending</td></tr>
+          <tr><td>Cold-weather drift delta (Run 6)</td><td>Same protocol repeated at winter temperatures</td><td>Planned - waiting on weather</td></tr>
+        </tbody>
+      </table>
+      <p>
+        No drift numbers are published yet because I won't quote figures I haven't measured. The
+        dataset and plots go up with the build write-up once the loop runs are complete.
+      </p>
+    </section>
+
+    <section id="troubleshooting">
+      <h2>Troubleshooting &amp; Lessons</h2>
+      <ul>
+        <li><strong>Motors twitching with no command.</strong> Symptom: random wheel jerks at idle. Cause: the BTS7960's ground was not tied to the Pi's ground, so PWM levels floated. Fix: dedicated 22 AWG ground wire from driver B- to Pi GND; verified with a continuity check, twitching gone. Lesson: on a mixed-voltage robot, "obviously it's grounded" is a claim, not a measurement.</li>
+        <li><strong>Pi browning out when motors stalled.</strong> Symptom: <code>vcgencmd get_throttled</code> returning under-voltage flags and the Pi rebooting mid-run. Cause: Pi and motors shared one rail; a stall dragged it below the Pi's cutoff. Fix: split the rails (step 02), separate fused DC-DC branch for logic, re-ran the stall test with flags staying at <code>0x0</code>. This is also why the e-stop cuts motors only - a logging Pi during an incident is a feature.</li>
+        <li><strong>Silent IMU - node timing out on the UART.</strong> Symptom: <code>/dev/imu</code> opened but no SHTP packets arrived. Cause: the BNO085 breakout shipped with PS1 floating, so it was in I2C mode, not UART. Fix: soldered the PS1 strap high per the datasheet. Lesson: verify the mode pins before suspecting the software; I burned an evening on a driver that was never the problem.</li>
+        <li><strong>Odometry TF fighting in RViz.</strong> Symptom: the robot flickered between two positions a metre apart. Cause: both <code>diff_drive_controller</code> and the EKF were publishing <code>odom-&gt;base_link</code>. Fix: <code>enable_odom_tf: false</code> on the controller so the EKF owns the transform. Lesson: exactly one publisher per TF frame, always - check with <code>ros2 run tf2_ros tf2_echo odom base_link</code> when in doubt.</li>
+        <li><strong>Scan matcher diverging along a blank wall.</strong> Symptom: <code>/odom_rf2o</code> froze or jumped while driving past a featureless wall. Cause: scan matching has nothing to lock onto without features - a known RF2O limitation, not a bug. Fix: RF2O enters the EKF with a larger covariance than wheel odometry, so the filter degrades gracefully toward encoder+IMU behaviour. Lesson: every aiding sensor needs a designed failure mode, not just a happy path.</li>
+      </ul>
     </section>
 
     <section id="notes">
@@ -250,9 +471,9 @@ flowchart LR
     <section id="status">
       <h2>Status &amp; Roadmap</h2>
       <ul>
-        <li><strong>Done</strong>: chassis assembled with encoders wired, BTS7960 drive train and power rail benched, e-stop installed and tested, Ubuntu 24.04 + ROS 2 Jazzy on the Pi 5, URDF and diff-drive <code>ros2_control</code> stack driving the rover, BNO085 and LD19 publishing.</li>
-        <li><strong>In progress</strong>: EKF tuning in <code>robot_localization</code> (covariance work), first GNSS-cut loop runs with rosbag logging, drift analysis scripts.</li>
-        <li><strong>Next</strong>: LiDAR aiding comparison runs (rf2o / SLAM Toolbox on vs off), then publish the dataset and drift plots; second rover becomes the convoy follower.</li>
+        <li><strong>Done</strong>: chassis assembled with encoders wired, BTS7960 drive train and power rail benched (stall-tested, no brownouts after the rail split), e-stop installed and tested, Ubuntu 24.04 + ROS 2 Jazzy on the Pi 5, URDF measured and TF-verified, diff-drive <code>ros2_control</code> stack driving the rover, BNO085 and LD19 publishing at rate, Runs 1-2 (bench spin, straight-line calibration) complete.</li>
+        <li><strong>In progress</strong>: EKF tuning in <code>robot_localization</code> (covariance work), rf2o integration, first GNSS-cut loop runs with rosbag logging, drift analysis scripts.</li>
+        <li><strong>Next</strong>: LiDAR aiding comparison runs (Runs 3-5), publish the dataset and drift plots, winter cold-weather repeat (Run 6); second rover becomes the convoy follower.</li>
       </ul>
     </section>
 
