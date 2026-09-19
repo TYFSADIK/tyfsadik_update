@@ -15,7 +15,7 @@
   <meta property="og:image" content="https://tyfsadik.org/Prove/Sky%20passive%20aerial%20early-warning%20node.jpeg">
   <meta name="twitter:card" content="summary_large_image">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"CreativeWork","name":"Sky: Passive Aerial Early-Warning Node","author":{"@type":"Person","name":"MD. Taki Yasir Faraji Sadik","url":"https://tyfsadik.org/about.html"},"dateCreated":"2026","inLanguage":"en-CA","keywords":"passive radar, KrakenSDR, range-Doppler, pyAPRiL, ADS-B ground truth, receive-only SDR, early warning"}</script>
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Build a passive aerial early-warning node with a KrakenSDR","description":"Stand up a receive-only passive radar node: ADS-B ground truth first, illuminator survey, KrakenSDR coherent bring-up, reference/surveillance cross-correlation into range-Doppler plots, pyAPRiL processing, scoring against ADS-B, and multi-node MQTT fusion.","step":[{"@type":"HowToStep","name":"ADS-B ground truth first","text":"Set up an RTL-SDR Blog V4 with a 1090 MHz antenna, run readsb/dump1090-fa and tar1090, and start logging aircraft positions as ground truth."},{"@type":"HowToStep","name":"Illuminator survey","text":"Map local FM (88-108 MHz) and UHF TV (~470-600 MHz) broadcast transmitters, tune Yagi antennas with a NanoVNA, and check SWR."},{"@type":"HowToStep","name":"KrakenSDR bring-up","text":"Run the 5-channel coherent KrakenSDR (24-1766 MHz) with its open-source software on a Raspberry Pi or mini PC, and phase-calibrate channels with the built-in noise source."},{"@type":"HowToStep","name":"Passive radar chain","text":"Point the reference Yagi at the broadcast transmitter and the surveillance antenna at the area of interest; cross-correlate the channels to produce bistatic range-Doppler plots."},{"@type":"HowToStep","name":"Processing with pyAPRiL","text":"Use the pyAPRiL Python library for clutter filtering, direction-of-arrival estimation, and target localization."},{"@type":"HowToStep","name":"Score against ADS-B truth","text":"Compare passive-radar detections with the logged ADS-B ground truth: detection rate, false-alarm rate, and effective range per illuminator."},{"@type":"HowToStep","name":"Multi-node fusion","text":"Stand up 2-3 nodes and fuse their detections over MQTT into the multi-domain common operating picture."}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Build a passive aerial early-warning node with a KrakenSDR","description":"Stand up a receive-only passive radar node: ADS-B ground truth first, illuminator survey, antenna tuning, KrakenSDR coherent bring-up and phase calibration, antenna geometry, IQ capture, pyAPRiL range-Doppler processing, scoring against ADS-B, and automated multi-node MQTT fusion.","step":[{"@type":"HowToStep","name":"ADS-B ground truth first","text":"Set up an RTL-SDR Blog V4 with a 1090 MHz antenna, run readsb/dump1090-fa and tar1090, and start logging aircraft positions as ground truth."},{"@type":"HowToStep","name":"Illuminator survey","text":"Scan FM (88-108 MHz) and UHF TV (~470-600 MHz) bands with rtl_power to map usable broadcast transmitters by frequency, bearing, and power."},{"@type":"HowToStep","name":"Antenna tuning","text":"Tune the FM Yagi and UHF log-periodic with a NanoVNA and NanoVNASaver, checking SWR across each target band."},{"@type":"HowToStep","name":"KrakenSDR bring-up","text":"Install the open-source krakensdr_doa software (HeIMDALL DAQ) on the mini PC and start the coherent five-channel receiver."},{"@type":"HowToStep","name":"Phase calibration","text":"Inject the built-in noise source into all five channels and calibrate out per-channel phase and amplitude offsets; re-run after any retune."},{"@type":"HowToStep","name":"Reference and surveillance geometry","text":"Point the reference Yagi at the broadcast transmitter and the surveillance antennas at the area of interest; compute half-wavelength spacing per band."},{"@type":"HowToStep","name":"Coherent IQ capture","text":"Record synchronized multi-channel CF32 IQ captures from the DAQ's network IQ interface for offline processing."},{"@type":"HowToStep","name":"Range-Doppler processing with pyAPRiL","text":"Run clutter cancellation, cross-ambiguity range-Doppler surfaces, CA-CFAR hit detection, and DoA estimation with the pyAPRiL Python library."},{"@type":"HowToStep","name":"Score against ADS-B truth","text":"Align radar detections with the ADS-B truth log and compute detection rate, false-alarm rate, and effective range per illuminator."},{"@type":"HowToStep","name":"Automation and multi-node fusion","text":"Run the node as a systemd service, archive captures, and publish detections over MQTT for fusion with 2-3 nodes into the common operating picture."}]}</script>
   <link rel="stylesheet" href="../../css/style.css">
   <link rel="icon" href="../../favicon.png" type="image/png">
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
@@ -127,6 +127,28 @@
         (~US$100) so the ground-truth logging was collecting data weeks before the KrakenSDR
         processing chain existed.
       </p>
+    </section>
+
+    <section id="rf-chain">
+      <h2>RF &amp; Signal Chain</h2>
+      <p>
+        How the boxes actually connect on the bench. The two SDRs are deliberately on separate USB
+        controllers - one saturated USB bus dropping samples is enough to ruin a coherent capture
+        (see <a href="#troubleshooting">Troubleshooting</a>).
+      </p>
+      <table>
+        <thead><tr><th>From</th><th>To</th><th>Cable / interface</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>FM Yagi (pointed at transmitter)</td><td>KrakenSDR CH1 (reference)</td><td>LMR-240 coax, SMA</td><td>Clean direct-path signal; keep this run short</td></tr>
+          <tr><td>Surveillance antennas (log-periodic / whips)</td><td>KrakenSDR CH2-CH5</td><td>Matched-length coax, SMA</td><td>Cable lengths matched so phase calibration stays valid</td></tr>
+          <tr><td>KrakenSDR</td><td>Mini PC</td><td>USB 3.0 data + USB-C 5 V power</td><td>Dedicated USB port; quality power supply matters for coherence</td></tr>
+          <tr><td>1090 MHz antenna</td><td>RTL-SDR Blog V4</td><td>Coax, SMA</td><td>Mounted as high and clear as the room allows</td></tr>
+          <tr><td>RTL-SDR Blog V4</td><td>Mini PC</td><td>USB 2.0</td><td>Separate USB bus from the KrakenSDR</td></tr>
+          <tr><td>Mini PC</td><td>LAN / MQTT broker</td><td>Gigabit Ethernet</td><td>chrony NTP sync so radar and ADS-B timestamps agree</td></tr>
+          <tr><td>Mini PC</td><td>Laptop (monitoring)</td><td>SSH / HTTP over LAN</td><td>tar1090 map and range-Doppler plots viewed here</td></tr>
+        </tbody>
+      </table>
+      <p class="diagram-label">Every cable on the receive side; nothing on this node ever transmits.</p>
     </section>
 
     <section id="architecture">

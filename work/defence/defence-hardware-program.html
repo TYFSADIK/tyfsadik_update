@@ -85,6 +85,78 @@
         not application forms. Every build below answers one of them at hobby scale, with real
         hardware, real measurements, and a published dataset or dashboard at the end.
       </p>
+
+      <h3>Requirement Source 1: Defence Drone Initiative (DDI)</h3>
+      <p>
+        The DDI, launched July 23, 2026, names its first priority areas plainly: low-cost tactical ISR
+        drones, and ground robots for resupply, casualty evacuation, and terrain too hazardous for
+        personnel. Read as a spec, that is three requirements: cheap enough to be attritable, useful
+        sensors on board, and autonomy that keeps working when the operator link does not. The
+        <a href="thermal-sar-drone.html">thermal SAR drone</a> answers the ISR line - an X500-class
+        airframe with edge detection so the platform is useful even with a degraded downlink. The
+        <a href="gps-denied-navigation-rover.html">GPS-denied rover</a> and
+        <a href="convoy-robots-degraded-mesh.html">convoy robots</a> answer the ground-robot line,
+        with the emphasis on continuing the mission through link loss rather than stopping and
+        waiting. The DDI also talks about supply-chain integrity for uncrewed systems, which is the
+        requirement the <a href="secure-fleet-updates.html">secure fleet updates</a> build takes on
+        directly: secure boot, TPM, signed OTA images, and automatic rollback.
+      </p>
+
+      <h3>Requirement Source 2: Army MINERVA Challenges</h3>
+      <p>
+        The MINERVA challenge text is unusually candid: the Army says it has bought foreign robotic
+        systems of mixed quality, with problems in cold-weather operation and components from
+        unstable supply chains, and that it currently lacks a drone able to do ISR in Arctic
+        conditions. The Arctic drone call closed September 24, 2026, and the full text reads like an
+        evaluator's checklist - endurance in the cold, sensors that work in snow and low light,
+        operation alongside Canadian Rangers. Two of my builds map straight onto it: the
+        <a href="cold-soak-battery-rig.html">cold-soak characterization rig</a> attacks the stated
+        cold-weather pain point head-on by publishing runtime, voltage sag, and failure-mode data
+        against temperature, and the <a href="thermal-sar-drone.html">thermal SAR drone</a> matches
+        the Arctic-sovereignty and SAR-with-Rangers requirement with a thermal camera and on-board
+        person detection. The supply-chain complaint is covered by the secure-updates build above.
+      </p>
+
+      <h3>Requirement Source 3: DRDC Field Trials and Operation NANOOK</h3>
+      <p>
+        DRDC's field-trial pattern - exercised on events like Operation NANOOK - keeps returning to
+        the same four themes: GPS-denied navigation, convoying, cold-weather performance, and
+        resilient operation when communications are degraded. These are trial scenarios, so my
+        builds mirror them as test protocols rather than as products: the
+        <a href="gps-denied-navigation-rover.html">GPS-denied rover</a> cuts GNSS deliberately and
+        measures EKF drift against recorded ground truth; the
+        <a href="convoy-robots-degraded-mesh.html">convoy robots</a> hold formation through induced
+        link drops on a LoRa/Wi-Fi mesh; and the <a href="cold-soak-battery-rig.html">cold-soak
+        rig</a> reproduces the cold-weather axis in a freezer and in a real Canadian winter. The
+        point is not to replicate NANOOK - it is to have bench-scale evidence on the same variables
+        the trials measure.
+      </p>
+
+      <h3>Requirement Source 4: NRC + DRDC Counter-Drone Work</h3>
+      <p>
+        The NRC/DRDC counter-drone direction asks for a detection system that picks up the signature
+        of a drone's rotating propellers <em>without emitting any radio signal that could reveal its
+        own location</em>. That constraint - receive-only - is the interesting part, and it shapes
+        two builds. The <a href="acoustic-drone-detector.html">passive acoustic drone detector</a>
+        listens for rotor harmonics with a MEMS microphone array, rejects birds and aircraft, and
+        estimates direction of arrival by beamforming. Its RF sibling, the
+        <a href="sky-passive-radar-node.html">passive radar node</a>, detects aircraft by listening
+        to reflections of someone else's broadcast transmitters - again emitting nothing. Both feed
+        detections into the common operating picture, because a single passive sensor is a hint and
+        two agreeing sensors are a track.
+      </p>
+
+      <h3>Requirement Source 5: Airspace Deconfliction</h3>
+      <p>
+        The Army is studying how to manage airspace shared by many uncrewed aircraft at once - the
+        problem that appears the moment cheap drones stop being rare. The
+        <a href="airspace-deconfliction-manager.html">mini airspace deconfliction manager</a>
+        builds this at simulation scale: ESP32 beacons plus ArduPilot SITL simulated drones, dynamic
+        geofences, conflict alerts, and a human-in-the-loop override. It also doubles as the traffic
+        layer for the <a href="multi-domain-common-operating-picture.html">multi-domain common
+        operating picture</a>, since a fused air picture is exactly what a deconfliction cell would
+        need to look at.
+      </p>
     </section>
 
     <section id="strategic-context">
@@ -206,6 +278,18 @@ flowchart TD
           <tr><td>Time sync</td><td>2 u-blox M9N-class GNSS modules with PPS (clock-disciplining nodes)</td><td>60-100</td></tr>
         </tbody>
       </table>
+      <p>
+        <strong>Phase notes:</strong> Phase 0 arrived first, by design - every later phase sits on this
+        bench. Two choices deserve explanation. I paid for the official 27 W Pi 5 supplies instead of
+        cheaper third-party USB-C bricks because undervoltage on a Pi 5 shows up as silent microSD
+        corruption weeks later, and I added the NVMe HAT for the same reason: continuous sensor
+        logging wears out microSD cards. The two GNSS/PPS modules were bought as a pair on purpose -
+        one disciplines the sensor-node clocks, the other becomes rover ground truth before being
+        switched off for drift tests. The alternative to a dedicated bench supply was powering
+        everything from USB-C, which works until you need a clean, current-limited 12 V rail for the
+        hydrophone rig or the rover motors. This phase is consumed by literally every build page -
+        it is the shared infrastructure the other ten stand on.
+      </p>
 
       <h3>Phase 1 - Sky Node: Passive Radar + ADS-B Truth (~US$1,100-1,350)</h3>
       <table>
@@ -221,6 +305,20 @@ flowchart TD
         </tbody>
       </table>
       <p>Started with just the ADS-B kit (~US$100): live aircraft map and dashboard first, then the KrakenSDR.</p>
+      <p>
+        <strong>Phase notes:</strong> the KrakenSDR was the anchor purchase - it is the only
+        sub-US$500 receiver with five phase-coherent channels sharing one clock, and the realistic
+        alternative (five independent RTL-SDRs with an external clock distribution board and
+        per-channel calibration) costs nearly as much and takes months of frustration. The KrakenRF
+        antenna set is for bench bring-up; the Yagi and log-periodic are what actually do the radar
+        geometry, because the reference channel needs gain pointed at the transmitter. The RTL-SDR
+        Blog V4 for ADS-B truth arrived first and was logging aircraft weeks before the KrakenSDR
+        shipped - that ordering was deliberate, since a passive radar without independent ground
+        truth is just a screensaver. This phase is consumed by the
+        <a href="sky-passive-radar-node.html">sky passive radar node</a> build page, and its
+        detections feed the <a href="multi-domain-common-operating-picture.html">multi-domain common
+        operating picture</a>.
+      </p>
 
       <h3>Phase 2 - Water Node: Hydrophone + AIS (~US$700-1,000)</h3>
       <table>
@@ -234,6 +332,19 @@ flowchart TD
           <tr><td>Power</td><td>12 V battery, 30-50 W solar panel, MPPT controller, DC-DC buck</td><td>150-250</td></tr>
         </tbody>
       </table>
+      <p>
+        <strong>Phase notes:</strong> the one real fork in this phase is the hydrophone connector.
+        The Aquarian A5 with a 3.5 mm jack is plug-and-play into a USB audio interface; the H2d-XLR
+        version has better low-frequency response but demands 48 V phantom power, which is why the
+        audio interface line exists at all - a bare Pi has no mic input worth using. The solar power
+        chain was sized for the worst case (a dock with no outlet), not the average case; the MPPT
+        controller rather than a cheap PWM one, because Canadian winter sun is a scarce resource and
+        PWM throws away a chunk of it. The RTL-SDR V4 for AIS is the same part as the ADS-B truth
+        receiver from Phase 1, which keeps spares interchangeable. The Pi 5 and RTL-SDR arrived
+        first; the hydrophone and solar gear came later. This phase is consumed by the
+        <a href="water-passive-acoustic-vessel-monitor.html">water passive acoustic vessel
+        monitor</a> build page.
+      </p>
 
       <h3>Phase 3 - Ground Mesh &amp; Deconfliction Beacons (~US$500-750)</h3>
       <table>
