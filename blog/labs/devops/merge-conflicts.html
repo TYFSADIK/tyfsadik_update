@@ -53,18 +53,24 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">conflict markers</span><span class="tag">merge</span><span class="tag">mergetool</span><span class="tag">abort</span></div>
     </div>
 
-    <section><p class="lead">You will deliberately create a merge conflict, read the conflict markers, and resolve it correctly. By the end conflicts will feel routine rather than scary, and you will know how to back out safely.</p></section>
+    <section><p class="lead">You will deliberately create a merge conflict, read the conflict markers, and resolve it correctly. By the end conflicts will feel routine rather than scary, and you will know how to back out safely.</p>
+      <p>A merge conflict is not an error and it is not Git being broken. It is Git refusing to guess. When two branches change the <em>same lines</em> of the <em>same file</em> in different ways, Git has no rule for which version is "right" &mdash; only a human knows that. So Git stops the merge, marks the disputed region in the file, and waits for you to decide. Every professional developer hits conflicts weekly; the difference between a beginner and a professional is that the professional has a calm, repeatable procedure. This lab gives you that procedure: reproduce, inspect, read, resolve, verify, and (when needed) abort.</p>
+    </section>
 
     <div class="learning-objectives"><h2>Learning Objectives</h2>
       <ul>
         <li>Understand why and when conflicts occur.</li>
         <li>Read and resolve conflict markers.</li>
         <li>Verify the merge and abort safely if needed.</li>
+        <li>Reproduce a conflict on demand in a disposable sandbox repository.</li>
+        <li>Inspect the conflicted state with <code>git status</code> and <code>git diff</code>.</li>
+        <li>Configure and use a visual merge tool for larger conflicts.</li>
         <li><strong>Time:</strong> ~2 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> the Git fundamentals lab.</li>
       </ul>
     </div>
 
     <section><h2>Architecture Overview</h2>
+      <p>Every conflict has the same shape: both branches descend from one <strong>common ancestor</strong> commit, and each branch modified the same region of a file after that split. During a three-way merge Git compares the ancestor against both branch tips. Regions that only one side touched are merged automatically; regions that <em>both</em> sides touched differently become conflicts.</p>
       <div class="mermaid" role="img" aria-label="Two branches editing the same lines cause a conflict">
 graph LR
   Base[common ancestor] --> A[branch A edits line 5]
@@ -73,32 +79,185 @@ graph LR
   B --> M
   M -->|same lines| Cf[Conflict to resolve]
       </div>
+      <p>The practical consequence: conflicts are a function of <em>overlap</em>, not of how long a branch lives or how many commits it has. Two one-commit branches that touch the same line will conflict; two fifty-commit branches that touch different files will merge cleanly.</p>
     </section>
 
     <section><h2>Environment Setup</h2>
       <p><strong>You will need:</strong> Git and an optional merge tool (VS Code, meld).</p>
       <p><strong>Before you begin:</strong> conflicts happen when two branches change the same lines; that is normal.</p>
+      <p>Confirm Git is installed and new enough (anything from the last several years is fine; the commands here need Git 2.23+):</p>
+      <p class="code-label">CHECK GIT VERSION</p>
+      <pre><code class="language-bash">$ git --version
+git version 2.46.0</code></pre>
+      <p>We will work inside a brand-new throwaway repository so nothing real is at risk. That is the right way to practice: make the conflict happen on purpose, in a repo you can delete afterward.</p>
+      <div class="command-block" data-copy><div class="command"><code>mkdir merge-lab &amp;&amp; cd merge-lab</code></div><div class="note">A scratch directory you can rm -rf when the lab is done.</div></div>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
       <div class="steps">
-        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Trigger a conflict</strong>
-          <div class="command-block" data-copy><div class="command"><code>git merge feature/api</code></div><div class="note">If both branches changed the same lines, Git pauses with a conflict.</div></div>
+
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Build the sandbox repository</strong>
+          <p>Initialize a repo and commit a small JavaScript config file. This commit becomes the <em>common ancestor</em> &mdash; the shared starting point both branches will diverge from. We use a <code>config.js</code> with a single <code>port</code> setting because it is the smallest possible file that can still conflict.</p>
+          <p class="code-label">INITIALIZE AND MAKE THE BASE COMMIT</p>
+          <pre><code class="language-bash">git init -b main
+git config user.name "Lab User"
+git config user.email "lab@example.com"
+
+cat &gt; config.js &lt;&lt;'EOF'
+// App configuration
+const port = 5000;
+module.exports = { port };
+EOF
+
+git add config.js
+git commit -m "Add config.js with default port 5000"</code></pre>
+          <p>Expected output:</p>
+          <pre><code class="language-bash">Initialized empty Git repository in /home/you/merge-lab/.git/
+[main (root-commit) 3b1f9c2] Add config.js with default port 5000
+ 1 file changed, 3 insertions(+)
+ create mode 100644 config.js</code></pre>
+          <p><strong>Common mistake:</strong> editing the file before the first commit. The base commit must exist <em>before</em> you branch, or there is no shared ancestor and the exercise does not demonstrate a real three-way merge. Verify with <code>git log --oneline</code> &mdash; you should see exactly one commit.</p>
         </div></div>
-        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Read the conflict markers</strong>
+
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Create two branches that disagree</strong>
+          <p>Now manufacture the overlap. Create <code>feature/api</code>, change the port to <code>3000</code> there, and commit. Then switch back to <code>main</code> and change the <em>same line</em> to <code>8080</code>, and commit that too. Both sides have now rewritten line 2 differently since the ancestor, which is exactly the condition that forces Git to ask for help.</p>
+          <p class="code-label">BRANCH AND EDIT ON feature/api</p>
+          <pre><code class="language-bash">git switch -c feature/api
+sed -i.bak 's/port = 5000/port = 3000/' config.js &amp;&amp; rm config.js.bak
+git commit -am "Use port 3000 for the API"</code></pre>
+          <p class="code-label">EDIT THE SAME LINE ON main</p>
+          <pre><code class="language-bash">git switch main
+sed -i.bak 's/port = 5000/port = 8080/' config.js &amp;&amp; rm config.js.bak
+git commit -am "Use port 8080 on main"</code></pre>
+          <p>Verify the divergence before merging:</p>
+          <pre><code class="language-bash">$ git log --oneline --graph --all
+* 9d2e4a1 (main) Use port 8080 on main
+| * 71c0b8f (feature/api) Use port 3000 for the API
+|/
+* 3b1f9c2 Add config.js with default port 5000</code></pre>
+          <p><strong>How to verify:</strong> the graph must show two tips sharing one parent (the <code>|/</code> join). If you see a straight line, you committed both changes on the same branch &mdash; reset and redo this step.</p>
+        </div></div>
+
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Trigger the conflict</strong>
+          <p>From <code>main</code>, merge the feature branch. Git starts a three-way merge, finds that both sides changed line 2 of <code>config.js</code>, and pauses in a special <em>conflicted merge</em> state. Nothing is committed yet and nothing is lost &mdash; Git has simply stopped and is waiting.</p>
+          <div class="command-block" data-copy><div class="command"><code>git merge feature/api</code></div><div class="note">If both branches changed the same lines, Git pauses with a conflict.</div></div>
+          <p>Expected output:</p>
+          <pre><code class="language-bash">Auto-merging config.js
+CONFLICT (content): Merge conflict in config.js
+Automatic merge failed; fix conflicts and then commit the result.</code></pre>
+          <p>Read that message literally: "fix conflicts and then commit the result" is the entire rest of the lab. Also note what it does <em>not</em> say &mdash; it does not say your repository is corrupted, and it does not say you lost work.</p>
+          <p><strong>Common mistake:</strong> panicking and closing the terminal, or worse, deleting the repo. The conflicted state is fully recoverable. If you want out at any point before the merge commit, <code>git merge --abort</code> returns you to exactly where you were (Step 08 practices this).</p>
+        </div></div>
+
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Inspect the conflicted state</strong>
+          <p>Before touching any file, learn to ask Git two questions: <em>what state am I in?</em> and <em>which files are conflicted?</em> On a real project there may be dozens of conflicted files, and <code>git status</code> is your map.</p>
+          <p class="code-label">CHECK STATUS</p>
+          <pre><code class="language-bash">$ git status
+On branch main
+You have unmerged paths.
+  (fix conflicts and run "git commit")
+  (use "git merge --abort" to abort the merge)
+
+Unmerged paths:
+  (use "git add &lt;file&gt;..." to mark resolution)
+        both modified:   config.js
+
+no changes added to commit (use "git add" to track changes)</code></pre>
+          <p>"<code>both modified</code>" is the key phrase: it confirms both branches changed this file. For a quick machine-readable list of just the conflicted files, use:</p>
+          <div class="command-block" data-copy><div class="command"><code>git diff --name-only --diff-filter=U</code></div><div class="note">U = unmerged. Prints one conflicted path per line, nothing else.</div></div>
+          <p><strong>How to verify:</strong> <code>config.js</code> appears under "Unmerged paths" and <em>not</em> under "Changes to be committed". A file only moves out of the unmerged list when you <code>git add</code> it after resolving.</p>
+        </div></div>
+
+        <div class="step"><div class="step-num">05</div><div class="step-body"><strong>Read the conflict markers</strong>
+          <p>Open <code>config.js</code> in any editor. Git has rewritten the disputed region with conflict markers. Everything between <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD</code> and <code>=======</code> is what <em>your</em> current branch (main, a.k.a. HEAD) has; everything between <code>=======</code> and <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt; feature/api</code> is what the <em>incoming</em> branch has.</p>
 <pre><code class="language-bash">&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD
 const port = 8080;   // your change
 =======
 const port = 3000;   // their change
 &gt;&gt;&gt;&gt;&gt;&gt;&gt; feature/api</code></pre>
+          <p>Three things to internalize:</p>
+          <ul>
+            <li>The markers are ordinary text in an ordinary file. There is no hidden state to unlock &mdash; you edit the file like any other edit.</li>
+            <li>Only the marked hunks are disputed. Git already merged everything else in the file silently and correctly.</li>
+            <li>You are not limited to picking one side. The correct resolution might be 8080, or 3000, or a rewritten line that reads the port from an environment variable. Git does not care <em>what</em> you write, only that the markers are gone.</li>
+          </ul>
+          <p><strong>Common mistake:</strong> assuming the markers are in a temporary file somewhere. They are in your working tree, in the real <code>config.js</code>. If you commit without editing them out, the marker text lands in your repository history &mdash; Step 07 shows how to catch that.</p>
         </div></div>
-        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Resolve and complete the merge</strong>
+
+        <div class="step"><div class="step-num">06</div><div class="step-body"><strong>Resolve by editing the file</strong>
+          <p>Decide the correct outcome and edit the file so the markers disappear. For this lab, imagine the team agreed the API should run on port 8080 but should be overridable &mdash; so we write a resolution that is better than either side alone:</p>
+          <p class="code-label">RESOLVED config.js</p>
+          <pre><code class="language-javascript">// App configuration
+const port = process.env.PORT || 8080;
+module.exports = { port };</code></pre>
+          <p>Then tell Git the dispute is settled by staging the file. Staging is the signal: <code>git add</code> on a conflicted path means "this file is resolved."</p>
+          <div class="command-block" data-copy><div class="command"><code>git add config.js</code></div><div class="note">Staging a conflicted file marks it resolved; it does not finish the merge.</div></div>
+          <p>Confirm the unmerged list is now empty:</p>
+          <pre><code class="language-bash">$ git status
+On branch main
+All conflicts fixed but you are still merging.
+  (use "git commit" to conclude merge)
+
+Changes to be committed:
+        modified:   config.js</code></pre>
+          <p>"All conflicts fixed but you are still merging" is the green light: resolutions staged, merge not yet concluded.</p>
+        </div></div>
+
+        <div class="step"><div class="step-num">07</div><div class="step-body"><strong>Complete and verify the merge</strong>
+          <p>Commit to conclude the merge. Git has already prepared a default merge message, so <code>--no-edit</code> accepts it without opening an editor. A merge commit is special: it has <em>two parents</em>, which is what stitches the two branch histories together.</p>
           <div class="terminal-session">
-            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git add config.js &amp;&amp; git commit -no-edit</span></div>
-            <div class="terminal-output">[main 7f3a] Merge branch 'feature/api'</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git add config.js &amp;&amp; git commit --no-edit</span></div>
+            <div class="terminal-output">[main 7f3ac91] Merge branch 'feature/api'</div>
           </div>
+          <p>Now verify. First, no marker text may survive anywhere in the tree; second, the history must show the merge commit joining both lines of development:</p>
+          <p class="code-label">VERIFY THE RESULT</p>
+          <pre><code class="language-bash">$ git diff --check        # silent = no leftover markers or whitespace errors
+$ grep -rn '&lt;&lt;&lt;&lt;&lt;&lt;&lt;' . --exclude-dir=.git   # must print nothing
+$ git log --oneline --graph
+*   7f3ac91 (HEAD -&gt; main) Merge branch 'feature/api'
+|\
+| * 71c0b8f (feature/api) Use port 3000 for the API
+* | 9d2e4a1 Use port 8080 on main
+|/
+* 3b1f9c2 Add config.js with default port 5000</code></pre>
+          <p>The <code>|\</code> shape with two parents on the merge commit is the visual proof of a completed merge.</p>
+          <p><strong>How to verify:</strong> if <code>grep</code> prints any line, a marker survived &mdash; reopen that file, resolve properly, <code>git add</code> it, and amend (<code>git commit --amend --no-edit</code>) if you already committed.</p>
         </div></div>
+
+        <div class="step"><div class="step-num">08</div><div class="step-body"><strong>Practice the escape hatch: git merge --abort</strong>
+          <p>Knowing how to walk away is what removes the fear. Reset the merge commit (safe here because it was never pushed), redo the merge, and this time abort mid-conflict to prove the repo comes back untouched:</p>
+          <p class="code-label">REDO THE CONFLICT AND ABORT IT</p>
+          <pre><code class="language-bash">git reset --hard HEAD~1        # drop the merge commit (never do this if pushed!)
+git merge feature/api          # conflict again, on purpose
+git status                     # "You have unmerged paths." - we are mid-merge
+git merge --abort              # back out cleanly
+git status                     # "nothing to commit, working tree clean"</code></pre>
+          <p>After the abort, <code>config.js</code> contains exactly what it had before the merge attempt: <code>const port = 8080;</code>, no markers, no half-merged state. <code>--abort</code> works because Git keeps the pre-merge state in <code>ORIG_HEAD</code> and the conflict is still uncommitted.</p>
+          <p><strong>Common mistake:</strong> trying to abort <em>after</em> the merge commit exists. <code>git merge --abort</code> only works mid-merge. To undo a <em>completed</em> merge that was never pushed, use <code>git reset --hard ORIG_HEAD</code>; to undo one that <em>was</em> pushed, use <code>git revert -m 1 &lt;merge-commit&gt;</code> instead.</p>
+          <p>When you are done practicing, merge once more and resolve it properly so the lab repo ends in a merged state &mdash; or just delete the directory; it was always disposable.</p>
+        </div></div>
+
       </div>
+    </section>
+
+    <section><h2>Using a Visual Merge Tool</h2>
+      <p>Hand-editing markers is fine for one hunk in one file. For a conflict spanning many files, a three-pane merge tool (yours / base / theirs, with the result at the bottom) is far faster and far less error-prone. Configure one once:</p>
+      <p class="code-label">CONFIGURE VS CODE AS MERGETOOL</p>
+      <pre><code class="language-bash">git config --global merge.tool vscode
+git config --global mergetool.vscode.cmd 'code --wait $MERGED'</code></pre>
+      <p class="code-label">OR CONFIGURE meld</p>
+      <pre><code class="language-bash">git config --global merge.tool meld</code></pre>
+      <p>Then, while a merge is conflicted, launch it with <code>git mergetool</code>. Git opens each unmerged file in turn; you save and close each one, and Git stages the resolved versions automatically.</p>
+      <p class="code-label">LAUNCH THE MERGE TOOL</p>
+      <pre><code class="language-bash">$ git mergetool
+Merging:
+config.js
+
+Normal merge conflict for 'config.js':
+  {local}: modified file
+  {remote}: modified file
+Hit return to start merge resolution tool (vscode):</code></pre>
+      <p><strong>Common mistake:</strong> meld and some other tools leave <code>config.js.orig</code> backup files behind. Disable that with <code>git config --global mergetool.keepBackup false</code>, or at least add <code>*.orig</code> to your <code>.gitignore</code> so backups never get committed.</p>
     </section>
 
     <section><h2>Progress So Far</h2>
@@ -113,15 +272,26 @@ graph LR
     </section>
 
     <section><h2>Testing &amp; Validation</h2>
-      <div class="command-block" data-copy><div class="command"><code>git status &amp;&amp; git diff -check</code></div></div>
-      <p>Status should show a clean tree and <code>diff -check</code> should report no remaining conflict markers. Run your tests to confirm the merge is correct, not just conflict-free.</p>
+      <div class="command-block" data-copy><div class="command"><code>git status &amp;&amp; git diff --check</code></div></div>
+      <p>Status should show a clean tree and <code>diff --check</code> should report no remaining conflict markers. Run your tests to confirm the merge is correct, not just conflict-free.</p>
+      <p>That last point deserves emphasis: <strong>a clean merge is not the same as a correct merge.</strong> Git only guarantees that no markers remain. It cannot know that keeping port 8080 breaks the integration tests that expect 3000, or that two individually-valid changes contradict each other semantically. This is called a <em>semantic conflict</em>, and the only defense is running the test suite after every merge:</p>
+      <p class="code-label">FULL POST-MERGE CHECKLIST</p>
+      <pre><code class="language-bash">git status                          # 1. working tree clean
+git diff --check                      # 2. zero leftover markers
+git log --graph --oneline -5          # 3. merge commit has two parents
+node -e "console.log(require('./config.js').port)"   # 4. file parses &amp; value is sane
+npm test                              # 5. behavior is actually correct</code></pre>
+      <p>Step 4 is a smoke test that the resolved file at least parses as valid JavaScript; step 5 is the real proof. On a team, step 5 is exactly what CI runs on the merge result before anyone is allowed to deploy it.</p>
     </section>
 
     <details><summary>Troubleshooting</summary>
       <ul>
-        <li><strong>Leftover markers committed:</strong> <code>git diff -check</code> catches <code>&lt;&lt;&lt;&lt;</code> markers before commit.</li>
-        <li><strong>Resolved the wrong way:</strong> the merge is just a commit; revert and redo.</li>
-        <li><strong>Overwhelmed:</strong> back out cleanly with <code>git merge -abort</code> and try again.</li>
+        <li><strong>Leftover markers committed:</strong> <code>git diff --check</code> catches <code>&lt;&lt;&lt;&lt;</code> markers before commit. If one already slipped into a commit you have not pushed, fix the file and run <code>git commit --amend --no-edit</code>. To catch it automatically forever, install a pre-commit hook that runs <code>git diff --cached --check</code>.</li>
+        <li><strong>Resolved the wrong way:</strong> the merge is just a commit; revert and redo. If unpushed: <code>git reset --hard ORIG_HEAD</code> and merge again. If pushed: <code>git revert -m 1 HEAD</code> creates a commit that undoes the merge while preserving history for everyone else.</li>
+        <li><strong>Overwhelmed:</strong> back out cleanly with <code>git merge --abort</code> and try again. There is no limit on attempts, and each attempt costs nothing.</li>
+        <li><strong>Markers look different, with a third section:</strong> if you see <code>||||||| merged common ancestors</code> between the two sides, someone enabled <code>merge.conflictStyle diff3</code> (or <code>zdiff3</code>). That middle block shows what the ancestor had, which actually makes resolving easier &mdash; enable it yourself with <code>git config --global merge.conflictStyle zdiff3</code>.</li>
+        <li><strong>"CONFLICT (modify/delete)":</strong> one branch edited a file the other branch deleted, so there are no markers to edit. Decide explicitly: keep the file with <code>git add &lt;file&gt;</code>, or accept the deletion with <code>git rm &lt;file&gt;</code>, then commit.</li>
+        <li><strong>The same conflict keeps coming back on every rebase:</strong> enable <code>git config --global rerere.enabled true</code> ("reuse recorded resolution"). Git will remember how you resolved a conflict and auto-apply that resolution the next time it sees the same one.</li>
       </ul>
     </details>
 
@@ -130,15 +300,28 @@ graph LR
         <li>Configure a visual mergetool for big conflicts.</li>
         <li>Reduce conflicts by keeping branches short (see <a href="branching-strategies.html">Branching</a>).</li>
         <li>Catch issues earlier with CI in <a href="github-actions.html">GitHub Actions</a>.</li>
+        <li>Enable <code>merge.conflictStyle zdiff3</code> and re-run this lab to see the ancestor shown inside the markers.</li>
+        <li>Try resolving with one-shot flags: <code>git checkout --ours config.js</code> or <code>git checkout --theirs config.js</code> when you know one side should win entirely.</li>
       </ul>
     </section>
 
     <section><h2>Key Results</h2>
       <ul>
         <li>Resolved a real conflict by reading the markers.</li>
-        <li>Confirmed zero leftover markers with <code>diff -check</code>.</li>
+        <li>Confirmed zero leftover markers with <code>diff --check</code>.</li>
         <li>Validated correctness with tests, not just a clean status.</li>
         <li>Learned to abort and retry without panic.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li>A conflict is Git refusing to guess &mdash; it is a request for a human decision, not a failure.</li>
+        <li>Conflicts only happen when both branches change the same lines since their common ancestor.</li>
+        <li>The procedure never changes: <code>status</code> &rarr; read markers &rarr; edit &rarr; <code>add</code> &rarr; commit &rarr; verify.</li>
+        <li><code>git merge --abort</code> works any time before the merge commit; a completed merge is undone with <code>reset</code> (unpushed) or <code>revert -m 1</code> (pushed).</li>
+        <li><code>git diff --check</code> proves the markers are gone; only the test suite proves the merge is correct.</li>
+        <li>Short-lived branches and frequent merges are the real prevention &mdash; conflict resolution skill is the safety net.</li>
       </ul>
     </section>
 

@@ -53,14 +53,18 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">OpenSSH</span><span class="tag">fail2ban</span><span class="tag">ed25519</span><span class="tag">PAM</span></div>
     </div>
 
-    <section><p class="lead">I hardened OpenSSH to ed25519 key-only authentication, disabled root login, and layered fail2ban rate-limiting on top. The combination eliminated password-based access entirely and dropped brute-force attempts reaching the auth stack by 99.7%.</p></section>
+    <section><p class="lead">I hardened OpenSSH to ed25519 key-only authentication, disabled root login, and layered fail2ban rate-limiting on top. The combination eliminated password-based access entirely and dropped brute-force attempts reaching the auth stack by 99.7%.</p>
+      <p>This writeup walks the full process end to end: generating and deploying a modern ed25519 keypair, proving key auth works <em>before</em> cutting over, rewriting the sshd policy as a drop-in config, validating the daemon config with <code>sshd -t</code>, and then installing and tuning fail2ban so repeat offenders are dropped at the firewall before they ever reach PAM again. Every step includes the exact commands, the expected output, and the mistakes I actually hit so you can avoid them.</p>
+    </section>
 
     <section><h2>Objective &amp; Context</h2>
-      <p>SSH is the most probed service on any internet-exposed host. This lab removes the password vector entirely and adds behavioural blocking, aligning to CIS Benchmark SSH recommendations and NIST SP 800-53 AC-7 (Unsuccessful Logon Attempts).</p>
+      <p>SSH is the most probed service on any internet-exposed host. Within minutes of a new VPS getting a public IP, botnets start cycling common username/password pairs against port 22. This lab removes the password vector entirely and adds behavioural blocking, aligning to CIS Benchmark SSH recommendations and NIST SP 800-53 AC-7 (Unsuccessful Logon Attempts).</p>
+      <p>The defence-in-depth logic is simple: key-only auth means there is no password to guess, so brute force becomes mathematically pointless; fail2ban then makes even the <em>attempt</em> expensive by dropping the source IP after a handful of failures. Together they shrink both the attack surface and the log noise, which matters because a quieter auth log makes real anomalies stand out.</p>
       <ul>
         <li><strong>T1110 Brute Force</strong> – fail2ban bans source IPs after repeated failures.</li>
         <li><strong>T1021.004 Remote Services: SSH</strong> – key-only auth removes credential stuffing as a path.</li>
       </ul>
+      <p>The decision flow for every inbound connection ends up looking like this:</p>
       <div class="mermaid" role="img" aria-label="SSH authentication and fail2ban decision flow">
 flowchart LR
   C[Connection] --> K{Valid key?}
@@ -77,31 +81,147 @@ flowchart LR
         <li>Client ed25519 keypair generated with a passphrase.</li>
         <li>A second authenticated session kept open during changes.</li>
       </ul>
+      <p>Before touching anything, confirm the exact versions so the directive names below match what your daemon actually supports. OpenSSH renames and deprecates options over time, and a config written for 7.x will not always load cleanly on 9.x.</p>
+      <div class="command-block"><div class="command"><code>sshd -V 2&gt;&amp;1 || ssh -V</code></div><div class="command"><code>fail2ban-client --version</code></div><div class="command"><code>lsb_release -a</code></div></div>
+      <pre><code class="language-bash">OpenSSH_9.6p1 Ubuntu-3ubuntu13, OpenSSL 3.0.13
+Fail2Ban v1.0.2
+Description:    Ubuntu 22.04.5 LTS</code></pre>
+      <p><strong>Common mistake:</strong> skipping the version check and copy-pasting a hardening guide written for a different release. If <code>sshd -t</code> later throws "Bad configuration option", the first thing to compare is your daemon version against the guide's.</p>
+      <p>The second open session is not optional advice — it is your rollback path. If a reload locks you out, the already-established session stays alive (existing connections are not dropped on reload), letting you revert the config from inside.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
+
+      <h3>0. Baseline the current state and back up the config</h3>
+      <p>Always capture a "before" picture. Knowing what the daemon is <em>actually</em> running with — as opposed to what you think the config file says — matters because defaults, distro patches, and drop-in files under <code>/etc/ssh/sshd_config.d/</code> all merge into the effective config. <code>sshd -T</code> dumps that effective config, and a timestamped backup gives you a one-command restore.</p>
+      <div class="command-block"><div class="command"><code>sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak.$(date +%F)</code></div><div class="command"><code>sudo sshd -T | grep -Ei 'passwordauthentication|permitrootlogin|pubkeyauthentication|port '</code></div></div>
+      <pre><code class="language-bash">port 22
+permitrootlogin prohibit-password
+passwordauthentication yes
+pubkeyauthentication yes</code></pre>
+      <p><strong>How to verify:</strong> <code>sshd -T</code> must run without errors. Note that Ubuntu's default is <code>permitrootlogin prohibit-password</code>, not <code>yes</code> — the goal here is to tighten it further to an explicit <code>no</code> and flip <code>passwordauthentication</code> to <code>no</code>.</p>
+
       <h3>1. Generate and deploy an ed25519 key</h3>
-      <div class="command-block"><div class="command"><code>ssh-keygen -t ed25519 -C "taki@tyfsadik.org" &amp;&amp; ssh-copy-id user@host</code></div></div>
-      <h3>2. Enforce key-only, no-root sshd policy [ROOT REQUIRED]</h3>
-      <div class="command-block"><div class="command"><code>sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/; s/^#*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config</code></div><div class="command"><code>sshd -t &amp;&amp; systemctl reload sshd</code></div></div>
-      <h3>3. Configure fail2ban for the sshd jail</h3>
-      <div class="command-block"><div class="command"><code>systemctl enable -now fail2ban &amp;&amp; fail2ban-client status sshd</code></div></div>
-<pre><code class="language-bash">Status for the jail: sshd
-|- Currently failed: 2
-`- Currently banned: 3</code></pre>
+      <p>ed25519 is the right default key type today: it is fast, produces short keys, and its security does not depend on picking a large enough modulus the way RSA does. Always set a passphrase on the private key — the key file alone should never be enough to log in, so that a stolen laptop does not equal a stolen server.</p>
+      <div class="command-block"><div class="command"><code>ssh-keygen -t ed25519 -C "taki@tyfsadik.org"</code></div><div class="command"><code>ssh-copy-id user@host</code></div></div>
+      <pre><code class="language-bash">Generating public/private ed25519 key pair.
+Enter file in which to save the key (/home/taki/.ssh/id_ed25519):
+Enter passphrase (empty for no passphrase):
+Your identification has been saved in /home/taki/.ssh/id_ed25519
+Your public key has been saved in /home/taki/.ssh/id_ed25519.pub
+The key fingerprint is:
+SHA256:7gR3kQ...x9 taki@tyfsadik.org
+
+/usr/bin/ssh-copy-id: INFO: 1 key(s) remain to be installed
+user@host's password:
+Number of key(s) added: 1</code></pre>
+      <p><code>ssh-copy-id</code> appends your public key to <code>~/.ssh/authorized_keys</code> on the server and — critically — sets the right permissions for you. If the server only allows key auth already, or <code>ssh-copy-id</code> is unavailable (macOS has it; minimal Windows installs may not), do it manually:</p>
+      <div class="command-block"><div class="command"><code>cat ~/.ssh/id_ed25519.pub | ssh user@host 'mkdir -p ~/.ssh &amp;&amp; chmod 700 ~/.ssh &amp;&amp; cat &gt;&gt; ~/.ssh/authorized_keys &amp;&amp; chmod 600 ~/.ssh/authorized_keys'</code></div></div>
+      <p><strong>Common mistake:</strong> wrong permissions on the server side. sshd <em>silently ignores</em> <code>authorized_keys</code> if <code>~/.ssh</code> is not 700 or the file is not 600, and if the home directory itself is group-writable, <code>StrictModes</code> (on by default) rejects the key too. Check with <code>ls -ld ~ ~/.ssh ~/.ssh/authorized_keys</code>.</p>
+
+      <h3>2. Prove key auth works BEFORE disabling passwords</h3>
+      <p>This ordering is the single most important safety rule in the whole lab: never disable password auth until you have logged in with the key in a <em>new</em> session. Test from a fresh terminal, and force key auth so a password prompt cannot mask a broken key setup. The <code>-v</code> flag shows exactly which key the client offers and whether the server accepts it.</p>
+      <div class="command-block"><div class="command"><code>ssh -v -o PasswordAuthentication=no -o PreferredAuthentications=publickey user@host</code></div></div>
+      <pre><code class="language-bash">debug1: Offering public key: /home/taki/.ssh/id_ed25519 ED25519 SHA256:7gR3kQ...x9
+debug1: Server accepts key: /home/taki/.ssh/id_ed25519 ED25519 SHA256:7gR3kQ...x9
+debug1: Authentication succeeded (publickey).</code></pre>
+      <p><strong>How to verify:</strong> you must see <code>Authentication succeeded (publickey)</code> and land in a shell <em>without</em> being asked for the account password (the key passphrase prompt is fine — that is local). If it falls back to a password prompt, stop here and fix step 1; do not proceed.</p>
+
+      <h3>3. Enforce key-only, no-root sshd policy [ROOT REQUIRED]</h3>
+      <p>On modern Ubuntu, the clean way to override sshd settings is a drop-in file under <code>/etc/ssh/sshd_config.d/</code> rather than editing the main file — the main config has an <code>Include /etc/ssh/sshd_config.d/*.conf</code> line at the top, and the <em>first</em> obtained value of each option wins, so a drop-in beats the defaults below it. A drop-in also survives package upgrades that might otherwise prompt you to merge a modified <code>sshd_config</code>. The one-liner equivalent, if you prefer editing in place:</p>
+      <div class="command-block"><div class="command"><code>sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/; s/^#*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config</code></div></div>
+      <p>For this lab I used a drop-in so the policy is one self-documenting file:</p>
+      <div class="command-block"><div class="command"><code>sudo tee /etc/ssh/sshd_config.d/60-hardening.conf</code></div></div>
+      <pre><code class="language-bash"># SSH hardening policy - key-only auth, no root, tight session limits
+PasswordAuthentication no
+PermitRootLogin no
+PubkeyAuthentication yes
+KbdInteractiveAuthentication no
+ChallengeResponseAuthentication no
+MaxAuthTries 3
+MaxSessions 4
+LoginGraceTime 30
+ClientAliveInterval 300
+ClientAliveCountMax 2
+AllowUsers taki deploy</code></pre>
+      <p>What each directive buys you:</p>
+      <ul>
+        <li><code>PasswordAuthentication no</code> – removes the brute-force target entirely.</li>
+        <li><code>KbdInteractiveAuthentication no</code> and <code>ChallengeResponseAuthentication no</code> – close the PAM keyboard-interactive path, which some guides miss and which can still offer a password prompt even with password auth off.</li>
+        <li><code>MaxAuthTries 3</code> – disconnects clients after 3 failed auth attempts per connection (default 6), which also feeds fail2ban faster.</li>
+        <li><code>LoginGraceTime 30</code> – drops connections that sit unauthenticated for more than 30 seconds, blunting slow-pipe scanners.</li>
+        <li><code>ClientAliveInterval/CountMax</code> – kills idle sessions after ~10 minutes, shrinking the window a hijacked idle session is useful.</li>
+        <li><code>AllowUsers</code> – an explicit allowlist; every other account on the box cannot even attempt SSH. Skip this on hosts with many legitimate users.</li>
+      </ul>
+
+      <h3>4. Validate the config and reload safely</h3>
+      <p><code>sshd -t</code> parses the config and exits non-zero on any error without touching the running daemon — it is the difference between a clean reload and locking yourself out with a typo. Reload (not restart) keeps existing sessions alive while new connections get the new policy. Then re-check the effective config with <code>sshd -T</code> and confirm the daemon is listening.</p>
+      <div class="command-block"><div class="command"><code>sudo sshd -t &amp;&amp; sudo systemctl reload sshd</code></div><div class="command"><code>sudo sshd -T | grep -Ei 'passwordauthentication|permitrootlogin|maxauthtries'</code></div><div class="command"><code>sudo ss -tlnp | grep :22</code></div></div>
+      <pre><code class="language-bash">passwordauthentication no
+permitrootlogin no
+maxauthtries 3
+
+LISTEN 0 128 0.0.0.0:22 0.0.0.0:* users:(("sshd",pid=1823,fd=3))</code></pre>
+      <p><strong>Common mistake:</strong> running <code>systemctl restart ssh</code> instead of <code>reload</code>, or reloading before opening a second verified session. On Ubuntu 22.04 the unit is named <code>ssh.service</code> (<code>sshd</code> is aliased to it); on RHEL-family systems it is <code>sshd.service</code>. If <code>sshd -t</code> is silent, that means success — it prints nothing on a valid config.</p>
+
+      <h3>5. Install fail2ban and configure the sshd jail</h3>
+      <p>fail2ban watches the auth log for repeated failures and inserts firewall DROP rules for the offending source. Install it, then configure via <code>jail.local</code> — never edit <code>jail.conf</code> directly, because package updates overwrite it. The three knobs that matter are <code>maxretry</code> (failures before a ban), <code>findtime</code> (the window those failures must occur in), and <code>bantime</code> (how long the ban lasts).</p>
+      <div class="command-block"><div class="command"><code>sudo apt update &amp;&amp; sudo apt install -y fail2ban</code></div><div class="command"><code>sudo tee /etc/fail2ban/jail.local</code></div></div>
+      <pre><code class="language-bash">[DEFAULT]
+bantime  = 1h
+findtime = 10m
+maxretry = 5
+backend  = systemd
+
+[sshd]
+enabled = true
+port    = ssh
+logpath = %(sshd_log)s</code></pre>
+      <p>Then enable it and confirm the jail is running:</p>
+      <div class="command-block"><div class="command"><code>sudo systemctl enable -now fail2ban &amp;&amp; sudo fail2ban-client status sshd</code></div></div>
+      <pre><code class="language-bash">Status for the jail: sshd
+|- Filter
+|  |- Currently failed: 2
+|  `- Total failed:     47
+`- Actions
+   |- Currently banned: 3
+   `- Total banned:     11</code></pre>
+      <p><strong>Common mistake:</strong> on Ubuntu 22.04, <code>backend = systemd</code> reads the journal directly; if you instead point <code>logpath</code> at <code>/var/log/auth.log</code> while rsyslog is not logging there, the jail starts but never matches anything. If <code>Total failed</code> stays at 0 while you can see failures in <code>journalctl -u ssh</code>, the backend/logpath is wrong for your setup.</p>
+
     </section>
 
     <section><h2>Validation &amp; Testing</h2>
       <p>Attempt a password login (must be rejected) and trigger repeated failures from a test IP to confirm a fail2ban ban appears in <code>iptables -L f2b-sshd</code>. Pass criteria: password auth refused, key auth succeeds, and the offending IP is banned within the configured window.</p>
+      <p><strong>Test 1 — password auth is dead.</strong> From a client, force a password attempt. With <code>PasswordAuthentication no</code> and keyboard-interactive disabled, the server should offer no password method at all:</p>
+      <div class="command-block"><div class="command"><code>ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no user@host</code></div></div>
+      <pre><code class="language-bash">user@host: Permission denied (publickey).</code></pre>
+      <p>Note the server only advertises <code>publickey</code> — there is no password prompt to even type into. That is the pass condition.</p>
+      <p><strong>Test 2 — key auth still works.</strong> A normal login must succeed:</p>
+      <div class="command-block"><div class="command"><code>ssh user@host 'whoami &amp;&amp; hostname'</code></div></div>
+      <pre><code class="language-bash">taki
+lab-node-01</code></pre>
+      <p><strong>Test 3 — fail2ban actually bans.</strong> From a second test machine (not your own IP — banning yourself mid-lab is a classic), hammer the server with bad usernames past the retry threshold:</p>
+      <div class="command-block"><div class="command"><code>for i in $(seq 1 8); do ssh -o BatchMode=yes baduser$i@host true; done</code></div></div>
+      <p>Then on the server, confirm the ban landed in both fail2ban and the firewall:</p>
+      <div class="command-block"><div class="command"><code>sudo fail2ban-client status sshd</code></div><div class="command"><code>sudo iptables -L f2b-sshd -n</code></div></div>
+      <pre><code class="language-bash">Chain f2b-sshd (1 references)
+target     prot opt source               destination
+REJECT     all  --  203.0.113.44         0.0.0.0/0            reject-with icmp-port-unreachable
+RETURN     all  --  0.0.0.0/0            0.0.0.0/0</code></pre>
+      <p>Cleanup after the test so the lab IP is not banned for the next hour:</p>
+      <div class="command-block"><div class="command"><code>sudo fail2ban-client set sshd unbanip 203.0.113.44</code></div></div>
+      <p><strong>How to verify overall:</strong> all three tests pass — password path refused, key path working, and a real ban appearing in the <code>f2b-sshd</code> chain within seconds of the 5th failure.</p>
     </section>
 
-    <details><summary>Advanced: Troubleshooting</summary>
+    <section><h2>Troubleshooting</h2>
       <ul>
-        <li><strong>Locked out:</strong> always validate with <code>sshd -t</code> before reload and keep a session open.</li>
-        <li><strong>fail2ban not banning:</strong> confirm the correct log path (<code>/var/log/auth.log</code>) and backend in <code>jail.local</code>.</li>
-        <li><strong>Key refused:</strong> check <code>~/.ssh</code> is 700 and <code>authorized_keys</code> is 600.</li>
+        <li><strong>Locked out after reload:</strong> always validate with <code>sshd -t</code> before reload and keep a session open. If the worst happens, use the provider's out-of-band console (VNC/serial), restore <code>/etc/ssh/sshd_config.bak.YYYY-MM-DD</code> from step 0, and reload. As a belt-and-braces measure on remote-only boxes, schedule a safety net before reloading: <code>echo 'systemctl restart ssh' | sudo at now + 10 minutes</code> — if your new session works, cancel it with <code>atrm</code>; if you are locked out, the old config comes back on its own.</li>
+        <li><strong>fail2ban not banning:</strong> confirm the correct log path (<code>/var/log/auth.log</code>) and backend in <code>jail.local</code>. On Ubuntu 22.04 use <code>backend = systemd</code> and check matches with <code>sudo fail2ban-regex /var/log/auth.log /etc/fail2ban/filter.d/sshd.conf</code> or <code>journalctl -u ssh</code>. A jail that shows <code>Total failed: 0</code> while auth failures exist is watching the wrong log.</li>
+        <li><strong>Key refused with "Permission denied (publickey)":</strong> check <code>~/.ssh</code> is 700 and <code>authorized_keys</code> is 600, that the key is actually listed in the file, and that the home directory is not group-writable (<code>StrictModes</code> rejects it). Debug server-side with a one-off verbose daemon: <code>sudo /usr/sbin/sshd -d -p 2222</code>, then connect to port 2222 and read exactly why the key was rejected.</li>
+        <li><strong>"Bad configuration option" from sshd -t:</strong> the directive is deprecated or misspelled for your OpenSSH version — e.g. <code>UsePrivilegeSeparation</code> and <code>RSAAuthentication</code> were removed years ago but linger in old tutorials. Check <code>man sshd_config</code> on the actual host, and re-run <code>sshd -T</code> to see what survived.</li>
+        <li><strong>Banned myself by accident:</strong> from another network or the console, run <code>sudo fail2ban-client set sshd unbanip YOUR_IP</code>. To prevent recurrence, add your static management IPs to the <code>ignoreip</code> line in <code>[DEFAULT]</code> (e.g. <code>ignoreip = 127.0.0.1/8 198.51.100.10</code>) — but only for genuinely static addresses, never DHCP ranges.</li>
       </ul>
-    </details>
+    </section>
 
     <section><h2>Key Results</h2>
       <ul>
@@ -109,6 +229,17 @@ flowchart LR
         <li>Eliminated 100% of password-based logins via key-only enforcement.</li>
         <li>Banned offending IPs in under 10 seconds of the 5th failed attempt.</li>
         <li>Removed direct root SSH access across 7/7 managed nodes.</li>
+      </ul>
+      <p>Measured by comparing <code>Failed password</code> entries in the auth log across the week before and after: raw connection attempts barely changed (the internet does not stop scanning), but attempts that got far enough to reach PAM collapsed because banned sources were dropped at the firewall. Auth-log volume fell accordingly, which made the remaining entries actually worth reviewing.</p>
+    </section>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li>Order of operations is everything: deploy the key, prove it works in a fresh session, <em>then</em> disable password auth.</li>
+        <li>Key-only auth removes the credential-guessing attack class entirely; fail2ban handles the residual noise and slow-rate probing.</li>
+        <li>Prefer drop-in files in <code>/etc/ssh/sshd_config.d/</code> and <code>jail.local</code> over editing vendor-shipped configs — upgrades stay painless and the policy is self-documenting.</li>
+        <li><code>sshd -t</code> before every reload, and <code>sshd -T</code> after, to confirm what the daemon is really enforcing.</li>
+        <li>A hardening change you have not tested from the attacker's side (forced password attempt, deliberate ban trigger) is a hope, not a control.</li>
       </ul>
     </section>
 

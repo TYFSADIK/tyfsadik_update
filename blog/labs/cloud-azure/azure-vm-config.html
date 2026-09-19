@@ -53,18 +53,22 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">az vm</span><span class="tag">cloud-init</span><span class="tag">SSH keys</span><span class="tag">managed disk</span></div>
     </div>
 
-    <section><p class="lead">You will deploy an Azure VM into your VNet, bootstrap it with cloud-init, and access it via key-based SSH only. By the end you will have a secured, reproducible cloud server configured at first boot.</p></section>
+    <section><p class="lead">You will deploy an Azure VM into your VNet, bootstrap it with cloud-init, and access it via key-based SSH only. By the end you will have a secured, reproducible cloud server configured at first boot.</p>
+      <p>This lab is the natural follow-on to the <a href="vnet-deployment.html">Virtual Network Deployment</a> lab: instead of stopping at an empty network, you place a real workload inside one of its subnets. The theme is <em>reproducible and secure by default</em> - nothing is configured by hand after the VM exists. All software installation and service setup is declared once in a cloud-init file, applied automatically on first boot, and verified from your terminal. Access is locked down to a single public key and a single source IP, mirroring how you would treat any internet-facing cloud server in the real world.</p>
+    </section>
 
     <div class="learning-objectives"><h2>Learning Objectives</h2>
       <ul>
         <li>Deploy a VM with SSH-key authentication.</li>
         <li>Bootstrap packages and config with cloud-init.</li>
         <li>Restrict inbound access to your IP only.</li>
+        <li>Verify the bootstrap from logs and live service state, not just the portal.</li>
         <li><strong>Time:</strong> ~2 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> a VNet and the Azure CLI.</li>
       </ul>
     </div>
 
     <section><h2>Architecture Overview</h2>
+      <p>The deployment has four moving parts. The Azure CLI sends a single declarative <code>az vm create</code> request; Azure provisions the VM into your existing <code>web</code> subnet; the cloud-init file is passed in as custom data and executed by the cloud-init service on the very first boot; and the auto-created network security group (NSG) is tightened so only your public IP can reach port 22. There is no password path at any point - the only credential that ever works is your private SSH key.</p>
       <div class="mermaid" role="img" aria-label="Azure VM deployment with cloud-init bootstrap">
 graph LR
   CLI[az vm create] --> VM[Azure VM in subnet]
@@ -77,26 +81,99 @@ graph LR
     <section><h2>Environment Setup</h2>
       <p><strong>You will need:</strong> a VNet/subnet (from the VNet lab), the Azure CLI, and an SSH keypair.</p>
       <p><strong>Before you begin:</strong> note your public IP to scope SSH access.</p>
+
+      <p><strong>Sign in and set defaults.</strong> Authenticate the CLI and point it at the subscription and resource group you used for the VNet lab, so every later command can omit the <code>-g</code> flag. Setting defaults once up front is a small habit that prevents the classic mistake of deploying a VM into the wrong resource group.</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az login &amp;&amp; az account set -s "My Subscription" &amp;&amp; az configure --defaults group=tyf-rg location=canadacentral</span></div>
+        <div class="terminal-output">A browser window opens; after sign-in the CLI prints your subscription list as JSON.</div>
+      </div>
+      <p><strong>How to verify:</strong> run <code>az account show -query name -o tsv</code> and confirm it prints the subscription you intended. If it prints the wrong one, repeat <code>az account set</code> with the correct name or ID before going any further.</p>
+
+      <p><strong>Create an SSH keypair if you do not have one.</strong> Ed25519 keys are short, fast, and the current best practice; there is no reason to use RSA for a new deployment. The public half (<code>id_ed25519.pub</code>) is what you hand to Azure - the private half never leaves your machine.</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">ssh-keygen -t ed25519 -C "taki@web01" -f ~/.ssh/id_ed25519</span></div>
+        <div class="terminal-output">Your identification has been saved in /home/you/.ssh/id_ed25519<br>Your public key has been saved in /home/you/.ssh/id_ed25519.pub</div>
+      </div>
+      <p><strong>Common mistake:</strong> overwriting an existing key. If <code>~/.ssh/id_ed25519</code> already exists, either reuse it or pick a new filename such as <code>id_ed25519_azure</code> - overwriting it will lock you out of everywhere the old key was authorized.</p>
+
+      <p><strong>Record your current public IP.</strong> This is the address you will scope the SSH rule to in step 03. Using a documented example range below; substitute the value the command actually returns for you.</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">curl -s https://ifconfig.me; echo</span></div>
+        <div class="terminal-output">203.0.113.10</div>
+      </div>
+      <p><strong>Common mistake:</strong> looking the IP up on a "what is my IP" website while on VPN, then scoping the NSG to the VPN exit address instead of the address your SSH client will actually source from. Check it from the same terminal and network you will SSH from.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
       <div class="steps">
         <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Write a cloud-init file</strong>
+          <p>cloud-init is the industry-standard bootstrap system baked into every major cloud Linux image. The file must start with the literal header <code>#cloud-config</code> on line one - without it the VM treats the content as inert data and nothing happens. The directives below are deliberately minimal: refresh package metadata, install nginx, then enable and start it. Because this is declarative, re-running the lab produces an identically configured server every time.</p>
 <pre><code class="language-bash"># cloud-init.yaml
 #cloud-config
 package_update: true
 packages: [nginx]
 runcmd:
   - systemctl enable -now nginx</code></pre>
+          <p><code>package_update: true</code> runs the equivalent of <code>apt-get update</code> so the package index is fresh; <code>packages</code> is a list of APT packages to install; <code>runcmd</code> executes arbitrary commands late in the boot, after packages are in place. The <code>-now</code> flag both enables nginx at boot and starts it immediately.</p>
+          <p><strong>Common mistake:</strong> broken YAML. cloud-init files are whitespace-sensitive - a tab character or misaligned list item makes the run fail silently. Validate locally before deploying with <code>cloud-init schema --config-file cloud-init.yaml</code> if you have cloud-init installed locally, or at minimum paste it through a YAML linter.</p>
         </div></div>
         <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Deploy the VM with key auth and cloud-init</strong>
+          <p>One command creates the VM, attaches it to your existing <code>web</code> subnet, injects your public key for the <code>taki</code> user, and passes the cloud-init file as custom data. Passing <code>-ssh-key-values</code> (instead of <code>-admin-password</code>) is what disables password authentication in <code>sshd</code> - Azure configures the image for key-only auth automatically when a key is supplied. Each flag earns its place: <code>-image Ubuntu2204</code> selects the LTS image alias, <code>-vnet-name</code>/<code>-subnet</code> place the NIC inside your own network rather than a throwaway one, and <code>-custom-data</code> wires in the bootstrap file from step 01.</p>
           <div class="command-block" data-copy><div class="command"><code>az vm create -n web01 -image Ubuntu2204 -vnet-name vnet-a -subnet web -admin-username taki -ssh-key-values ~/.ssh/id_ed25519.pub -custom-data cloud-init.yaml</code></div></div>
+          <p>The command blocks for a minute or two while Azure provisions the resources (VM, NIC, public IP, managed OS disk, and an auto-created NSG named <code>web01NSG</code>), then returns a large JSON document. The two fields worth noting are the provisioning state and the public IP:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az vm create -n web01 -image Ubuntu2204 -vnet-name vnet-a -subnet web -admin-username taki -ssh-key-values ~/.ssh/id_ed25519.pub -custom-data cloud-init.yaml</span></div>
+            <div class="terminal-output">"provisioningState": "Succeeded"<br>"publicIpAddress": "20.151.42.17"</div>
+          </div>
+          <p><strong>How to verify:</strong> <code>"provisioningState": "Succeeded"</code> only means the VM resource exists - it says nothing about cloud-init, which typically still needs another 1-3 minutes to finish installing packages. Do not panic if nginx is not answering the second the command returns; step 05 shows how to wait properly.</p>
+          <p><strong>Common mistake:</strong> omitting <code>-vnet-name</code>/<code>-subnet</code>. Without them, Azure silently creates a <em>new</em> VNet for the VM, and it will not be in the segmented network you built in the VNet lab. If that happened, delete the VM and redeploy - you cannot move a VM's NIC between VNets in place.</p>
         </div></div>
         <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Restrict SSH to your IP</strong>
+          <p><code>az vm open-port</code> adds an inbound allow rule for port 22 to the VM's NSG, but its default source is <code>*</code> - the whole internet. Leaving SSH open to the world invites password-spraying and key-scanning bots within minutes, so the second half of the command rewrites that rule's source to the single /32 address you recorded during setup. Priority 100 places the rule ahead of the lower-priority default rules so it takes effect deterministically.</p>
           <div class="terminal-session">
             <div class="terminal-line"><span class="prompt">$</span> <span class="input">az vm open-port -n web01 -port 22 -priority 100 &amp;&amp; az network nsg rule update -g tyf-rg -nsg-name web01NSG -n open-port-22 -source-address-prefixes 203.0.113.10/32</span></div>
             <div class="terminal-output">"sourceAddressPrefix": "203.0.113.10/32"</div>
           </div>
+          <p><strong>How to verify:</strong> list the effective rules and confirm exactly one inbound allow exists for port 22 with your /32 as the source:</p>
+          <div class="command-block" data-copy><div class="command"><code>az network nsg rule list -g tyf-rg --nsg-name web01NSG -o table</code></div></div>
+          <p><strong>Common mistake:</strong> scoping the rule to an IP that later changes. Home connections usually sit behind dynamic DHCP addresses; if SSH suddenly stops working next week, re-run <code>curl -s https://ifconfig.me</code> and update the rule with the new address before assuming the VM is broken.</p>
+        </div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Connect over SSH for the first time</strong>
+          <p>Rather than copying the public IP out of the portal, query it directly from Azure and feed it straight to the SSH client. The <code>$()</code> substitution runs <code>az vm show -d</code> (the <code>-d</code> shows runtime details including the public IP) and prints just the address as plain text. The private key in the default location is offered automatically, so no password prompt should ever appear.</p>
+          <div class="command-block" data-copy><div class="command"><code>ssh taki@$(az vm show -d -n web01 -query publicIps -o tsv)</code></div></div>
+          <p>On first connection the client asks you to trust the server's host key - this is normal exactly once per host:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">ssh taki@$(az vm show -d -n web01 -query publicIps -o tsv)</span></div>
+            <div class="terminal-output">The authenticity of host '20.151.42.17' can't be established.<br>ED25519 key fingerprint is SHA256:xK3...<br>Are you sure you want to continue connecting (yes/no)? yes<br>taki@web01:~$</div>
+          </div>
+          <p><strong>How to verify:</strong> you land at a shell prompt on <code>web01</code> without ever being asked for a password. If you are prompted for a password at any point, key authentication is not in play - see the Troubleshooting section before typing anything.</p>
+          <p><strong>Common mistake:</strong> a <code>REMOTE HOST IDENTIFICATION HAS CHANGED</code> warning on a later rebuild. Deleting and recreating the VM gives the same IP a new host key; remove the stale entry with <code>ssh-keygen -R 20.151.42.17</code> and reconnect.</p>
+        </div></div>
+        <div class="step"><div class="step-num">05</div><div class="step-body"><strong>Confirm cloud-init finished cleanly</strong>
+          <p>Never assume the bootstrap ran - check it. <code>cloud-init status --wait</code> blocks until the run completes and then reports the outcome, which makes it perfect for scripts and for the few minutes right after provisioning. A <code>done</code> status with exit code 0 means every directive in your file executed without error.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">taki@web01:~$</span> <span class="input">cloud-init status --wait</span></div>
+            <div class="terminal-output">..............<br>status: done</div>
+          </div>
+          <p>If anything failed, the human-readable log of everything your directives printed lives in <code>/var/log/cloud-init-output.log</code>; the structured module-by-module trace is in <code>/var/log/cloud-init.log</code>:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">taki@web01:~$</span> <span class="input">tail -n 5 /var/log/cloud-init-output.log</span></div>
+            <div class="terminal-output">Setting up nginx (1.18.0-6ubuntu14.4) ...<br>Created symlink /etc/systemd/system/multi-user.target.wants/nginx.service ...<br>Cloud-init v. 23.x finished at ... </div>
+          </div>
+          <p><strong>Common mistake:</strong> reading <code>status: done</code> as proof the service works. cloud-init reports on its own run, not on the health of what it installed - a package can install fine and still fail to start. The next two checks close that gap.</p>
+        </div></div>
+        <div class="step"><div class="step-num">06</div><div class="step-body"><strong>Verify the service and the security posture</strong>
+          <p>Two final checks turn "the VM exists" into "the lab worked". First, confirm nginx is actually running and answering on the VM itself - testing locally on the box sidesteps the NSG, which currently only allows port 22:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">taki@web01:~$</span> <span class="input">systemctl is-active nginx &amp;&amp; curl -s localhost | head -n 3</span></div>
+            <div class="terminal-output">active<br>&lt;!DOCTYPE html&gt;<br>&lt;html&gt;<br>&lt;head&gt;</div>
+          </div>
+          <p>Second, prove the security posture rather than trusting it. Ask the running <code>sshd</code> for its effective configuration and confirm password authentication is off - this is the check that validates the key-only decision made back in step 02:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">taki@web01:~$</span> <span class="input">sudo sshd -T | grep -iE 'passwordauthentication|pubkeyauthentication'</span></div>
+            <div class="terminal-output">passwordauthentication no<br>pubkeyauthentication yes</div>
+          </div>
+          <p><strong>How to verify:</strong> <code>active</code>, the nginx welcome HTML, and <code>passwordauthentication no</code> together mean the server is bootstrapped, serving, and unreachable by password guessing. If you later want to browse to nginx from your own machine, open port 80 the same scoped way as step 03: <code>az vm open-port -n web01 -port 80 -priority 110</code> and then update the rule's source to your /32.</p>
         </div></div>
       </div>
     </section>
@@ -110,20 +187,50 @@ graph LR
   style B fill:#1a4a1a,stroke:#00ff00,color:#fff
   style C fill:#1a4a1a,stroke:#00ff00,color:#fff
       </div>
+      <p>With the VM deployed and SSH scoped, the remaining work (steps 04-06) happens on the box itself: connect, confirm the bootstrap, and validate the service and its security posture.</p>
     </section>
 
     <section><h2>Testing &amp; Validation</h2>
+      <p>Everything below runs from your own machine in one shot - no portal clicking required. The final command chains the whole validation: resolve the VM's public IP from Azure, connect with your key, and ask systemd whether the cloud-init-installed service is alive.</p>
       <div class="command-block" data-copy><div class="command"><code>ssh taki@$(az vm show -d -n web01 -query publicIps -o tsv) 'systemctl is-active nginx'</code></div></div>
       <p>You should connect with your key (no password) and see <code>active</code>, proving cloud-init bootstrapped the server.</p>
+      <p>For a complete end-to-end picture, run the full validation sequence and compare against the expected results:</p>
+<pre><code class="language-bash"># 1. VM exists and is running
+az vm show -d -n web01 -query '{state:powerState,ip:publicIps}' -o jsonc
+#    { "state": "VM running", "ip": "20.151.42.17" }
+
+# 2. NSG exposes port 22 to your IP only
+az network nsg rule list -g tyf-rg --nsg-name web01NSG \
+  -query "[?destinationPortRange=='22'].{src:sourceAddressPrefix,access:access}" -o table
+#    Src              Access
+#    ---------------  --------
+#    203.0.113.10/32  Allow
+
+# 3. Key-only SSH and the bootstrapped service
+ssh taki@20.151.42.17 'systemctl is-active nginx'
+#    active</code></pre>
+      <p>All three checks passing is your definition of done: the resource is healthy, the network exposure matches intent, and the unattended bootstrap produced a working service. If any one fails, the Troubleshooting section maps the symptom to a fix.</p>
     </section>
 
     <details><summary>Troubleshooting</summary>
       <ul>
-        <li><strong>cloud-init did not run:</strong> check <code>/var/log/cloud-init-output.log</code> on the VM.</li>
-        <li><strong>SSH times out:</strong> confirm the NSG allows port 22 from your current IP.</li>
-        <li><strong>Password prompt:</strong> deploy with <code>-ssh-key-values</code>, not <code>-admin-password</code>.</li>
+        <li><strong>cloud-init did not run:</strong> check <code>/var/log/cloud-init-output.log</code> on the VM. The most common cause is a missing <code>#cloud-config</code> first line or broken YAML indentation - fix the file, then redeploy (custom data only executes on first boot, so editing the file alone does nothing for an existing VM).</li>
+        <li><strong>SSH times out:</strong> confirm the NSG allows port 22 from your current IP. Also re-check that your public IP has not changed since step 03 (<code>curl -s https://ifconfig.me</code>) and update the rule's source if it has.</li>
+        <li><strong>Password prompt:</strong> deploy with <code>-ssh-key-values</code>, not <code>-admin-password</code>. A password prompt on a key-deployed VM usually means the client offered no key the server accepts.</li>
+        <li><strong>Permission denied (publickey):</strong> you are connecting as the wrong user or with the wrong key. The login name must match <code>-admin-username</code> (<code>taki</code>), and the private key must be the pair of the <code>.pub</code> file passed at creation - specify it explicitly with <code>ssh -i ~/.ssh/id_ed25519 taki@...</code> if your agent is offering a different one.</li>
+        <li><strong>az vm create fails with a quota or SKU error:</strong> new subscriptions have low per-region vCPU quotas and some sizes are unavailable in some regions. Retry with a smaller size such as <code>-size Standard_B2s</code>, or request a quota increase in the portal under Subscriptions &rsaquo; Usage + quotas.</li>
       </ul>
     </details>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li>Declare the server's whole first-boot configuration in one cloud-init file - it makes the build reproducible and reviewable.</li>
+        <li>Passing <code>-ssh-key-values</code> at creation is what disables password authentication; key-only SSH is a deploy-time decision, not an afterthought.</li>
+        <li><code>az vm open-port</code> defaults to an internet-wide source - always follow it by scoping the rule to your own /32.</li>
+        <li><code>"provisioningState": "Succeeded"</code> means the VM exists, not that it is configured; use <code>cloud-init status --wait</code> to know when bootstrap is really finished.</li>
+        <li>Verify posture empirically: <code>systemctl is-active</code>, <code>curl localhost</code>, and <code>sshd -T</code> beat trusting the portal.</li>
+      </ul>
+    </section>
 
     <section><h2>Extension Ideas</h2>
       <ul>

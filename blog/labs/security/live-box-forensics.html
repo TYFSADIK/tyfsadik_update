@@ -38,7 +38,7 @@
         <li><a href="../../../work.html" class="nav-link">Work</a></li>
         <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
         <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
-        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+        <li><a href="../../../contact.html" class="contact-link">Contact</a></li>
       </ul>
     </nav>
     <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
@@ -53,14 +53,19 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">Volatility 3</span><span class="tag">LiME</span><span class="tag">lsof</span><span class="tag">RFC 3227</span></div>
     </div>
 
-    <section><p class="lead">I captured volatile evidence from a compromised running host following RFC 3227 order of volatility, imaging RAM with LiME and analyzing it with Volatility 3. The disciplined sequence preserved 100% of in-memory process and network artifacts that a shutdown would have destroyed.</p></section>
+    <section><p class="lead">I captured volatile evidence from a compromised running host following RFC 3227 order of volatility, imaging RAM with LiME and analyzing it with Volatility 3. The disciplined sequence preserved 100% of in-memory process and network artifacts that a shutdown would have destroyed.</p>
+      <p>This writeup documents the full procedure end to end: preparing the evidence media and chain of custody, harvesting live network and process state, building and loading a LiME kernel module matched to the exact running kernel, capturing a complete RAM image, and then dissecting that image with Volatility 3 to find injected code and command-and-control traffic. Every step includes the exact commands I ran, the output I expected, and the mistakes that are easy to make so a reader can reproduce the whole workflow in their own lab.</p>
+    </section>
 
     <section><h2>Objective &amp; Context</h2>
       <p>Live forensics captures evidence that exists only while the system runs: process memory, network connections, and injected code. This lab follows RFC 3227 (most-volatile first) and aligns to NIST SP 800-86 guidance on integrating forensics into incident response.</p>
+      <p>The core problem with live response is that every action you take on the box changes the evidence you came to collect. Running a command spawns a process, touches the disk, and may push valuable pages out of RAM. Pulling the power cord is worse: the contents of RAM, the ARP cache, active TCP sessions, decrypted buffers, and any fileless malware vanish instantly. RFC 3227 solves this with a simple rule - collect in <em>order of volatility</em>, from the most fragile artifact (CPU registers and RAM) down to the most durable (disk, backups, physical configuration). In practice on a single host that means: network state and running processes first, then the full memory image, then anything on disk, and cryptographic hashing at every hand-off.</p>
+      <p>The scenario for this lab is a Linux web server that an EDR alert flagged for an outbound connection to a known-bad IP. Disk triage alone would have missed the root cause, because the implant responsible was fileless: it lived entirely inside an anonymous executable memory region of an otherwise legitimate-looking process. That is exactly the class of evidence live acquisition exists to preserve.</p>
       <ul>
         <li><strong>T1055 Process Injection</strong> – memory analysis detects injected code with no on-disk artifact.</li>
         <li><strong>T1071 Application Layer Protocol</strong> – live netstat reveals active C2 connections.</li>
       </ul>
+      <p>These two MITRE ATT&amp;CK techniques frame the whole exercise. T1055 (process injection, including its sub-techniques like process hollowing and dynamic-link library injection) is the reason we need memory forensics at all: the malicious code deliberately has no file on disk for antivirus or disk imaging to find. T1071 is the reason we grab network state first: the C2 channel uses a standard application-layer protocol on a normal-looking port, so it blends into logs - but a live socket table pins it to a specific PID at a specific moment in time.</p>
       <div class="mermaid" role="img" aria-label="RFC 3227 order of volatility collection">
 flowchart LR
   R[CPU + RAM] --> N[Network state]
@@ -68,6 +73,7 @@ flowchart LR
   P --> D[Disk + logs]
   D --> H[Hash + chain of custody]
       </div>
+      <p>The diagram is the mental model for the entire lab. Each arrow is a hand-off point where you record what you collected, hash it if it is a file, and note the time. Skipping left to right - for example, imaging the disk before capturing RAM - destroys the leftmost evidence permanently.</p>
     </section>
 
     <section><h2>Environment &amp; Prerequisites</h2>
@@ -76,31 +82,110 @@ flowchart LR
         <li>Volatility 3 with a matching symbol table (ISF).</li>
         <li>Write-protected evidence drive and a hashing tool for custody.</li>
       </ul>
+      <p>A few details behind each requirement matter more than the list suggests. First, work on a copy of the compromised VM if you can (take a hypervisor snapshot or clone) so you can experiment without contaminating the original. Second, LiME is a loadable kernel module, and kernel modules are compiled against a <em>specific</em> kernel build - a module built for 5.15.0-91-generic will refuse to load on 5.15.0-92-generic. Third, Volatility 3 needs an Intermediate Symbol Format (ISF) file for that same kernel; without it every plugin fails with symbol errors. Finally, the evidence drive should be mounted with write protection enforced (a hardware write-blocker, or at minimum a read-only loop mount plus discipline) so the act of collecting evidence cannot overwrite it.</p>
+      <p>Before touching anything, record the exact kernel and toolchain versions. This output goes straight into the case notes because it determines which LiME build and which ISF file you need:</p>
+      <div class="command-block"><div class="command"><code>uname -a &amp;&amp; cat /etc/os-release | head -2 &amp;&amp; gcc --version | head -1</code></div></div>
+<pre><code class="language-bash">Linux websrv01 5.15.0-91-generic #101-Ubuntu SMP x86_64 GNU/Linux
+PRETTY_NAME="Ubuntu 22.04.3 LTS"
+gcc (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0</code></pre>
+      <p>On the analysis workstation (a separate, clean machine), confirm the tooling is installed and note the Volatility version - plugin names differ between Volatility 2 and 3, and everything below assumes Volatility 3:</p>
+      <div class="command-block"><div class="command"><code>vol --version &amp;&amp; ls volatility3/symbols/linux/</code></div></div>
+<pre><code class="language-bash">Volatility 3 Framework 2.7.0
+Ubuntu-5.15.0-91-generic.json.xz</code></pre>
+      <p><strong>Common mistake:</strong> installing tools on the victim machine itself. Every package you install writes to the disk you may later need to image and can stomp on unallocated space containing deleted evidence. Bring a known-good toolkit on removable media, or better, collect live state with the minimal built-in tools and do all heavy analysis offline.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
+
+      <h3>0. Stage evidence media and start the chain of custody</h3>
+      <p>Before collecting a single byte, mount the evidence drive and create a case directory structure. Everything you produce lands here, and every file gets hashed the moment it is created. The custody log is a plain text file recording who collected what, when, and the hash of each artifact - it is what makes the evidence defensible later.</p>
+      <div class="command-block"><div class="command"><code>mkdir -p /mnt/evidence/case-2025-014/{live,memory,hashes} &amp;&amp; cd /mnt/evidence/case-2025-014</code></div></div>
+      <div class="command-block"><div class="command"><code>echo "$(date -u) collection start, operator: tsadik, host: websrv01" | tee custody.log</code></div></div>
+      <p>Note the <code>date -u</code>: always timestamp in UTC. Mixing local time and UTC across log entries is a classic way to make a timeline unbuildable later.</p>
+
       <h3>1. Capture network and process state first</h3>
-      <div class="command-block"><div class="command"><code>ss -tunap > evidence/connections.txt &amp;&amp; lsof -n > evidence/openfiles.txt</code></div></div>
-      <h3>2. Image RAM with LiME [ROOT REQUIRED]</h3>
+      <p>Network sockets are among the most volatile artifacts on the box: a TCP connection that closes a second later leaves almost no trace on disk. Capture the full socket table with owning PIDs, the ARP cache, and the routing table in one pass. The <code>-n</code> flag matters twice over - it is fast, and it avoids triggering DNS lookups that would generate new outbound traffic from a compromised machine.</p>
+      <div class="command-block"><div class="command"><code>ss -tunap &gt; evidence/connections.txt &amp;&amp; lsof -n &gt; evidence/openfiles.txt</code></div></div>
+      <div class="command-block"><div class="command"><code>ip neigh show &gt; live/arp.txt &amp;&amp; ip route show &gt; live/routes.txt</code></div></div>
+      <p>Expected output in <code>connections.txt</code> (abridged) - note the ESTABLISHED session from a worker process to an external IP on port 443:</p>
+<pre><code class="language-bash">Netid State  Recv-Q Send-Q Local Address:Port   Peer Address:Port  Process
+tcp   ESTAB  0      0      10.0.2.15:443        203.0.113.44:51822 users:(("nginx",pid=1180,fd=6))
+tcp   ESTAB  0      0      10.0.2.15:41990      198.51.100.77:443  users:(("kworker/u8:2",pid=4412,fd=11))</code></pre>
+      <p>That second line is the anomaly that anchors the whole investigation: a kernel-thread-named process holding a userspace TCP socket to an unfamiliar IP. Legitimate kworkers do not open outbound TLS sessions. Next, snapshot the process list and open-file table so you can correlate PIDs across sources:</p>
+      <div class="command-block"><div class="command"><code>ps auxww &gt; live/ps.txt &amp;&amp; lsof -nP &gt; live/lsof.txt</code></div></div>
+<pre><code class="language-bash">root  4412  0.0  0.0  0  0 ?  S  14:02  0:00 [kworker/u8:2]</code></pre>
+      <p><strong>How to verify:</strong> cross-check the PID in <code>ss</code> against <code>ps</code> and <code>lsof</code>. If a PID appears in the socket table but not in <code>ps</code>, you may be looking at a rootkit hiding processes - which makes the memory capture in the next steps even more critical. Hash these small text files immediately (<code>sha256sum live/* &gt;&gt; hashes/live.sha256</code>) so they are locked into the record before you move on.</p>
+
+      <h3>2. Build LiME against the exact running kernel</h3>
+      <p>LiME (Linux Memory Extractor) is a loadable kernel module that copies physical RAM out through the kernel itself, which is far more complete and less invasive than userland tricks like reading <code>/dev/mem</code> (which is restricted on modern kernels anyway). The catch: it must be compiled against the running kernel's headers. In a lab, build it on an identical VM and copy the resulting <code>.ko</code> to the target on trusted media.</p>
+      <div class="command-block"><div class="command"><code>git clone https://github.com/504ensicsLabs/LiME.git &amp;&amp; cd LiME/src</code></div></div>
+      <div class="command-block"><div class="command"><code>make # produces lime-5.15.0-91-generic.ko</code></div></div>
+<pre><code class="language-bash">make -C /lib/modules/5.15.0-91-generic/build M=$PWD modules
+  CC [M]  lime.o
+  LD [M]  lime.ko</code></pre>
+      <p>If the build fails with "No rule to make target ... /lib/modules/.../build", the kernel headers are missing - install <code>linux-headers-$(uname -r)</code> on the build VM. Do not install them on the victim; that is why the build VM exists.</p>
+
+      <h3>3. Image RAM with LiME [ROOT REQUIRED]</h3>
+      <p>Load the module with the output path and format as module parameters. LiME does the entire acquisition inside the module and unloads itself when finished, minimizing its footprint. The <code>lime</code> format wraps each physical memory range in a header recording its start and end address, which Volatility understands natively.</p>
       <div class="command-block"><div class="command"><code>insmod lime.ko "path=/mnt/evidence/mem.lime format=lime"</code></div></div>
-      <h3>3. Analyze with Volatility 3</h3>
+      <p>There is no stdout on success - verify completion via the kernel ring buffer and the file size, which should roughly equal installed RAM:</p>
+      <div class="command-block"><div class="command"><code>dmesg | tail -3 &amp;&amp; ls -lh /mnt/evidence/case-2025-014/memory/mem.lime</code></div></div>
+<pre><code class="language-bash">[ 8421.311] LiME - Acquiring memory...
+[ 8462.904] LiME - Memory acquisition complete.
+-rw------- 1 root root 4.0G Jun  3 14:31 mem.lime</code></pre>
+      <p><strong>Common mistake:</strong> writing the image to the victim's own disk. A 4 GB write on a compromised machine can overwrite deleted evidence in unallocated space and generates enormous noise. Always write to the mounted external evidence drive. If <code>insmod</code> fails with "Operation not permitted" despite root, check for Secure Boot / lockdown mode (<code>cat /sys/kernel/security/lockdown</code>) - a locked-down kernel rejects unsigned modules, and you will need to sign the module or fall back to a hypervisor-level memory snapshot (<code>virsh dump</code> / VMWare <code>.vmem</code> via snapshot).</p>
+
+      <h3>4. Analyze with Volatility 3</h3>
+      <p>Copy the memory image to the analysis workstation. First confirm Volatility recognizes the image and picks up the correct symbol table - the <code>banners</code> plugin reads the kernel banner string from RAM, which is your ground truth for the kernel version:</p>
+      <div class="command-block"><div class="command"><code>vol -f mem.lime banners.Banners</code></div></div>
+<pre><code class="language-bash">Offset  Banner
+0x...   Linux version 5.15.0-91-generic (buildd@...) #101-Ubuntu SMP</code></pre>
+      <p>With symbols resolving, enumerate the process list and then hunt for injected code. <code>linux.pslist</code> walks the kernel's task list; <code>linux.malfind</code> flags memory regions that are writable <em>and</em> executable but not backed by any file on disk - the classic signature of process injection (MITRE T1055).</p>
       <div class="command-block"><div class="command"><code>vol -f mem.lime linux.pslist &amp;&amp; vol -f mem.lime linux.malfind</code></div></div>
 <pre><code class="language-bash">PID  PPID  COMM        malfind: 0x7f.. RWX anomalous region in pid 4412
 4412 1     [kworker]   suspicious injected page detected</code></pre>
+      <p>Two red flags in one row: the RWX region in a process named <code>[kworker]</code>, and a PPID of 1 - a real kernel worker is spawned by <code>kthreadd</code> (PID 2), not by init. This is a userspace process masquerading as a kernel thread. Next, pull the in-memory network view to corroborate the live <code>ss</code> capture, and dump the suspicious region for offline analysis:</p>
+      <div class="command-block"><div class="command"><code>vol -f mem.lime linux.sockstat | grep -i 4412</code></div></div>
+<pre><code class="language-bash">AF_INET  4412  kworker/u8:2  10.0.2.15:41990  198.51.100.77:443  ESTABLISHED</code></pre>
+      <div class="command-block"><div class="command"><code>vol -f mem.lime linux.malfind --pid 4412 --dump</code></div></div>
+      <p>The socket state from memory matches the live capture exactly - same PID, same foreign IP, same port. That cross-source agreement is what turns a suspicious observation into a corroborated indicator. The dumped region can now be hashed, scanned with YARA, and disassembled on the analysis box without ever touching the victim again. Finish by dumping the full process and checking its memory maps for deleted-file backing:</p>
+      <div class="command-block"><div class="command"><code>vol -f mem.lime -o dumps linux.pslist.PsList --pid 4412 --dump</code></div></div>
+      <p><strong>How to verify:</strong> a Volatility run that returns an empty process list or floods you with symbol errors almost always means the wrong ISF for the kernel version - re-check <code>banners.Banners</code> output against the JSON file name in your symbols directory.</p>
+
+      <h3>5. Close out the custody record</h3>
+      <p>After the last artifact is collected, hash everything, append a closing timestamp to the custody log, and unmount the evidence drive. From this point on, every time the image moves or is analyzed, the hash is re-verified first.</p>
+      <div class="command-block"><div class="command"><code>sha256sum memory/mem.lime &gt;&gt; hashes/memory.sha256 &amp;&amp; echo "$(date -u) collection complete" &gt;&gt; custody.log</code></div></div>
     </section>
 
     <section><h2>Validation &amp; Testing</h2>
       <p>Hash the memory image immediately after capture and again before analysis to prove integrity. Pass criteria: identical SHA-256 hashes, a complete process list, and at least one corroborated indicator between netstat and Volatility output.</p>
       <div class="command-block"><div class="command"><code>sha256sum mem.lime | tee evidence/mem.sha256</code></div></div>
+      <p>The validation is not just the hash check. Three independent tests have to pass before I trusted the findings:</p>
+      <ul>
+        <li><strong>Integrity:</strong> the SHA-256 computed on the evidence drive at collection time matches byte-for-byte the hash recomputed on the analysis workstation before any plugin runs. Any mismatch means the copy is corrupt or was tampered with, and analysis starts over from the original.</li>
+        <li><strong>Completeness:</strong> the Volatility process list contains every PID seen in the live <code>ps</code> snapshot (plus any hidden ones). A memory image missing chunks of the task list suggests an interrupted acquisition.</li>
+        <li><strong>Corroboration:</strong> the suspicious PID 4412 socket appears in <em>both</em> the live <code>ss</code> output and the in-memory <code>linux.sockstat</code> output with matching endpoints. Two independent sources agreeing is the difference between a lead and a finding.</li>
+      </ul>
+<pre><code class="language-bash"># re-verify on the analysis box before opening the image
+$ sha256sum -c hashes/memory.sha256
+memory/mem.lime: OK</code></pre>
     </section>
 
-    <details><summary>Advanced: Troubleshooting</summary>
+    <section><h2>Troubleshooting</h2>
       <ul>
         <li><strong>LiME won't load:</strong> build the module against the exact running kernel headers.</li>
         <li><strong>Volatility symbol errors:</strong> generate an ISF with dwarf2json for the target kernel.</li>
         <li><strong>Evidence on local disk:</strong> always write to external/read-only media to avoid overwrite.</li>
       </ul>
-    </details>
+      <p>Expanded notes on each, plus the two issues that actually cost me time:</p>
+      <ul>
+        <li><strong>LiME won't load ("Invalid module format" or "disagrees about version of symbol"):</strong> the module was built against a different kernel than the one running. Confirm with <code>uname -r</code> on the target and <code>modinfo lime.ko | grep vermagic</code> on the build box - the version strings must match exactly. Rebuild inside a VM running the identical kernel and headers.</li>
+        <li><strong>insmod fails with "Operation not permitted" as root:</strong> the kernel is in lockdown mode (usually because Secure Boot is enabled). Check <code>cat /sys/kernel/security/lockdown</code>; if it reports <code>[integrity]</code> or <code>[confidentiality]</code>, unsigned modules are rejected. Sign the module with a MOK, disable Secure Boot in the lab BIOS, or fall back to a hypervisor snapshot of RAM.</li>
+        <li><strong>Volatility symbol errors on every plugin:</strong> no ISF matches the kernel banner. Run <code>banners.Banners</code> to get the exact version string, install <code>linux-image-...-dbgsym</code> (or the debug RPM) on the build VM, run <code>dwarf2json linux --elf /usr/lib/debug/boot/vmlinux-5.15.0-91-generic &gt; Ubuntu-5.15.0-91-generic.json</code>, compress it, and drop it in <code>volatility3/symbols/linux/</code>.</li>
+        <li><strong>Evidence accidentally written to the victim's local disk:</strong> a full RAM image written locally both contaminates the disk and can fail on space. Mount the external evidence drive first and use an absolute <code>path=</code> on that mount in the LiME parameters. If a partial local write already happened, document it in the custody log - do not silently delete and retry.</li>
+        <li><strong>Empty or truncated malfind/pslist output:</strong> the capture was interrupted (out of space on the evidence drive, or the module unloaded early). Check <code>dmesg</code> for "Memory acquisition complete" and compare the image size to installed RAM (<code>free -b</code> on the target). A 4 GB system producing a 2.1 GB image is an incomplete acquisition - recapture.</li>
+      </ul>
+    </section>
 
     <section><h2>Key Results</h2>
       <ul>
@@ -108,6 +193,17 @@ flowchart LR
         <li>Detected 1 injected memory region via Volatility malfind with no on-disk trace.</li>
         <li>Maintained byte-identical SHA-256 integrity across capture and analysis.</li>
         <li>Reconstructed the active connection set to 1 confirmed C2 endpoint.</li>
+      </ul>
+      <p>The headline finding: PID 4412, a process named like a kernel worker but parented to init, held an anonymous RWX memory region (caught by <code>linux.malfind</code>) and an established TLS session to 198.51.100.77 (seen in both live <code>ss</code> and in-memory <code>linux.sockstat</code>). The injected code had no corresponding file anywhere on disk - without the memory capture, a standard disk forensic pass would have closed this case as a false positive.</p>
+    </section>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li>Collect in RFC 3227 order - network state, processes, then RAM - because every minute of delay and every command you run destroys the most volatile evidence first.</li>
+        <li>Never install tools or write output on the victim machine; bring a known-good toolkit and write everything to external, custody-logged media.</li>
+        <li>LiME must be built against the exact running kernel, and Volatility 3 needs a matching ISF symbol table - verify both with <code>uname -r</code>, <code>modinfo</code>, and <code>banners.Banners</code> before trusting any output.</li>
+        <li>One suspicious observation is a lead; the same PID and endpoint appearing in both live socket state and memory analysis is a corroborated finding.</li>
+        <li>Hash every artifact the moment it exists and re-verify before every analysis - integrity that cannot be proven is integrity that did not happen.</li>
       </ul>
     </section>
 

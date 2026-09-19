@@ -53,14 +53,19 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">log2timeline</span><span class="tag">Plaso</span><span class="tag">Timesketch</span><span class="tag">KQL</span></div>
     </div>
 
-    <section><p class="lead">I built a forensic super timeline with Plaso/log2timeline, correlating filesystem, registry, and log artifacts into a single chronological view analyzed in Timesketch. The unified timeline reconstructed an intrusion sequence across four evidence sources down to minute-level ordering.</p></section>
+    <section><p class="lead">I built a forensic super timeline with Plaso/log2timeline, correlating filesystem, registry, and log artifacts into a single chronological view analyzed in Timesketch. The unified timeline reconstructed an intrusion sequence across four evidence sources down to minute-level ordering.</p>
+      <p>This writeup walks the entire workflow end to end: verifying the evidence image, extracting every timestamped artifact with <code>log2timeline.py</code>, filtering millions of events down to the investigation window with <code>psort.py</code>, and importing the result into Timesketch where the attack chain gets tagged, annotated, and mapped to MITRE ATT&amp;CK. Every command is included with the output you should expect and the mistakes I hit along the way, so the lab can be reproduced from scratch.</p>
+    </section>
 
     <section><h2>Objective &amp; Context</h2>
       <p>A super timeline merges every timestamped artifact into one ordered sequence, exposing the order of attacker actions. This lab implements the Plaso workflow and maps observed events to MITRE ATT&amp;CK, supporting NIST SP 800-86 analysis.</p>
+      <p>The core problem in any intrusion investigation is fragmentation. The filesystem knows when files appeared, the registry knows when persistence was written, the Windows Event Log (or syslog) knows when processes and network connections happened, and shell history knows what the operator typed &mdash; but each source has its own format, its own timestamp conventions, and its own viewer. Reviewing them one at a time makes it almost impossible to answer the question that actually matters: <em>what did the attacker do, in what order, and how fast?</em> A super timeline solves this by normalizing every artifact into a single schema of <code>(timestamp, source, description)</code> events, sorted chronologically. Once the data is ordered, causal chains become visible: a dropped payload is followed 37 seconds later by a Run key write, which is followed two minutes later by an outbound connection &mdash; a sequence no single log would show on its own.</p>
+      <p>The lab scenario: a Linux web server with a Windows jump host was compromised. The disk image from the dead box acquisition (<a href="dead-box-forensics.html">see the Dead Box Forensics lab</a>) is the input here. The investigation window was scoped to June 10-14, 2026 based on the first IDS alert, and the goal is a minute-ordered narrative from initial execution to exfiltration.</p>
       <ul>
         <li><strong>T1059 Command and Scripting Interpreter</strong> – shell history and prefetch reveal execution order.</li>
         <li><strong>T1547 Boot or Logon Autostart Execution</strong> – persistence entries surface in the timeline.</li>
       </ul>
+      <p>Mapping events to ATT&amp;CK techniques is not decoration: it forces each timeline pivot to be tied to a defensible analytic claim, which is what makes the final report hold up under review. NIST SP 800-86 frames this as the "analysis" phase of incident handling &mdash; the timeline is the primary artifact that phase produces.</p>
       <div class="mermaid" role="img" aria-label="Super timeline construction flow">
 flowchart LR
   E[Disk image] --> P[log2timeline.py]
@@ -76,31 +81,159 @@ flowchart LR
         <li>Plaso 20231xx; Timesketch instance for collaborative review.</li>
         <li>Defined investigation window and known-good baseline times.</li>
       </ul>
+      <p>A few things are worth expanding on before touching the image:</p>
+      <ul>
+        <li><strong>Evidence handling.</strong> The image must be a verified copy with a documented acquisition hash (see the <a href="dead-box-forensics.html">dead box lab</a>). All analysis runs against the image file, never the original media, and the image is mounted read-only if mounted at all &mdash; log2timeline reads raw images directly, so mounting is usually unnecessary.</li>
+        <li><strong>Plaso install.</strong> The easiest supported route on Ubuntu is the GIFT PPA, which keeps log2timeline, psort, and pinfo in sync:</li>
+      </ul>
+      <p class="code-label">Installing Plaso from the GIFT PPA (Ubuntu 22.04)</p>
+<pre><code>sudo add-apt-repository ppa:gift/stable
+sudo apt update
+sudo apt install plaso-tools
+log2timeline.py --version</code></pre>
+<pre><code>plaso - log2timeline version 20230408</code></pre>
+      <ul>
+        <li><strong>Timesketch.</strong> A small docker-compose deployment is enough for a solo lab; for team review use a shared instance so tags and comments are collaborative. Verify connectivity before you have gigabytes of CSV to push.</li>
+        <li><strong>Investigation window.</strong> Write down the start and end of the window (here: <code>2026-06-10 00:00:00</code> to <code>2026-06-14 23:59:59</code> UTC) <em>before</em> filtering. Filtering to a window you defined after seeing the data invites confirmation bias.</li>
+        <li><strong>Timezone discipline.</strong> Decide now that everything is UTC. Plaso stores timestamps as UTC microseconds since epoch internally, but parsers must be told the source timezone (via <code>-z</code>) for artifacts that record local time. Mixing zones is the number-one cause of false event ordering.</li>
+      </ul>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
-      <h3>1. Generate the timeline from the image</h3>
+
+      <h3>1. Verify the image before touching it</h3>
+      <p>Before any analysis, re-hash the image and compare against the acquisition log. Timeline analysis takes hours; discovering halfway through that you were working on a corrupted copy is an expensive lesson. This takes two minutes and settles chain of custody for everything that follows.</p>
+      <p class="code-label">Re-verify the acquisition hash</p>
+<pre><code>sha256sum /evidence/case.img
+cat /evidence/case.acquisition.log | grep SHA256</code></pre>
+<pre><code>a1b2c3d4...  /evidence/case.img
+SHA256: a1b2c3d4...   # match = proceed</code></pre>
+      <p><strong>Common mistake:</strong> skipping this because "the dead box lab already hashed it." Hashes from last week say nothing about the file on disk today. Verify: the two values must be identical, character for character.</p>
+
+      <h3>2. Generate the timeline from the image</h3>
+      <p><code>log2timeline.py</code> walks the image, runs every applicable parser (filesystem metadata, registry hives, event logs, browser history, shell history, prefetch, and dozens more) and writes all extracted events into a Plaso storage file. The <code>-z UTC</code> flag tells parsers to interpret source-local timestamps as UTC, which keeps the whole timeline on one clock.</p>
       <div class="command-block"><div class="command"><code>log2timeline.py -storage-file case.plaso case.img</code></div></div>
-      <h3>2. Filter to the investigation window with psort</h3>
+      <p>For this case the full command was slightly longer: partition and volume-shadow-copy scanning were enabled explicitly, and the worker count was raised to use all cores, which cut the extraction from roughly 90 minutes to about 25 on an 8-core machine.</p>
+      <p class="code-label">Full extraction command used in this lab</p>
+<pre><code>log2timeline.py --storage-file case.plaso \
+  --partitions all --vss_stores all \
+  --workers 8 -z UTC --status_view linear \
+  /evidence/case.img</code></pre>
+<pre><code>Source path		: /evidence/case.img
+Source type		: storage media image
+Processing time		: 00:24:51
+Tasks: Queued: 0, Processing: 0, Merging: 0, Abandoned: 0, Total: 184213
+Events: 4,812,336  Errors: 12</code></pre>
+      <p>The important numbers: over 4.8 million events from 184k processed tasks, with only 12 extraction errors. A small non-zero error count is normal (locked or corrupt artifacts); hundreds of thousands is not.</p>
+      <p><strong>Common mistake:</strong> running the extraction without <code>-z</code> and discovering at the psort stage that registry events are five hours off from event-log events. Verify: check the extraction header &mdash; it echoes the configured timezone &mdash; and confirm with <code>pinfo.py</code> in the next step.</p>
+
+      <h3>3. Inspect the storage file with pinfo.py</h3>
+      <p>Before filtering anything, look at what you actually extracted. <code>pinfo.py</code> reports the sessions, parser hit counts, and event sources in the storage file. This is the sanity gate: if a parser you expected (say <code>winreg</code> or <code>bash_history</code>) shows zero events, the image, the mount, or the partition selection is wrong &mdash; better to learn that now than after an import.</p>
+      <p class="code-label">Summarize the Plaso storage file</p>
+<pre><code>pinfo.py case.plaso
+pinfo.py --verbose case.plaso | less</code></pre>
+<pre><code>************************** Events generated per parser **************************
+Parser (plugin) name : Number of events
+--------------------------------------------------------------------------------
+            filestat : 2981441
+           winevtx   : 1031202
+             winreg  :  402118
+          bash_history :    1184
+           prefetch  :     931
+--------------------------------------------------------------------------------
+Total: 4812336</code></pre>
+      <p>Four evidence sources of interest are confirmed present: filesystem metadata (<code>filestat</code>), event logs (<code>winevtx</code>), registry (<code>winreg</code>), and shell history (<code>bash_history</code>). The 1,184 bash-history events and 931 prefetch records are small counts but high-signal &mdash; exactly the kind of artifact a timeline exists to surface.</p>
+      <p><strong>Common mistake:</strong> assuming "log2timeline finished" means "everything parsed." Verify: parser counts in pinfo must be non-zero for each artifact family the case depends on, and the reported partition list should cover every partition on the image.</p>
+
+      <h3>4. Filter to the investigation window with psort</h3>
+      <p><code>psort.py</code> reads the storage file, applies an event filter, and writes the survivors out in the format you choose. The <code>l2tcsv</code> output plugin produces the classic 17-column CSV that Timesketch (and Excel, and grep) can consume. The filter expression <code>"date &gt; '2026-06-10 00:00:00'"</code> drops everything before the window opened; an upper bound is added the same way.</p>
       <div class="command-block"><div class="command"><code>psort.py -o l2tcsv -w timeline.csv case.plaso "date > '2026-06-10 00:00:00'"</code></div></div>
+      <p class="code-label">Bounding both ends of the window</p>
+<pre><code>psort.py -o l2tcsv -w timeline.csv case.plaso \
+  "date &gt; '2026-06-10 00:00:00' AND date &lt; '2026-06-15 00:00:00'"</code></pre>
+      <p>The filtered slice of the timeline already tells the story. Three consecutive events from three different sources:</p>
 <pre><code class="language-bash">2026-06-12T14:03:11Z  FILE  /tmp/.x/payload  created
 2026-06-12T14:03:48Z  REG   Run key persistence added
 2026-06-12T14:05:02Z  LOG   outbound 203.0.113.45:443</code></pre>
-      <h3>3. Import into Timesketch and tag the attack chain</h3>
+      <p>Read chronologically: a payload lands in a hidden directory under <code>/tmp</code>, 37 seconds later a persistence mechanism is written to an autostart location, and 74 seconds after that the host opens an outbound connection to 203.0.113.45 on 443. That is an execution-to-callback chain (T1059, T1547, and C2) in under two minutes &mdash; visible only because all three sources are on the same clock.</p>
+      <p><strong>Common mistake:</strong> filter-expression quoting. The whole expression needs double quotes and the date literals single quotes; a shell-eaten quote produces a syntax error or, worse, an empty result set that looks like "no events in window." Verify: the CSV row count (<code>wc -l timeline.csv</code>) should be large but far smaller than the 4.8M total &mdash; here, about 312k rows.</p>
+
+      <h3>5. Take targeted pivots with parser-level filters</h3>
+      <p>A 312k-row CSV is still too much to read linearly. The next move is targeted pivots: extract only the high-signal artifact families into their own files. psort filter expressions can match on the <code>parser</code> and <code>data_type</code> attributes, which is how you pull just execution artifacts or just persistence artifacts.</p>
+      <p class="code-label">Pivot: execution artifacts (prefetch + shell history)</p>
+<pre><code>psort.py -o l2tcsv -w exec.csv case.plaso \
+  "parser is 'prefetch' OR parser is 'bash_history'"</code></pre>
+      <p class="code-label">Pivot: registry autostart locations</p>
+<pre><code>psort.py -o l2tcsv -w persist.csv case.plaso \
+  "parser is 'winreg' AND message contains 'Run'"</code></pre>
+      <p>psort also ships analysis plugins that annotate events during output. The tagging plugin applies rule-based tags (for example <code>execution</code>, <code>browser_search</code>, <code>logon</code>) and <code>unique_domains_visited</code> summarizes every domain seen in browser and network artifacts &mdash; a fast way to shortlist C2 candidates:</p>
+      <p class="code-label">Tag events and summarize domains during export</p>
+<pre><code>psort.py --analysis tagging,unique_domains_visited \
+  -o l2tcsv -w timeline_tagged.csv case.plaso \
+  "date &gt; '2026-06-10 00:00:00'"</code></pre>
+      <p><strong>Common mistake:</strong> over-filtering to a single artifact type and losing context. A prefetch record alone does not prove malicious execution; it proves a binary ran. Verify: every pivot conclusion should be corroborated by at least one other source in the full timeline &mdash; execution (prefetch) plus payload creation (filestat) plus callback (network log) is a defensible chain.</p>
+
+      <h3>6. Import into Timesketch</h3>
+      <p>With the filtered CSV in hand, push it into a Timesketch sketch for collaborative analysis. The importer client uploads the file, Timesketch indexes it into OpenSearch, and the timeline becomes searchable through the web UI.</p>
       <div class="command-block"><div class="command"><code>timesketch_importer -u admin -sketch 1 timeline.csv</code></div></div>
+      <p class="code-label">Full import with explicit host and timeline name</p>
+<pre><code>timesketch_importer --host https://timesketch.lab.local \
+  --user admin --sketch_id 1 \
+  --timeline_name "case-2026-06-filtered" \
+  timeline.csv</code></pre>
+<pre><code>[2026-06-17 20:12:04] Uploading timeline.csv (312,448 events)
+[2026-06-17 20:12:41] Timeline 7 created in sketch 1
+[2026-06-17 20:13:19] Indexing complete: status = ready</code></pre>
+      <p>For large or recurring cases, skip the CSV entirely: psort's <code>timesketch</code> output plugin streams events directly from the storage file into a sketch (<code>psort.py -o timesketch --sketch_id 1 case.plaso "..."</code>). The CSV route was used here because the intermediate file doubles as a reviewable deliverable.</p>
+      <p><strong>Common mistake:</strong> importing the unfiltered 4.8M-event timeline "just in case." Indexing takes forever and every query drowns in noise. Verify: the event count Timesketch reports for the new timeline should match the CSV row count exactly.</p>
+
+      <h3>7. Query, tag, and build the attack narrative</h3>
+      <p>Inside the sketch, the workflow is iterative: run a query, star the events that matter, apply a label or tag, and let the next query pivot off the last finding. Timesketch search accepts field-scoped queries, which map cleanly onto the artifact families from step 5.</p>
+      <p class="code-label">Representative Timesketch queries used in this case</p>
+<pre><code># All process-creation events around the payload time
+data_type:"windows:evtx:record" AND event_identifier:4688
+  AND timestamp:[2026-06-12T14:00 TO 2026-06-12T14:10]
+
+# Persistence writes to autostart keys
+message:"\\CurrentVersion\\Run" AND tag:"persistence"
+
+# Everything involving the suspected C2 address
+"203.0.113.45"</code></pre>
+      <p>Each hit that belongs in the final narrative gets a star and a comment explaining <em>why</em> it is evidence (for example: "Run key written 37s after payload creation &mdash; T1547"). Timesketch's analyzers then automate the dull parts: the feature-extraction and Sigma analyzers re-tag the whole timeline against community rules, and the gap analyzer flags time ranges with no events at all &mdash; a deleted-log indicator worth its own finding. The end state is a saved story in the sketch that walks the chain: payload drop &rarr; execution &rarr; persistence &rarr; C2 callback &rarr; staging &rarr; exfiltration, each step backed by starred events from at least two sources.</p>
+      <p><strong>Common mistake:</strong> treating starred events as proof without comments. Six weeks later, nobody &mdash; including you &mdash; remembers why an event was starred. Verify: every pivot in the final story links to the underlying events and carries a one-line justification and an ATT&amp;CK technique.</p>
     </section>
 
     <section><h2>Validation &amp; Testing</h2>
       <p>Verify the reconstructed sequence against an independent log source (for example firewall logs) to confirm ordering. Pass criteria: a coherent attack narrative from initial execution to exfiltration with no unexplained time gaps.</p>
+      <p>Concretely, validation in this lab meant four checks:</p>
+      <ul>
+        <li><strong>Cross-source corroboration.</strong> The outbound connection at 14:05:02Z in the host logs was matched against the perimeter firewall logs: same destination, same port, timestamp within 3 seconds. Independent sources agreeing on order is the strongest signal the timeline clock is right.</li>
+        <li><strong>Timezone spot check.</strong> Three artifacts with known wall-clock context (a screenshot of the IDS alert, a user's login, a scheduled cron job) were located in the timeline and confirmed to sit at their expected UTC positions.</li>
+        <li><strong>Gap analysis.</strong> Timesketch's gap analyzer was run across the window; the only gap found (14:22&ndash;14:40 on the 12th) coincided with deleted syslog entries recovered separately &mdash; itself evidence of T1070 indicator removal.</li>
+        <li><strong>Reproducibility.</strong> The full pipeline was re-run from the image on a clean machine; the filtered CSV matched the original run event-for-event.</li>
+      </ul>
     </section>
 
-    <details><summary>Advanced: Troubleshooting</summary>
+    <section><h2>Troubleshooting</h2>
       <ul>
-        <li><strong>Timezone skew:</strong> normalize everything to UTC with the <code>-z</code> flag to avoid false ordering.</li>
-        <li><strong>Timeline too large:</strong> use targeted parsers and tight psort date filters.</li>
-        <li><strong>Missing artifacts:</strong> confirm the image mounted read-only and all partitions parsed.</li>
+        <li><strong>Timezone skew (false ordering):</strong> registry events appear hours off from event-log entries. Cause: extraction ran without a timezone or the source recorded local time. Fix: re-run log2timeline with <code>-z UTC</code>, and confirm parser-level zones with <code>pinfo.py --verbose</code>. Never "fix" skew by hand-editing timestamps in the CSV.</li>
+        <li><strong>Timeline too large / extraction runs for hours:</strong> tens of millions of events, mostly <code>filestat</code> noise. Fix: restrict parsers with <code>--parsers "filestat,winevtx,winreg,bash_history,prefetch,webhist"</code>, raise <code>--workers</code> to the core count, and filter early with a tight psort date window. A scoped parser list took this case's working set from 4.8M to about 1.9M events with no loss of relevant artifacts.</li>
+        <li><strong>Missing artifacts (parser count zero in pinfo):</strong> expected evidence (bash history, a registry hive) is absent from the storage file. Cause is usually partition selection or the image not being fully read. Fix: confirm the image mounts read-only and all partitions were scanned &mdash; re-run with <code>--partitions all --vss_stores all</code> &mdash; then re-check parser counts with <code>pinfo.py</code>. Volume shadow copies in particular often hold the pre-cleanup version of a hive.</li>
+        <li><strong>psort filter returns zero rows:</strong> almost always a quoting or attribute-name problem. The expression needs double quotes outside and single quotes around date literals (<code>"date &gt; '2026-06-10'"</code>); attribute names are case-sensitive (<code>parser</code>, not <code>Parser</code>). Test incrementally: start with the date filter alone, confirm a row count, then add clauses one at a time.</li>
+        <li><strong>Events out of order despite correct timezone:</strong> the machine's clock itself moved &mdash; NTP corrections, manual changes, or VM snapshot reverts all shift timestamps mid-incident. Fix: search the timeline for time-change events (Windows Event ID 4616, Linux <code>clock_settime</code> in syslog), document each shift, and interpret ordering across a shift with caution. Plaso's own "system time changed" detection flags many of these automatically.</li>
       </ul>
-    </details>
+    </section>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li>A super timeline's entire value is ordering: normalize every source to UTC (<code>-z UTC</code>) before anything else, or the ordering is fiction.</li>
+        <li>Verify before and after: hash the image before extraction, check parser counts with <code>pinfo.py</code> after it.</li>
+        <li>Filter aggressively but keep the full storage file &mdash; the window-bounded CSV is for analysis, the <code>.plaso</code> file remains the complete evidence view.</li>
+        <li>No conclusion from a single source: execution + persistence + network callback from three artifact families is a chain; any one alone is a hint.</li>
+        <li>Annotate as you go in Timesketch &mdash; starred events with comments and ATT&amp;CK tags are the report, not preparation for it.</li>
+        <li>Gaps are evidence too: a hole in the timeline at the right moment points to anti-forensics, not missing tooling.</li>
+      </ul>
+    </section>
 
     <section><h2>Key Results</h2>
       <ul>

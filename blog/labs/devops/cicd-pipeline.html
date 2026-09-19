@@ -53,18 +53,24 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">CI/CD</span><span class="tag">Docker build</span><span class="tag">Trivy</span><span class="tag">deploy</span></div>
     </div>
 
-    <section><p class="lead">You will build an end-to-end pipeline that tests, builds a container, scans it, and deploys on a successful merge to main. By the end every release is automated, gated, and traceable to a commit.</p></section>
+    <section><p class="lead">You will build an end-to-end pipeline that tests, builds a container, scans it, and deploys on a successful merge to main. By the end every release is automated, gated, and traceable to a commit.</p>
+      <p>This lab chains together everything from the earlier GitHub Actions and Docker labs into a single production-style workflow. A commit or pull request triggers the test stage; only green tests build a container image; the image is pushed to a registry and scanned for critical vulnerabilities; and only a clean scan on the <code>main</code> branch is allowed to roll out to the cluster. Each stage passes or fails the whole run, so a broken build or a vulnerable image can never reach production silently.</p>
+      <p>The pattern you build here is the same one used in real teams: fast feedback for developers (tests in under a minute), a supply-chain gate (vulnerability scanning), and a controlled blast radius (deploy only from the protected default branch). Everything is defined as YAML in the repo, so the pipeline itself is versioned, reviewed, and auditable like any other code.</p>
+    </section>
 
     <div class="learning-objectives"><h2>Learning Objectives</h2>
       <ul>
         <li>Chain test, build, scan, and deploy stages.</li>
         <li>Gate deployment on passing tests and a clean scan.</li>
         <li>Deploy a container to a target on merge to main.</li>
+        <li>Authenticate jobs to a container registry and a Kubernetes cluster using GitHub secrets.</li>
+        <li>Tag images with the commit SHA so every running pod maps to exactly one commit.</li>
         <li><strong>Time:</strong> ~5 hours &middot; <strong>Difficulty:</strong> Advanced &middot; <strong>Prereqs:</strong> the GitHub Actions and Docker labs.</li>
       </ul>
     </div>
 
     <section><h2>Architecture Overview</h2>
+      <p>The pipeline is a directed chain of jobs. Each job runs in its own runner and only starts when the previous job succeeds, because of the <code>needs:</code> keyword. The scan is the security gate: a critical finding flips the run to failed and the deploy job never starts.</p>
       <div class="mermaid" role="img" aria-label="CI/CD pipeline stages from commit to deploy">
 graph LR
   C[Commit] --> T[Test]
@@ -73,16 +79,65 @@ graph LR
   S -->|clean + on main| D[Deploy]
   S -->|critical| Fail[Block release]
       </div>
+      <p>Two conditions guard the deploy stage, and both must be true: the scan job must have passed (enforced by <code>needs: scan</code>) and the workflow must be running against the <code>main</code> branch (enforced by an <code>if:</code> condition). Pull requests run the test, build, and scan stages only, so reviewers see security feedback before merge without any risk of a preview branch reaching production.</p>
     </section>
 
     <section><h2>Environment Setup</h2>
       <p><strong>You will need:</strong> GitHub Actions, a container registry, Trivy, and a deploy target (kubectl/SSH).</p>
       <p><strong>Before you begin:</strong> store registry and deploy credentials as GitHub secrets.</p>
+      <p>Concretely, this lab uses GitHub Container Registry (ghcr.io) as the registry and a Kubernetes deployment named <code>app</code> as the target. Install the CLI tools locally so you can verify every stage from your terminal as well as in the Actions UI:</p>
+      <p class="code-label">INSTALL THE CLI TOOLS (macOS)</p>
+<pre><code class="language-bash">brew install gh trivy kubectl
+gh auth login        # authenticate the GitHub CLI
+kubectl version --client
+trivy version</code></pre>
+      <p>Secrets must never live in the workflow file. Create them once with the GitHub CLI (or under repo Settings &rsaquo; Secrets and variables &rsaquo; Actions) and reference them as <code>${{ secrets.NAME }}</code>. The pipeline needs two: a token that can push images, and a kubeconfig that can update the deployment.</p>
+      <p class="code-label">STORE THE PIPELINE SECRETS</p>
+<pre><code class="language-bash"># Token with write:packages scope for pushing to ghcr.io
+gh secret set REGISTRY_TOKEN --body "ghp_exampletoken123"
+
+# Kubeconfig for the deploy target (file contents become the secret value)
+gh secret set KUBE_CONFIG &lt; ~/.kube/config
+
+gh secret list</code></pre>
+      <p>Expected output of the last command:</p>
+<pre><code>REGISTRY_TOKEN  Updated 2026-09-19
+KUBE_CONFIG     Updated 2026-09-19</code></pre>
+      <p>The repository layout is deliberately small - the pipeline, the app, its tests, and its Dockerfile all live side by side:</p>
+<pre><code>repo/
+├── .github/workflows/cicd.yml   # the pipeline you are building
+├── app.py                       # demo application
+├── requirements.txt
+├── tests/test_app.py            # pytest suite
+└── Dockerfile                   # from the Docker Images lab</code></pre>
+      <p><strong>Common mistake:</strong> putting the workflow in <code>.github/workflow/</code> (singular) or only on a feature branch - Actions only discovers workflows in <code>.github/workflows/</code> on the default branch for <code>push</code> triggers to behave as expected.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
       <div class="steps">
         <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Test then build a tagged image</strong>
+          <p>The first two jobs form the quality gate. The <code>test</code> job installs dependencies and runs the test suite; the <code>build</code> job declares <code>needs: test</code>, so a failing test stops the run before a single layer of the image is built. The image is tagged with <code>${{ github.sha }}</code> - the full commit SHA - so the artifact running in production later can be traced back to one exact commit, with no ambiguity about what "latest" meant at deploy time.</p>
+          <p class="code-label">TEST JOB - .github/workflows/cicd.yml</p>
+<pre><code class="language-yaml">name: cicd
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  packages: write   # lets GITHUB_TOKEN push to ghcr.io
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11', cache: 'pip' }
+      - run: pip install -r requirements.txt
+      - run: pytest -q</code></pre>
+          <p>The build job below logs in to ghcr.io with the built-in <code>GITHUB_TOKEN</code> (no separate PAT needed when <code>packages: write</code> is set), builds the image, and pushes it. The original minimal form of this job was:</p>
 <pre><code class="language-bash">jobs:
   build:
     needs: test
@@ -90,15 +145,80 @@ graph LR
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t ghcr.io/tyfsadik/app:${{ github.sha }} .</code></pre>
+          <p class="code-label">FULL BUILD JOB WITH REGISTRY LOGIN AND PUSH</p>
+<pre><code class="language-yaml">  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: docker build -t ghcr.io/tyfsadik/app:${{ github.sha }} .
+      - run: docker push ghcr.io/tyfsadik/app:${{ github.sha }}</code></pre>
+          <p>Push a commit and watch the run locally:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git push &amp;&amp; gh run watch</span></div>
+            <div class="terminal-output">&#10003; test   Tests        38s
+&#10003; build  Build image  1m04s</div>
+          </div>
+          <p><strong>How to verify:</strong> open Packages under your GitHub profile - the <code>app</code> package should list a tag equal to your commit SHA (<code>git rev-parse HEAD</code>). <strong>Common mistake:</strong> forgetting the <code>permissions:</code> block, which makes the push fail with <code>denied: installation not allowed to Create organization package</code>.</p>
         </div></div>
         <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Scan and fail on critical CVEs</strong>
+          <p>Building an image is not enough - base images ship with OS packages, and dependencies drift out of date within weeks. Trivy scans the pushed image for known vulnerabilities and the <code>--exit-code 1</code> flag turns any CRITICAL finding into a failed job, which blocks the deploy stage via the job chain. This is the supply-chain gate of the pipeline.</p>
+          <p>Run the same command locally first so you understand what the CI step does:</p>
           <div class="command-block" data-copy><div class="command"><code>trivy image -exit-code 1 -severity CRITICAL ghcr.io/tyfsadik/app:${{ github.sha }}</code></div></div>
+          <p class="code-label">SCAN JOB - FAILS THE RUN ON CRITICAL CVEs</p>
+<pre><code class="language-yaml">  scan:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ghcr.io/tyfsadik/app:${{ github.sha }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'</code></pre>
+          <p>A clean result looks like this:</p>
+<pre><code>ghcr.io/tyfsadik/app:9f2c1ab (alpine 3.19.1)
+=================================================
+Total: 0 (CRITICAL: 0)</code></pre>
+          <p>...and a blocked one looks like this, with the job exiting non-zero:</p>
+<pre><code>┌─────────────┬────────────────┬──────────┬───────────────────┐
+│   Library   │ Vulnerability  │ Severity │ Installed Version │
+├─────────────┼────────────────┼──────────┼───────────────────┤
+│ openssl     │ CVE-2024-0727  │ CRITICAL │ 3.1.4-r0          │
+└─────────────┴────────────────┴──────────┴───────────────────┘
+Error: Process completed with exit code 1.</code></pre>
+          <p><strong>How to verify:</strong> deliberately pin an old base image (for example <code>FROM python:3.8-slim</code>) on a throwaway branch, open a PR, and confirm the scan job goes red while deploy never runs. <strong>Common mistake:</strong> scanning without registry authentication - a private ghcr.io image makes Trivy fail with <code>UNAUTHORIZED</code>, which looks like a scan result but is actually an auth error. Add a <code>docker/login-action</code> step to the scan job too.</p>
         </div></div>
         <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Deploy on merge to main</strong>
+          <p>The deploy job is the only stage that touches production, so it carries the strongest guard: <code>if: github.ref == 'refs/heads/main'</code> means it is skipped entirely on pull requests, and <code>needs: scan</code> means a vulnerable image stops the chain before this job is even scheduled. The job writes the <code>KUBE_CONFIG</code> secret to a temporary file, points <code>kubectl</code> at it, updates the deployment to the exact image built in step 01, and waits for the rollout to finish - so a failed rollout fails the pipeline run instead of passing silently.</p>
+          <p class="code-label">DEPLOY JOB - GATED ON MAIN AND A CLEAN SCAN</p>
+<pre><code class="language-yaml">  deploy:
+    needs: scan
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: azure/setup-kubectl@v4
+      - name: Write kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" &gt; $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+      - name: Roll out new image
+        run: |
+          kubectl set image deploy/app app=ghcr.io/tyfsadik/app:${{ github.sha }}
+          kubectl rollout status deploy/app --timeout=120s</code></pre>
+          <p>A successful rollout prints:</p>
           <div class="terminal-session">
             <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl set image deploy/app app=ghcr.io/tyfsadik/app:$GITHUB_SHA &amp;&amp; kubectl rollout status deploy/app</span></div>
             <div class="terminal-output">deployment "app" successfully rolled out</div>
           </div>
+          <p><strong>How to verify:</strong> <code>kubectl get pods -l app=app</code> should show new pods in <code>Running</code> state with a recent <code>AGE</code>, and <code>kubectl describe deploy app | grep Image</code> should show the commit-SHA tag. <strong>Common mistake:</strong> the rollout hangs at <code>Waiting for deployment "app" rollout to finish</code> because the cluster cannot pull from the private registry - fix it by creating an image pull secret (<code>kubectl create secret docker-registry ghcr-creds --docker-server=ghcr.io --docker-username=tyfsadik --docker-password=$REGISTRY_TOKEN</code>) and referencing it under <code>imagePullSecrets</code> in the deployment manifest.</p>
         </div></div>
       </div>
     </section>
@@ -112,26 +232,49 @@ graph LR
   style B fill:#1a4a1a,stroke:#00ff00,color:#fff
   style C fill:#1a4a1a,stroke:#00ff00,color:#fff
       </div>
+      <p>All three stages are now wired together: tests gate the build, the build feeds the scan, and the scan gates the deploy. The remaining work is proving the whole chain behaves correctly - including its failure modes.</p>
     </section>
 
     <section><h2>Testing &amp; Validation</h2>
       <div class="command-block" data-copy><div class="command"><code>gh run list -workflow=cicd.yml -limit 1 &amp;&amp; kubectl get deploy app -o jsonpath='{.spec.template.spec.containers[0].image}'</code></div></div>
       <p>The latest run should be green and the deployment image tag should match the merged commit SHA, proving end-to-end traceability.</p>
+      <p>Validate the pipeline in both directions - the happy path and the gates. First confirm the happy path end to end:</p>
+      <p class="code-label">HAPPY-PATH VERIFICATION</p>
+<pre><code class="language-bash">git rev-parse HEAD
+# 9f2c1ab4e7d...  (compare with the image tag below)
+
+gh run list --workflow=cicd.yml --limit 1
+# cicd  main  push  9f2c1ab  completed  success  3m41s
+
+kubectl get deploy app -o jsonpath='{.spec.template.spec.containers[0].image}'
+# ghcr.io/tyfsadik/app:9f2c1ab4e7d...</code></pre>
+      <p>Then prove the gates actually block bad releases - a gate you have never seen fire is a gate you cannot trust:</p>
+      <ul>
+        <li><strong>Test gate:</strong> break a test on a branch, push, and confirm the run fails at the <code>test</code> job and no image is built or pushed.</li>
+        <li><strong>Scan gate:</strong> pin a vulnerable base image on a branch and confirm the <code>scan</code> job fails with exit code 1 and the deploy job shows as <em>skipped</em>.</li>
+        <li><strong>Branch gate:</strong> confirm that on the same PR, the deploy job is skipped because the ref is not <code>refs/heads/main</code>.</li>
+        <li><strong>Rollback path:</strong> run <code>kubectl rollout undo deploy/app</code> once in a test environment so you know the recovery command works before you need it.</li>
+      </ul>
     </section>
 
     <details><summary>Troubleshooting</summary>
       <ul>
         <li><strong>Deploy runs on every branch:</strong> guard the deploy job with <code>if: github.ref == 'refs/heads/main'</code>.</li>
-        <li><strong>Registry push denied:</strong> authenticate with a token scoped to packages.</li>
-        <li><strong>Scan blocks valid release:</strong> triage the CVE; only fail on fixable criticals where appropriate.</li>
+        <li><strong>Registry push denied:</strong> authenticate with a token scoped to packages. For ghcr.io prefer the built-in <code>GITHUB_TOKEN</code> with a top-level <code>permissions: packages: write</code> block; a classic PAT needs the <code>write:packages</code> scope, and a fine-grained PAT cannot push to ghcr.io at all.</li>
+        <li><strong>Scan blocks valid release:</strong> triage the CVE; only fail on fixable criticals where appropriate. Add <code>ignore-unfixed: true</code> so vulnerabilities with no available patch do not freeze releases, and document any accepted risk in a <code>.trivyignore</code> file with an expiry comment.</li>
+        <li><strong>Job stuck at "Waiting for a runner":</strong> the <code>runs-on</code> label is wrong (for example <code>ubuntu-latests</code>) or the repo has Actions disabled under Settings &rsaquo; Actions. Fix the label and re-run with <code>gh run rerun</code>.</li>
+        <li><strong>kubectl: command not found in the deploy job:</strong> runners do not ship with kubectl preconfigured for your context - add <code>azure/setup-kubectl@v4</code> (or <code>aws-actions/configure-aws-credentials</code> plus <code>aws eks update-kubeconfig</code> on EKS) before calling it.</li>
+        <li><strong>Rollout times out after deploy:</strong> the new pods are crash-looping or the image cannot be pulled. Inspect with <code>kubectl get pods</code> and <code>kubectl describe pod &lt;name&gt;</code>; the pipeline will fail the run after <code>--timeout=120s</code>, which is the correct behaviour - fix the cause, then re-run.</li>
+        <li><strong>Image tag mismatch between build and deploy:</strong> always thread the tag through <code>${{ github.sha }}</code> in every job. Never use <code>latest</code> - it makes rollbacks and incident forensics guesswork.</li>
       </ul>
     </details>
 
     <section><h2>Extension Ideas</h2>
       <ul>
-        <li>Add a manual approval gate for production.</li>
-        <li>Deploy to <a href="../containers-kubernetes/aks-deployment.html">AKS</a> instead of a single cluster.</li>
-        <li>Add IaC apply with <a href="../cloud-azure/infrastructure-as-code.html">Terraform</a> in the pipeline.</li>
+        <li>Add a manual approval gate for production: configure the <code>production</code> environment in repo Settings with required reviewers, so the deploy job pauses until a human approves.</li>
+        <li>Deploy to <a href="../containers-kubernetes/aks-deployment.html">AKS</a> instead of a single cluster, using a federated workload identity instead of a stored kubeconfig.</li>
+        <li>Add IaC apply with <a href="../cloud-azure/infrastructure-as-code.html">Terraform</a> in the pipeline so infrastructure changes ship through the same gated workflow.</li>
+        <li>Sign images with cosign and add a verification admission policy, extending the supply-chain gate from "scanned" to "provenance-verified".</li>
       </ul>
     </section>
 
@@ -141,6 +284,16 @@ graph LR
         <li>Blocked releases with critical CVEs before deploy.</li>
         <li>Tagged images with the commit SHA for full traceability.</li>
         <li>Deployed only from main, gated on green checks.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li><code>needs:</code> turns separate jobs into a chain - each stage is a gate that can stop everything downstream.</li>
+        <li>Every credential lives in GitHub secrets; the workflow file itself stays safe to read in the repo.</li>
+        <li>Tag images with the commit SHA, never <code>latest</code>, so production state always maps to one exact commit.</li>
+        <li>Deploy requires both a clean scan and the <code>main</code> ref - defense in depth, not a single check.</li>
+        <li>Test the gates by deliberately failing them; an untested gate is an assumption.</li>
       </ul>
     </section>
 

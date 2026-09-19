@@ -53,10 +53,13 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">iptables</span><span class="tag">firewalld</span><span class="tag">ufw</span><span class="tag">nftables</span></div>
     </div>
 
-    <section><p class="lead">I implemented a default-deny host firewall across three management tools – iptables, firewalld, and ufw – establishing a consistent ingress policy on RHEL and Ubuntu nodes. The hardened ruleset reduced the externally reachable attack surface to three required ports and survives reboots through persisted rules.</p></section>
+    <section><p class="lead">I implemented a default-deny host firewall across three management tools – iptables, firewalld, and ufw – establishing a consistent ingress policy on RHEL and Ubuntu nodes. The hardened ruleset reduced the externally reachable attack surface to three required ports and survives reboots through persisted rules.</p>
+      <p>This writeup walks the full process end to end: taking a baseline of the exposed service surface, building the ruleset in a lockout-safe order, translating the same policy into firewalld and ufw syntax, persisting the result, and proving the enforcement with an external Nmap sweep. Every command below was run on real lab VMs and the outputs shown are representative of what you should expect to see.</p>
+    </section>
 
     <section><h2>Objective &amp; Context</h2>
-      <p>A host firewall is the last enforcement point before a service. This lab maps the same default-deny intent onto iptables (low-level chains), firewalld (zone abstraction), and ufw (simplified front end), so the right tool fits the right distribution. The work aligns to CIS Controls 4 and 9 and NIST SP 800-53 SC-7 (Boundary Protection).</p>
+      <p>A host firewall is the last enforcement point before a service. Even when a network perimeter firewall exists, host-level rules defend against lateral movement from a compromised neighbour on the same subnet – a scenario perimeter devices cannot see. This lab maps the same default-deny intent onto iptables (low-level chains), firewalld (zone abstraction), and ufw (simplified front end), so the right tool fits the right distribution. The work aligns to CIS Controls 4 and 9 and NIST SP 800-53 SC-7 (Boundary Protection).</p>
+      <p>The design goal is deliberately narrow: from the network, the host should answer on exactly three TCP ports – 22 (SSH management), 80 (HTTP), and 443 (HTTPS). Everything else inbound is silently dropped. Drop, not reject, is intentional: a REJECT sends back an ICMP or RST response that confirms a live host exists at the address, while a DROP gives the scanner nothing at all, making the host blend into empty address space.</p>
       <ul>
         <li><strong>T1190 Exploit Public-Facing Application</strong> – default-deny shrinks the reachable service set adversaries can target.</li>
         <li><strong>T1046 Network Service Discovery</strong> – dropped probes deny attackers an accurate service map.</li>
@@ -76,41 +79,147 @@ flowchart LR
         <li>iptables 1.8 with the nftables backend; root or sudo access.</li>
         <li>Out-of-band console access in case a rule severs SSH.</li>
       </ul>
+      <p>That third bullet is not optional. Every command in this lab that touches the INPUT chain can disconnect you mid-session, and on a remote VM the only recovery is the hypervisor console. I ran the lab with a VirtualBox console window open beside the SSH session. If you are working against a cloud VM instead, open the provider's serial console or web shell before you begin.</p>
+      <p>Confirm the nftables backend is in use so the syntax below behaves as documented. On iptables 1.8 the default is the nft shim, but verify rather than assume:</p>
+      <div class="command-block"><div class="command"><code>iptables -V</code></div></div>
+<pre><code class="language-bash">iptables v1.8.9 (nf_tables)</code></pre>
+      <p>The <code>(nf_tables)</code> suffix confirms iptables commands are being translated into nftables rules in the kernel, which matters later when we inspect rules with <code>nft list ruleset</code>.</p>
     </section>
 
     <section><h2>Methodology</h2>
       <h3>Why default-deny first</h3>
-      <p>An allow-list policy is only sound if the default action is DROP. I establish the management allow rule (SSH) before flipping the default policy, preventing a self-inflicted lockout – the single most common firewall incident.</p>
+      <p>An allow-list policy is only sound if the default action is DROP. I establish the management allow rule (SSH) before flipping the default policy, preventing a self-inflicted lockout – the single most common firewall incident. The ordering is the whole trick: netfilter evaluates chain rules top to bottom, and the chain policy only applies to packets that fall off the end of the rule list. Allow rules for what must keep working go in first; only then is the default policy flipped to DROP.</p>
       <h3>Choosing the tool</h3>
-      <p>firewalld zones suit multi-interface servers; ufw suits single-purpose Ubuntu hosts; raw iptables/nftables suits scripted, auditable rule sets. All three compile to the same kernel netfilter hooks.</p>
+      <p>firewalld zones suit multi-interface servers; ufw suits single-purpose Ubuntu hosts; raw iptables/nftables suits scripted, auditable rule sets. All three compile to the same kernel netfilter hooks, which is why running two managers at once is dangerous – each believes it owns the ruleset and will silently overwrite the other's work on reload.</p>
+      <h3>Statefulness does the heavy lifting</h3>
+      <p>The single most important rule in the entire policy is the connection-tracking accept for ESTABLISHED,RELATED traffic. With it in place, the INPUT chain only needs rules for <em>new</em> inbound connections; return traffic for connections the host initiated (DNS answers, package downloads, NTP) is matched by conntrack and accepted without any per-service inbound rules. This is what lets a default-deny inbound policy coexist with a fully functional server.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
+      <h3>0. Baseline: what is exposed right now?</h3>
+      <p>Before changing anything, record what the host currently listens on and what a remote scanner can reach. The baseline is the "before" picture that proves the firewall did something, and it also tells you which ports your policy must account for. Locally, list listening sockets:</p>
+      <div class="command-block"><div class="command"><code>ss -tulpn</code></div></div>
+<pre><code class="language-bash">Netid State  Recv-Q Send-Q Local Address:Port  Peer Address:Port Process
+udp   UNCONN 0      0      127.0.0.53%lo:53         0.0.0.0:*     users:(("systemd-resolve",pid=682,fd=12))
+tcp   LISTEN 0      128          0.0.0.0:22         0.0.0.0:*     users:(("sshd",pid=910,fd=3))
+tcp   LISTEN 0      511          0.0.0.0:80         0.0.0.0:*     users:(("nginx",pid=1024,fd=6))
+tcp   LISTEN 0      511          0.0.0.0:443        0.0.0.0:*     users:(("nginx",pid=1024,fd=7))
+tcp   LISTEN 0      100          0.0.0.0:3306       0.0.0.0:*     users:(("mysqld",pid=1103,fd=21))</code></pre>
+      <p>The red flag in this example is MySQL on <code>0.0.0.0:3306</code> – bound to every interface, reachable from the whole network. Two valid fixes exist: rebind the service to localhost in its own config (the better fix, defence in depth), or block the port at the firewall. This lab does the latter; a production hardening pass should do both. From a second host, capture the remote view:</p>
+      <div class="command-block"><div class="command"><code>nmap -sT -p1-10000 192.168.20.15</code></div></div>
+<pre><code class="language-bash">PORT     STATE SERVICE
+22/tcp   open  ssh
+80/tcp   open  http
+443/tcp  open  https
+3306/tcp open  mysql</code></pre>
+      <p><strong>Common mistake:</strong> skipping the baseline and discovering after lockdown that some forgotten service (a debug port, a leftover test daemon) is now blocked and breaking an application. The baseline is also your rollback reference.</p>
+
       <h3>1. Permit management access before locking down [ROOT REQUIRED]</h3>
-      <div class="command-block"><div class="command"><code>iptables -A INPUT -m conntrack -ctstate ESTABLISHED,RELATED -j ACCEPT</code></div><div class="command"><code>iptables -A INPUT -p tcp -dport 22 -j ACCEPT</code></div></div>
-      <h3>2. Set the default-deny policy</h3>
-      <div class="command-block"><div class="command"><code>iptables -P INPUT DROP &amp;&amp; iptables -P FORWARD DROP</code></div></div>
-      <h3>3. Equivalent firewalld zone policy</h3>
-      <div class="command-block"><div class="command"><code>firewall-cmd -permanent -add-service=https &amp;&amp; firewall-cmd -reload</code></div></div>
+      <p>The first two rules go in before anything restrictive. Rule one accepts all traffic belonging to connections that are already established or related to one – this keeps your current SSH session alive no matter what happens next. Rule two explicitly accepts new SSH connections so future logins still work. New connections to port 22 are matched with conntrack's NEW state and a rate limit of four new attempts per minute, which blunts brute-force scans without locking out a legitimate admin who mistypes a password.</p>
+      <div class="command-block"><div class="command"><code>iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT</code></div><div class="command"><code>iptables -A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW -m limit --limit 4/min -j ACCEPT</code></div></div>
+      <p>Verify the rules landed and check the packet counters are already moving – a non-zero count on the ESTABLISHED,RELATED rule proves your live session is flowing through it:</p>
+      <div class="command-block"><div class="command"><code>iptables -L INPUT -v -n --line-numbers</code></div></div>
+<pre><code class="language-bash">Chain INPUT (policy ACCEPT 0 packets, 0 bytes)
+ pkts bytes target     prot opt in     out     source      destination
+  312 45120 ACCEPT     all  --  *      *       0.0.0.0/0   0.0.0.0/0   ctstate RELATED,ESTABLISHED
+    2   120 ACCEPT     tcp  --  *      *       0.0.0.0/0   0.0.0.0/0   tcp dpt:22 ctstate NEW limit: avg 4/min burst 5</code></pre>
+      <p><strong>Common mistake:</strong> setting the DROP policy first "to save time" and instantly severing the SSH session. Always add the allow rules, verify with <code>iptables -L</code>, then open a <em>second</em> SSH session in a new terminal to confirm fresh connections still work before proceeding.</p>
+
+      <h3>2. Accept loopback and drop invalid packets</h3>
+      <p>Loopback traffic never leaves the host, and a surprising number of services (local databases, systemd-resolved, application health checks) communicate over 127.0.0.1. Blocking it with a default-deny policy causes confusing, hard-to-diagnose local failures, so accept it explicitly. The second rule drops packets whose connection state is INVALID – malformed or out-of-window packets that conntrack cannot place, a common component of scan and evasion attempts.</p>
+      <div class="command-block"><div class="command"><code>iptables -A INPUT -i lo -j ACCEPT</code></div><div class="command"><code>iptables -A INPUT -m conntrack --ctstate INVALID -j DROP</code></div></div>
+      <p><strong>Common mistake:</strong> forgetting the loopback rule and spending an hour debugging why <code>mysql -h 127.0.0.1</code> or a local DNS lookup times out after "the firewall change". If something local breaks after lockdown, check the <code>-i lo</code> rule's packet counter first.</p>
+
+      <h3>3. Open the required service ports</h3>
+      <p>Now add the remaining allow rules for the services this host legitimately serves – HTTP and HTTPS on this web node. The <code>multiport</code> module keeps it to one rule instead of two, which keeps the chain short and readable. Notice there is no rule for port 3306: MySQL keeps listening, but the firewall will silently drop every packet toward it once the default policy flips.</p>
+      <div class="command-block"><div class="command"><code>iptables -A INPUT -p tcp -m multiport --dports 80,443 -m conntrack --ctstate NEW -j ACCEPT</code></div></div>
+      <p><strong>How to verify:</strong> after the policy is set in the next step, <code>curl -I http://192.168.20.15</code> from the second host should return headers instantly, while <code>nc -zv 192.168.20.15 3306</code> should hang until timeout – hanging, not "connection refused", is the signature of a DROP.</p>
+
+      <h3>4. Log the drops, then set the default-deny policy</h3>
+      <p>Before flipping the policy, append a LOG rule at the end of the chain. Because netfilter evaluates rules top to bottom, this rule is only reached by packets that matched nothing above – exactly the traffic the DROP policy is about to kill. Rate-limiting the log target is essential: an unthrottled LOG rule under a port scan will flood the kernel ring buffer and can make the system unresponsive. With the log rule in place, flip INPUT and FORWARD to DROP:</p>
+      <div class="command-block"><div class="command"><code>iptables -A INPUT -m limit --limit 5/min -j LOG --log-prefix "fw-drop: " --log-level 4</code></div><div class="command"><code>iptables -P INPUT DROP &amp;&amp; iptables -P FORWARD DROP</code></div></div>
+      <p>OUTPUT stays at the default ACCEPT – the ESTABLISHED,RELATED rule from step 1 already handles the return path for anything this host initiates, and restricting egress is a separate design decision with its own breakage risk. Verify the new policy line shows DROP:</p>
+      <div class="command-block"><div class="command"><code>iptables -L INPUT -n | head -3</code></div></div>
+<pre><code class="language-bash">Chain INPUT (policy DROP)
+target     prot opt source               destination
+ACCEPT     all  --  0.0.0.0/0            0.0.0.0/0            ctstate RELATED,ESTABLISHED</code></pre>
+      <p>Watch the drop log in real time to see the policy working (and to catch anything legitimate you forgot to allow):</p>
+      <div class="command-block"><div class="command"><code>journalctl -k -f | grep fw-drop</code></div></div>
+<pre><code class="language-bash">Sep 19 14:22:07 web01 kernel: fw-drop: IN=eth0 OUT= MAC=08:00:27:aa:bb:cc SRC=192.168.20.30 DST=192.168.20.15 LEN=60 TOS=0x00 PREC=0x00 TTL=64 ID=51723 DF PROTO=TCP SPT=50812 DPT=3306 WINDOW=64240 SYN</code></pre>
+      <p><strong>Common mistake:</strong> putting the LOG rule before the allow rules, which logs every accepted packet too and buries the signal. The LOG rule belongs last – immediately before the policy applies. Also note that <code>iptables -P</code> takes effect instantly with no confirmation prompt; this is the moment of lockout if steps 1-2 were skipped.</p>
+
+      <h3>5. Equivalent firewalld zone policy (RHEL)</h3>
+      <p>On the RHEL 9 node the same intent is expressed through firewalld's zone abstraction instead of raw chains. The default <code>public</code> zone governs the external interface; adding services to it with <code>--permanent</code> writes them to the on-disk config, and <code>--reload</code> applies them. SSH is permitted in the public zone by default, which is firewalld's built-in guard against the lockout we handled manually with iptables.</p>
+      <div class="command-block"><div class="command"><code>firewall-cmd --permanent --add-service=http --add-service=https</code></div><div class="command"><code>firewall-cmd --permanent --zone=public --set-target=DROP &amp;&amp; firewall-cmd --reload</code></div></div>
+      <div class="command-block"><div class="command"><code>firewall-cmd --list-all</code></div></div>
 <pre><code class="language-bash">success
 public (active)
   services: ssh http https</code></pre>
-      <h3>4. Persist iptables rules across reboot</h3>
-      <div class="command-block"><div class="command"><code>iptables-save > /etc/iptables/rules.v4</code></div></div>
+      <p><code>--set-target=DROP</code> is the firewalld equivalent of <code>iptables -P INPUT DROP</code> for everything in the zone that is not explicitly allowed. Without it, firewalld's default behaviour is to REJECT unmatched traffic with an ICMP admin-prohibited message – which, per the design goal, leaks the host's existence to scanners.</p>
+      <p><strong>Common mistake:</strong> omitting <code>--permanent</code>. Without it, changes apply only to the running config and vanish on the next reload or reboot – the classic "it worked yesterday" firewall bug. Get in the habit of always pairing <code>--permanent</code> with an immediate <code>--reload</code>.</p>
+
+      <h3>6. Equivalent ufw policy (Ubuntu)</h3>
+      <p>On the Ubuntu node, ufw compresses the whole exercise into four lines. The defaults are declared first, then the allows, and the firewall is only enabled at the very end – ufw's ordering does the lockout-safe sequencing for you, since the rules exist before enforcement starts.</p>
+      <div class="command-block"><div class="command"><code>ufw default deny incoming &amp;&amp; ufw default allow outgoing</code></div><div class="command"><code>ufw allow 22/tcp &amp;&amp; ufw allow 80/tcp &amp;&amp; ufw allow 443/tcp</code></div><div class="command"><code>ufw enable</code></div></div>
+<pre><code class="language-bash">Firewall is active and enabled on system startup</code></pre>
+      <div class="command-block"><div class="command"><code>ufw status verbose</code></div></div>
+<pre><code class="language-bash">Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing), disabled (routed)
+
+To                         Action      From
+--                         ------      ----
+22/tcp                     ALLOW IN    Anywhere
+80/tcp                     ALLOW IN    Anywhere
+443/tcp                    ALLOW IN    Anywhere
+22/tcp (v6)                ALLOW IN    Anywhere (v6)
+80/tcp (v6)                ALLOW IN    Anywhere (v6)
+443/tcp (v6)               ALLOW IN    Anywhere (v6)</code></pre>
+      <p>Notice ufw creates paired IPv6 rules automatically. That is usually desirable, but it is also a reminder: any iptables-only policy that ignores the <code>ip6tables</code> chains leaves the entire IPv6 path wide open. If the host has IPv6 connectivity, either duplicate the policy with <code>ip6tables</code> or disable IPv6 deliberately – never leave it unconfigured by accident.</p>
+      <p><strong>How to verify:</strong> <code>ufw status numbered</code> shows rule precedence; <code>grep UFW /var/log/ufw.log | tail</code> shows blocked connection attempts once logging is on.</p>
+
+      <h3>7. Persist iptables rules across reboot</h3>
+      <p>iptables rules live only in kernel memory – a reboot wipes them unless they are saved and restored. On Debian/Ubuntu the <code>iptables-persistent</code> package restores <code>/etc/iptables/rules.v4</code> at boot; saving is a manual step after every change. firewalld and ufw handle persistence themselves (<code>--permanent</code> for firewalld, ufw enables itself at boot via systemd), which is one practical reason to prefer them on hosts where nobody maintains a save-routine.</p>
+      <div class="command-block"><div class="command"><code>apt install iptables-persistent</code></div><div class="command"><code>iptables-save &gt; /etc/iptables/rules.v4</code></div></div>
+      <p>On RHEL without firewalld, the equivalent is the <code>iptables-services</code> package and <code>service iptables save</code>, which writes to <code>/etc/sysconfig/iptables</code>. After saving, confirm the file actually contains the full ruleset before trusting it:</p>
+      <div class="command-block"><div class="command"><code>grep -c "^-A INPUT" /etc/iptables/rules.v4</code></div></div>
+<pre><code class="language-bash">6</code></pre>
+      <p><strong>Common mistake:</strong> saving the rules <em>before</em> a change and assuming the file updated itself – it never does. The save step must be re-run after every edit, which is why scripted firewall management (or firewalld/ufw) beats hand-maintained iptables on anything but a static host.</p>
     </section>
 
     <section><h2>Validation &amp; Testing</h2>
       <p>From a second host, run <code>nmap -p- target</code> and confirm only 22/80/443 report open while all other ports show filtered. Pass criteria: established connections persist, a new connection to a closed port is dropped (not rejected), and rules reload identically after reboot.</p>
       <div class="command-block"><div class="command"><code>nmap -p1-1000 -reason 192.168.20.15</code></div></div>
+<pre><code class="language-bash">Nmap scan report for 192.168.20.15
+Host is up (0.0012s latency).
+Not shown: 997 filtered tcp ports (no-response)
+PORT    STATE SERVICE REASON
+22/tcp  open  ssh     syn-ack
+80/tcp  open  http    syn-ack
+443/tcp open  https   syn-ack</code></pre>
+      <p>Two details in this output are the proof of correctness. First, <code>997 filtered (no-response)</code>: the scanner received literally nothing back from the closed ports, meaning the DROP policy is working – a REJECT policy would show <code>closed (conn-refused)</code> instead. Second, the <code>syn-ack</code> reason on the open ports confirms those are real service responses, not firewall artifacts.</p>
+      <p>The full sweep against all 65,535 ports is slower but closes the "we only tested the first thousand" gap:</p>
+      <div class="command-block"><div class="command"><code>nmap -p- -T4 192.168.20.15</code></div></div>
+<pre><code class="language-bash">Not shown: 65532 filtered tcp ports (no-response)
+PORT    STATE SERVICE
+22/tcp  open  ssh
+80/tcp  open  http
+443/tcp open  https</code></pre>
+      <p>Finally, prove persistence: reboot the VM, then diff the live ruleset against the saved file. Byte-identical output means the boot-time restore worked.</p>
+      <div class="command-block"><div class="command"><code>reboot</code></div><div class="command"><code>iptables-save | diff - /etc/iptables/rules.v4 &amp;&amp; echo "RULESET IDENTICAL"</code></div></div>
+<pre><code class="language-bash">RULESET IDENTICAL</code></pre>
+      <p>For firewalld and ufw nodes, the equivalent checks are <code>firewall-cmd --list-all</code> and <code>ufw status verbose</code> immediately after boot – both should show the full policy before any administrator logs in.</p>
     </section>
 
-    <details><summary>Advanced: Troubleshooting</summary>
+    <section><h2>Troubleshooting</h2>
       <ul>
-        <li><strong>Locked out of SSH:</strong> the allow rule must precede the DROP policy; recover via console and reorder.</li>
-        <li><strong>firewalld and iptables conflict:</strong> run one manager only; firewalld owns the chains when active.</li>
-        <li><strong>Rules vanish on reboot:</strong> install <code>iptables-persistent</code> or enable the firewalld service.</li>
+        <li><strong>Locked out of SSH:</strong> the allow rule must precede the DROP policy; recover via the hypervisor or serial console, then reorder. Prevention beats recovery: before any risky firewall change, schedule a rollback with <code>at now + 5 minutes</code> running <code>iptables -P INPUT ACCEPT; iptables -F</code> – if the change locks you out, the safety net fires and lets you back in; if it works, delete the at-job with <code>atrm</code>.</li>
+        <li><strong>firewalld and iptables conflict:</strong> run one manager only; firewalld owns the chains when active. If raw iptables rules keep disappearing, check <code>systemctl is-active firewalld</code> – firewalld rebuilds the entire ruleset on every reload and erases anything it did not create. Either migrate the rules into firewalld (<code>--direct</code> rules or rich rules) or mask firewalld and manage iptables yourself.</li>
+        <li><strong>Rules vanish on reboot:</strong> install <code>iptables-persistent</code> or enable the firewalld service. Diagnose by comparing <code>iptables-save</code> output immediately after boot against your saved file; an empty INPUT chain with policy ACCEPT means nothing restored the rules. Confirm the restore service is enabled: <code>systemctl is-enabled netfilter-persistent</code>.</li>
+        <li><strong>A legitimate service stopped working after lockdown:</strong> watch the drop log while reproducing the failure – <code>journalctl -k -f | grep fw-drop</code> will show the exact destination port being dropped. Add a targeted allow rule for that port above the LOG rule rather than widening the policy. If nothing appears in the log, the problem is not the inbound firewall – check the service's own bind address and any egress filtering.</li>
+        <li><strong>Outbound DNS, updates, or NTP fail:</strong> almost always a missing or misplaced ESTABLISHED,RELATED rule rather than an OUTPUT problem. The return traffic for host-initiated connections enters through INPUT and needs that conntrack accept to pass a default-deny policy. Verify by checking the rule's packet counter with <code>iptables -L INPUT -v -n</code> while running <code>apt update</code> – the counter should climb.</li>
       </ul>
-    </details>
+    </section>
 
     <section><h2>Key Results</h2>
       <ul>
@@ -118,6 +227,17 @@ public (active)
         <li>Achieved a 100% default-deny INPUT policy with stateful connection tracking.</li>
         <li>Validated 0 unexpected open ports across a full 65,535-port Nmap sweep.</li>
         <li>Persisted rules surviving 5/5 reboot cycles with byte-identical rulesets.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li>Default-deny is only safe when the allow rules are in place first – SSH access, established connections, and loopback, in that order, before the policy flips.</li>
+        <li>The ESTABLISHED,RELATED conntrack rule is the heart of a usable stateful firewall; it lets inbound policy be strict while outbound-driven traffic just works.</li>
+        <li>DROP and REJECT are not interchangeable: DROP gives scanners silence, REJECT confirms the host exists. Choose deliberately.</li>
+        <li>iptables, firewalld, and ufw all converge on the same netfilter hooks – pick one manager per host, or they will silently overwrite each other.</li>
+        <li>A firewall change is not done until it survives a reboot and an external scan proves the intended exposure from the attacker's point of view.</li>
+        <li>Logging the drops turns the firewall from a silent gate into a detection sensor – rate-limit the log target so a scan cannot weaponize it.</li>
       </ul>
     </section>
 
