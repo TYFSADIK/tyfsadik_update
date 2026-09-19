@@ -1,0 +1,351 @@
+##### work/infrastructure/private-ai-model.html [diagram 0]
+graph LR
+  U["User Browser"]
+  NG["Nginx :443"]
+  LE["Lets Encrypt"]
+  FE["Next.js Frontend"]
+  API["API Routes"]
+  AUTH["Auth System"]
+  LC["llama.cpp :8080"]
+  WG[("GGUF Weights ~7B")]
+  SR["Web Search API"]
+
+  LE - renews --> NG
+  U -->|HTTPS| NG
+  NG -->|proxy_pass| FE
+  FE -->|requests| API
+  API -->|session| AUTH
+  API -->|POST completion| LC
+  API -->|search| SR
+  LC - WG
+  LC -->|SSE stream| API
+  API -->|stream| FE
+  FE -->|render| U
+
+style U fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style NG fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style LE fill:#181818,stroke:#444,color:#888
+style 
+##### work/infrastructure/private-ai-model.html [diagram 1]
+sequenceDiagram
+  participant U as User Browser
+  participant NG as Nginx
+  participant FE as Next.js
+  participant API as API Routes
+  participant LC as llama.cpp
+  participant SR as Search API
+
+  U-->>NG: HTTPS POST chat message
+  NG-->>FE: proxy_pass
+  FE-->>API: message and conversation history
+  API-->>SR: web search query
+  SR-->>API: search results JSON
+  API-->>LC: POST /completion with prompt and context
+  LC-->>API: streaming token response SSE
+  API-->>FE: streamed output
+  FE-->>U: real-time rendered response
+##### work/infrastructure/kubernetes-infrastructure.html [diagram 0]
+graph TD
+  subgraph Internet["Public Internet"]
+    ISP["ISP Uplink"]
+  end
+
+  subgraph Edge["Edge Layer"]
+    RTR["Router\nNAT / Firewall / DHCP\nInter-VLAN Routing\nPort Forwarding"]
+  end
+
+  subgraph Network["Network Fabric"]
+    SW["Managed Switch\n802.1Q VLAN Trunking\nVLAN 10: Management\nVLAN 20: Cluster\nVLAN 30: Storage"]
+    RADIO["Wireless Radio\n5 GHz Backhaul\nBridge Mode"]
+  end
+
+  subgraph DesktopNodes["Desktop Nodes (Wired)"]
+    PC1["PC-01 &bull; Control Plane\n8C/32GB/512GB NVMe\nUbuntu Server 24.04\netcd + API Server"]
+    PC2["PC-02 &bull; Worker Node\n6C/16GB/1TB SSD\nUbun
+##### work/infrastructure/kubernetes-infrastructure.html [diagram 1]
+graph LR
+  subgraph VLAN10["VLAN 10 - Management"]
+    SSH["SSH Bastion"]
+    PMX["Proxmox Web UI"]
+    SWMGMT["Switch Mgmt"]
+  end
+
+  subgraph VLAN20["VLAN 20 - Cluster"]
+    API["K8s API Server :6443"]
+    CALICO["Calico CNI\nBGP / VXLAN"]
+    MLB["MetalLB\n10.20.20.200-250"]
+    PODS["Pod Network\n192.168.0.0/16"]
+  end
+
+  subgraph VLAN30["VLAN 30 - Storage"]
+    LH["Longhorn\niSCSI Replication"]
+    NFS["NFS Exports"]
+    ZFS["ZFS Snapshots"]
+  end
+
+  VLAN10 -|"Firewall Rules"| VLAN20
+  VLAN20 -|"Firewall Rules"| VLAN30
+
+style SSH fill:#1a1a2e,stroke:#ff8800,color:#e0e0e0
+style PMX fill:#1
+##### work/infrastructure/kubernetes-infrastructure.html [diagram 2]
+graph TD
+  subgraph ControlPlane["Control Plane - PC-01"]
+    ETCD["etcd\nCluster State Store"]
+    APIS["kube-apiserver\n:6443"]
+    SCHED["kube-scheduler"]
+    CM["kube-controller-manager"]
+  end
+
+  subgraph Workers["Worker Nodes - PC-02, PC-03, LP-01..04"]
+    KP["kubelet"]
+    KPR["kube-proxy\niptables / IPVS"]
+    CR["containerd\nContainer Runtime"]
+  end
+
+  subgraph Networking["Network Layer"]
+    CAL["Calico CNI\nBGP Peering + NetworkPolicy"]
+    MLBX["MetalLB\nL2 / ARP Mode\nExternal IP Pool"]
+    ING["Nginx Ingress Controller\nTLS Termination"]
+  end
+
+  subgraph Storage["Storage Layer
+##### work/infrastructure/kubernetes-infrastructure.html [diagram 3]
+flowchart LR
+  A["Developer\ngit push"] -->|"webhook"| B["GitHub Actions\nCI Pipeline"]
+  B -->|"build + push"| C["Container Registry\nDocker Hub"]
+  C -->|"image pull"| D["Kubernetes\nkubectl apply"]
+  D --> E["Rolling Update\nzero-downtime deploy"]
+  E --> F["Health Check\nliveness + readiness"]
+  F -->|"metrics"| G["Prometheus\nmonitoring"]
+  G --> H["Grafana\nalert + dashboard"]
+
+style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style B fill:#1a1a2e,stroke:#ffcc00,color:#e0e0e0
+style C fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style D fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style E fill:
+##### work/infrastructure/wiki-server.html [diagram 0]
+graph LR
+  U["User Browser\n(any region)"]
+  NG["Nginx\n:443 SSL termination"]
+  KS["kiwix-serve\n:8080"]
+  ZIM[("ZIM File\nWikipedia EN\n~90 GB")]
+  VOL[("Dedicated\nStorage Volume")]
+
+  U -->|"HTTPS request\nwiki.tyfsadik.org"| NG
+  NG -->|"proxy_pass :8080"| KS
+  KS -->|"mmap read\n(random access)"| ZIM
+  ZIM - VOL
+  KS -->|"article HTML\n+ assets"| NG
+  NG -->|"response\n(no external deps)"| U
+
+style U fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style NG fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style KS fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style ZIM fill:#181818,stroke:#1e1e1e,color:#8
+##### work/infrastructure/wiki-server.html [diagram 1]
+flowchart TD
+  A["User requests\narticle or search"] --> B["Nginx :443\nSSL termination"]
+  B --> C["kiwix-serve :8080\nparse request URL"]
+  C --> D{"Request type"}
+  D -->|"Article page"| E["mmap ZIM file\nseek to article offset"]
+  D -->|"Search query"| F["Full-text index\n(built into ZIM)"]
+  E --> G["Decompress article\n(zstd / lzma)"]
+  F --> H["Return article list\n(JSON)"]
+  G --> I["Serve HTML + assets\n(images, CSS inline)"]
+  H --> I
+  I --> B
+  B --> J["User sees page\n(no external requests)"]
+
+style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style B fill:#1a1a2e,stroke:#00ff88,co
+##### work/infrastructure/tyf-ai-platform.html [diagram 0]
+flowchart TB
+  U[Browser] -->|HTTPS| C[Caddy Reverse Proxy<br/>auth + rate limit]
+  C --> W[Open WebUI]
+  W -->|REST| LC[llama.cpp CUDA server]
+  LC - GG[(GGUF Q4_K_M / Q5_K_M)]
+  LC -. confined by .--> FJ[Firejail Sandbox]
+  subgraph PVE["Proxmox VE 8.1"]
+    VM[AI VM] -->|PCI passthrough| GPU[NVIDIA GPU]
+  end
+  LC - VM
+##### work/infrastructure/tyf-ai-platform.html [diagram 1]
+sequenceDiagram
+  participant U as User
+  participant C as Caddy
+  participant W as Open WebUI
+  participant L as llama.cpp (Firejail)
+  U-->>C: HTTPS + API key
+  C-->>C: validate key + rate limit
+  C-->>W: forward
+  W-->>L: completion request
+  L-->>W: streamed tokens
+  W-->>U: response
+##### work/infrastructure/proxmox-zero-trust.html [diagram 0]
+flowchart TB
+  Internet((Internet)) --> CF[Cloudflare Edge<br/>Access policies]
+  CF -->|cloudflared tunnel| DMZ[VLAN 40 DMZ]
+  TS[Tailscale Mesh] -.fallback.--> MGMT
+  subgraph Cluster["Proxmox VE HA Cluster - Ceph"]
+    MGMT[VLAN 10 Mgmt]
+    PROD[VLAN 20 Prod]
+    IOT[VLAN 30 IoT]
+    DMZ
+  end
+  PROD - LXC[Docker LXC services]
+##### work/infrastructure/proxmox-zero-trust.html [diagram 1]
+flowchart LR
+  R[Request] --> I[Identity<br/>Cloudflare Access]
+  I --> D[Device Posture<br/>WARP check]
+  D --> P{Policy}
+  P -->|allow| Res[Service]
+  P -->|deny| Block[403]
+##### blog/assignments/sdn-implementation.html [diagram 0]
+graph TD
+  App[Ryu app] --> Ctl[Controller]
+  Ctl -->|OpenFlow 1.3| S1[OVS s1]
+  Ctl -->|OpenFlow 1.3| S2[OVS s2]
+  S1 - H1[h1]
+  S2 - H2[h2]
+##### blog/assignments/sdn-implementation.html [diagram 1]
+graph LR
+  A[01 Controller] -->|done| B[02 Topology]
+  B -->|done| C[03 Validate flows]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+##### blog/labs/databases/database-design.html [diagram 0]
+erDiagram
+  CUSTOMER ||-o{ ORDER : places
+  ORDER ||-|{ ORDER_ITEM : contains
+  PRODUCT ||-o{ ORDER_ITEM : referenced
+##### blog/labs/python/oop.html [diagram 0]
+classDiagram
+  class Notifier
+  class SlackNotifier
+  class EmailNotifier
+  Notifier <|- SlackNotifier
+  Notifier <|- EmailNotifier
+##### blog/labs/python/lists-dictionaries.html [diagram 0]
+flowchart LR
+  Q[Access pattern?] --> O{Membership / lookup?}
+  O -->|yes| S[set / dict O(1)]
+  O -->|ordered sequence| L[list]
+  Q --> A{Counting?}
+  A -->|yes| C[Counter]
+##### blog/labs/security/iot-network-recon.html [diagram 0]
+flowchart LR
+  A[Host Discovery<br/>Masscan /24] --> B[Service Enumeration<br/>Nmap NSE]
+  B --> C[Protocol Analysis<br/>Wireshark MQTT/CoAP]
+  C --> D[Firmware Extraction<br/>Binwalk]
+  B --> E[External Exposure<br/>Shodan API]
+  D --> F[Vulnerability Mapping<br/>CVE + CVSS 3.1]
+  E --> F
+  F --> G[Risk-Ranked Report]
+##### blog/labs/security/iot-network-recon.html [diagram 1]
+flowchart TB
+  WS[Recon Workstation<br/>VLAN 10] -->|trunk| SW[Managed Switch]
+  SW --> IOT["IoT VLAN 30<br/>192.168.30.0/24"]
+  SW --> FW[Firewall / Router]
+  FW --> WAN((Internet))
+  IOT -. monitored by .--> WS
+##### blog/labs/networking/sdn-concepts.html [diagram 0]
+flowchart TB
+  App[Network App] -->|northbound API| Ctl[SDN Controller]
+  Ctl -->|southbound OpenFlow| SW1[OVS Switch 1]
+  Ctl --> SW2[OVS Switch 2]
+  SW1 - H[Hosts]
+##### blog/labs/networking/mininet-lab.html [diagram 0]
+flowchart TB
+  C[Remote Controller] --> S1[s1]
+  C --> S2[s2]
+  S1 - S2
+  S1 - H1[h1]
+  S2 - H2[h2]
+##### blog/labs/linux-fundamentals/mounting-filesystems.html [diagram 0]
+flowchart LR
+  B[blkid --> UUID] --> F[/etc/fstab entry]
+  F --> V[mount -a validate]
+  V --> Boot[stable boot mount]
+##### blog/labs/linux-fundamentals/file-filters.html [diagram 0]
+flowchart LR
+  L[Log] --> Cut[cut field]
+  Cut --> S[sort]
+  S --> U[uniq -c]
+  U --> R[sort -rn | head]
+##### blog/labs/linux-server/disk-management.html [diagram 0]
+graph LR
+  D[(New disk /dev/sdb)] -->|parted GPT| P[Partition /dev/sdb1]
+  P -->|mkfs.ext4| FS[Filesystem]
+  FS -->|UUID in fstab| M[/mnt/data mounted]
+##### blog/labs/linux-server/disk-management.html [diagram 1]
+graph LR
+  A[01 Identify] -->|done| B[02 Partition]
+  B -->|done| C[03 Format]
+  C -->|done| D[04 Mount]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
+##### blog/labs/linux-server/mounting-filesystems.html [diagram 0]
+graph LR
+  Disk[(Local disk UUID)] -->|fstab| L[/mnt/local]
+  NFS[NFS server export] -->|TCP/2049 fstab| N[/mnt/share]
+  L --> Boot[Persistent at boot]
+  N --> Boot
+##### blog/labs/linux-server/mounting-filesystems.html [diagram 1]
+graph LR
+  A[01 Local mount] -->|done| B[02 NFS mount]
+  B -->|done| C[03 Validate mount -a]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+##### blog/labs/linux-server/service-management.html [diagram 0]
+graph LR
+  Unit[/etc/systemd/system/app.service] -->|systemctl enable| SD[systemd]
+  SD -->|start + watch| Proc[Daemon process]
+  Proc -->|crash| SD
+  SD -->|Restart=on-failure| Proc
+  Proc -->|stdout/stderr| J[journald]
+##### blog/labs/linux-server/service-management.html [diagram 1]
+graph LR
+  A[01 Inspect] -->|done| B[02 Write unit]
+  B -->|done| C[03 Enable + start]
+  C -->|done| D[04 Read logs]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
+##### blog/labs/linux-server/nested-vms-kvm.html [diagram 0]
+graph TD
+  Host[Linux Server + KVM] -->|nested=1| L1[L1 Hypervisor VM]
+  L1 -->|virt-install| G1[Guest node-1]
+  L1 -->|virt-install| G2[Guest node-2]
+  G1 - Cluster[Cluster lab]
+  G2 - Cluster
+##### blog/labs/linux-server/nested-vms-kvm.html [diagram 1]
+graph LR
+  A[01 Install KVM] -->|done| B[02 Enable nesting]
+  B -->|done| C[03 Provision guest]
+  C -->|done| D[04 Manage with virsh]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
+##### blog/labs/linux-server/lvm.html [diagram 0]
+graph LR
+  D[(sdb + sdc)] -->|pvcreate| PV[Physical Volumes]
+  PV -->|vgcreate| VG[Volume Group 'data']
+  VG -->|lvcreate| LV[Logical Volume]
+  LV -->|mkfs + mount| FS[/srv ext4]
+##### blog/labs/linux-server/lvm.html [diagram 1]
+graph LR
+  A[01 PV + VG] -->|done| B[02 LV + format]
+  B -->|done| C[03 Mount]
+  C -->|done| D[04 Online grow]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
