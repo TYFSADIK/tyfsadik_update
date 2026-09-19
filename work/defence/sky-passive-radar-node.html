@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sky: Passive Aerial Early-Warning Node | TYFSADIK</title>
+  <meta name="description" content="Receive-only passive radar node built on a KrakenSDR 5-channel coherent SDR: FM/TV broadcast reflections off aircraft, range-Doppler processing with pyAPRiL, scored against an RTL-SDR ADS-B ground-truth receiver.">
+  <meta name="keywords" content="passive radar, KrakenSDR, coherent SDR, range-Doppler, pyAPRiL, ADS-B ground truth, RTL-SDR, dump1090-fa, tar1090, FM illuminator, UHF TV illuminator, bistatic radar, clutter filtering, direction of arrival, early warning Canada, Arctic Over-the-Horizon Radar, Crossbow, receive-only SDR, NanoVNA antenna tuning">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <link rel="canonical" href="https://tyfsadik.org/work/defence/sky-passive-radar-node.html">
+  <meta property="og:title" content="Sky: Passive Aerial Early-Warning Node">
+  <meta property="og:description" content="A receive-only passive radar node on a KrakenSDR 5-channel coherent SDR: FM/TV broadcast reflections off aircraft, range-Doppler processing with pyAPRiL, scored against an RTL-SDR ADS-B ground-truth receiver.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://tyfsadik.org/work/defence/sky-passive-radar-node.html">
+  <meta property="og:image" content="https://tyfsadik.org/Prove/Sky%20passive%20aerial%20early-warning%20node.jpeg">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"CreativeWork","name":"Sky: Passive Aerial Early-Warning Node","author":{"@type":"Person","name":"MD. Taki Yasir Faraji Sadik","url":"https://tyfsadik.org/about.html"},"dateCreated":"2026","inLanguage":"en-CA","keywords":"passive radar, KrakenSDR, range-Doppler, pyAPRiL, ADS-B ground truth, receive-only SDR, early warning"}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Build a passive aerial early-warning node with a KrakenSDR","description":"Stand up a receive-only passive radar node: ADS-B ground truth first, illuminator survey, KrakenSDR coherent bring-up, reference/surveillance cross-correlation into range-Doppler plots, pyAPRiL processing, scoring against ADS-B, and multi-node MQTT fusion.","step":[{"@type":"HowToStep","name":"ADS-B ground truth first","text":"Set up an RTL-SDR Blog V4 with a 1090 MHz antenna, run readsb/dump1090-fa and tar1090, and start logging aircraft positions as ground truth."},{"@type":"HowToStep","name":"Illuminator survey","text":"Map local FM (88-108 MHz) and UHF TV (~470-600 MHz) broadcast transmitters, tune Yagi antennas with a NanoVNA, and check SWR."},{"@type":"HowToStep","name":"KrakenSDR bring-up","text":"Run the 5-channel coherent KrakenSDR (24-1766 MHz) with its open-source software on a Raspberry Pi or mini PC, and phase-calibrate channels with the built-in noise source."},{"@type":"HowToStep","name":"Passive radar chain","text":"Point the reference Yagi at the broadcast transmitter and the surveillance antenna at the area of interest; cross-correlate the channels to produce bistatic range-Doppler plots."},{"@type":"HowToStep","name":"Processing with pyAPRiL","text":"Use the pyAPRiL Python library for clutter filtering, direction-of-arrival estimation, and target localization."},{"@type":"HowToStep","name":"Score against ADS-B truth","text":"Compare passive-radar detections with the logged ADS-B ground truth: detection rate, false-alarm rate, and effective range per illuminator."},{"@type":"HowToStep","name":"Multi-node fusion","text":"Stand up 2-3 nodes and fuse their detections over MQTT into the multi-domain common operating picture."}]}</script>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional - North York, ON, Canada</div>
+    </div>
+    <a href="../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
+        <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content">
+  <div class="container">
+    <div class="content-box">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="defence-hardware-program.html">Defence</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Sky: Passive Aerial Early-Warning Node</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Sky: Passive Aerial Early-Warning Node</h1>
+      <p class="subtitle">A receive-only passive radar node built on a KrakenSDR five-channel coherent SDR: it listens to reflections of existing FM and UHF TV broadcasts bouncing off aircraft, computes range-Doppler plots with pyAPRiL, and scores every detection against an RTL-SDR ADS-B ground-truth receiver. It emits nothing.</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2026</span>
+      <span class="meta-category">Defence</span>
+      <span class="meta-category">Hardware</span>
+      <span class="meta-category">In Progress</span>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        Canada's <strong>Arctic Over-the-Horizon Radar</strong> (A-OTHR) - based on Australia's JORN
+        design, adapted for RCAF/NORAD, with initial capability due December 2029 - will provide
+        long-range early-warning coverage of the northern approaches as one layer in a sensor picture
+        that also includes conventional radar, airborne, and space-based sensors. Its companion
+        program, <strong>Crossbow</strong>, is a classified Canada-US non-radar sensor network. You
+        can't copy Crossbow, and you shouldn't try.
+      </p>
+      <p>
+        What you <em>can</em> build is the open, hobby-scale, receive-only analogue: a
+        <strong>passive radar node</strong>. Instead of transmitting its own pulses, passive radar
+        listens to reflections of existing broadcast signals - FM radio (88-108 MHz) and UHF TV
+        (~470-600 MHz) - bouncing off aircraft. Because it emits nothing, it is legally clean, RF-silent
+        (it reveals no location of its own), and cheap. A KrakenSDR gives me five phase-coherent receive
+        channels, which is enough to point one antenna at the broadcast transmitter (the
+        <strong>reference</strong> channel) and the rest at the sky (the <strong>surveillance</strong>
+        channels), then cross-correlate the two to find echoes.
+      </p>
+      <p>
+        This is Phase 1 of my <a href="defence-hardware-program.html">Canadian Defence
+        Hardware Program</a>. It is the flagship sky-domain node: every detection it makes will
+        eventually publish over MQTT into the multi-domain common operating picture, fused with the
+        water and ground nodes.
+      </p>
+    </section>
+
+    <section id="proof">
+      <h2>Proof of Build</h2>
+      <img src="../../Prove/Sky%20passive%20aerial%20early-warning%20node.jpeg" alt="KrakenSDR five-channel coherent SDR receiver on the workbench with five whip antennas, Raspberry Pi, and a laptop showing range-Doppler waterfall plots beside a live ADS-B aircraft map" loading="lazy" width="1408" height="768">
+      <p class="diagram-label">The real rig on my bench: the KrakenSDR five-channel coherent receiver with its five whip antennas, a Raspberry Pi running the KrakenSDR software, and a laptop showing range-Doppler waterfall plots beside the live tar1090 ADS-B aircraft map that serves as ground truth.</p>
+      <p>
+        Everything in the photo is already purchased and running. The ADS-B side went live first -
+        a live aircraft map fed by an RTL-SDR - because a passive radar without independent ground
+        truth is just a screensaver. The KrakenSDR and its antennas are the radar side; the laptop is
+        where both halves meet for scoring.
+      </p>
+    </section>
+
+    <section id="bom">
+      <h2>Bill of Materials</h2>
+      <table>
+        <thead><tr><th>Item</th><th>What I used</th><th>Est. US$</th></tr></thead>
+        <tbody>
+          <tr><td>KrakenSDR</td><td>5-channel coherent receiver</td><td>499</td></tr>
+          <tr><td>Antennas</td><td>KrakenRF 5-antenna set for testing</td><td>199</td></tr>
+          <tr><td>Directional antennas</td><td>2 Yagi / log-periodic for FM and UHF TV reference/surveillance</td><td>80-160</td></tr>
+          <tr><td>Compute</td><td>Mini PC (Intel N100 or i5, 16 GB) running Ubuntu</td><td>150-250</td></tr>
+          <tr><td>ADS-B truth</td><td>RTL-SDR Blog V4, 1090 MHz antenna, coax</td><td>50-80</td></tr>
+          <tr><td>RF accessories</td><td>SMA adapters, low-loss coax, optional FM/UHF filter or LNA</td><td>60-100</td></tr>
+          <tr><td>NanoVNA (optional)</td><td>Antenna tuning</td><td>50-70</td></tr>
+        </tbody>
+      </table>
+      <p>
+        Total lands around <strong>US$1,100-1,350</strong>. I started with just the ADS-B kit
+        (~US$100) so the ground-truth logging was collecting data weeks before the KrakenSDR
+        processing chain existed.
+      </p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid" role="img" aria-label="Passive radar signal flow from broadcast illuminators to scored detections">
+flowchart LR
+  TX["FM / UHF TV<br/>broadcast transmitter"]
+  AC["Aircraft<br/>(reflects signal)"]
+  REF["Reference Yagi<br/>(direct signal)"]
+  SUR["Surveillance antennas<br/>(sky-facing)"]
+  KRK["KrakenSDR<br/>5 coherent channels"]
+  MPC["Mini PC<br/>range-Doppler + pyAPRiL"]
+  ADSB["RTL-SDR ADS-B<br/>readsb + tar1090"]
+  SCR["Scorer<br/>detections vs truth"]
+  MQTT[["MQTT bus<br/>fused detections"]]
+  TX -->|direct path| REF
+  TX -->|illuminates| AC
+  AC -->|reflected echo| SUR
+  REF --> KRK
+  SUR --> KRK
+  KRK --> MPC
+  ADSB --> SCR
+  MPC --> SCR
+  SCR --> MQTT
+      </div>
+      <p class="diagram-label">Figure 1: the transmitter is someone else's; the node only receives. Reference and surveillance channels cross-correlate into range-Doppler detections, which are scored against independent ADS-B truth before publishing to the fusion bus.</p>
+    </section>
+
+    <section id="how-building">
+      <h2>How I Built It</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>ADS-B ground truth first (~US$100)</strong>
+            <p>Before any radar work, I put up the truth receiver: an RTL-SDR Blog V4 with a 1090 MHz antenna, running the readsb/dump1090-fa decoder on the mini PC, with tar1090 serving a live aircraft map in the browser. The decoder writes aircraft positions (lat, lon, altitude, heading, speed, ICAO24) to JSON history files, and I log those continuously.</p>
+            <p>This log is the scoring key for everything that follows: for any timestamp, I can say exactly which cooperative aircraft were actually in the airspace and where.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>Illuminator survey</strong>
+            <p>Passive radar is only as good as its illuminators of opportunity, so I mapped my local broadcast landscape: FM stations in 88-108 MHz and UHF TV transmitters around 470-600 MHz, noting each one's frequency, bearing, and received power with the RTL-SDR and a simple spectrum scan. FM gives wide bandwidth-modulated content and long range; UHF TV (ATSC) gives better range resolution.</p>
+            <p>I tuned the two directional antennas - a Yagi for the FM band and a log-periodic covering UHF - with the NanoVNA, checking SWR across each target band and trimming element lengths where needed before committing to a mount.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>KrakenSDR bring-up</strong>
+            <p>The KrakenSDR is five RTL-SDR-class coherent receivers in one box, covering 24-1766 MHz with a shared clock so all channels stay phase-aligned - the property that makes direction-finding and multi-channel passive radar possible at this price. I run the open-source KrakenSDR software stack on the mini PC (a Raspberry Pi 4/5 also works) with the <code>krakensdr_doa</code> software and its GNU Radio-companion DSP chain.</p>
+            <p>The critical step is phase calibration: the unit has a built-in noise source that injects a common signal into all five channels, and the software measures and nulls out per-channel phase and amplitude offsets. I re-run this calibration after any frequency change or cable swap, because correlation quality collapses if the channels drift out of alignment.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>Passive radar chain</strong>
+            <p>Two channels carry the geometry. The <strong>reference</strong> channel points a Yagi directly at the broadcast transmitter and captures the clean direct signal. The <strong>surveillance</strong> channel points at the area of interest and captures that same signal delayed and Doppler-shifted by reflections off aircraft. Cross-correlating surveillance against reference over a bank of Doppler shifts produces a <strong>range-Doppler map</strong>: bistatic range on one axis, Doppler speed on the other, with aircraft appearing as peaks above the clutter ridge at zero Doppler.</p>
+            <p>The bistatic geometry matters: range here is the extra path length (transmitter-to-aircraft-to-receiver minus the direct path), so converting a detection into a map position requires knowing the transmitter location and solving the bistatic ellipse - which is exactly what the processing library in the next step handles.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Processing with pyAPRiL</strong>
+            <p>For the heavy DSP I use <strong>pyAPRiL</strong>, an open-source Python passive-radar library available on PyPI. It implements the full chain: coherent processing interval selection, the cross-ambiguity function for range-Doppler surfaces, clutter filtering (suppressing the direct-path breakthrough and stationary echoes that otherwise swamp aircraft returns), direction-of-arrival estimation across the coherent channels, and target localization from the bistatic geometry.</p>
+            <p>My pipeline streams IQ from the KrakenSDR into pyAPRiL processing blocks on the mini PC's Ubuntu install, with NumPy under the hood; the N100-class CPU keeps up at moderate sample rates, and the 16 GB of RAM matters more than cores because range-Doppler surfaces accumulate in memory.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">06</div>
+          <div class="step-body">
+            <strong>Scoring against ADS-B truth</strong>
+            <p>Every candidate detection from the range-Doppler processing gets compared against the logged ADS-B truth from step 01. For each ADS-B aircraft in view, I compute where it should appear in bistatic range-Doppler space given the illuminator geometry, then check whether the radar actually produced a detection there - and whether it produced detections where no aircraft was.</p>
+            <p>That yields the three numbers that define a radar: <strong>detection rate</strong>, <strong>false-alarm rate</strong>, and <strong>effective range per illuminator</strong>. FM versus UHF TV get scored separately, because the honest answer is usually "it depends on the transmitter."</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">07</div>
+          <div class="step-body">
+            <strong>Multi-node fusion</strong>
+            <p>One node gives range-Doppler blips; two or three nodes at different locations give positions by intersection. The plan is to stand up additional nodes and have each publish its detections over MQTT - the same signed-detections bus the rest of the hardware program uses - into the <a href="multi-domain-common-operating-picture.html">multi-domain common operating picture</a>, where a Kalman-filter tracker fuses them with the water and ground node outputs.</p>
+            <p>Store-and-forward applies here too: nodes buffer detections through dead links and sync on reconnect, the DDIL pattern the rest of the program is built around.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="testing">
+      <h2>Testing &amp; Metrics</h2>
+      <p>
+        The test protocol is built around the ADS-B ground truth, and every run is logged so results
+        are reproducible rather than anecdotal:
+      </p>
+      <ul>
+        <li><strong>Detection rate</strong>: for each logged ADS-B aircraft track, did the passive radar produce a corresponding range-Doppler detection within tolerance? Reported as a percentage per illuminator (FM vs UHF TV) and per range band.</li>
+        <li><strong>False-alarm rate</strong>: detections with no matching ADS-B track, per hour of observation. Clutter-filter tuning is judged mostly on this number.</li>
+        <li><strong>Effective range per illuminator</strong>: the furthest bistatic range at which the detection rate stays useful, measured against ADS-B positions - reported per transmitter, not as one number.</li>
+        <li><strong>Calibration stability</strong>: how long phase calibration holds before range-Doppler quality measurably degrades, which sets the re-calibration interval.</li>
+      </ul>
+      <p>
+        <strong>Results are in progress and not yet published.</strong> The ADS-B truth log has been
+        accumulating since the receiver went live; the range-Doppler chain is producing plots on the
+        bench, and the scored detection/false-alarm dataset will be published once I have enough
+        scored hours per illuminator to make the numbers meaningful. I am deliberately not quoting
+        range or detection-rate figures until then.
+      </p>
+    </section>
+
+    <section id="canada-notes">
+      <h2>Legal &amp; Safety Notes</h2>
+      <div class="note">
+        <strong>Export control:</strong> the KrakenSDR team once pulled its passive-radar code because
+        it appeared to fall under an export-control category covering passive radar. Before publishing
+        radar code, I check Canada's export control rules with Global Affairs Canada - or publish only
+        the write-up, the data, and the metrics. Handling that carefully is itself a good signal to
+        security reviewers.
+      </div>
+      <div class="note">
+        <strong>Receive-only:</strong> everything on this node receives; it never transmits. Jamming is
+        illegal in Canada, and nothing here is capable of interfering with any signal - it only listens
+        to broadcasts that already exist.
+      </div>
+    </section>
+
+    <section id="status">
+      <h2>Status &amp; Roadmap</h2>
+      <ul>
+        <li><strong>Done</strong>: full BOM purchased and on the bench; ADS-B ground-truth receiver live with tar1090 map and continuous position logging; illuminator survey of local FM and UHF TV transmitters; Yagi and log-periodic antennas tuned with the NanoVNA; KrakenSDR phase-calibrated and streaming coherent IQ.</li>
+        <li><strong>In progress</strong>: pyAPRiL range-Doppler chain on the mini PC; clutter-filter tuning against recorded captures; scoring harness that aligns passive-radar detections with the ADS-B truth log.</li>
+        <li><strong>Next</strong>: publish the scored detection-rate / false-alarm / effective-range dataset per illuminator; stand up a second node and fuse detections over MQTT into the multi-domain common operating picture; export-control review with Global Affairs Canada before any radar code is published.</li>
+      </ul>
+    </section>
+
+    <section id="related">
+      <h2>Related Builds</h2>
+      <ul>
+        <li><a href="multi-domain-common-operating-picture.html">Multi-Domain Common Operating Picture</a> - where this node's detections end up: fused with the water and ground nodes over MQTT with a human deciding.</li>
+        <li><a href="acoustic-drone-detector.html">Passive Acoustic Drone Detector</a> - the other receive-only sky sensor in the program, listening for rotor harmonics instead of RF reflections.</li>
+        <li><a href="arctic-domain-awareness.html">Arctic Domain Awareness Digital Twin</a> - the same fusion problem over open ADS-B, AIS, and satellite data at Arctic scale.</li>
+        <li><a href="defence-hardware-program.html">Canadian Defence Hardware Program</a> - the program hub with all builds, phased BOMs, and Canada-specific notes.</li>
+      </ul>
+    </section>
+
+</div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

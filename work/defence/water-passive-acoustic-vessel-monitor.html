@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Water: Passive Acoustic Vessel Monitor | TYFSADIK</title>
+  <meta name="description" content="Dock-mounted hydrophone node that detects and classifies passing vessels from underwater sound, with an RTL-SDR AIS receiver as ground truth, solar power, and a seabed-style dock-and-upload extension.">
+  <meta name="keywords" content="passive acoustic vessel detection, hydrophone Raspberry Pi, Aquarian hydrophone, AIS ground truth RTL-SDR, rtl_ais, vessel classification spectrogram, librosa audio classification, underwater acoustics Canada, Canadian Arctic Sensor Suite, DRDC Northern Watch, seabed sensor node, marine traffic monitoring, solar powered sensor node, MQTT store-and-forward, defence hardware build, TYFSADIK">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <link rel="canonical" href="https://tyfsadik.org/work/defence/water-passive-acoustic-vessel-monitor.html">
+  <meta property="og:title" content="Water: Passive Acoustic Vessel Monitor">
+  <meta property="og:description" content="Dock-mounted hydrophone node that detects and classifies passing vessels from underwater sound, with an RTL-SDR AIS receiver as ground truth, solar power, and a seabed-style dock-and-upload extension.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://tyfsadik.org/work/defence/water-passive-acoustic-vessel-monitor.html">
+  <meta property="og:image" content="https://tyfsadik.org/Prove/Water%20passive%20acoustic%20vessel%20monitor.jpeg">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"CreativeWork","name":"Water: Passive Acoustic Vessel Monitor","author":{"@type":"Person","name":"MD. Taki Yasir Faraji Sadik","url":"https://tyfsadik.org/about.html"},"dateCreated":"2026","inLanguage":"en-CA","keywords":"passive acoustics, hydrophone, vessel classification, AIS ground truth, RTL-SDR, spectrogram, underwater surveillance, Canada"}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Build a Passive Acoustic Vessel Monitor","description":"Dock-mounted hydrophone node that detects and classifies passing vessels from underwater sound, using an RTL-SDR AIS receiver as ground truth.","step":[{"@type":"HowToStep","name":"Capture chain","text":"Connect the hydrophone to a USB audio interface (48 V phantom power for the XLR H2d) and record on a Pi 5 with arecord/sox at 48-96 kHz."},{"@type":"HowToStep","name":"Bench validation","text":"Validate the whole chain in a glass test tank on the bench before any field deployment."},{"@type":"HowToStep","name":"AIS ground truth","text":"Run rtl_ais/AISdecoder on an RTL-SDR Blog V4 with a 162 MHz marine antenna; log MMSI, position, and timestamps to label acoustic events."},{"@type":"HowToStep","name":"Features and classification","text":"Convert audio to spectrograms with librosa/scipy and train a small classifier for boat type and approach/departure via Doppler shift and amplitude envelope."},{"@type":"HowToStep","name":"Field housing and power","text":"Pack the node in an IP67 box with cable glands and a weighted hydrophone assembly; power from 12 V battery, 30-50 W solar, MPPT controller, and DC-DC buck."},{"@type":"HowToStep","name":"Store-and-forward","text":"Buffer detections and audio snippets on high-endurance storage and sync to the common operating picture over MQTT when the link is up."},{"@type":"HowToStep","name":"Docking-node extension","text":"Mount the sensor on a small autonomous boat that returns to a dock node to recharge and upload data - the Dalhousie docking-node pattern."}]}</script>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional - North York, ON, Canada</div>
+    </div>
+    <a href="../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
+        <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content">
+  <div class="container">
+    <div class="content-box">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="defence-hardware-program.html">Defence</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Water: Passive Acoustic Vessel Monitor</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Water: Passive Acoustic Vessel Monitor</h1>
+      <p class="subtitle">A dock-mounted hydrophone node that listens to the water, detects and classifies passing vessels from their machinery and propeller signatures, and uses an RTL-SDR AIS receiver as ground truth - solar powered, receive-only, and built to buffer through dead links.</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2026</span>
+      <span class="meta-category">Defence</span>
+      <span class="meta-category">Hardware</span>
+      <span class="meta-category">In Progress</span>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        This is the water node of my <a href="defence-hardware-program.html">defence hardware program</a>:
+        a hydrophone hanging off a dock (or, later, a mooring), a Raspberry Pi 5 that records and
+        classifies what it hears, and a cheap AIS receiver that tells me what actually went past so the
+        classifier can be trained and scored against reality. Every vessel passage becomes a labelled
+        acoustic event: spectrogram in, vessel class and direction out.
+      </p>
+      <p>
+        The Canadian context is direct. The <strong>Canadian Arctic Sensor Suite Initiative</strong> aims
+        for persistent surveillance from seabed to space, and the underwater leg of that is the hard one.
+        DRDC's <strong>Northern Watch</strong> demonstration ran into problems with installation, ice,
+        technical issues, and data management - the unglamorous parts, not the sensing itself. And in
+        DRDC-linked work at Dalhousie, uncrewed vehicles act as sensor hosts that dock at seabed nodes to
+        recharge and download data, while other DRDC-related work pairs hydrophone arrays with AIS data
+        and ferry GPS as ground truth. This build copies exactly those two patterns at hobby scale: AIS as
+        the labelling source, and a dock-and-upload extension as the roadmap.
+      </p>
+      <p>
+        The node emits nothing. It listens to the water and listens to the 162 MHz AIS band - both
+        receive-only - which keeps it legal, low-power, and hard to detect. What it practices is the layer
+        Northern Watch struggled with: cheap nodes that stay alive, manage their own data, and sync when a
+        link finally appears.
+      </p>
+    </section>
+
+    <section id="proof">
+      <h2>Proof of Build</h2>
+      <img src="../../Prove/Water%20passive%20acoustic%20vessel%20monitor.jpeg" alt="Hydrophone submerged in a glass test tank on the workbench beside a USB audio interface, a Raspberry Pi with RTL-SDR dongle, and a laptop showing live spectrograms and vessel-classification histograms" loading="lazy" width="1376" height="768">
+      <p class="diagram-label">The rig on my bench: the hydrophone submerged in a glass test tank, the USB audio interface and Pi 5 with the RTL-SDR dongle beside it, and the laptop running live spectrograms and classification histograms.</p>
+      <p>
+        Nothing here is simulated. The hydrophone sits in the test tank so the full capture chain -
+        sensor, interface, Pi, classifier - can be exercised with controlled sounds before anything goes
+        near real water. The laptop shows the two views I watch while testing: the live spectrogram of
+        what the hydrophone hears, and the running histogram of classifier outputs.
+      </p>
+    </section>
+
+    <section id="bom">
+      <h2>Bill of Materials</h2>
+      <table>
+        <thead><tr><th>Item</th><th>What I used</th><th>Est. US$</th></tr></thead>
+        <tbody>
+          <tr><td>Hydrophone</td><td>Aquarian A5 (3.5 mm) or H2d-XLR (3 m)</td><td>230-320</td></tr>
+          <tr><td>Audio interface</td><td>USB interface with 48 V phantom power (required for XLR version)</td><td>120-180</td></tr>
+          <tr><td>Compute</td><td>Pi 5 4 GB, active cooler, case</td><td>~105</td></tr>
+          <tr><td>AIS receiver</td><td>RTL-SDR Blog V4 + VHF marine antenna (162 MHz)</td><td>60-90</td></tr>
+          <tr><td>Housing</td><td>IP67 box, cable glands, hydrophone weight assembly</td><td>40-70</td></tr>
+          <tr><td>Power</td><td>12 V battery, 30-50 W solar panel, MPPT controller, DC-DC buck</td><td>150-250</td></tr>
+        </tbody>
+      </table>
+      <p>All components are already purchased and on my bench. Total lands around US$700-1,000 before tax and shipping.</p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid" role="img" aria-label="Data flow: hydrophone and AIS receiver into the Pi, classifier, local buffer, MQTT sync to the common operating picture">
+flowchart LR
+  HYD["Hydrophone<br/>Aquarian A5 / H2d-XLR"]
+  IFACE["USB audio interface<br/>48 V phantom"]
+  AISANT["VHF marine antenna<br/>162 MHz"]
+  SDR["RTL-SDR Blog V4<br/>rtl_ais / AISdecoder"]
+  PI["Pi 5<br/>arecord / sox 48-96 kHz"]
+  FEAT["Spectrograms + features<br/>librosa / scipy"]
+  CLF["Classifier<br/>boat type + direction"]
+  TRUTH[("AIS log<br/>MMSI, position, timestamps")]
+  BUF[("Local buffer<br/>high-endurance SD / NVMe")]
+  MQTT["MQTT sync<br/>store-and-forward"]
+  COP["Common operating picture"]
+  HYD --> IFACE --> PI
+  AISANT --> SDR --> TRUTH
+  PI --> FEAT --> CLF
+  TRUTH -.->|"labels + scoring"| CLF
+  CLF --> BUF
+  TRUTH --> BUF
+  BUF --> MQTT --> COP
+      </div>
+      <p class="diagram-label">Figure 1: two receive-only sensors feed the Pi; the AIS stream labels and scores the acoustic classifier; everything buffers locally and syncs over MQTT when a link exists.</p>
+    </section>
+
+    <section id="how-building">
+      <h2>How I Built It</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>Capture chain: hydrophone to Pi</strong>
+            <p>The hydrophone feeds a USB audio interface, which the Pi 5 sees as a standard ALSA device. For the XLR version of the H2d I enable the interface's 48 V phantom power; the 3.5 mm A5 variant needs no phantom. Recording is plain Linux tooling: <code>arecord</code> for scripted captures (<code>arecord -D hw:1,0 -f S32_LE -r 96000</code>) and <code>sox</code>/<code>rec</code> for quick clips, at 48-96 kHz depending on how much high-frequency content I want for propeller harmonics.</p>
+            <p>The higher sample rate matters: small-boat propellers and outboards put useful energy well above 20 kHz, and the 96 kHz capture keeps that in band for the classifier.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>Bench validation in the test tank</strong>
+            <p>Before any field deployment, the whole chain gets validated in the glass test tank on my bench - the setup in the photo above. I play recorded vessel signatures and swept tones through a speaker coupled to the tank, check the noise floor, verify the phantom-powered path against the 3.5 mm path, and confirm the spectrogram pipeline sees what it should. If it cannot hear a known signal in a tank, it has no business on a dock.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>AIS ground truth</strong>
+            <p>The RTL-SDR Blog V4 with a 162 MHz marine antenna runs <code>rtl_ais</code> (with <code>AISdecoder</code> as the alternative demodulator) covering both AIS channels at 161.975 and 162.025 MHz. Every decoded message gets logged with MMSI, position, speed, course, and timestamp.</p>
+            <p>That log is the labelling machine. A strong acoustic event whose window lines up with an AIS track passing the node becomes a labelled sample - vessel type from the AIS static data, approach versus departure from the range trend. This mirrors the DRDC-related work that pairs hydrophone arrays with AIS and ferry GPS as ground truth, minus the budget.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>Features and classification</strong>
+            <p>Audio windows become mel spectrograms with <code>librosa</code> (and <code>scipy.signal</code> for narrowband line tracking of propeller blade-rate harmonics). A small classifier - deliberately small, it has to run on the Pi 5 - predicts vessel class from the labelled dataset built in step 03.</p>
+            <p>Direction comes free from physics: an approaching vessel's signature shows a slight Doppler upshift that relaxes downward at closest point of approach, and the amplitude envelope rises then falls. The classifier scores approach/departure from those two cues and the AIS log grades the answer.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Field housing and power</strong>
+            <p>Field kit is an IP67 box with cable glands for the hydrophone lead, antenna feed, and solar input. The hydrophone hangs on a weighted assembly so it sits below the surface and away from dock slap. Power is a 12 V battery charged by a 30-50 W panel through an MPPT controller, with a DC-DC buck delivering clean 5 V to the Pi 5 - sized for grey Canadian weeks, not best-case sun.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">06</div>
+          <div class="step-body">
+            <strong>Store-and-forward sync</strong>
+            <p>Detections, classifier confidence, and short audio snippets buffer locally on high-endurance storage (microSD now, NVMe on the M.2 HAT as the dataset grows). When a link is up, the node publishes signed detection messages over MQTT to the <a href="multi-domain-common-operating-picture.html">multi-domain common operating picture</a>; when the link is down, it keeps collecting and syncs the backlog on reconnect.</p>
+            <p>That store-and-forward discipline is the same pattern I work through in <a href="ddil-proof-devops.html">DDIL-Proof DevOps</a> - the water node is one of its field test cases.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">07</div>
+          <div class="step-body">
+            <strong>Extension: the docking node</strong>
+            <p>The roadmap copies the Dalhousie pattern: mount the sensor package on a small autonomous boat that patrols, then returns to a dock node to recharge and upload its data physically - the seabed docking-node concept, at pond-and-lake scale. The dock node reuses everything above: same buffer format, same MQTT sync, just a hull that comes to the data link instead of waiting for one.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="testing">
+      <h2>Testing &amp; Metrics</h2>
+      <p>
+        The test protocol has three phases, each with defined targets; results will be published with the
+        dataset as runs complete.
+      </p>
+      <ul>
+        <li><strong>Tank validation (bench)</strong>: known signals played into the test tank - swept tones and recorded vessel signatures. Target: the capture chain reproduces the reference spectrogram with no dropouts at 48 kHz and 96 kHz, and the noise floor stays stable across an overnight soak.</li>
+        <li><strong>Field detection vs AIS (dock deployment)</strong>: over multi-day collection windows, every AIS-logged vessel passage within the node's listening area is checked against the acoustic event log. Metrics: detection rate (fraction of AIS passages with a matching acoustic event), false-event rate per hour, and timestamp offset between acoustic detection and AIS position.</li>
+        <li><strong>Classification scoring</strong>: on the labelled dataset, per-class precision/recall for vessel type and approach/departure direction, reported as a confusion matrix - no single headline number.</li>
+      </ul>
+      <p>
+        As of writing, tank validation is running and field collection has not started; no detection-rate
+        numbers exist yet and I won't quote any until the AIS-scored windows are done.
+      </p>
+      <div class="note">
+        <strong>Passive listening only:</strong> this node never transmits in the marine bands - not on
+        VHF, not acoustically. It receives AIS and listens to the water, and that is all. Transmitting to
+        interfere with marine radio or navigation systems is illegal in Canada and has no place here.
+      </div>
+      <div class="note">
+        <strong>Privacy:</strong> the classifier is tuned to machinery and propeller signatures - engine
+        harmonics, blade-rate lines, broadband cavitation. Voices are not a target and are not analyzed;
+        the features the pipeline extracts (spectrograms, narrowband lines, envelopes) are poor at speech
+        by design.
+      </div>
+    </section>
+
+    <section id="status">
+      <h2>Status &amp; Roadmap</h2>
+      <ul>
+        <li><strong>Done</strong>: all components purchased and on the bench; capture chain working at 48/96 kHz through the USB interface; test-tank rig assembled; rtl_ais decoding live AIS traffic with MMSI/position/timestamp logging; spectrogram pipeline running on the Pi 5.</li>
+        <li><strong>In progress</strong>: tank validation soak tests; labelling pipeline that joins acoustic events to AIS tracks; first classifier training on the accumulating labelled dataset; IP67 housing and weighted hydrophone assembly.</li>
+        <li><strong>Next</strong>: solar/MPPT power integration and first dock deployment; AIS-scored detection-rate runs; MQTT sync into the common operating picture; then the autonomous-boat docking-node extension.</li>
+      </ul>
+    </section>
+
+    <section id="related">
+      <h2>Related Builds</h2>
+      <ul>
+        <li><a href="defence-hardware-program.html">Canadian Defence Hardware Program</a> - the program hub; this is the water node (Phase 2).</li>
+        <li><a href="multi-domain-common-operating-picture.html">Multi-Domain Common Operating Picture</a> - where this node's signed detections end up.</li>
+        <li><a href="ddil-proof-devops.html">DDIL-Proof DevOps</a> - the store-and-forward patterns the field sync reuses.</li>
+        <li><a href="arctic-domain-awareness.html">Arctic Domain Awareness Digital Twin</a> - the same AIS-as-truth idea over open data at Arctic scale.</li>
+      </ul>
+    </section>
+
+</div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

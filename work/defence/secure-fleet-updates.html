@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Secure Robot-Fleet Updates | TYFSADIK</title>
+  <meta name="description" content="Secure boot, TPM 2.0 measured boot, YubiKey-signed over-the-air updates, and automatic A/B rollback for a small robot fleet - supply-chain integrity from Canada's Defence Drone Initiative applied to real hardware and tested in a cold chamber.">
+  <meta name="keywords" content="secure boot Raspberry Pi, TPM 2.0 measured boot, YubiKey Ed25519 signing, secure OTA updates, RAUC A/B rollback, Mender, cosign image signing, syft SBOM, supply chain security, robot fleet management, LUKS TPM sealing, Defence Drone Initiative, MINERVA challenge, cold chamber testing, DRDC, Canadian defence technology">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <link rel="canonical" href="https://tyfsadik.org/work/defence/secure-fleet-updates.html">
+  <meta property="og:title" content="Secure Robot-Fleet Updates">
+  <meta property="og:description" content="Secure boot, TPM 2.0 measured boot, YubiKey-signed OTA updates, and automatic A/B rollback for a small robot fleet - supply-chain integrity applied to real hardware and validated in a cold chamber.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://tyfsadik.org/work/defence/secure-fleet-updates.html">
+  <meta property="og:image" content="https://tyfsadik.org/Prove/Secure%20robot-fleet%20updates.jpeg">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"CreativeWork","name":"Secure Robot-Fleet Updates","author":{"@type":"Person","name":"MD. Taki Yasir Faraji Sadik","url":"https://tyfsadik.org/about.html"},"dateCreated":"2026","inLanguage":"en-CA","keywords":"secure boot, TPM 2.0 measured boot, YubiKey Ed25519, secure OTA, A/B rollback, SBOM, supply-chain integrity, Defence Drone Initiative"}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Secure Robot-Fleet Updates","description":"Build a robot fleet that boots only signed code, accepts only updates signed by an offline key, and rolls a bad update back automatically.","step":[{"@type":"HowToStep","name":"Secure boot chain on the Pi","text":"Enable Raspberry Pi secure boot with a signed bootloader and kernel so unsigned code never executes."},{"@type":"HowToStep","name":"TPM 2.0 measured boot","text":"Record each boot stage in TPM PCRs and seal disk-encryption keys to the measured state so a tampered image cannot decrypt user data."},{"@type":"HowToStep","name":"Signing infrastructure","text":"Sign images with Ed25519 keys held on a YubiKey, keep the backup key offline, generate an SBOM with syft, and verify with cosign-style verification."},{"@type":"HowToStep","name":"A/B OTA mechanism","text":"Deploy A/B partition updates with RAUC or Mender: the new image boots once on trial and falls back to the last-known-good slot if health checks fail."},{"@type":"HowToStep","name":"Fleet server","text":"Run a homelab fleet server with per-device identity, per-device update policies, and store-and-forward update campaigns."},{"@type":"HowToStep","name":"Cold-chamber validation","text":"Apply and roll back updates with the target at freezer temperatures, because flash and SD cards behave differently in the cold."},{"@type":"HowToStep","name":"Chaos tests","text":"Corrupt an image mid-transfer and kill power mid-flash, then prove the device always returns to a signed, working state."}]}</script>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional - North York, ON, Canada</div>
+    </div>
+    <a href="../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
+        <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content">
+  <div class="container">
+    <div class="content-box">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="defence-hardware-program.html">Defence</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Secure Robot-Fleet Updates</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Secure Robot-Fleet Updates</h1>
+      <p class="subtitle">Every node in my fleet boots only signed code, accepts only updates signed by an offline key, and rolls a bad update back automatically - then I prove it in a freezer, because that is where Canadian robots actually work.</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2026</span>
+      <span class="meta-category">Defence</span>
+      <span class="meta-category">Hardware</span>
+      <span class="meta-category">In Progress</span>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        The Army's <strong>MINERVA challenges</strong> say it plainly: Canada has bought foreign
+        robotic systems of mixed quality, with components from unstable supply chains. The
+        <strong>Defence Drone Initiative (launched July 23, 2026)</strong> makes supply-chain
+        integrity a theme rather than an afterthought. A drone or ground robot that will accept
+        any firmware image anyone hands it is a liability, no matter how good its sensors are.
+      </p>
+      <p>
+        This build connects my DevOps discipline to hardware. The fleet is small - the Raspberry Pi
+        nodes from my rover and sensor builds - but the rules are the ones a real program needs:
+      </p>
+      <ul>
+        <li><strong>Every device boots only signed code</strong> - a secure-boot chain from the bootloader up, with a TPM 2.0 measuring each stage and holding the disk keys hostage to that measurement.</li>
+        <li><strong>Every update is signed by an offline key</strong> - Ed25519 keys that live on YubiKeys, not on any machine connected to a network.</li>
+        <li><strong>A bad update rolls itself back</strong> - A/B partitions with health checks, so a broken image never strands a node in the field.</li>
+      </ul>
+      <p>
+        And because these robots are meant to operate in the cold - the same cold the MINERVA
+        documents complain about - the whole update-and-rollback cycle gets validated in a freezer,
+        not just on a warm bench.
+      </p>
+    </section>
+
+    <section id="proof">
+      <h2>Proof of Build</h2>
+      <img src="../../Prove/Secure%20robot-fleet%20updates.jpeg" alt="Secure robot controller board wired to a TPM 2.0 module on the workbench with an oscilloscope and a laptop showing a verified secure-boot log, TPM integrity status, and an automated rollback interface" loading="lazy" width="1408" height="768">
+      <p class="diagram-label">The rig on my bench: a Raspberry Pi fleet node wired to its TPM 2.0 module, with the oscilloscope alongside and the laptop showing a verified secure-boot log, TPM integrity status, and the rollback interface after a forced bad-update test.</p>
+    </section>
+
+    <section id="bom">
+      <h2>Bill of Materials</h2>
+      <p>
+        Everything below is already purchased and on my bench. The fleet nodes themselves are shared
+        with the rover and sensor builds, so the incremental cost of making the whole fleet
+        trustworthy is essentially the TPM and the keys.
+      </p>
+      <table>
+        <thead><tr><th>Item</th><th>What I used</th><th>Est. US$</th></tr></thead>
+        <tbody>
+          <tr><td>TPM</td><td>TPM 2.0 add-on board for the Pi</td><td>25-40</td></tr>
+          <tr><td>Signing keys</td><td>2 YubiKeys (one as backup)</td><td>100-110</td></tr>
+          <tr><td>Targets</td><td>Raspberry Pi fleet nodes from the rover/sensor builds</td><td>(shared)</td></tr>
+          <tr><td>Cold chamber</td><td>Canadian winter (free) or chest freezer (shared with the cold-soak rig)</td><td>0-300</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid" role="img" aria-label="Secure update architecture: offline signing to fleet nodes with automatic rollback">
+flowchart LR
+  subgraph Off["OFFLINE SIGNING"]
+    YK["YubiKey<br/>Ed25519 root key"]
+    BUILD["Image build<br/>syft SBOM + sign"]
+  end
+  subgraph Hub["HOMELAB FLEET SERVER"]
+    SRV["Update server<br/>per-device identity + policy"]
+    SF["Store-and-forward<br/>campaign queue"]
+  end
+  subgraph Node["FLEET NODE (Pi)"]
+    BL["Signed bootloader<br/>+ kernel"]
+    TPM["TPM 2.0<br/>measured boot (PCRs)"]
+    AB["A/B slots<br/>RAUC"]
+    HC["Health checks<br/>auto rollback"]
+  end
+  YK --> BUILD --> SRV --> SF --> AB
+  BL --> TPM --> AB
+  AB --> HC
+  HC -->|"checks fail"| AB
+      </div>
+      <p class="diagram-label">Figure 1: images are signed by a key that never touches a network, delivered through a store-and-forward campaign queue, and installed into the inactive A/B slot - health checks decide whether the new slot stays or the node rolls back.</p>
+      <p>
+        Two trust chains meet here. The <strong>boot chain</strong> (signed bootloader, signed
+        kernel, TPM measurement) guarantees the node runs only what I signed. The
+        <strong>update chain</strong> (offline signing, per-device policy, A/B slots with
+        automatic fallback) guarantees I can change what it runs without ever being able to brick
+        it. A node that misses a campaign because its link is down simply picks the bundle up when
+        the link returns - the same DDIL store-and-forward pattern as my field nodes.
+      </p>
+    </section>
+
+    <section id="how-building">
+      <h2>How I Built It</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>Secure boot chain on the Pi</strong>
+            <p>I enabled Raspberry Pi secure boot so the chain from the EEPROM bootloader to the kernel is signature-checked end to end. Using the <code>usbboot</code> tooling, I generated the device key pair, programmed the public key hash into the Pi's OTP, and signed <code>boot.img</code> (which bundles the kernel, initramfs, and device tree) with the private key. With <code>SIGNED_BOOT=1</code> set in the EEPROM config, the board refuses to execute any boot image that does not verify - an unsigned or tampered kernel simply never runs.</p>
+            <p>The private half of that key lives offline. The Pi that has OTP programmed is now a device that will only ever boot my code, which is exactly the property the rest of the stack builds on.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>TPM 2.0 measured boot and sealed disk keys</strong>
+            <p>The TPM 2.0 add-on board rides the Pi's SPI header. Each boot stage - bootloader, kernel, initramfs, rootfs hash - extends a Platform Configuration Register, so the TPM ends up holding a hash chain of exactly what booted. I inspect it with <code>tpm2-tools</code> (<code>tpm2_pcrread</code>) and verify the event log matches expectations.</p>
+            <p>The root filesystem is LUKS-encrypted, and the LUKS key is sealed to the TPM's measured state with <code>systemd-cryptenroll --tpm2-device</code> bound to a PCR policy. The consequence is the one that matters: if anyone swaps in a modified image, the PCRs change, the TPM refuses to unseal, and the tampered image cannot decrypt user data. Tampering is not just detected - it is useless.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>Signing infrastructure: YubiKey, SBOM, cosign-style verification</strong>
+            <p>Update images are signed with Ed25519 keys held on a YubiKey - the private key was generated on the device and cannot be exported. The build machine talks to it over PKCS#11 / OpenPGP-card interfaces only for the signing operation itself. The backup key lives on a second YubiKey, generated the same way, stored separately and offline.</p>
+            <p>Every image build also produces an SBOM with <code>syft</code> (SPDX output, committed alongside the image), and the signature is verified cosign-style before any node will install: signature over the image digest, checked against the known public key, with the SBOM as the provenance record of what is inside. This is the same pipeline discipline as my <a href="zero-trust-air-gapped-supply-chain.html">zero-trust air-gapped supply chain</a> project, applied to physical devices instead of containers.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>A/B over-the-air updates with automatic rollback</strong>
+            <p>Each node runs an A/B partition scheme: two rootfs slots, one active and one idle. An update is a signed bundle (RAUC format - <code>rauc bundle</code> to build, <code>rauc install</code> on the node) that writes to the inactive slot, so the running system is never touched mid-update. The bootloader is configured to try the new slot exactly once.</p>
+            <p>After the trial boot, a health-check service has to confirm the essentials - system services up, TPM attestation clean, heartbeat to the fleet server established - and only then marks the slot good with <code>rauc status mark-good</code>. If any check fails or the mark never arrives, the bootloader falls back to the last-known-good slot on the next reset, automatically. A bad update is an inconvenience measured in one reboot, not a bricked field node.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Fleet server: identity, policy, campaigns</strong>
+            <p>The homelab runs the fleet server. Every node enrols with its own device identity (a per-device certificate, with the TPM holding the node's private key where possible), so an update campaign is targeted and auditable: which devices, which image version, what rollout order. Policies are per-device - a rover in active testing gets builds more often than a deployed sensor node.</p>
+            <p>Delivery is store-and-forward. Nodes that are offline - or behind a link that drops - do not miss a campaign; the bundle waits and transfers when the link returns, resuming partial downloads rather than restarting. These are the same DDIL patterns as my <a href="ddil-proof-devops.html">DDIL-proof DevOps</a> build, because a robot on a degraded mesh and a laptop on hotel Wi-Fi are the same problem.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">06</div>
+          <div class="step-body">
+            <strong>Cold-chamber validation</strong>
+            <p>The update-and-rollback cycle is tested cold, not just on the bench. The node goes into the chest freezer (shared with the cold-soak rig) with the temperature logged alongside the update logs, and I run the full sequence at freezer temperatures around -20 &deg;C: enrol, download, verify, install to the idle slot, trial boot, health check, mark-good - and then the same again with a deliberately bad image to force a cold rollback.</p>
+            <p>This matters because flash and SD cards genuinely behave differently in the cold - slower, higher error rates, occasional marginal reads at temperature extremes. A rollback mechanism that has only ever been tested at room temperature is an assumption, not a capability.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">07</div>
+          <div class="step-body">
+            <strong>Chaos tests</strong>
+            <p>The final gate is deliberately breaking things. I corrupt an image mid-transfer (truncated bundles, flipped bytes in the payload), kill power mid-flash with a switched power strip at random points in the write, and feed the node a correctly-structured bundle with an invalid signature. Each fault is injected repeatedly, not once.</p>
+            <p>The pass criterion is absolute and binary: after any fault, in any order, at any temperature in the test matrix, the device must return to a signed, working state - either the new verified slot or the last-known-good one - with no manual intervention. Anything less fails the test and gets fixed before the fleet grows.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="testing">
+      <h2>Testing &amp; Metrics</h2>
+      <p>
+        The test protocol treats trust properties as measurable, pass/fail things:
+      </p>
+      <ul>
+        <li><strong>Boot-chain negative tests:</strong> unsigned image, validly-signed image from the wrong key, and a signed image with one byte flipped - all three must refuse to boot. Target: zero acceptances across the matrix.</li>
+        <li><strong>TPM attestation:</strong> PCR values logged at every boot and compared against the known-good measurement; any unexpected change must block disk decryption. The sealed-key test is rerun after every legitimate update, since a new image changes the measurements and the policy must be re-sealed.</li>
+        <li><strong>Update-cycle reliability:</strong> repeated full campaigns (enrol, transfer, verify, install, trial boot, mark-good) across the fleet, with success counted per stage. Deliberately-bad-image campaigns measure rollback: every one must end on the last-known-good slot.</li>
+        <li><strong>Cold matrix:</strong> the same campaigns run at room temperature, freezer temperature (~-20 &deg;C), and during warm-up, to catch cold-specific flash and SD behaviour.</li>
+        <li><strong>Fault injection:</strong> mid-transfer corruption and mid-flash power cuts, repeated, warm and cold. Pass criterion: always returns to a signed, working state with zero manual recovery.</li>
+      </ul>
+      <p>
+        Full numbers (campaign counts, rollback rates, cold-vs-warm failure comparison) will be
+        published once the test matrix has accumulated enough runs to mean something; that work is
+        in progress. The negative boot-chain tests and the basic rollback path are already passing
+        on the bench rig.
+      </p>
+      <div class="note">
+        <strong>Key discipline:</strong> the root signing key lives on a YubiKey that never touches a
+        networked machine - signing happens on an offline machine, and only signed bundles cross to
+        the fleet server. The backup key is stored separately and offline, so losing or
+        compromising any single device cannot produce a valid signature.
+      </div>
+    </section>
+
+    <section id="status">
+      <h2>Status &amp; Roadmap</h2>
+      <ul>
+        <li><strong>Done</strong>: hardware on the bench (TPM board, both YubiKeys, fleet nodes); secure-boot chain with signed bootloader and kernel; TPM measured boot with LUKS keys sealed to PCRs; basic A/B update with manual health-check confirmation; first cold rollback runs in the freezer.</li>
+        <li><strong>In progress</strong>: automated health-check gate and mark-good flow; per-device enrolment and campaign policies on the homelab fleet server; store-and-forward delivery for nodes on degraded links; accumulating the cold-temperature test matrix.</li>
+        <li><strong>Next</strong>: full chaos-test battery (mid-transfer corruption, mid-flash power cuts) warm and cold; publish the test dataset (campaign counts, rollback rate vs temperature); extend enrolment to every rover and sensor node in the program.</li>
+      </ul>
+    </section>
+
+    <section id="related">
+      <h2>Related Builds</h2>
+      <ul>
+        <li><a href="defence-hardware-program.html"><strong>Canadian Defence Hardware Program</strong></a> - the hub: every build, the full phased BOM, and the Canadian requirements each one answers.</li>
+        <li><a href="zero-trust-air-gapped-supply-chain.html"><strong>Zero-Trust Air-Gapped Supply Chain</strong></a> - the signing, SBOM, and provenance discipline this fleet inherits, proven on containers first.</li>
+        <li><a href="ddil-proof-devops.html"><strong>DDIL-Proof DevOps</strong></a> - the store-and-forward delivery patterns the fleet server reuses for nodes on degraded links.</li>
+        <li><a href="cold-soak-battery-rig.html"><strong>Cold-Soak Characterization Rig</strong></a> - the shared chest freezer and instrumentation behind this build's cold-chamber update tests.</li>
+      </ul>
+    </section>
+
+</div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>
