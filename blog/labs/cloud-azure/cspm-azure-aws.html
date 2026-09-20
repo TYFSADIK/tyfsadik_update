@@ -53,14 +53,17 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">Prowler</span><span class="tag">ScoutSuite</span><span class="tag">Terraform</span><span class="tag">Azure Policy</span><span class="tag">CIS Benchmark</span></div>
     </div>
 
-    <section><p class="lead">I built a multi-cloud CSPM workflow that audits AWS and Azure against CIS benchmarks with Prowler and ScoutSuite, then remediates drift with Terraform. The first audit surfaced 47 misconfigurations and closed every public S3 bucket exposure within one hour.</p></section>
+    <section><p class="lead">I built a multi-cloud CSPM workflow that audits AWS and Azure against CIS benchmarks with Prowler and ScoutSuite, then remediates drift with Terraform. The first audit surfaced 47 misconfigurations and closed every public S3 bucket exposure within one hour.</p>
+      <p>The workflow has three properties I cared about: the scanners authenticate with read-only roles so the audit itself cannot become an attack path, every fix is expressed as infrastructure code so it can be reviewed and rolled back, and the scans run on a schedule so posture becomes a trend line instead of a one-off snapshot. This page walks the whole loop end to end: standing up least-privilege credentials, running Prowler against AWS and ScoutSuite against Azure, remediating the worst findings with Terraform and Azure Policy, and wiring up recurring scans that catch drift before an auditor - or an attacker - does.</p></section>
 
     <section><h2>Context &amp; Standards Alignment</h2>
       <p>Cloud misconfiguration, not exploitation, drives most cloud breaches. This lab continuously measures posture against CIS AWS Foundations and CIS Azure benchmarks and enforces guardrails with policy-as-code.</p>
+      <p>CIS benchmarks are prescriptive, community-reviewed configuration guides published per platform, organized into Level 1 (baseline hygiene every environment should meet) and Level 2 (defense-in-depth for sensitive workloads). I benchmarked against Level 1 first: failing Level 1 controls like public object storage, a root account without MFA, or missing multi-region audit logging are the exact misconfigurations behind most real-world cloud breaches. Mapping each finding family to MITRE ATT&amp;CK techniques keeps the work threat-informed instead of checklist-driven - it answers "why does this control matter" with a concrete attack path:</p>
       <ul>
         <li><strong>T1530 Data from Cloud Storage Object</strong> – detection of public buckets/blobs.</li>
         <li><strong>T1078.004 Cloud Accounts</strong> – IAM privilege-escalation path scanning.</li>
       </ul>
+      <p>T1530 is why public S3 buckets and anonymous blob access sit at the top of the remediation queue: any internet client can enumerate and read the data. T1078.004 is why IAM findings (root without MFA, wildcard policies, access keys older than 90 days) come next - a stolen or guessed valid cloud credential converts directly into control-plane access without exploiting anything.</p>
       <div class="mermaid" role="img" aria-label="Multi-cloud audit architecture">
 flowchart LR
   subgraph AWS
@@ -81,6 +84,36 @@ flowchart LR
         <li>Prowler 3.x, ScoutSuite, Terraform 1.7, Azure CLI, AWS CLI v2.</li>
         <li>CI runner with scheduled scans; findings stored for trend analysis.</li>
       </ul>
+      <p>Everything runs from one Linux bastion host (a small VM is fine). Install the toolchain once in a virtual environment and confirm versions before auditing - Prowler 3.x and ScoutSuite both pin specific SDK versions, so mixing pip and distro packages causes subtle breakage:</p>
+      <p class="code-label">INSTALL - audit toolchain on the bastion host</p>
+      <pre><code>python3 -m venv ~/cspm-venv &amp;&amp; source ~/cspm-venv/bin/activate
+pip install prowler-cloud scoutsuite
+terraform -version   # Terraform v1.7.x
+aws --version        # aws-cli/2.x
+az version           # azure-cli 2.x</code></pre>
+      <p>On AWS, the scan identity is a dedicated role holding the managed <code>SecurityAudit</code> and <code>ViewOnlyAccess</code> policies - read-only by design, so a leaked scanner credential still cannot change anything:</p>
+      <p class="code-label">AWS - create the read-only audit role (run once with admin credentials)</p>
+      <pre><code>aws iam create-role --role-name ProwlerAuditRole \
+  --assume-role-policy-document file://trust-policy.json
+aws iam attach-role-policy --role-name ProwlerAuditRole \
+  --policy-arn arn:aws:iam::aws:policy/SecurityAudit
+aws iam attach-role-policy --role-name ProwlerAuditRole \
+  --policy-arn arn:aws:iam::aws:policy/job-function/ViewOnlyAccess
+aws sts get-caller-identity   # confirm who you are before scanning</code></pre>
+      <p class="code-label">Expected output (illustrative)</p>
+      <pre><code>{
+    "UserId": "AROAXAMPLE:cspm-scan-session",
+    "Account": "123456789012",
+    "Arn": "arn:aws:sts::123456789012:assumed-role/ProwlerAuditRole/cspm-scan-session"
+}</code></pre>
+      <p>On Azure, sign in with the CLI and confirm the session lands on the intended subscription. The scanning identity needs <strong>Reader</strong> plus <strong>Security Reader</strong> at subscription scope - without them, Microsoft Defender for Cloud data and several policy states come back empty, which looks exactly like "no findings":</p>
+      <p class="code-label">AZURE - log in and confirm subscription context</p>
+      <pre><code>az login
+az account set --subscription "Pay-As-You-Go-Lab"
+az account show --query "{name:name, id:id, state:state}" -o table
+az role assignment list --assignee $(az ad signed-in-user show --query id -o tsv) \
+  --query "[].{role:roleDefinitionName, scope:scope}" -o table</code></pre>
+      <p><strong>Common mistake:</strong> scanning the wrong subscription or AWS account because of stale CLI context. Always run <code>az account show</code> and <code>aws sts get-caller-identity</code> first and record the account IDs at the top of the findings report - otherwise you cannot later prove which environment a finding belonged to.</p>
       <div class="mermaid" role="img" aria-label="Remediation workflow from finding to verified fix">
 flowchart TB
   F[Finding] --> Pr[Prioritize CIS level]
@@ -91,39 +124,184 @@ flowchart TB
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
+      <p>The workflow runs as two loops. The audit loop scans both clouds against CIS and writes findings to disk; the remediation loop fixes findings as infrastructure code, applies the change, and re-scans the same checks to prove they pass. Nothing is fixed by clicking in a console - console fixes cannot be reviewed, repeated, or rolled back.</p>
+
       <h3>1. Run a Prowler CIS audit against AWS</h3>
+      <p><strong>What:</strong> Prowler executes several hundred checks mapped to the CIS AWS Foundations Benchmark v2.0 and writes machine-readable output - CSV for spreadsheets, JSON for dashboards. <strong>Why the compliance flag:</strong> scoping the run to <code>cis_2.0_aws</code> keeps the first audit focused on an agreed baseline instead of an unmanageable wall of findings from every framework at once.</p>
       <div class="command-block"><div class="command"><code>prowler aws -compliance cis_2.0_aws -M csv json -o ./out</code></div></div>
 <pre><code class="language-bash">FAIL s3_bucket_public_access: 3 buckets public
 FAIL iam_root_mfa_enabled: root MFA disabled
 PASS cloudtrail_multi_region_enabled</code></pre>
+      <p>Expect the first full run to take 10-20 minutes on a fresh account. When it finishes, build a severity picture from the CSV before diving into individual findings:</p>
+      <p class="code-label">TRIAGE - count failures and rank the noisiest checks</p>
+      <pre><code>cd ./out
+grep -c ";FAIL;" prowler-output-*.csv
+grep ";FAIL;" prowler-output-*.csv | cut -d';' -f4 | sort | uniq -c | sort -rn | head</code></pre>
+      <p class="code-label">Expected output (illustrative)</p>
+      <pre><code>47
+     12 s3_bucket_public_access
+      8 ec2_securitygroup_allow_ingress_from_any_ip_to_any_port
+      6 iam_access_key_rotated_90_days
+      4 iam_root_mfa_enabled</code></pre>
+      <p><strong>How to verify:</strong> generate the HTML summary too (<code>prowler aws -M html</code>) and confirm its FAIL count matches the CSV. <strong>Common mistake:</strong> running Prowler with credentials missing a service's read permissions - those checks silently report as INFO or get skipped, so a "clean" result can actually mean "could not look". Check the run summary line for skipped checks before trusting the score.</p>
 
       <h3>2. Audit Azure with ScoutSuite</h3>
+      <p><strong>What:</strong> ScoutSuite pulls the Azure management-plane configuration through the authenticated CLI session and renders an offline HTML report with findings grouped by service and CIS control. <strong>Why ScoutSuite here:</strong> its Azure coverage (Entra ID, Storage, Networking, SQL Database) complements Prowler, whose Azure module was still maturing at the time of this lab.</p>
       <div class="command-block"><div class="command"><code>scout azure -cli -report-dir ./azure-out</code></div></div>
+      <p>The run drops a self-contained report under <code>./azure-out/scoutsuite-results/</code> (an HTML report plus a raw results file). To triage from the terminal instead of clicking through the report, rank findings by their flagged-item counts:</p>
+      <p class="code-label">TRIAGE - noisiest Azure findings from the raw results</p>
+      <pre><code>grep -rho '"flagged_items": [0-9]*' ./azure-out/scoutsuite-results/ | sort -t: -k2 -rn | head</code></pre>
+      <p class="code-label">Expected output (illustrative)</p>
+      <pre><code>"flagged_items": 6
+"flagged_items": 4
+"flagged_items": 2</code></pre>
+      <p>In this environment the top counts were storage accounts not requiring secure transfer (6), NSG rules allowing any:any inbound (4), and SQL databases with auditing disabled (2). <strong>How to verify:</strong> spot-check two flagged resources directly with <code>az</code> - for example <code>az storage account show -n &lt;acct&gt; --query enableHttpsTrafficOnly</code> - and confirm the report matches reality. <strong>Common mistake:</strong> treating every flagged item as equally urgent. ScoutSuite flags informational gaps too; cross-reference each item against its CIS Azure Foundations control ID before queueing it for remediation.</p>
 
       <h3>3. Remediate a public bucket with Terraform</h3>
+      <p><strong>What:</strong> the highest-severity AWS findings were three publicly readable S3 buckets (ATT&amp;CK T1530). The fix is an <code>aws_s3_bucket_public_access_block</code> resource per bucket, expressed in Terraform so the change is code-reviewed, versioned, and repeatable. <strong>Why all four flags:</strong> ACLs and bucket policies are independent exposure paths - blocking only one leaves the other open.</p>
+      <p class="code-label">main.tf - block public access on the offending buckets</p>
+      <pre><code>resource "aws_s3_bucket_public_access_block" "fix" {
+  for_each = toset(["legacy-logs-2023", "team-assets", "backup-export-tmp"])
+
+  bucket                  = each.key
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}</code></pre>
+      <p>Preview before applying - the plan must show only the access-block resources being created, with nothing modified or destroyed:</p>
+      <p class="code-label">PLAN - review the exact change set first</p>
+      <pre><code>terraform init
+terraform plan -out=fix.tfplan</code></pre>
       <div class="command-block"><div class="command"><code>terraform apply -target=aws_s3_bucket_public_access_block.fix -auto-approve</code></div></div>
 <pre><code class="language-bash">aws_s3_bucket_public_access_block.fix: Creation complete
 Apply complete! Resources: 1 added, 0 changed, 0 destroyed.</code></pre>
+      <p><strong>How to verify:</strong> confirm the setting from the AWS API itself rather than trusting Terraform state:</p>
+      <p class="code-label">VERIFY - the cloud API agrees the bucket is blocked</p>
+      <pre><code>aws s3api get-public-access-block --bucket legacy-logs-2023 \
+  --query 'PublicAccessBlockConfiguration.BlockPublicAcls'</code></pre>
+      <p class="code-label">Expected output</p>
+      <pre><code>true</code></pre>
+      <p><strong>Common mistake:</strong> fixing the bucket ACL but leaving a permissive bucket <em>policy</em> in place. <code>restrict_public_buckets = true</code> neutralizes public policies, but still audit the policy with <code>aws s3api get-bucket-policy --bucket &lt;name&gt;</code> - an overly broad principal is a finding even when it is not currently public.</p>
+
+      <h3>4. Close the root-MFA finding</h3>
+      <p><strong>What:</strong> <code>iam_root_mfa_enabled</code> failed, meaning the account's most powerful identity had single-factor protection. <strong>Why manual:</strong> root MFA enrollment is deliberately a console-only human action - it cannot (and should not) be automated through the API. After enrolling a hardware or virtual MFA device on the root account, confirm it programmatically:</p>
+      <p class="code-label">VERIFY - account summary must report MFA on root</p>
+      <pre><code>aws iam get-account-summary --query 'SummaryMap.AccountMFAEnabled'</code></pre>
+      <p class="code-label">Expected output</p>
+      <pre><code>1</code></pre>
+      <p><strong>How to verify:</strong> <code>1</code> means enabled; re-run the single check with <code>prowler aws -c iam_root_mfa_enabled</code> and it flips to PASS. <strong>Common mistake:</strong> enabling MFA on the everyday IAM admin user and assuming the root finding is closed - they are different identities, and the check only looks at root.</p>
+
+      <h3>5. Enforce guardrails with Azure Policy</h3>
+      <p><strong>What:</strong> Azure remediation is split in two: fix the currently non-compliant resources, then assign a deny policy so the misconfiguration cannot return. <strong>Why policy-as-code:</strong> a one-off fix drifts within weeks; an Azure Policy assignment evaluates every new resource at creation time.</p>
+      <p class="code-label">FIX NOW - require HTTPS on every storage account</p>
+      <pre><code>az storage account list --query "[?enableHttpsTrafficOnly==\`false\`].name" -o tsv | \
+  while read -r acct; do
+    az storage account update --name "$acct" --https-only true
+  done</code></pre>
+      <p class="code-label">GUARDRAIL - deny future non-compliant storage accounts</p>
+      <pre><code>az policy assignment create \
+  --name "deny-storage-no-https" \
+  --display-name "Storage accounts must use secure transfer" \
+  --policy "404c3081-a854-4457-ae30-26a93ef643f9" \
+  --params '{"effect":{"value":"Deny"}}' \
+  --scope "/subscriptions/$(az account show --query id -o tsv)"</code></pre>
+      <p class="code-label">Expected output (trimmed)</p>
+      <pre><code>{
+  "name": "deny-storage-no-https",
+  "enforcementMode": "Default",
+  "policyDefinitionId": ".../providers/Microsoft.Authorization/policyDefinitions/404c3081-a854-4457-ae30-26a93ef643f9"
+}</code></pre>
+      <p><strong>How to verify:</strong> deploy a throwaway storage account with <code>--https-only false</code> in a test resource group - the deployment must fail with a <code>RequestDisallowedByPolicy</code> error. Delete the test group afterwards. <strong>Common mistake:</strong> assigning the policy at resource-group scope and assuming the subscription is covered - scope decides coverage, so assign at the subscription (or management group) level.</p>
+
+      <h3>6. Schedule recurring scans for drift detection</h3>
+      <p><strong>What:</strong> a posture snapshot is stale the day it is taken, so the scanners run nightly from the CI runner on a cron schedule, with findings uploaded as artifacts and appended to the trend store. <strong>Why OIDC:</strong> the pipeline assumes the read-only audit role through workload identity federation - there are no long-lived cloud keys sitting in CI secrets.</p>
+      <p class="code-label">.github/workflows/cspm-scan.yml - scheduled nightly audit</p>
+      <pre><code>name: cspm-scan
+on:
+  schedule:
+    - cron: "30 2 * * *"   # 02:30 UTC nightly
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install prowler-cloud
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/ProwlerAuditRole
+          aws-region: ca-central-1
+      - run: prowler aws --compliance cis_2.0_aws -M csv json --output-directory findings/
+      - uses: actions/upload-artifact@v4
+        with: { name: prowler-findings, path: findings/ }</code></pre>
+      <p class="code-label">ROLLUP - one compliance percentage per scan day, from the artifacts</p>
+      <pre><code>#!/bin/bash
+# compliance = PASS / (PASS + FAIL) across the day's CSV
+f=findings/prowler-output-*.csv
+pass=$(grep -c ";PASS;" $f); fail=$(grep -c ";FAIL;" $f)
+echo "$(date +%F) $(( 100 * pass / (pass + fail) ))" &gt;&gt; compliance-trend.txt</code></pre>
+      <p class="code-label">Expected trend output (illustrative)</p>
+      <pre><code>2026-06-14 61
+2026-06-15 74
+2026-06-16 92</code></pre>
+      <p><strong>How to verify:</strong> after the first scheduled run, the Actions tab shows a green nightly job and <code>compliance-trend.txt</code> gains one line per day. <strong>Common mistake:</strong> changing scan flags between runs (CIS-only one day, full scan the next) - the trend line then jumps for reasons unrelated to real posture. Keep the scan scope identical between runs.</p>
+
+      <h3>7. Publish the posture dashboard</h3>
+      <p><strong>What:</strong> both clouds' findings land in a single store, and a small static dashboard renders compliance percentage per benchmark over time. <strong>Why:</strong> a number that only moves when someone remembers to look is not a control - the trend line is what catches drift between audits, and it is the artifact that answers management's "are we getting better?" question.</p>
+      <p><strong>How to verify:</strong> the percentage computed for a re-scan day must equal the number shown in Prowler's own HTML summary for that same run. If they disagree, the rollup script is parsing the wrong delimiter or reading stale artifacts. <strong>Common mistake:</strong> mixing AWS and Azure findings into one percentage - the two benchmarks have different control counts and severities, so track one trend line per cloud and per framework.</p>
     </section>
 
     <section><h2>Validation &amp; Testing</h2>
       <p>Re-run Prowler scoped to the S3 checks and confirm the previously failing controls now PASS. The posture dashboard should reflect the improved CIS compliance percentage (alt text: <em>before/after CIS compliance bar chart showing 92% post-remediation</em>).</p>
+      <p>Verification is always done against the cloud API - never against Terraform state or the scanner's cache. Three independent checks closed the loop:</p>
+      <p class="code-label">RE-SCAN - only the previously failing checks</p>
+      <pre><code>prowler aws -c s3_bucket_public_access,iam_root_mfa_enabled</code></pre>
+      <p class="code-label">Expected output</p>
+      <pre><code class="language-bash">PASS s3_bucket_public_access: 0 buckets public
+PASS iam_root_mfa_enabled: root MFA enabled</code></pre>
+      <p class="code-label">NEGATIVE TEST - anonymous request against the fixed bucket</p>
+      <pre><code>curl -s -o /dev/null -w "%{http_code}\n" https://legacy-logs-2023.s3.amazonaws.com/</code></pre>
+      <p class="code-label">Expected output</p>
+      <pre><code>403</code></pre>
+      <p>A <code>403</code> from an unauthenticated client proves the bucket is closed to the internet; <code>200</code> would mean the fix did not hold. On the Azure side, re-running ScoutSuite and diffing flagged-item counts against the first report confirmed the storage and networking findings dropped to zero, and the deny policy rejected a deliberately non-compliant test deployment exactly as expected. Only after all three signals agreed did I mark the findings closed in the tracker.</p>
     </section>
 
     <details><summary>Advanced: Troubleshooting</summary>
       <ul>
-        <li><strong>Prowler AccessDenied:</strong> attach the managed SecurityAudit + ViewOnlyAccess policies.</li>
-        <li><strong>ScoutSuite throttling:</strong> add <code>-max-rate</code> and run per-service.</li>
-        <li><strong>Terraform drift returns:</strong> enforce the guardrail with an SCP or Azure Policy denyAssignment.</li>
+        <li><strong>Prowler AccessDenied:</strong> attach the managed SecurityAudit + ViewOnlyAccess policies. Then re-run with <code>prowler aws --log-level ERROR</code> to see exactly which API calls are denied - the error names the missing action, which tells you which managed policy to add. Never "fix" this by widening to AdministratorAccess; that defeats the point of a read-only auditor.</li>
+        <li><strong>ScoutSuite throttling:</strong> add <code>-max-rate</code> and run per-service. On large subscriptions the Azure management API returns HTTP 429 under aggressive scanning; lowering the request rate and scanning one service at a time (storage, then network, then SQL) completes reliably without tripping the limits.</li>
+        <li><strong>Terraform drift returns:</strong> enforce the guardrail with an SCP or Azure Policy denyAssignment. If <code>terraform plan</code> shows the same public-access fix reappearing every week, someone is changing it outside the pipeline - find the actor first with <code>aws cloudtrail lookup-events --lookup-attributes AttributeKey=EventName,AttributeValue=PutBucketAcl</code>, then enforce.</li>
+        <li><strong>Zero findings on a known-bad account:</strong> the scanner is probably looking at the wrong account or region set. Confirm <code>aws sts get-caller-identity</code> / <code>az account show</code>, and check the run summary for skipped services - a scanner that cannot see a service reports silence, not failure.</li>
+        <li><strong>Azure Policy compliance stuck at "Not started":</strong> evaluation is not instant after an assignment. Trigger a scan on demand with <code>az policy state trigger-scan</code> and query results with <code>az policy state list --policy-assignment deny-storage-no-https</code> instead of waiting hours for the scheduled evaluation cycle.</li>
       </ul>
     </details>
 
     <section><h2>Key Results</h2>
+      <p>Numbers from the first full audit-remediate-verify cycle across both clouds:</p>
       <ul>
         <li>Identified 47 misconfigurations across AWS and Azure in the first audit.</li>
         <li>Remediated 100% of public S3 bucket exposures within 1 hour.</li>
         <li>Achieved 92% compliance against CIS benchmarks after remediation.</li>
         <li>Scheduled recurring scans giving continuous drift detection on both clouds.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li>Scan read-only, fix in code: auditors run under SecurityAudit/Reader roles, and every fix lands as Terraform or Azure Policy - no console-only changes.</li>
+        <li>Scope scans to one CIS benchmark per run so results stay comparable day over day and the trend line means something.</li>
+        <li>Verify against the cloud API - and with anonymous negative tests - not against scanner output or Terraform state.</li>
+        <li>Per-resource fixes stop today's exposure; account-level public-access blocks and deny policies stop tomorrow's.</li>
+        <li>Map findings to ATT&amp;CK techniques (T1530, T1078.004) so remediation order follows real attack paths, not checklist order.</li>
+        <li>Posture is a trend, not a snapshot: schedule the scans, keep the history, and alert when the FAIL count moves the wrong way.</li>
       </ul>
     </section>
 
