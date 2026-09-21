@@ -79,6 +79,18 @@ flowchart LR
       </div>
     </section>
 
+    <section><h2>IoT Protocols in Scope</h2>
+      <p>Before running any scanner it is worth being precise about what the tools are looking for, because IoT reconnaissance is mostly a protocol-recognition problem. Five protocol families account for nearly everything the workflow surfaces:</p>
+      <ul>
+        <li><strong>MQTT (1883/tcp, 8883/tcp over TLS)</strong> – a lightweight publish/subscribe telemetry bus used by sensors, alarms, and home-automation hubs. Brokers that accept anonymous connections expose every topic on the bus, including <code>$SYS</code> internals that disclose the broker version and client count. Port 1883 with no TLS is the single highest-yield finding on most IoT VLANs.</li>
+        <li><strong>CoAP (5683/udp)</strong> – a REST-style protocol for constrained devices. It answers a multicast <code>GET /.well-known/core</code> with a full list of published resources, making it the one IoT protocol that literally documents its own attack surface on request.</li>
+        <li><strong>SSDP/UPnP (1900/udp)</strong> – multicast service discovery used by smart TVs, printers, cameras, and routers. Devices respond with a <code>description.xml</code> URL enumerating every UPnP service and action they expose, including — on many routers — NAT traversal actions that silently punch holes in the firewall.</li>
+        <li><strong>Telnet (23/tcp)</strong> – extinct on servers, alive and well on DVRs, cameras, and set-top boxes. Its presence almost always pairs with a hardcoded credential burned into firmware.</li>
+        <li><strong>Vendor proprietary ports (37777 Dahua, 8000 Hikvision, 9000+ assorted)</strong> – undocumented management protocols that respond to banner grabs with model and firmware strings. Nmap's version detection fingerprints most of them even when the protocol itself is unknown.</li>
+      </ul>
+      <p>The scan plan below is built directly from this list: the Masscan sweep covers all ports because proprietary services hide anywhere, while the NSE phase targets exactly the ports where these five families live.</p>
+    </section>
+
     <section><h2>Environment &amp; Prerequisites</h2>
       <p>The lab is deliberately segmented so recon traffic never touches production devices and the scan results reflect a realistic attacker viewpoint from a management segment. The recon workstation sits on VLAN 10; the targets live on an isolated IoT VLAN that mirrors the kind of flat, unmanaged device sprawl seen in small offices and home networks.</p>
       <ul>

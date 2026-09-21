@@ -53,7 +53,8 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">gh CLI</span><span class="tag">PR</span><span class="tag">reviews</span><span class="tag">branch protection</span></div>
     </div>
 
-    <section><p class="lead">You will open a pull request from the command line, run reviews, and merge only after checks pass. By the end you will have a review workflow and branch protection that keeps unreviewed code out of main.</p></section>
+    <section><p class="lead">You will open a pull request from the command line, run reviews, and merge only after checks pass. By the end you will have a review workflow and branch protection that keeps unreviewed code out of main.</p>
+      <p>A pull request is more than a merge button: it is the checkpoint where code gets read by a second pair of eyes, where CI proves the change builds and passes tests, and where the reasoning behind the change is recorded for future you. Doing the whole flow with the gh CLI means you never leave the terminal, and every stage - opening, reviewing, checking status, merging - is scriptable and repeatable. That repeatability is what turns "we should review code" into a process a team can actually rely on.</p></section>
 
     <div class="learning-objectives"><h2>Learning Objectives</h2>
       <ul>
@@ -74,27 +75,145 @@ graph LR
   Rev -->|approved| Merge
   Merge --> Main[main]
       </div>
+      <p>The diagram shows the merge gate. A feature branch becomes a pull request with <code>gh pr create</code>. Two independent signals then feed the merge decision: the required status checks (CI) must be green, and at least one reviewer must approve. Only when both are true does branch protection allow the merge - through the web button or <code>gh pr merge</code> - to land the change on main. If either signal is missing, the merge is refused no matter how convincing the branch looks locally.</p>
+      <p>This matters because it removes "it worked on my machine" from the equation. The checks run on a clean runner with a fresh checkout, and the approval comes from a human who is not the author. Branch protection enforces both at the repository level, so the rule holds even if someone tries to push directly to main or merge with the web UI at 2 a.m.</p>
+      <p>The lab walks the loop in five moves: prepare a branch (step 00), open the PR (step 01), review and wait on checks (step 02), merge (step 03), then lock the gate with branch protection (step 04).</p>
     </section>
 
     <section><h2>Environment Setup</h2>
       <p><strong>You will need:</strong> the gh CLI authenticated (<code>gh auth login</code>) and a repo.</p>
       <p><strong>Before you begin:</strong> enable branch protection on main in repo settings.</p>
+      <p>Install gh if you do not have it, then confirm you are authenticated against the right account and host. The status output also prints the token scopes - you need the <code>repo</code> scope for private repositories and <code>workflow</code> if your PRs touch GitHub Actions files.</p>
+      <p class="code-label">INSTALL AND AUTHENTICATE gh</p>
+<pre><code class="language-bash"># macOS
+brew install gh
+
+# authenticate against github.com (browser flow is easiest)
+gh auth login --hostname github.com --git-protocol https --web
+
+# verify
+gh auth status</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">gh auth status</span></div>
+        <div class="terminal-output">github.com
+  ✓ Logged in to github.com account TYFSADIK (keyring)
+  - Active account: true
+  - Git operations protocol: https
+  - Token: gho_************************************
+  - Token scopes: 'gist', 'read:org', 'repo', 'workflow'</div>
+      </div>
+      <p><strong>Common mistake:</strong> authenticating with one GitHub account while the repo belongs to another. <code>gh auth status</code> shows the active account for each host; switch with <code>gh auth switch</code> if you have more than one.</p>
+      <p>Work from a local clone so gh can infer the repository from your git remote. Every <code>gh pr</code> command below assumes you run it inside the clone; otherwise you must pass <code>--repo owner/name</code> to each call.</p>
+      <p class="code-label">CLONE THE REPO</p>
+<pre><code class="language-bash">gh repo clone TYFSADIK/demo-api
+cd demo-api
+git remote -v   # origin must point at the GitHub repo</code></pre>
+      <p><strong>How to verify:</strong> <code>gh repo view --json name,owner</code> should print the repo you expect. If it errors with "not a git repository", you are in the wrong directory.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
       <div class="steps">
+        <div class="step"><div class="step-num">00</div><div class="step-body"><strong>Create and push a feature branch</strong>
+          <p>A PR is a conversation about a branch, so before you can open one you need a branch with commits on it, pushed to GitHub. Keep the branch small and single-purpose - one endpoint, one fix - so the review stays quick and the diff stays readable. Naming conventions like <code>feature/</code> and <code>fix/</code> make the intent obvious in the PR list before anyone clicks.</p>
+          <p class="code-label">BRANCH, COMMIT, PUSH</p>
+<pre><code class="language-bash">git checkout -b feature/api
+# ...make your changes...
+git add -A
+git commit -m "Add /health endpoint"
+git push -u origin feature/api</code></pre>
+          <p>The <code>-u</code> flag sets the upstream so later <code>git push</code> calls need no arguments, and so gh knows which remote branch the PR should track when it suggests defaults.</p>
+          <p><strong>How to verify:</strong> <code>git status</code> should report <code>Your branch is up to date with 'origin/feature/api'</code> with a clean working tree. <strong>Common mistake:</strong> if the push is rejected as non-fast-forward, someone else pushed to the same branch name - pick a unique one instead of force-pushing over a teammate's work.</p>
+        </div></div>
         <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Open a pull request</strong>
+          <p>Opening the PR is where you sell the change. The title shows up in the PR list and becomes the squash-merge commit message, so make it a sentence a stranger could act on. The body should answer three questions: what changed, why, and how you tested it. Reviewers read the body before the diff; a blank body gets a shallow review.</p>
           <div class="command-block" data-copy><div class="command"><code>gh pr create -base main -head feature/api -title "Add API" -body "Implements endpoint"</code></div></div>
+          <p>For anything non-trivial, write the body in a file instead of cramming it into one flag. Markdown renders in the PR, and a <code>Closes #17</code> line auto-links the issue and closes it on merge:</p>
+          <p class="code-label">PR BODY WITH CONTEXT (.github/pull_request.md)</p>
+<pre><code class="language-bash">gh pr create --base main --head feature/api \
+  --title "Add /health endpoint for uptime checks" \
+  --body-file .github/pull_request.md
+
+# .github/pull_request.md
+## What
+Adds GET /health returning { "status": "ok" }.
+## Why
+The load balancer needs a lightweight liveness probe. Closes #17.
+## How tested
+curl localhost:8080/health locally + a new pytest case.</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">gh pr create --base main --title "Add /health endpoint" --body-file .github/pull_request.md</span></div>
+            <div class="terminal-output">https://github.com/TYFSADIK/demo-api/pull/42</div>
+          </div>
+          <p>gh prints the PR URL - that is your confirmation it worked. Open it in the browser with <code>gh pr view --web</code>, or read it without leaving the terminal:</p>
+          <p class="code-label">CONFIRM THE PR EXISTS</p>
+<pre><code class="language-bash">gh pr status            # PRs for your branches: review state, checks
+gh pr view 42           # title, body, reviewers, check rollup</code></pre>
+          <p><strong>Common mistake:</strong> running <code>gh pr create</code> before pushing the branch - gh errors with <code>Head sha can't be blank</code> because the remote has no such head. Push first (step 00), then create. <strong>How to verify:</strong> <code>gh pr status</code> lists the PR under "Current branch" with a checks summary.</p>
         </div></div>
         <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Review and check status</strong>
+          <p>Two gates must go green: automated checks and human review. Check the CI rollup first - there is no point asking a person to read code that does not compile. <code>gh pr checks</code> lists every required and optional check with pass/fail; add <code>--watch</code> to follow a run in real time until it finishes.</p>
           <div class="terminal-session">
             <div class="terminal-line"><span class="prompt">$</span> <span class="input">gh pr checks &amp;&amp; gh pr review -approve</span></div>
             <div class="terminal-output">All checks were successful
 Approved pull request #42</div>
           </div>
+          <p>In a real team flow the author requests reviewers and a teammate does the review. You can request reviewers at creation or after the fact, and read the exact diff under review before passing judgment:</p>
+          <p class="code-label">REQUEST REVIEW AND READ THE DIFF</p>
+<pre><code class="language-bash">gh pr edit 42 --add-reviewer alice,team-leads
+gh pr diff 42               # full diff, paginated
+gh pr view 42 --comments    # discussion so far</code></pre>
+          <p>Reviews come in three flavours, and picking the right one is half of review culture:</p>
+          <p class="code-label">THE THREE REVIEW MODES</p>
+<pre><code class="language-bash">gh pr review 42 --approve --body "LGTM - probe returns 200 in 3ms"
+gh pr review 42 --request-changes --body "Handle the DB-down case before merge"
+gh pr review 42 --comment --body "Question: why not reuse readiness.py?"</code></pre>
+          <p><code>--request-changes</code> is a blocking review: with branch protection on, the PR cannot merge until that reviewer dismisses the block or re-approves. <code>--comment</code> records feedback without affecting the merge gate - use it for questions, not requirements.</p>
+          <p>When feedback arrives, fix it on the same branch and push. The PR updates itself, CI re-runs, and the conversation threads stay attached to the lines they were about. Never open a second PR for review fixes - that throws away the discussion history.</p>
+          <p class="code-label">RESPOND TO FEEDBACK</p>
+<pre><code class="language-bash">git checkout feature/api
+# ...address the review comments...
+git commit -am "Handle DB-down case in /health"
+git push                    # PR #42 picks up the new commit automatically
+gh pr checks 42 --watch     # confirm CI re-runs and goes green</code></pre>
+          <p><strong>How to verify:</strong> <code>gh pr view 42</code> should show <code>Reviewers: alice (Approved)</code> and a green check rollup. Note: GitHub will not let you approve your own PR as a satisfying review - on a solo repo, test the flow with a second account or a teammate.</p>
         </div></div>
         <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Merge after checks pass</strong>
+          <p>Only merge when both gates are green. The squash strategy compresses the whole branch into one commit on main, which keeps history linear and makes <code>git revert</code> a single-commit operation if the change misbehaves in production. <code>-delete-branch</code> removes the feature branch on both the remote and your local clone.</p>
           <div class="command-block" data-copy><div class="command"><code>gh pr merge -squash -delete-branch</code></div></div>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">gh pr merge 42 --squash --delete-branch</span></div>
+            <div class="terminal-output">✓ Squashed and merged pull request #42
+✓ Deleted branch feature/api locally and remotely</div>
+          </div>
+          <p>Pick the strategy deliberately - it shapes your history forever:</p>
+          <ul>
+            <li><code>--squash</code>: one commit per PR. Best default for feature work with messy "wip" commits.</li>
+            <li><code>--merge</code>: keeps every commit plus a merge commit. Good for release branches where individual commits matter.</li>
+            <li><code>--rebase</code>: replays the commits onto main with no merge commit. Linear history, but it rewrites commit SHAs.</li>
+          </ul>
+          <p>After merging, sync your local main so the next branch starts from the merged state:</p>
+          <p class="code-label">SYNC LOCAL main</p>
+<pre><code class="language-bash">git checkout main
+git pull --prune            # fetch the squash commit, prune deleted remote branches</code></pre>
+          <p><strong>Common mistake:</strong> merging with <code>--admin</code> to bypass protection when checks are red. It works, and it defeats the entire point of the gate - if a check is flaky, fix the check, do not route around it. <strong>How to verify:</strong> <code>git log main --oneline -1</code> shows one new commit whose message matches the PR title.</p>
+        </div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Enforce the gate with branch protection</strong>
+          <p>Everything above is convention until branch protection makes it a rule. Protection on main requires PRs, at least one approval, and passing checks - and applies the same rules to admins, which is the whole point. Set it once per repository, in Settings &gt; Branches or with the API:</p>
+          <p class="code-label">ENABLE BRANCH PROTECTION ON main</p>
+<pre><code class="language-bash">gh api repos/TYFSADIK/demo-api/branches/main/protection \
+  -X PUT \
+  -f required_status_checks.strict=true \
+  -f "required_status_checks.contexts[]=CI / test" \
+  -f required_pull_request_reviews.required_approving_review_count=1 \
+  -f required_pull_request_reviews.dismiss_stale_reviews=true \
+  -f enforce_admins=true</code></pre>
+          <p><code>strict=true</code> means the branch must be up to date with main before merging, so the checks ran against what will actually land. <code>dismiss_stale_reviews</code> invalidates an approval when new commits arrive, closing the "approve, then sneak in one more commit" hole. The check context string (<code>CI / test</code>) must match the exact name the workflow reports, or the gate never opens.</p>
+          <p class="code-label">VERIFY THE RULE</p>
+<pre><code class="language-bash">gh api repos/TYFSADIK/demo-api/branches/main/protection \
+  --jq '.required_pull_request_reviews.required_approving_review_count,
+        .required_status_checks.strict,
+        .enforce_admins.enabled'</code></pre>
+          <p><strong>How to verify:</strong> open a toy PR with a deliberately failing check and confirm <code>gh pr merge</code> is refused with a message about required status checks. Also try <code>git push origin main</code> directly - the remote should reject it. If either succeeds, the protection rule did not take effect.</p>
         </div></div>
       </div>
     </section>
@@ -108,11 +227,52 @@ graph LR
   style B fill:#1a4a1a,stroke:#00ff00,color:#fff
   style C fill:#1a4a1a,stroke:#00ff00,color:#fff
       </div>
+      <p>The three core moves - open, review, merge - are the loop you will run dozens of times a week. Steps 00 and 04 bookend it: a well-prepared branch makes the PR easy to review, and branch protection makes the loop mandatory rather than optional.</p>
+    </section>
+
+    <section><h2>The Reviewer's Side</h2>
+      <p>Reviews are easier to do well when you can run the code, not just read it. gh can check out any PR into a local branch in one command, so you can run the tests, poke the endpoint, and then leave your verdict:</p>
+      <p class="code-label">CHECK OUT AND TEST A PR LOCALLY</p>
+<pre><code class="language-bash">gh pr checkout 42           # fetch PR head into a local branch
+pip install -r requirements.txt
+pytest -q                   # run the suite against the proposed change
+curl -s localhost:8080/health   # manual smoke test</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">pytest -q</span></div>
+        <div class="terminal-output">....                                                                     [100%]
+4 passed in 0.42s</div>
+      </div>
+      <p>When you are done, <code>git checkout main</code> drops you back; the PR branch is disposable. Review the behavior first, the diff second - a change that reads beautifully but breaks the smoke test still gets <code>--request-changes</code>.</p>
     </section>
 
     <section><h2>Testing &amp; Validation</h2>
       <div class="command-block" data-copy><div class="command"><code>gh pr list -state merged -limit 1 &amp;&amp; git log main -oneline -1</code></div></div>
       <p>You should see the merged PR and the squashed commit on main. With protection on, an unreviewed or failing PR cannot merge.</p>
+      <p class="code-label">FULL VALIDATION SWEEP</p>
+<pre><code class="language-bash">gh pr list --state merged --limit 5 --json number,title,mergedAt \
+  --jq '.[] | "#\(.number) \(.title) - \(.mergedAt)"'
+git log main --oneline -3
+gh api repos/TYFSADIK/demo-api/branches/main/protection --jq '.enforce_admins.enabled'</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">gh pr list --state merged --limit 1</span></div>
+        <div class="terminal-output">42  Add /health endpoint for uptime checks  TYFSADIK:feature/api  MERGED</div>
+      </div>
+      <p>For a negative test, push a branch with a deliberately failing test and open a PR. The merge command must refuse. If it does not, your protection rule or required check context is wrong - revisit step 04.</p>
+    </section>
+
+    <section><h2>gh PR Command Cheat Sheet</h2>
+      <p>The commands from this lab, collected for reference:</p>
+      <p class="code-label">EVERYDAY gh PR COMMANDS</p>
+<pre><code class="language-bash">gh pr create --base main --fill          # open PR, reuse commit messages
+gh pr status                             # your PRs + review/check state
+gh pr list --state open                  # everything waiting on someone
+gh pr view 42 --web                      # open in browser
+gh pr diff 42                            # read the patch
+gh pr checkout 42                        # run it locally
+gh pr checks 42 --watch                  # follow CI until it finishes
+gh pr review 42 --approve                # or --request-changes / --comment
+gh pr merge 42 --squash --delete-branch  # merge + tidy up
+gh pr ready 42                           # flip a draft to ready-for-review</code></pre>
     </section>
 
     <details><summary>Troubleshooting</summary>
@@ -120,14 +280,19 @@ graph LR
         <li><strong>Merge button blocked:</strong> branch protection requires checks/reviews; satisfy them first.</li>
         <li><strong>gh not authenticated:</strong> run <code>gh auth login</code> and select the right account.</li>
         <li><strong>Stale branch after merge:</strong> use <code>-delete-branch</code> to keep the repo tidy.</li>
+        <li><strong><code>Head sha can't be blank</code> on create:</strong> the branch was never pushed, or you are on the wrong branch. Run <code>git push -u origin &lt;branch&gt;</code> first, and confirm with <code>git branch --show-current</code>.</li>
+        <li><strong>Required check never appears in the PR:</strong> the <code>contexts[]</code> name in the protection rule must match the check's reported name exactly (job name, not workflow file name). List what the PR actually reports with <code>gh pr checks --json name,state</code> and copy the string.</li>
+        <li><strong>Approval does not unblock the merge:</strong> self-approvals never satisfy required reviews, and <code>dismiss_stale_reviews</code> voids approvals given before the latest push. Have a teammate re-approve after the final commit.</li>
+        <li><strong><code>gh pr merge</code> says the PR is not mergeable:</strong> usually a conflict with main. Rebase or merge main into your branch (<code>git fetch origin &amp;&amp; git merge origin/main</code>), resolve, push, and wait for checks to re-run.</li>
       </ul>
     </details>
 
     <section><h2>Extension Ideas</h2>
       <ul>
-        <li>Add automated checks in <a href="github-actions.html">GitHub Actions</a>.</li>
-        <li>Require CODEOWNERS review for sensitive paths.</li>
-        <li>Auto-merge once checks pass with <code>gh pr merge -auto</code>.</li>
+        <li>Add automated checks in <a href="github-actions.html">GitHub Actions</a> so the required check has something real to run.</li>
+        <li>Require CODEOWNERS review for sensitive paths - a <code>CODEOWNERS</code> file routes PRs touching <code>/infra/</code> or auth code to specific reviewers automatically.</li>
+        <li>Auto-merge once checks pass with <code>gh pr merge -auto</code>, so approved PRs land the moment CI goes green without anyone babysitting the queue.</li>
+        <li>Adopt a PR template (<code>.github/pull_request_template.md</code>) so every body starts with the what/why/how-tested structure from step 01.</li>
       </ul>
     </section>
 
@@ -137,6 +302,16 @@ graph LR
         <li>Enforced review approval before merge.</li>
         <li>Required passing checks via branch protection.</li>
         <li>Kept main clean with squash + branch deletion.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li>A PR is a gate, not a formality: it combines human review, automated checks, and a permanent record of why a change happened.</li>
+        <li>Push the branch before <code>gh pr create</code>, and write a body that answers what, why, and how-tested - reviewers read it before the diff.</li>
+        <li>Check CI before requesting review; use <code>--request-changes</code> to block, <code>--comment</code> to ask, and push fixes to the same branch.</li>
+        <li>Squash-merge plus <code>--delete-branch</code> keeps main linear, revertible, and free of stale branches.</li>
+        <li>Branch protection is what turns the workflow from habit into policy: set it once, include admins, and verify it with a deliberately failing PR.</li>
       </ul>
     </section>
 

@@ -53,7 +53,9 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">NSG</span><span class="tag">UDR</span><span class="tag">effective routes</span><span class="tag">priority</span></div>
     </div>
 
-    <section><p class="lead">You will filter traffic with Network Security Groups and steer it with user-defined routes (UDRs), including forcing traffic through a firewall appliance. By the end you will control both what is allowed and the path packets take.</p></section>
+    <section><p class="lead">You will filter traffic with Network Security Groups and steer it with user-defined routes (UDRs), including forcing traffic through a firewall appliance. By the end you will control both what is allowed and the path packets take.</p>
+      <p>These two services answer different questions, and keeping them separate in your head is the key to this lab. An <strong>NSG decides whether a packet is allowed</strong>: it is a stateful, 5-tuple filter (source IP, source port, destination IP, destination port, protocol) attached to a subnet or a NIC. A <strong>route table decides where an allowed packet goes next</strong>: it overrides Azure's built-in system routes so traffic between subnets, or out to the internet, takes the path you choose. Defense in depth in Azure networking means using both - the NSG shrinks what can talk at all, and the UDR guarantees that what can talk still passes your inspection point.</p>
+      <p>The scenario: a three-tier lab VNet with a web subnet, an app subnet, and a firewall appliance (a network virtual appliance, or NVA) in its own subnet. Internet clients may reach the web tier on 443 only; the app tier may not reach the internet directly - everything it sends must hairpin through the NVA, which inspects and forwards it.</p></section>
 
     <div class="learning-objectives"><h2>Learning Objectives</h2>
       <ul>
@@ -65,34 +67,106 @@
     </div>
 
     <section><h2>Architecture Overview</h2>
+      <p>Read the diagram left to right as a packet's life story. Inbound, the internet hits the web subnet, where the NSG is the gatekeeper: priority 100 allows TCP 443, and the implicit <code>DenyAllInBound</code> at priority 65500 swallows everything else. Outbound, the app subnet has a route table associated with it whose <code>0.0.0.0/0</code> route points at the firewall appliance as the next hop, so nothing leaves the subnet uninspected.</p>
       <div class="mermaid" role="img" aria-label="NSG filtering and UDR forcing traffic through a firewall">
 graph LR
   Net((Internet)) -->|NSG allow 443| Web[web subnet]
   Web -->|UDR next hop| FW[Firewall appliance]
   FW --> App[app subnet]
       </div>
+      <p>Two properties of the drawing matter more than the drawing itself. First, NSG evaluation is <strong>priority-ordered, lowest number first</strong>: the first rule that matches a flow decides it, and rules below the match are never evaluated. Second, route selection follows a fixed precedence: <strong>user-defined routes beat BGP routes, which beat system routes</strong>. That precedence is why a single UDR can redirect an entire subnet's egress without touching any VM configuration.</p>
     </section>
 
     <section><h2>Environment Setup</h2>
       <p><strong>You will need:</strong> a VNet with at least two subnets and the Azure CLI.</p>
       <p><strong>Before you begin:</strong> NSG rules are evaluated by priority, lowest number first.</p>
+      <p>The lab assumes this layout. If your VNet differs, keep the names consistent or adjust every command - most "the rule does nothing" bugs in this lab are really "I edited the wrong subnet's NSG" bugs.</p>
+      <table>
+        <thead><tr><th>Resource</th><th>Name</th><th>Address / Role</th></tr></thead>
+        <tbody>
+          <tr><td>Resource group</td><td><code>lab-rg</code></td><td>Holds everything; commands below rely on CLI defaults</td></tr>
+          <tr><td>Virtual network</td><td><code>lab-vnet</code></td><td><code>10.0.0.0/16</code></td></tr>
+          <tr><td>Web subnet</td><td><code>web-subnet</code></td><td><code>10.0.1.0/24</code> - hosts <code>web01</code>, gets the NSG</td></tr>
+          <tr><td>App subnet</td><td><code>app-subnet</code></td><td><code>10.0.2.0/24</code> - gets the route table</td></tr>
+          <tr><td>Firewall subnet</td><td><code>fw-subnet</code></td><td><code>10.0.3.0/24</code> - NVA at <code>10.0.3.4</code></td></tr>
+        </tbody>
+      </table>
+      <p>Sign in and pin CLI defaults so the commands below can use short <code>-n</code> flags without repeating <code>--resource-group</code> every time. This also makes the one-line command blocks throughout the page work as written.</p>
+      <p class="code-label">SIGN IN AND SET CLI DEFAULTS</p>
+      <pre><code>az login
+az account set --subscription "My Subscription"
+az group create -n lab-rg -l eastus
+az configure --defaults group=lab-rg location=eastus</code></pre>
+      <p>Verify the defaults took effect - <code>az configure --list-defaults</code> should show <code>group=lab-rg</code> and <code>location=eastus</code>. If you skip this, every <code>az network</code> command below fails with <code>(MissingResourceGroup)</code>, which is a confusing error when you are actually just missing a default.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
       <div class="steps">
         <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create an NSG allow rule</strong>
           <div class="command-block" data-copy><div class="command"><code>az network nsg create -n web-nsg &amp;&amp; az network nsg rule create -nsg-name web-nsg -n allow-https -priority 100 -destination-port-ranges 443 -access Allow -protocol Tcp</code></div></div>
+          <p>WHAT: this creates the NSG itself, then adds an inbound rule named <code>allow-https</code> at priority 100 permitting TCP traffic to destination port 443. WHY priority 100: Azure reserves 65000-65500 for its default rules and 100-4096 is the usable band for your own. Starting your most specific allow at 100 leaves room above it for even-more-specific exceptions later, and keeps it well ahead of the final <code>DenyAllInBound</code> at 65500. Priority ordering is the whole game - a rule that never gets evaluated because a broader rule matched first is indistinguishable from a rule that does not exist.</p>
+          <p>Every new NSG comes with three inbound defaults you did not write: <code>AllowVNetInBound</code> (65000), <code>AllowAzureLoadBalancerInBound</code> (65001), and <code>DenyAllInBound</code> (65500), plus a mirrored set for outbound. Your allow rule only has to land below 65000 in number to beat the catch-all deny. For least privilege, also add an explicit deny for management ports from the internet so the intent is documented in the rule list, not just implied by the catch-all.</p>
+          <p class="code-label">FULL RULE SET - allow 443, explicitly deny management ports</p>
+          <pre><code>az network nsg rule create --nsg-name web-nsg -n allow-https \
+  --priority 100 --direction Inbound --access Allow --protocol Tcp \
+  --source-address-prefixes Internet --source-port-ranges '*' \
+  --destination-address-prefixes 10.0.1.0/24 --destination-port-ranges 443
+
+az network nsg rule create --nsg-name web-nsg -n deny-mgmt-internet \
+  --priority 200 --direction Inbound --access Deny --protocol Tcp \
+  --source-address-prefixes Internet --source-port-ranges '*' \
+  --destination-address-prefixes '*' --destination-port-ranges 22 3389</code></pre>
+          <p>An NSG that is not associated with anything filters nothing. Attach it to the web subnet so it applies to every NIC in that subnet:</p>
+          <p class="code-label">ASSOCIATE THE NSG WITH THE WEB SUBNET</p>
+          <pre><code>az network vnet subnet update --vnet-name lab-vnet -n web-subnet \
+  --network-security-group web-nsg</code></pre>
+          <p class="code-label">VERIFY - the custom rules should list ahead of the defaults</p>
+          <pre><code>az network nsg rule list --nsg-name web-nsg -o table
+
+Name                Priority  Direction  Access  Protocol  DestinationPortRanges
+------------------  --------  ---------  ------  --------  ---------------------
+allow-https         100       Inbound    Allow   Tcp       443
+deny-mgmt-internet  200       Inbound    Deny    Tcp       22, 3389</code></pre>
+          <p>Common mistake: creating the rule against the wrong NSG name (every lab has at least one orphaned NSG from a previous attempt) or forgetting the subnet association. Verify with the table above - if your rule appears but traffic behavior does not change, the association is the first thing to check with <code>az network vnet subnet show --vnet-name lab-vnet -n web-subnet --query networkSecurityGroup</code>.</p>
         </div></div>
         <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Create a UDR forcing traffic via a firewall</strong>
           <p>A user-defined route overrides Azure's default routing so traffic must pass your inspection point.</p>
           <div class="command-block" data-copy><div class="command"><code>az network route-table create -n rt-app &amp;&amp; az network route-table route create -route-table-name rt-app -n to-fw -address-prefix 0.0.0.0/0 -next-hop-type VirtualAppliance -next-hop-ip-address 10.0.3.4</code></div></div>
+          <p>WHAT: a route table named <code>rt-app</code> holding one route, <code>to-fw</code>, that sends all traffic matching <code>0.0.0.0/0</code> to next-hop type <code>VirtualAppliance</code> at <code>10.0.3.4</code>. WHY: by default, Azure system routes give every subnet a direct path to the internet and to each other. The moment this UDR is associated with the app subnet, UDR precedence kicks in and the subnet's default route becomes the NVA - without logging into a single VM. This is the standard pattern for forced tunneling through a firewall, and <code>VirtualAppliance</code> is the next-hop type that requires an explicit IP (unlike <code>Internet</code> or <code>VirtualNetworkGateway</code>, which are symbolic).</p>
+          <p>Like the NSG, a route table does nothing until it is associated with a subnet. Associate it with the app subnet, and enable IP forwarding on the NVA's NIC - Azure drops packets delivered to a NIC whose IP is not the packet's destination unless forwarding is explicitly on. That Azure-side flag is separate from the OS-level forwarding inside the appliance, and you need both.</p>
+          <p class="code-label">ASSOCIATE THE ROUTE TABLE AND ENABLE FORWARDING ON THE NVA</p>
+          <pre><code>az network vnet subnet update --vnet-name lab-vnet -n app-subnet \
+  --route-table rt-app
+
+# Azure-side: allow the appliance NIC to receive packets not addressed to it
+az network nic update -n fw01VMNic --ip-forwarding true
+
+# OS-side (on the appliance itself, e.g. a Linux NVA):
+#   sysctl -w net.ipv4.ip_forward=1
+#   echo "net.ipv4.ip_forward=1" &gt;&gt; /etc/sysctl.conf</code></pre>
+          <p class="code-label">VERIFY - route table contents and subnet association</p>
+          <pre><code>az network route-table route list -g lab-rg --route-table-name rt-app -o table
+
+Name   AddressPrefix  NextHopType       NextHopIpAddress
+-----  -------------  ----------------  ------------------
+to-fw  0.0.0.0/0      VirtualAppliance  10.0.3.4</code></pre>
+          <p>Common mistake: pointing <code>--next-hop-ip-address</code> at the wrong interface of a multi-homed NVA (it must be an IP in a subnet the routing VM can reach, typically the appliance's trusted or LAN-side address), or forgetting that a route table can only be associated with subnets in the <em>same region</em> as the table. Also note that the address prefix is matched most-specific-first within the table: a <code>0.0.0.0/0</code> route is a catch-all, so any more specific route you add later for the same subnet wins over it.</p>
         </div></div>
         <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Inspect effective rules and routes</strong>
+          <p>WHAT: Azure merges system routes, your UDRs, and any BGP-learned routes into one <em>effective route table</em> per NIC, and merges all NSGs applied at the subnet and NIC level into one <em>effective security rule</em> view. WHY: this merged view is the ground truth. The individual resources can each look correct while the combination is wrong - a UDR on the wrong subnet, an old NSG still attached to a NIC - and the effective views are the only place where those composition errors become visible without sending traffic.</p>
           <div class="terminal-session">
             <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network nic show-effective-route-table -n web01VMNic -o table</span></div>
             <div class="terminal-output">Source  AddressPrefix  NextHopType        NextHopIp
 User    0.0.0.0/0      VirtualAppliance   10.0.3.4</div>
           </div>
+          <p>The <code>Source</code> column tells you where each route came from: <code>Default</code> for system routes, <code>User</code> for your UDRs, <code>VirtualNetworkGateway</code> for BGP-learned routes. In the output above, the <code>User</code>-sourced <code>0.0.0.0/0</code> entry confirms the UDR is associated and winning. Note this NIC-level command reflects the route table of the NIC's subnet - run it against a NIC in the app subnet (e.g. <code>app01VMNic</code>) to see the <code>to-fw</code> route in effect.</p>
+          <p class="code-label">EFFECTIVE SECURITY RULES - the merged NSG view for a NIC</p>
+          <pre><code>az network nic list-effective-nsg -n web01VMNic -o table
+
+# For full detail, ask for the JSON and filter to inbound allows:
+az network nic list-effective-nsg -n web01VMNic \
+  --query "value[].association.networkSecurityGroup.id" -o tsv</code></pre>
+          <p>Common mistake: running these commands immediately after a change and reading a stale view - effective views can take a minute to converge after an association change. If the output does not match what you just configured, wait 60-90 seconds and re-run before assuming the configuration is wrong. Also remember both commands target a NIC, not a VM: use <code>az vm nic list -g lab-rg --vm-name web01</code> if you only know the VM name.</p>
         </div></div>
       </div>
     </section>
@@ -109,15 +183,40 @@ graph LR
     </section>
 
     <section><h2>Testing &amp; Validation</h2>
+      <p>Configuration views tell you what Azure <em>thinks</em> the network is; the tests below prove what it <em>does</em>. Run all three - a policy lookup, a real connection, and a route check - because each catches a different class of mistake.</p>
       <div class="command-block" data-copy><div class="command"><code>az network nic show-effective-route-table -n web01VMNic -query "value[?nextHopType=='VirtualAppliance']"</code></div></div>
       <p>You should see the appliance as the next hop for 0.0.0.0/0, confirming traffic is forced through your firewall. NSG denies should appear in flow logs.</p>
+      <p>First, use Network Watcher's IP flow verify to ask the policy engine directly whether a specific 5-tuple is allowed, without sending a single packet. This simulates an internet client at <code>203.0.113.10</code> hitting the web VM on 443:</p>
+      <p class="code-label">POLICY CHECK - IP flow verify (requires the Network Watcher extension)</p>
+      <pre><code>az network watcher test-ip-flow --vm web01 --direction Inbound \
+  --protocol Tcp --local 10.0.1.4:443 --remote 203.0.113.10:54321
+
+# Expected:
+#   "access": "Allow",
+#   "ruleName": "securityRule/allow-https"
+
+# The same probe against port 22 should return:
+#   "access": "Deny",
+#   "ruleName": "securityRule/deny-mgmt-internet"</code></pre>
+      <p>Second, test with real traffic, because stateful behavior and the appliance's own rules are not visible to a policy lookup. From an external host, HTTPS should connect and SSH should time out:</p>
+      <p class="code-label">REAL TRAFFIC - allowed 443 succeeds, denied 22 times out</p>
+      <pre><code>curl -vk https://&lt;web01-public-ip&gt;/       # TLS handshake completes
+ssh -o ConnectTimeout=5 &lt;web01-public-ip&gt; # hangs, then: Connection timed out</code></pre>
+      <p>The difference between <em>timed out</em> and <em>connection refused</em> is diagnostic gold: a timeout means the NSG dropped the packet (no listener ever saw it), while a refusal means the packet arrived and the host rejected it - in other words, your NSG let it through. Third, confirm from a VM in the app subnet that egress really traverses the appliance: <code>traceroute</code> to any external address should show <code>10.0.3.4</code> as the first hop outside the subnet.</p>
+      <p class="code-label">OPTIONAL - enable NSG flow logs for ongoing evidence of denies</p>
+      <pre><code>az network watcher flow-log create -n web-nsg-flowlog \
+  --nsg web-nsg --storage-account labflowlogsa \
+  --location eastus --format JSON --log-version 2</code></pre>
+      <p>Flow logs record every allowed and denied 5-tuple against the rule that decided it. After your SSH test above, the flow log for <code>web-nsg</code> should contain deny records citing <code>deny-mgmt-internet</code> - the written proof an auditor (or your future self) wants that the deny rule is doing its job.</p>
     </section>
 
     <details><summary>Troubleshooting</summary>
       <ul>
-        <li><strong>Rule has no effect:</strong> a lower-priority number wins; reorder so the intended rule precedes broad denies.</li>
-        <li><strong>UDR ignored:</strong> associate the route table with the subnet, not just create it.</li>
-        <li><strong>Appliance drops traffic:</strong> enable IP forwarding on the appliance NIC.</li>
+        <li><strong>Rule has no effect:</strong> a lower-priority number wins; reorder so the intended rule precedes broad denies. Check for a stale or duplicate rule at a lower number with <code>az network nsg rule list --nsg-name web-nsg -o table</code> - a forgotten <code>allow-all</code> at priority 90 silently overrides everything below it. Also confirm the NSG is actually associated: rules on an unattached NSG evaluate against nothing.</li>
+        <li><strong>UDR ignored:</strong> associate the route table with the subnet, not just create it. Creating <code>rt-app</code> and its routes changes nothing until <code>az network vnet subnet update ... --route-table rt-app</code> runs. Verify with <code>az network vnet subnet show --vnet-name lab-vnet -n app-subnet --query routeTable</code> - a <code>null</code> result means the association never happened or targeted a different subnet.</li>
+        <li><strong>Appliance drops traffic:</strong> enable IP forwarding on the appliance NIC. Azure delivers routed packets to the NVA's NIC, but the NIC discards anything not addressed to its own IP unless <code>--ip-forwarding true</code> is set on the Azure side <em>and</em> the OS inside the appliance forwards too (<code>net.ipv4.ip_forward=1</code> on Linux). Forgetting one of the two layers is the classic half-working NVA: the route table is perfect and packets still vanish.</li>
+        <li><strong>Traffic is allowed but the app still cannot connect:</strong> check for NSGs stacked at both levels. An NSG can attach to the subnet <em>and</em> to the NIC, and traffic must pass <strong>both</strong> - they are evaluated independently, subnet first for inbound. A restrictive NIC-level NSG from an earlier experiment is a frequent invisible blocker. Compare both associations in the <code>list-effective-nsg</code> output.</li>
+        <li><strong>Asymmetric routing through the appliance:</strong> if the UDR forces app-subnet egress through the NVA but return traffic from the web subnet takes the direct system route, stateful inspection on the NVA breaks (it sees only half the conversation) and connections reset. Fix by putting matching UDRs on every subnet involved so flows traverse the appliance symmetrically in both directions, or by disabling the NVA's statefulness for that flow if the design genuinely requires asymmetry.</li>
       </ul>
     </details>
 
@@ -135,6 +234,17 @@ graph LR
         <li>Forced all egress through a firewall appliance with a UDR.</li>
         <li>Verified the effective route table on the VM NIC.</li>
         <li>Combined filtering and routing for defense in depth.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li><strong>NSGs filter, route tables steer.</strong> An NSG answers "is this flow allowed?" on the 5-tuple; a UDR answers "where does an allowed packet go next?" Use both - neither substitutes for the other.</li>
+        <li><strong>Priority order is the policy.</strong> Lowest number wins and evaluation stops at the first match, so specific allows go low in number and the catch-all deny (yours or the built-in 65500) cleans up behind them.</li>
+        <li><strong>Nothing works until it is associated.</strong> NSGs attach to subnets or NICs; route tables attach to subnets. An unassociated resource is inert - most "the rule does nothing" bugs are association bugs.</li>
+        <li><strong>Route precedence is fixed:</strong> user-defined routes beat BGP routes beat system routes. One UDR on a subnet redirects its whole egress path with zero guest-OS changes.</li>
+        <li><strong>Trust the effective views, then prove with traffic.</strong> <code>show-effective-route-table</code> and <code>list-effective-nsg</code> show the merged truth; <code>test-ip-flow</code>, a real <code>curl</code>/<code>ssh</code> probe, and NSG flow logs confirm the behavior.</li>
+        <li><strong>An NVA needs forwarding at two layers.</strong> Azure-side IP forwarding on the NIC and OS-side forwarding in the guest - one without the other drops routed packets silently.</li>
       </ul>
     </section>
 

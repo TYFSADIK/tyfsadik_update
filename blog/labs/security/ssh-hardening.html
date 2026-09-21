@@ -164,7 +164,39 @@ maxauthtries 3
 LISTEN 0 128 0.0.0.0:22 0.0.0.0:* users:(("sshd",pid=1823,fd=3))</code></pre>
       <p><strong>Common mistake:</strong> running <code>systemctl restart ssh</code> instead of <code>reload</code>, or reloading before opening a second verified session. On Ubuntu 22.04 the unit is named <code>ssh.service</code> (<code>sshd</code> is aliased to it); on RHEL-family systems it is <code>sshd.service</code>. If <code>sshd -t</code> is silent, that means success — it prints nothing on a valid config.</p>
 
-      <h3>5. Install fail2ban and configure the sshd jail</h3>
+      <h3>5. Tighten crypto, disable unused features, and raise log verbosity</h3>
+      <p>With access control settled, the next layer is reducing what sshd will negotiate and what it will do at all. Modern OpenSSH already defaults to strong algorithms, but pinning an explicit list means a future client cannot talk the server down into something weaker, and disabling forwarding/agent features you do not use removes whole feature-attack-surfaces. <code>LogLevel VERBOSE</code> is the quiet win here: it logs the key fingerprint used for every login, which turns the auth log into a real audit trail.</p>
+      <div class="command-block"><div class="command"><code>sudo tee -a /etc/ssh/sshd_config.d/60-hardening.conf</code></div></div>
+      <pre><code class="language-bash"># Crypto + feature surface
+KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org
+Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+HostKeyAlgorithms ssh-ed25519
+PermitEmptyPasswords no
+X11Forwarding no
+AllowAgentForwarding no
+AllowTcpForwarding no
+PermitTunnel no
+LogLevel VERBOSE</code></pre>
+      <p>Notes on the choices:</p>
+      <ul>
+        <li><code>KexAlgorithms</code> / <code>Ciphers</code> / <code>MACs</code> – pinned to current, audited primitives; no CBC modes, no SHA-1, no group-exchange legacy KEX.</li>
+        <li><code>HostKeyAlgorithms ssh-ed25519</code> – the server only offers its ed25519 host key. Make sure one exists (<code>ls /etc/ssh/ssh_host_ed25519_key</code>) before setting this, or clients see "no hostkey alg".</li>
+        <li><code>AllowTcpForwarding no</code> – appropriate for a pure admin/bastion host; leave it on if you legitimately use SSH tunnels, or scope it with <code>Match User</code> blocks.</li>
+        <li><code>PermitEmptyPasswords no</code> – redundant once password auth is off, but explicit is better than implied.</li>
+      </ul>
+      <p>Validate and reload exactly as in step 4, then confirm the effective algorithms:</p>
+      <div class="command-block"><div class="command"><code>sudo sshd -t &amp;&amp; sudo systemctl reload sshd</code></div><div class="command"><code>sudo sshd -T | grep -Ei 'kexalgorithms|ciphers|macs|loglevel'</code></div></div>
+      <pre><code class="language-bash">kexalgorithms curve25519-sha256,curve25519-sha256@libssh.org
+ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com
+macs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+loglevel VERBOSE</code></pre>
+      <p><strong>Common mistake:</strong> over-restricting algorithms and breaking an older client (an ancient network appliance or an old PuTTY). Test every client that must connect <em>before</em> rolling this to all nodes; <code>ssh -Q kex</code> / <code>ssh -Q cipher</code> on the client shows what it supports.</p>
+      <p><strong>How to verify VERBOSE logging pays off:</strong> after a fresh login, the auth log now records which key was used — invaluable when you later audit who logged in from where:</p>
+      <div class="command-block"><div class="command"><code>sudo journalctl -u ssh --since "10 min ago" | grep -i accepted</code></div></div>
+      <pre><code class="language-bash">Sep 21 14:02:11 lab-node-01 sshd[2411]: Accepted publickey for taki from 198.51.100.10 port 51234 ssh2: ED25519 SHA256:7gR3kQ...x9</code></pre>
+
+      <h3>6. Install fail2ban and configure the sshd jail</h3>
       <p>fail2ban watches the auth log for repeated failures and inserts firewall DROP rules for the offending source. Install it, then configure via <code>jail.local</code> — never edit <code>jail.conf</code> directly, because package updates overwrite it. The three knobs that matter are <code>maxretry</code> (failures before a ban), <code>findtime</code> (the window those failures must occur in), and <code>bantime</code> (how long the ban lasts).</p>
       <div class="command-block"><div class="command"><code>sudo apt update &amp;&amp; sudo apt install -y fail2ban</code></div><div class="command"><code>sudo tee /etc/fail2ban/jail.local</code></div></div>
       <pre><code class="language-bash">[DEFAULT]

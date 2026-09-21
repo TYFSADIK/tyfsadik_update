@@ -53,18 +53,23 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">budgets</span><span class="tag">tags</span><span class="tag">Advisor</span><span class="tag">cost analysis</span></div>
     </div>
 
-    <section><p class="lead">You will set a budget with alerts, tag resources for showback, and act on Azure Advisor recommendations. By the end you will catch overspend early and cut waste before the monthly bill arrives.</p></section>
+    <section><p class="lead">You will set a budget with alerts, tag resources for showback, and act on Azure Advisor recommendations. By the end you will catch overspend early and cut waste before the monthly bill arrives.</p>
+      <p>Cloud bills have a nasty habit of surprising people: a VM left running over the weekend, a forgotten storage account, an oversized database nobody right-sized after a proof of concept. Azure gives you three native tools to fight this, and this lab wires them together into one working loop. <strong>Tags</strong> tell you <em>who</em> spent the money, <strong>budgets with alerts</strong> tell you <em>when</em> spending crosses a line, and <strong>Advisor</strong> tells you <em>where</em> the waste is. Everything here uses the Azure CLI so the whole setup is repeatable and scriptable.</p>
+      <p>The lab assumes a personal or lab subscription, not an enterprise agreement. All commands run with a Contributor-level account; no paid third-party tooling is involved.</p></section>
 
     <div class="learning-objectives"><h2>Learning Objectives</h2>
       <ul>
-        <li>Create a budget with threshold alerts.</li>
-        <li>Tag resources to attribute cost by project.</li>
-        <li>Apply Advisor cost recommendations.</li>
+        <li>Create a budget with threshold alerts delivered to an action group.</li>
+        <li>Tag resources to attribute cost by project, and verify the tags stuck.</li>
+        <li>Apply Advisor cost recommendations to eliminate idle and oversized resources.</li>
+        <li>Break spend down per tag in Cost Analysis so showback reports are possible.</li>
+        <li>Enforce the tagging convention with Azure Policy so governance survives future deployments.</li>
         <li><strong>Time:</strong> ~2 hours &middot; <strong>Difficulty:</strong> Beginner &middot; <strong>Prereqs:</strong> an Azure subscription with some resources.</li>
       </ul>
     </div>
 
     <section><h2>Architecture Overview</h2>
+      <p>The governance loop is deliberately simple. Every resource carries tags, so Cost Analysis can group spend by project. A budget watches the total and fires alerts at thresholds you choose. In parallel, Advisor continuously scans usage patterns and emits recommendations - right-size this VM, delete that orphaned disk. Acting on those recommendations closes the loop and drops the spend line.</p>
       <div class="mermaid" role="img" aria-label="Cost governance flow">
 graph LR
   Res[Tagged resources] --> CA[Cost Analysis]
@@ -72,32 +77,184 @@ graph LR
   Adv[Azure Advisor] -->|recommendations| Act[Right-size / shut down]
   Act --> Save[Lower spend]
       </div>
+      <p>Notice what is <em>not</em> in the diagram: there is no automation shutting things down yet. This lab is about visibility and guardrails first. Once you trust the numbers, the Extension Ideas section points at scheduled auto-shutdown and cost exports.</p>
     </section>
 
     <section><h2>Environment Setup</h2>
       <p><strong>You will need:</strong> the Azure CLI and a subscription with billable resources.</p>
       <p><strong>Before you begin:</strong> agree a tagging convention (for example <code>project</code>, <code>env</code>).</p>
+      <p>A tagging convention sounds trivial, but it is the decision everything else depends on. Tags are case-sensitive keys with case-insensitive values in some Azure surfaces and case-sensitive in others, so pick one style and stick to it. This lab uses <code>project</code> (which workload owns the cost) and <code>env</code> (lab, dev, or prod). Write the convention down before you touch a single resource - inconsistent tags like <code>Project</code>, <code>project</code>, and <code>proj</code> are the number one reason showback reports come out wrong.</p>
+      <p>If the CLI is not installed or you have not authenticated yet, do that first and confirm you are pointed at the right subscription:</p>
+      <p class="code-label">SIGN IN AND SELECT THE SUBSCRIPTION</p>
+      <pre><code>az login
+az account list -o table
+az account set --subscription "My Subscription"
+az account show --query "{name:name, id:id, state:state}" -o table</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az account show --query "{name:name, id:id, state:state}" -o table</span></div>
+        <div class="terminal-output">Name            Id                                  State
+--------------  ----------------------------------  --------
+My Subscription  11111111-2222-3333-4444-555555555555  Enabled</div>
+      </div>
+      <p>The lab commands assume a resource group named <code>tyf-rg</code> that already holds a few billable resources (a VM and a storage account are plenty). If you need one:</p>
+      <div class="command-block" data-copy><div class="command"><code>az group create -n tyf-rg -l eastus</code></div></div>
+      <div class="note"><strong>Common mistake:</strong> running the lab against the wrong subscription. Budgets and cost queries are scoped to whatever <code>az account show</code> reports. Verify the subscription name <em>before</em> creating anything.</div>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
+      <p>Work through the steps in order. Steps 01-03 build the core loop (tags, budget, Advisor); steps 04-06 add the reporting and enforcement layers that make the setup hold up over time.</p>
       <div class="steps">
         <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Tag resources for attribution</strong>
+          <p><strong>What:</strong> apply the agreed tags to every resource in <code>tyf-rg</code> in one pass. <strong>Why:</strong> Cost Analysis can only group spend by tags that actually exist on the resources. Untagged resources land in an "untagged" bucket, and once a bill is generated, historical spend cannot be re-tagged retroactively - the attribution only starts from the moment the tag is applied.</p>
           <div class="command-block" data-copy><div class="command"><code>az resource tag -tags project=tyf env=lab -ids $(az resource list -g tyf-rg -query "[].id" -o tsv)</code></div></div>
+          <p>The command resolves every resource ID in the group, then merges the two tags onto each one. By default <code>az resource tag</code> performs a <em>merge</em>: existing tags are kept and the new keys are added or overwritten. Passing <code>--operation replace</code> instead would wipe any tags already present - rarely what you want.</p>
+          <p>Tag the resource group itself too. Resource group tags are not inherited automatically (Step 05 fixes that with policy), but having them in place makes the inheritance policy meaningful:</p>
+          <div class="command-block" data-copy><div class="command"><code>az group update -n tyf-rg --set tags.project=tyf tags.env=lab</code></div></div>
+          <p class="code-label">VERIFY - EVERY RESOURCE CARRIES BOTH TAGS</p>
+          <pre><code>az resource list -g tyf-rg --query "[].{name:name, type:type, project:tags.project, env:tags.env}" -o table</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az resource list -g tyf-rg --query "[].{name:name, type:type, project:tags.project, env:tags.env}" -o table</span></div>
+            <div class="terminal-output">Name        Type                                  Project    Env
+----------  ------------------------------------  ---------  -----
+tyf-vm01    Microsoft.Compute/virtualMachines     tyf        lab
+tyfvm01disk Microsoft.Compute/disks               tyf        lab
+tyfstore01  Microsoft.Storage/storageAccounts     tyf        lab</div>
+          </div>
+          <div class="note"><strong>Common mistake:</strong> blank <code>Project</code>/<code>Env</code> columns in the output above mean the tag command silently skipped resources - usually because a read-only lock exists on the resource or group. Check for locks with <code>az lock list -g tyf-rg -o table</code> before re-running. <strong>Verify:</strong> every row must show both tag values before moving on.</div>
         </div></div>
         <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Create a budget with alerts</strong>
+          <p><strong>What:</strong> define a monthly spending cap and wire alert thresholds to an email action group. <strong>Why:</strong> a budget without notifications is just a chart - you only look at it after the damage is done. Alerts at 80% of actual spend and 100% of forecasted spend give you time to react while the month is still recoverable.</p>
+          <p>The minimal form creates a budget with default settings:</p>
           <div class="command-block" data-copy><div class="command"><code>az consumption budget create -budget-name tyf-monthly -amount 50 -time-grain Monthly -category Cost</code></div></div>
+          <p><code>--category Cost</code> means the budget tracks actual billed cost (including taxes and marketplace charges where applicable), as opposed to <code>Usage</code>, which tracks raw consumption. For personal guardrails, Cost is the right choice - it matches what the invoice will show.</p>
+          <p>To actually receive alerts, first create an action group with your email as a receiver, then attach it to the budget's notifications. An action group is Azure Monitor's reusable "who to notify" object, so the same group can later serve uptime alerts and security alerts too:</p>
+          <p class="code-label">CREATE THE ACTION GROUP AND CAPTURE ITS ID</p>
+          <pre><code>az monitor action-group create -g tyf-rg -n budget-alerts \
+  --short-name budgalrt \
+  --action email taki taki@example.com -o table
+
+AG_ID=$(az monitor action-group show -g tyf-rg -n budget-alerts --query id -o tsv)
+echo $AG_ID</code></pre>
+          <p>Now recreate the budget with explicit start/end dates and two notification thresholds. Start dates for a Monthly grain must fall on the first of a month, and cannot be in the past beyond the current month:</p>
+          <p class="code-label">BUDGET WITH 80% ACTUAL AND 100% FORECASTED ALERTS</p>
+          <pre><code>az consumption budget create \
+  --budget-name tyf-monthly \
+  --amount 50 \
+  --category Cost \
+  --time-grain Monthly \
+  --start-date 2026-09-01 \
+  --end-date 2027-09-01 \
+  --notifications '{
+    "actual_GreaterThan_80_Percent": {
+      "enabled": true,
+      "operator": "GreaterThan",
+      "threshold": 80,
+      "contactEmails": ["taki@example.com"],
+      "contactRoles": [],
+      "contactGroups": ["&lt;paste $AG_ID here&gt;"]
+    },
+    "forecasted_GreaterThan_100_Percent": {
+      "enabled": true,
+      "operator": "GreaterThan",
+      "threshold": 100,
+      "contactEmails": ["taki@example.com"],
+      "contactRoles": [],
+      "contactGroups": []
+    }
+  }'</code></pre>
+          <p>Each notification key encodes its own condition: <code>actual_GreaterThan_80_Percent</code> fires when <em>billed</em> spend passes 80% of $50, and <code>forecasted_GreaterThan_100_Percent</code> fires when Azure's forecast predicts you will <em>exceed</em> the budget by month-end. The forecast alert is the early warning; the actual alert is the confirmation.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az consumption budget show --budget-name tyf-monthly --query "{name:name, amount:amount, grain:timeGrain}" -o table</span></div>
+            <div class="terminal-output">Name         Amount    Grain
+-----------  --------  --------
+tyf-monthly  50.0      Monthly</div>
+          </div>
+          <div class="note"><strong>Common mistake:</strong> after creating the action group, Azure emails a confirmation link to the address - alerts are <em>not delivered</em> until that link is clicked. If the test in Step 06 never arrives, that unconfirmed subscription is the usual suspect. <strong>Verify:</strong> <code>az monitor action-group show -g tyf-rg -n budget-alerts</code> should list your email receiver.</div>
         </div></div>
         <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Review Advisor recommendations</strong>
+          <p><strong>What:</strong> pull Azure Advisor's Cost recommendations and act on them. <strong>Why:</strong> Advisor watches utilization signals you would have to dig out of metrics yourself - CPU averages, network throughput, disk IOPS - and turns them into concrete money-saving actions with an estimated saving attached.</p>
           <div class="terminal-session">
             <div class="terminal-line"><span class="prompt">$</span> <span class="input">az advisor recommendation list -category Cost -o table</span></div>
             <div class="terminal-output">Category  Impact  ShortDescription
 Cost      High    Right-size or shut down underutilized VM</div>
           </div>
+          <p>The table view is enough to triage, but the real decision data lives in the recommendation's fields: which resource, what the problem is, and what Advisor suggests. Query them directly:</p>
+          <p class="code-label">FULL RECOMMENDATION DETAIL</p>
+          <pre><code>az advisor recommendation list --category Cost \
+  --query "[].{resource:impactedField, impact:impact, problem:shortDescription.problem, fix:shortDescription.solution}" \
+  -o table</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az advisor recommendation list --category Cost --query "[].{resource:impactedField, impact:impact, problem:shortDescription.problem, fix:shortDescription.solution}" -o table</span></div>
+            <div class="terminal-output">Resource         Impact  Problem                                             Fix
+---------------  -------  --------------------------------------------------  ------------------------------------
+Microsoft.Compute/virtualMachines/tyf-vm01  High  Virtual machine has low CPU and network utilization  Resize to a smaller SKU or shut it down</div>
+          </div>
+          <p>Typical actions from this output:</p>
+          <ul>
+            <li><strong>Right-size:</strong> <code>az vm resize -g tyf-rg -n tyf-vm01 --size Standard_B2s</code> if the VM idles at 5% CPU.</li>
+            <li><strong>Deallocate:</strong> <code>az vm deallocate -g tyf-rg -n tyf-vm01</code> stops billing for compute (disks still bill). A plain <code>stop</code> from inside the OS does <em>not</em> stop compute charges.</li>
+            <li><strong>Delete orphans:</strong> unattached disks and old public IPs keep billing after their parent VM is gone. Find disks with <code>az disk list --query "[?diskState=='Unattached']" -o table</code>.</li>
+          </ul>
+          <div class="note"><strong>Common mistake:</strong> stopping a VM from inside the OS and assuming the billing stopped. Only <em>deallocated</em> VMs stop accruing compute charges. <strong>Verify:</strong> <code>az vm get-instance-view -g tyf-rg -n tyf-vm01 --query instanceView.statuses[1].displayStatus -o tsv</code> should read <code>VM deallocated</code>.</div>
+        </div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Break down spend by tag in Cost Analysis</strong>
+          <p><strong>What:</strong> query month-to-date cost grouped by the <code>project</code> tag. <strong>Why:</strong> this is the showback payoff from Step 01 - instead of one opaque subscription total, you get a per-project number you can hand to a team lead or use to decide which experiment is worth keeping.</p>
+          <p class="code-label">MONTH-TO-DATE COST GROUPED BY THE project TAG</p>
+          <pre><code>az costmanagement query --type ActualCost \
+  --timeframe MonthToDate \
+  --dataset-granularity None \
+  --dataset-grouping name="project" type="TagKey" \
+  -o table</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az costmanagement query --type ActualCost --timeframe MonthToDate --dataset-granularity None --dataset-grouping name="project" type="TagKey" -o table</span></div>
+            <div class="terminal-output">PreTaxCost    TagKey    TagValue
+------------  --------  ---------
+31.42         project   tyf
+4.87          project   (untagged)</div>
+          </div>
+          <p>The <code>(untagged)</code> row is your hygiene metric: it represents spend you cannot attribute. The goal over time is to drive it to zero. A nonzero value right after tagging is normal - usage records from before the tags were applied stay untagged, and new cost data can take 8-24 hours to appear.</p>
+          <div class="note"><strong>Common mistake:</strong> some CLI versions reject <code>type="TagKey"</code> in dataset grouping. If that happens, run the same breakdown in the portal: <strong>Cost Management &rsaquo; Cost analysis &rsaquo; Group by &rsaquo; Tag &rsaquo; project</strong>. The numbers are identical; only the interface differs. <strong>Verify:</strong> the rows sum to the subscription total shown in Cost Analysis for the same period.</div>
+        </div></div>
+        <div class="step"><div class="step-num">05</div><div class="step-body"><strong>Enforce the tagging convention with Azure Policy</strong>
+          <p><strong>What:</strong> assign two built-in policies at the resource group scope: one requires the <code>project</code> tag on new resources, the other inherits it from the resource group. <strong>Why:</strong> manual tagging decays the moment someone deploys through the portal at midnight. Policy makes the convention self-enforcing so Step 04's untagged bucket stays empty without babysitting.</p>
+          <p>Built-in policies are referenced by ID, so look them up by display name first - never paste a GUID from a blog post without resolving it against your own tenant:</p>
+          <p class="code-label">RESOLVE THE BUILT-IN POLICY IDS</p>
+          <pre><code>REQ_ID=$(az policy definition list --query "[?displayName=='Require a tag on resources'].id" -o tsv)
+INH_ID=$(az policy definition list --query "[?displayName=='Inherit a tag from the resource group'].id" -o tsv)
+echo "$REQ_ID"; echo "$INH_ID"</code></pre>
+          <p class="code-label">ASSIGN BOTH POLICIES TO tyf-rg</p>
+          <pre><code>SCOPE=$(az group show -n tyf-rg --query id -o tsv)
+
+az policy assignment create --name require-project-tag \
+  --policy "$REQ_ID" --scope "$SCOPE" \
+  --params '{"tagName":{"value":"project"}}'
+
+az policy assignment create --name inherit-project-tag \
+  --policy "$INH_ID" --scope "$SCOPE" \
+  --params '{"tagName":{"value":"project"}}'</code></pre>
+          <p>The <code>Deny</code>-effect policy blocks new deployments missing the tag; the <code>Modify</code>-effect inherit policy silently copies the resource group's tag onto anything created without one. Together they cover both the "refuse" and "auto-fix" philosophies - in a real environment you typically pick one.</p>
+          <div class="note"><strong>Common mistake:</strong> expecting existing non-compliant resources to be fixed instantly. Policy evaluates new and updated resources immediately, but already-deployed resources need a <em>remediation task</em> (or an update that triggers re-evaluation). <strong>Verify:</strong> <code>az policy state list --resource-group tyf-rg -o table</code> shows compliance once evaluation completes.</div>
+        </div></div>
+        <div class="step"><div class="step-num">06</div><div class="step-body"><strong>Prove the loop end to end</strong>
+          <p><strong>What:</strong> confirm the budget is tracking real spend and that the alerting path is live. <strong>Why:</strong> a governance setup you have never seen fire is a hypothesis, not a control.</p>
+          <p class="code-label">BUDGET TRACKING CURRENT SPEND</p>
+          <pre><code>az consumption budget show --budget-name tyf-monthly \
+  --query "{amount:amount, currentSpend:currentSpend.amount, unit:currentSpend.unit}" -o table</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az consumption budget show --budget-name tyf-monthly --query "{amount:amount, currentSpend:currentSpend.amount, unit:currentSpend.unit}" -o table</span></div>
+            <div class="terminal-output">Amount    CurrentSpend    Unit
+--------  --------------  ------
+50.0      36.29           USD</div>
+          </div>
+          <p>You cannot force a budget alert on demand - it fires only when cost data crosses a threshold. The practical test is to temporarily create a throwaway budget of <code>--amount 1</code> (below your real spend) with your action group attached; the 80% actual alert fires on the next evaluation cycle and proves the delivery path. Delete it afterwards:</p>
+          <div class="command-block" data-copy><div class="command"><code>az consumption budget delete --budget-name tyf-alert-test</code></div></div>
+          <div class="note"><strong>Common mistake:</strong> expecting the alert within minutes. Budgets are evaluated when new cost data lands - commonly every few hours, and up to once a day. Schedule the test, then go do something else. <strong>Verify:</strong> the alert email names the budget, the threshold, and the current percentage.</div>
         </div></div>
       </div>
     </section>
 
     <section><h2>Progress So Far</h2>
+      <p>The core loop from the architecture diagram is now live: resources are tagged, the budget is armed with alerts, and Advisor's waste list has been actioned. Steps 04-06 layered reporting and enforcement on top of that foundation.</p>
       <div class="mermaid" role="img" aria-label="Cost management progress">
 graph LR
   A[01 Tagging] -->|done| B[02 Budget]
@@ -109,23 +266,65 @@ graph LR
     </section>
 
     <section><h2>Testing &amp; Validation</h2>
+      <p>Run these checks as a final acceptance pass. Each one maps to a step above; if any fails, jump back to that step's verify note.</p>
       <div class="command-block" data-copy><div class="command"><code>az consumption budget show -budget-name tyf-monthly -query amount &amp;&amp; az resource list -g tyf-rg -query "[?tags.project=='tyf'] | length(@)"</code></div></div>
       <p>You should see the budget amount and a count of tagged resources. With Advisor reviewed, cost governance is in place.</p>
+      <p class="code-label">FULL ACCEPTANCE CHECKLIST</p>
+      <pre><code># 1. Budget exists, is Monthly, and tracks spend
+az consumption budget list --query "[].{name:name, amount:amount, grain:timeGrain}" -o table
+
+# 2. Alert delivery path is configured
+az monitor action-group show -g tyf-rg -n budget-alerts \
+  --query "emailReceivers[].{name:name, email:emailAddress, status:status}" -o table
+
+# 3. No untagged spend inside the lab group
+az resource list -g tyf-rg --query "[?tags.project==null] | length(@)" -o tsv   # expect: 0
+
+# 4. Policies are assigned at the group scope
+az policy assignment list --scope $(az group show -n tyf-rg --query id -o tsv) \
+  --query "[].displayName" -o table
+
+# 5. Remaining Advisor cost items (expect fewer than Step 03, or none)
+az advisor recommendation list --category Cost --query "length(@)" -o tsv</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az resource list -g tyf-rg --query "[?tags.project==null] | length(@)" -o tsv</span></div>
+        <div class="terminal-output">0</div>
+      </div>
+      <p>All five checks passing means the loop is closed: spend is attributed, capped, alerted, analyzed, and protected against drift.</p>
     </section>
 
-    <details><summary>Troubleshooting</summary>
+    <section><h2>Troubleshooting</h2>
+      <p>These are the issues that actually bite people in this lab, in rough order of likelihood.</p>
+
+      <h3>Budget alert never arrives</h3>
+      <p><strong>Symptom:</strong> spend is clearly past 80% but no email. <strong>Causes and fixes:</strong></p>
       <ul>
-        <li><strong>Budget alert not received:</strong> attach notification contacts/action groups to the budget.</li>
-        <li><strong>Costs unattributed:</strong> enforce tags with Azure Policy so new resources inherit them.</li>
-        <li><strong>Advisor empty:</strong> recommendations need usage history; check back after a day of activity.</li>
+        <li>The action group email receiver was never confirmed - find the Azure confirmation email and click the link, then check <code>az monitor action-group show</code> lists the receiver.</li>
+        <li>The budget has no notification contacts attached at all (the minimal create command in Step 02 does exactly this). Recreate with the <code>--notifications</code> payload or add contacts in the portal blade.</li>
+        <li>Timing: budget evaluation follows cost-data ingestion, which can lag up to 24 hours. A threshold crossed today may alert tomorrow.</li>
+        <li>Check spam folders - alert mail comes from <code>azure-noreply@microsoft.com</code> and filters love eating it.</li>
       </ul>
-    </details>
+
+      <h3><code>az consumption budget create</code> fails with a date error</h3>
+      <p><strong>Symptom:</strong> an error about the time period or start date. <strong>Fix:</strong> for <code>--time-grain Monthly</code>, the start date must be the first day of a month and cannot be earlier than the current month. Use e.g. <code>--start-date 2026-09-01</code>. Also confirm <code>--category</code> is exactly <code>Cost</code> or <code>Usage</code> - other values are rejected.</p>
+
+      <h3>Tag command runs but tags are missing afterwards</h3>
+      <p><strong>Symptom:</strong> Step 01's verify table shows blank columns. <strong>Fix:</strong> look for read-only locks (<code>az lock list -g tyf-rg -o table</code>) and remove or work around them. Remember that resource group tags do <em>not</em> flow down to resources on their own - either tag resources directly or rely on the inherit policy from Step 05 for future deployments.</p>
+
+      <h3>Cost Analysis shows everything under "untagged"</h3>
+      <p><strong>Symptom:</strong> the Step 04 query returns one big untagged row. <strong>Fix:</strong> three usual reasons. Cost data has 8-24 hours of latency, so tags applied an hour ago are invisible yet. Tag application is not retroactive - spend from before tagging stays untagged forever. And tag keys are matched exactly, so <code>Project</code> vs <code>project</code> splits your data into two buckets.</p>
+
+      <h3>Advisor returns an empty list</h3>
+      <p><strong>Symptom:</strong> Step 03 prints nothing. <strong>Fix:</strong> recommendations need usage history; check back after a day of activity. Freshly created or nearly-idle subscriptions legitimately have no Cost recommendations. Advisor also refreshes roughly daily, so acting on a recommendation does not clear it immediately - verify the fix with the resource's own state (e.g. VM deallocated) rather than waiting for Advisor to catch up.</p>
+    </section>
 
     <section><h2>Extension Ideas</h2>
       <ul>
-        <li>Auto-shutdown dev VMs on a schedule to cut idle cost.</li>
+        <li>Auto-shutdown dev VMs on a schedule to cut idle cost - <code>az vm auto-shutdown -g tyf-rg -n tyf-vm01 --time 1900</code> pairs well with the deallocate habit from Step 03.</li>
         <li>Export cost data and chart it in <a href="azure-monitor.html">Azure Monitor</a> workbooks.</li>
         <li>Detect anomalies as part of <a href="cspm-azure-aws.html">CSPM</a>.</li>
+        <li>Set a second, tighter budget scoped to just <code>tyf-rg</code> (budgets accept a resource group scope) so lab experiments cannot hide inside the subscription total.</li>
+        <li>Extend the policy set with an <code>env</code> tag requirement once the <code>project</code> rollout is stable.</li>
       </ul>
     </section>
 
@@ -135,6 +334,17 @@ graph LR
         <li>Tagged resources to attribute 100% of project cost.</li>
         <li>Surfaced Advisor recommendations to cut waste.</li>
         <li>Established proactive spend governance before billing.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li><strong>Tag first, analyze second.</strong> Cost attribution is impossible to retrofit - historical spend keeps whatever tags existed when it was incurred.</li>
+        <li><strong>A budget without an action group is decoration.</strong> Always attach notifications, and always confirm the email receiver subscription.</li>
+        <li><strong>Forecast alerts are the early warning.</strong> The 100% forecasted alert fires while there is still time to act; the actual-spend alert just confirms it.</li>
+        <li><strong>Stopped is not deallocated.</strong> Only deallocated VMs stop billing for compute; disks and IPs keep charging either way.</li>
+        <li><strong>Policy beats discipline.</strong> Require/inherit tag policies keep the showback data clean long after the lab is over.</li>
+        <li><strong>Cost data is eventually consistent.</strong> Expect 8-24 hour lag in Cost Analysis and budget evaluation; never panic-test an alert and expect an instant email.</li>
       </ul>
     </section>
 

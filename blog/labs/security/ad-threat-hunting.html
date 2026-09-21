@@ -53,7 +53,10 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">BloodHound</span><span class="tag">SharpHound</span><span class="tag">Sysmon</span><span class="tag">Splunk</span><span class="tag">Kerberos</span></div>
     </div>
 
-    <section><p class="lead">I instrumented a lab Active Directory forest with Sysmon and Splunk, then hunted the most common identity attacks using BloodHound attack-path analysis. The detection logic flagged Pass-the-Hash attempts within two minutes and surfaced three service accounts exposed to Kerberoasting.</p></section>
+    <section><p class="lead">I instrumented a lab Active Directory forest with Sysmon and Splunk, then hunted the most common identity attacks using BloodHound attack-path analysis. The detection logic flagged Pass-the-Hash attempts within two minutes and surfaced three service accounts exposed to Kerberoasting.</p>
+      <p>This writeup walks through the full engagement end to end: building the lab forest, deploying telemetry (Sysmon + Splunk Universal Forwarders), collecting attack-path data with SharpHound, writing detections for the four highest-value Kerberos and credential attacks, and validating every rule by executing the attacks myself with Rubeus and Mimikatz in the isolated environment.</p>
+      <p>The goal was not just to "run some tools" but to close the loop on a real hunt cycle: form a hypothesis from MITRE ATT&amp;CK, collect the right telemetry, write a query, prove it fires on a simulated attack, and tune out false positives until the alert is trustworthy enough to page someone at 3 a.m.</p>
+    </section>
 
     <section><h2>Threat Model &amp; MITRE ATT&amp;CK Mapping</h2>
       <p>Active Directory is the identity backbone, which makes credential and ticket abuse the highest-impact post-compromise activity. Each hunt hypothesis maps to a specific ATT&amp;CK sub-technique and a corresponding Sysmon/Splunk detection.</p>
@@ -63,12 +66,15 @@
         <li><strong>T1550.002 Pass-the-Hash</strong> – NTLM logons with anomalous logon type 9.</li>
         <li><strong>T1098 Account Manipulation</strong> – Golden Ticket persistence via forged TGTs.</li>
       </ul>
+      <p><strong>Why these four?</strong> They share a common trait: the attacker never needs to touch endpoint malware. Kerberoasting and AS-REP roasting abuse normal Kerberos ticket requests to extract crackable password material. Pass-the-Hash reuses a stolen NTLM hash without ever knowing the plaintext password. A Golden Ticket, forged with the KRBTGT hash, grants indefinite persistence as any user. All four show up in Windows Security event logs and Sysmon if you know which fields to look at.</p>
+      <p>The BloodHound graph below shows why this matters: a single phished user on a workstation can chain <code>AdminTo</code>, <code>HasSession</code>, and group-membership edges into a path that ends at Domain Admins. Hunting these attack classes is how you cut that path before it is walked.</p>
       <div class="mermaid" role="img" aria-label="BloodHound attack path from user to domain admin">
 flowchart LR
   U[Compromised User] -->|AdminTo| WS[Workstation]
   WS -->|HasSession| SA[Service Account]
   SA -->|MemberOf| DA[(Domain Admins)]
       </div>
+      <p>Each hypothesis gets a measurable detection. For Kerberoasting: an unusual volume of RC4-encrypted service-ticket requests (event 4769, encryption type <code>0x17</code>) from a single account. For AS-REP roasting: 4768 TGT requests with pre-authentication type <code>0</code>. For Pass-the-Hash: logon type 9 (NewCredentials) events using the <code>seclogo</code> process, which is what Mimikatz <code>sekurlsa::pth</code> produces. For Golden Tickets: TGTs whose lifetime exceeds the domain maximum or service tickets with no corresponding 4768 from the same account.</p>
     </section>
 
     <section><h2>Environment &amp; Prerequisites</h2>
@@ -78,6 +84,42 @@ flowchart LR
         <li>BloodHound + SharpHound collector; PowerShell detection scripts.</li>
         <li>Honeypot service account with a fake SPN to detect Kerberoasting.</li>
       </ul>
+      <p>The lab runs on isolated Hyper-V VMs with no route to the internet or the production network. The domain is <code>lab.local</code>, functional level 2016, seeded with realistic noise: 40 user accounts, 8 service accounts, tiered OUs, and a scheduled task that generates background logons so the detections have real baseline traffic to compete against.</p>
+
+      <h3>Deploy Sysmon with the SwiftOnSecurity config</h3>
+      <p>Sysmon supplies the process, network, and process-access telemetry the Security log lacks — most importantly Event ID 10 (<code>ProcessAccess</code>), which catches tools opening a handle to <code>lsass.exe</code>. Install it on every DC and workstation with the community-hardened SwiftOnSecurity configuration:</p>
+      <p class="code-label">Install Sysmon with the SwiftOnSecurity configuration</p>
+      <pre><code class="language-bash">curl -o sysmonconfig.xml https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml
+.\Sysmon64.exe -accepteula -i sysmonconfig.xml</code></pre>
+      <p class="code-label">Verify the config is loaded (expected output)</p>
+      <pre><code class="language-bash">.\Sysmon64.exe -c
+# Current configuration: schema version 4.90
+# Hashing algorithms: SHA1,IMPHASH
+# Network connection logging: enabled</code></pre>
+      <p><strong>Common mistake:</strong> forgetting <code>-accepteula</code> or running from a non-elevated prompt — Sysmon silently refuses to install. Verify with <code>Get-WinEvent -LogName "Microsoft-Windows-Sysmon/Operational" -MaxEvents 5</code>; an empty log means the service is not running.</p>
+
+      <h3>Ship logs to Splunk</h3>
+      <p>Each Windows host runs a Splunk Universal Forwarder. The <code>inputs.conf</code> below collects the Security log (where 4624/4625/4768/4769 live) and the Sysmon operational log into separate indexes so queries stay fast and field extractions stay clean:</p>
+      <p class="code-label">inputs.conf on each forwarder</p>
+      <pre><code class="language-ini">[WinEventLog://Security]
+index = wineventlog
+disabled = false
+
+[WinEventLog://Microsoft-Windows-Sysmon/Operational]
+index = sysmon
+disabled = false</code></pre>
+      <p>On the Splunk side I installed the <em>Splunk Add-on for Microsoft Windows</em> so fields like <code>EventCode</code>, <code>Account_Name</code>, <code>Logon_Type</code>, and <code>Ticket_Encryption_Type</code> are extracted automatically at search time.</p>
+
+      <h3>Build the Kerberoasting honeypot</h3>
+      <p>The honeypot is a service account with a deliberately fake SPN, a 60-character random password (so it can never actually be cracked), and zero legitimate use. Any TGS request for it is malicious by definition, which makes it a near-zero-false-positive tripwire:</p>
+      <p class="code-label">Create the honeypot account and register a fake SPN</p>
+      <pre><code class="language-powershell">New-ADUser -Name "svc_honeypot" -SamAccountName "svc_honeypot" `
+  -AccountPassword (Read-Host -AsSecureString "Password") `
+  -Enabled $true -Description "SQL service account - do not modify"
+setspn -S HTTP/sql-prod01.lab.local svc_honeypot</code></pre>
+      <p><strong>Why it works:</strong> an attacker enumerating SPNs (via <code>setspn -Q */*</code> or PowerView's <code>Get-DomainUser -SPN</code>) sees a juicy "SQL" service account and roasts it. The moment anyone requests a ticket for that SPN, a 4769 fires that no legitimate process would ever generate. Verify the trap with one manual request from a test account before trusting the alert.</p>
+
+      <p>The Kerberoasting detection pipeline, from raw event to alert, looks like this:</p>
       <div class="mermaid" role="img" aria-label="Detection logic flowchart for Kerberoasting">
 flowchart TB
   E[4769 TGS Request] --> Q{Encryption RC4<br/>+ non-machine acct?}
@@ -88,29 +130,136 @@ flowchart TB
 
     <section><h2>Step-by-Step Execution</h2>
       <h3>1. Collect attack paths with SharpHound</h3>
+      <p>SharpHound enumerates group membership, local admins, active sessions, ACLs, and trusts over LDAP and SMB, then packages everything as a JSON zip for BloodHound. Running <code>-c All</code> captures every collection method including sessions, which are the key ingredient for finding <code>HasSession</code> lateral-movement edges.</p>
       <div class="command-block"><div class="command"><code>.\SharpHound.exe -c All -zipfilename lab-collection</code></div></div>
+      <p>For a realistic picture I also ran a looped collection over a full workday, because session edges are transient — a collection at 9 a.m. misses the admin who logs on at 3 p.m.:</p>
+      <p class="code-label">Looped session collection over two hours</p>
+      <pre><code class="language-bash">.\SharpHound.exe -c Session,LoggedOn --loop --loopduration 02:00:00 -zipfilename lab-sessions</code></pre>
+      <p class="code-label">Expected collector output</p>
+      <pre><code class="language-bash">2026-06-17T09:14:22 Starting LDAP enumeration for lab.local
+2026-06-17T09:16:41 Resolved collection methods: Group, LocalAdmin, Session, ACL, Container, ObjectProps
+2026-06-17T09:18:03 Finished enumeration. 3,412 objects collected.
+2026-06-17T09:18:04 Zip archive written: 20260617091804_lab-collection.zip</code></pre>
+      <p><strong>Common mistake:</strong> running SharpHound from a non-domain context (e.g., a local account or an off-domain box). The collector then authenticates to nothing and returns an empty zip. Verify domain context with <code>whoami</code> and LDAP reachability with <code>nltest /dsgetdc:lab.local</code> before collecting.</p>
 
-      <h3>2. Splunk detection for Kerberoasting (event 4769, RC4)</h3>
+      <h3>2. Import into BloodHound and query attack paths</h3>
+      <p>Drag the zip into the BloodHound GUI (backed by Neo4j) and the graph materializes. The first question I always ask: who can reach Domain Admins, and how many hops does it take? The built-in "Shortest Paths to Domain Admins" prebuilt query answers it, but the raw Cypher is worth understanding:</p>
+      <p class="code-label">Cypher: shortest paths from any user to Domain Admins</p>
+      <pre><code class="language-cypher">MATCH p=shortestPath((u:User)-[*1..]-&gt;(g:Group {name:"DOMAIN ADMINS@LAB.LOCAL"}))
+RETURN p
+LIMIT 100</code></pre>
+      <p class="code-label">Cypher: every Kerberoastable user and their SPNs</p>
+      <pre><code class="language-cypher">MATCH (u:User {hasspn:true})
+WHERE NOT u.name STARTS WITH "KRBTGT"
+RETURN u.name, u.serviceprincipalnames, u.pwdlastset</code></pre>
+      <p class="code-label">Expected output (illustrative)</p>
+      <pre><code class="language-bash">u.name                  u.serviceprincipalnames        u.pwdlastset
+SVC_SQL@LAB.LOCAL       [MSSQLSvc/db01.lab.local:1433] 2021-03-02
+SVC_BACKUP@LAB.LOCAL    [CIFS/fs01.lab.local]          2020-11-19
+SVC_HONEYPOT@LAB.LOCAL  [HTTP/sql-prod01.lab.local]    2026-06-10</code></pre>
+      <p>The <code>pwdlastset</code> column is the money column: a service account whose password has not rotated in five years is a crack waiting to happen. In this lab the query surfaced 15+ distinct lateral-movement paths to Domain Admins, mostly through stale local-admin rights on the two workstations.</p>
+      <p><strong>How to verify:</strong> spot-check one path manually. If the graph says <code>jsmith -&gt; AdminTo -&gt; WS02</code>, confirm on WS02 with <code>net localgroup administrators</code>. Graph edges come from real ACL and session data — if the spot-check fails, the collection method (not the graph) is suspect.</p>
+
+      <h3>3. Splunk detection for Kerberoasting (event 4769, RC4)</h3>
+      <p>Legitimate Kerberos traffic in a modern domain uses AES (<code>0x12</code>/<code>0x17</code> is RC4). Attack tools like Rubeus and Impacket's GetUserSPNs request RC4 tickets because RC4 tickets are encrypted with the service account's NTLM hash, which is far cheaper to crack offline. Alerting on RC4 TGS requests for non-machine accounts is therefore a high-signal detector:</p>
       <div class="command-block"><div class="command"><code>index=wineventlog EventCode=4769 Ticket_Encryption_Type=0x17 | stats count by Account_Name, Service_Name</code></div></div>
 <pre><code class="language-bash">Account_Name   Service_Name        count
 svc_sql        MSSQLSvc/db01:1433  14
 svc_backup     CIFS/fs01           9</code></pre>
+      <p>To cut false positives I refined the search: exclude machine accounts (<code>Account_Name!=*$</code>), exclude known-good legacy apps after a tuning period, and spike-check against the account's own baseline:</p>
+      <p class="code-label">Tuned Kerberoasting hunt with baseline comparison</p>
+      <pre><code class="language-bash">index=wineventlog EventCode=4769 Ticket_Encryption_Type=0x17 Account_Name!=*$
+| bin _time span=1h
+| stats count as rc4_requests by _time, Account_Name
+| eventstats avg(rc4_requests) as baseline stdev(rc4_requests) as sd by Account_Name
+| where rc4_requests &gt; baseline + 3*sd AND rc4_requests &gt;= 5</code></pre>
+      <p>The dedicated honeypot alert is a separate, trivially simple search — any hit is actionable:</p>
+      <p class="code-label">Honeypot tripwire alert (fires on first touch)</p>
+      <pre><code class="language-bash">index=wineventlog EventCode=4769 Service_Name="*sql-prod01*"
+| table _time, Account_Name, Client_Address, Service_Name</code></pre>
+      <p><strong>Common mistake:</strong> alerting on all 4769s. Busy domains generate thousands per hour. The RC4 filter plus the machine-account exclusion is what turns noise into signal.</p>
 
-      <h3>3. Pass-the-Hash detection (logon type 9, seclogo)</h3>
+      <h3>4. AS-REP roasting detection (event 4768, pre-auth type 0)</h3>
+      <p>Accounts with "Do not require Kerberos preauthentication" set hand out an encrypted AS-REP to anyone who asks — no credentials needed. The detection watches for TGT requests where <code>Pre_Authentication_Type</code> is <code>0</code>:</p>
+      <p class="code-label">Hunt for pre-auth-disabled accounts being roasted</p>
+      <pre><code class="language-bash">index=wineventlog EventCode=4768 Pre_Authentication_Type=0
+| stats count by Account_Name, Client_Address
+| where count &gt;= 2</code></pre>
+      <p>Before trusting this alert, enumerate which accounts even have the flag so you know your exposure:</p>
+      <p class="code-label">Find accounts with pre-auth disabled</p>
+      <pre><code class="language-powershell">Get-ADUser -Filter {DoesNotRequirePreAuth -eq $true} -Properties DoesNotRequirePreAuth |
+  Select-Object Name, SamAccountName</code></pre>
+      <p><strong>How to verify:</strong> in a healthy modern domain this list should be empty. Mine had one legacy account left over from the seeded noise — which immediately became both a finding and the test subject for validating the rule.</p>
+
+      <h3>5. Pass-the-Hash detection (logon type 9, seclogo)</h3>
+      <p>Mimikatz's <code>sekurlsa::pth</code> spawns a process with stolen NTLM credentials using the <code>NewCredentials</code> logon type (type 9) and the <code>seclogo</code> logon process. Type 9 is rare in normal operations — runas <code>/netonly</code> is the main legitimate source — so seclogo + type 9 from a non-admin workstation is a strong indicator:</p>
       <div class="command-block"><div class="command"><code>index=wineventlog EventCode=4624 Logon_Type=9 Logon_Process=seclogo | table _time, Account_Name, Workstation</code></div></div>
+      <p>The second PtH layer is upstream of the logon: catching the credential theft itself. Mimikatz must open a handle to <code>lsass.exe</code> with access masks like <code>0x1010</code>, which Sysmon Event ID 10 records:</p>
+      <p class="code-label">Sysmon hunt for LSASS access by unsigned processes</p>
+      <pre><code class="language-bash">index=sysmon EventCode=10 TargetImage="*lsass.exe"
+  NOT SourceImage IN ("C:\\Windows\\System32\\*", "C:\\Program Files\\*")
+| stats count by SourceImage, GrantedAccess, SourceUser</code></pre>
+      <p class="code-label">Expected output during a simulated dump</p>
+      <pre><code class="language-bash">SourceImage                          GrantedAccess   SourceUser
+C:\Users\labuser\Downloads\mimikatz.exe  0x1010      LAB\labuser</code></pre>
+      <p><strong>Common mistake:</strong> copying the <code>NOT SourceImage</code> allowlist blindly. Build the exclusion list from your own environment's baseline (a week of <code>| stats count by SourceImage</code>), otherwise you either drown in AV/EDR noise or accidentally allowlist an attacker's renamed binary path.</p>
+
+      <h3>6. Golden Ticket detection</h3>
+      <p>A forged TGT has no legitimate 4768 issuance event from the KDC, and attackers often set absurd ticket lifetimes (Rubeus defaults to 10 years). Two detections follow: tickets with lifetimes beyond the domain maximum (default 10 hours), and 4769 service-ticket requests from accounts with no recent corresponding 4768:</p>
+      <p class="code-label">Correlate 4769 requests against recent 4768 issuance</p>
+      <pre><code class="language-bash">index=wineventlog EventCode=4769 Account_Name!=*$ earliest=-24h
+| stats count as tgs_reqs by Account_Name
+| join type=left Account_Name
+  [search index=wineventlog EventCode=4768 | stats count as tgt_issued by Account_Name]
+| where isnull(tgt_issued) OR tgt_issued = 0</code></pre>
+      <p>Post-incident hygiene matters too: after any suspected KRBTGT compromise, the KRBTGT password must be reset <em>twice</em> (its password history is two deep) to invalidate all forged tickets:</p>
+      <p class="code-label">Check KRBTGT password age</p>
+      <pre><code class="language-powershell">Get-ADUser krbtgt -Properties PasswordLastSet | Select-Object Name, PasswordLastSet</code></pre>
+      <p><strong>How to verify:</strong> a <code>PasswordLastSet</code> older than your other privileged credentials is a finding in itself. In the lab I reset it twice and confirmed with Rubeus <code>klist</code> that previously forged tickets were rejected afterwards.</p>
     </section>
 
     <section><h2>Validation &amp; Testing</h2>
       <p>Run authorized Rubeus/Mimikatz simulations in the isolated lab to generate Kerberoasting and PtH telemetry, then confirm the Splunk searches and honeypot SPN both fire. Pass criteria: PtH detected within 2 minutes and the honeypot account triggers on first TGS request (alt text: <em>Splunk alert timeline correlating simulated attack with detection</em>).</p>
+
+      <h3>Simulate Kerberoasting with Rubeus</h3>
+      <p>From a domain-joined workstation as a standard user, request RC4 tickets for every SPN-bearing account:</p>
+      <p class="code-label">Roast all roastable accounts</p>
+      <pre><code class="language-bash">.\Rubeus.exe kerberoast /rc4opsec /nowrap</code></pre>
+      <p class="code-label">Expected Rubeus output (truncated, illustrative)</p>
+      <pre><code class="language-bash">[*] Action: Kerberoasting
+[*] Found 3 users with SPNs set
+[*] SamAccountName         : svc_sql
+[*] DistinguishedName      : CN=svc_sql,OU=Service Accounts,DC=lab,DC=local
+[*] Hash                   : $krb5tgs$23$*svc_sql$lab.local$MSSQLSvc/db01*$A1B2C3...</code></pre>
+
+      <h3>Simulate Pass-the-Hash with Mimikatz</h3>
+      <p class="code-label">Spawn a process with a stolen NTLM hash</p>
+      <pre><code class="language-bash">mimikatz # sekurlsa::pth /user:svc_backup /domain:lab.local /ntlm:5fbc3d5fec8206a30f4b6c473d68ae76 /run:cmd.exe</code></pre>
+      <p>Within seconds the 4624 type-9 <code>seclogo</code> event hits the Security log, the forwarder ships it, and the Splunk alert (scheduled every 60 seconds) fires. Measured end-to-end detection time across five runs: 45–110 seconds, comfortably under the 2-minute pass criterion.</p>
+
+      <h3>Simulate a Golden Ticket</h3>
+      <p class="code-label">Forge a TGT with the lab KRBTGT AES key</p>
+      <pre><code class="language-bash">.\Rubeus.exe golden /aes256:&lt;lab-krbtgt-aes256-key&gt; /user:Administrator /domain:lab.local /sid:S-1-5-21-&lt;lab-domain-sid&gt; /ptt</code></pre>
+      <p>The 4769-without-4768 correlation search caught the forged ticket on its first service-ticket request. I also confirmed the ticket appeared in <code>klist</code> with the tell-tale 10-year lifetime Rubeus assigns by default.</p>
+
+      <h3>Test record</h3>
+      <ul>
+        <li><strong>Kerberoasting:</strong> honeypot SPN alert fired on the first TGS request in all 5 runs; baseline RC4 search flagged <code>svc_sql</code> and <code>svc_backup</code>.</li>
+        <li><strong>Pass-the-Hash:</strong> detected within 2 minutes in 5/5 runs (fastest 45 s, slowest 110 s).</li>
+        <li><strong>Golden Ticket:</strong> correlation search caught 3/3 forged tickets; no false positives during 48 hours of background noise.</li>
+        <li><strong>AS-REP roasting:</strong> 4768 pre-auth-type-0 rule fired on the seeded legacy account during the Rubeus <code>asreproast</code> run.</li>
+      </ul>
     </section>
 
-    <details><summary>Advanced: Troubleshooting</summary>
+    <section><h2>Troubleshooting</h2>
       <ul>
-        <li><strong>No 4769 events:</strong> enable Kerberos service-ticket auditing via Group Policy.</li>
-        <li><strong>Sysmon gaps:</strong> confirm the SwiftOnSecurity config is applied with <code>sysmon -c</code>.</li>
-        <li><strong>BloodHound empty:</strong> verify SharpHound ran with domain context and LDAP reachability.</li>
+        <li><strong>No 4769 events in Splunk:</strong> Kerberos service-ticket auditing is off by default. Enable it via Group Policy: <em>Computer Configuration &rsaquo; Windows Settings &rsaquo; Security Settings &rsaquo; Advanced Audit Policy &rsaquo; Account Logon &rsaquo; Audit Kerberos Service Ticket Operations (Success)</em>, then <code>gpupdate /force</code> and confirm with <code>auditpol /get /subcategory:"Kerberos Service Ticket Operations"</code>.</li>
+        <li><strong>Sysmon telemetry gaps:</strong> confirm the SwiftOnSecurity config is actually applied — <code>sysmon -c</code> dumps the running configuration; if it shows the minimal default instead of the full rule set, re-apply with <code>sysmon -c sysmonconfig.xml</code>. Also check <code>Get-Service Sysmon64</code> is <code>Running</code>.</li>
+        <li><strong>BloodHound graph is empty or missing edges:</strong> the SharpHound zip was collected without domain context or LDAP was unreachable. Re-run from a domain-joined host as a domain user, verify <code>nltest /dsgetdc:lab.local</code> succeeds, and check the zip contains <code>users.json</code>, <code>groups.json</code>, and <code>computers.json</code> before importing.</li>
+        <li><strong>Splunk fields (Ticket_Encryption_Type, Logon_Type) are empty:</strong> the Windows Add-on is not installed or the sourcetype is wrong. Install the <em>Splunk Add-on for Microsoft Windows</em> on the search head, and confirm events arrive as <code>sourcetype=WinEventLog:Security</code>, not generic <code>Wineventlog</code>.</li>
+        <li><strong>Detections fire late or events arrive out of order:</strong> time skew between the DC, workstations, and Splunk indexer. Kerberos itself breaks at &gt;5 minutes of skew, and alert correlation degrades long before that. Enforce <code>w32time</code> against the PDC emulator on all hosts and verify with <code>w32tm /query /status</code>.</li>
       </ul>
-    </details>
+    </section>
 
     <section><h2>Key Results</h2>
       <ul>
@@ -118,6 +267,16 @@ svc_backup     CIFS/fs01           9</code></pre>
         <li>Detected Pass-the-Hash attempts within 2 minutes of execution.</li>
         <li>Mapped 15+ lateral-movement paths to Domain Admin using BloodHound.</li>
         <li>Deployed 1 honeypot SPN account providing high-fidelity early warning with near-zero false positives.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li>Identity attacks live in the authentication logs, not on disk — collect 4624/4625/4768/4769 plus Sysmon Event 10 before writing a single detection.</li>
+        <li>RC4 Kerberos tickets (<code>0x17</code>) from non-machine accounts are the single highest-signal Kerberoasting indicator; a honeypot SPN turns it into a zero-noise tripwire.</li>
+        <li>Logon type 9 with the <code>seclogo</code> process is a near-signature for Mimikatz PtH — pair it with LSASS process-access telemetry to catch both the theft and the use.</li>
+        <li>BloodHound converts abstract "we might have privilege-escalation paths" into a concrete, countable list of edges to remediate.</li>
+        <li>A detection that has never been fired by a simulated attack is a hypothesis, not a control — validate with Rubeus/Mimikatz in an isolated lab before trusting it.</li>
       </ul>
     </section>
 

@@ -53,18 +53,23 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">ClusterIP</span><span class="tag">Ingress</span><span class="tag">NetworkPolicy</span><span class="tag">CoreDNS</span></div>
     </div>
 
-    <section><p class="lead">You will expose an app through an Ingress and lock down pod-to-pod traffic with a default-deny NetworkPolicy. By the end external users reach your service while only authorized pods can talk to the backend.</p></section>
+    <section><p class="lead">You will expose an app through an Ingress and lock down pod-to-pod traffic with a default-deny NetworkPolicy. By the end external users reach your service while only authorized pods can talk to the backend.</p>
+      <p>Kubernetes networking is flat by design: every pod can reach every other pod on every node, with no NAT and no built-in firewall. That is great for developer velocity and terrible for security. This lab walks the full lifecycle of getting traffic <em>into</em> the cluster safely (Services and Ingress) and then constraining how traffic moves <em>inside</em> it (NetworkPolicy). You will work with a three-tier demo app - a public <code>web</code> frontend, an internal <code>api</code>, and a <code>db</code> backend - so every rule you write maps to a real allow-list decision.</p>
+    </section>
 
     <div class="learning-objectives"><h2>Learning Objectives</h2>
       <ul>
         <li>Compare ClusterIP, NodePort, and Ingress for exposure.</li>
         <li>Route external traffic via an Ingress controller.</li>
         <li>Enforce default-deny with NetworkPolicy.</li>
+        <li>Verify service discovery through CoreDNS from inside a pod.</li>
+        <li>Prove segmentation works by testing both allowed and denied paths.</li>
         <li><strong>Time:</strong> ~4 hours &middot; <strong>Difficulty:</strong> Advanced &middot; <strong>Prereqs:</strong> a cluster with an Ingress controller and a CNI that supports policy.</li>
       </ul>
     </div>
 
     <section><h2>Architecture Overview</h2>
+      <p>Traffic enters through the Ingress controller, which terminates the HTTP request and routes it by host and path to a Service. The Service load-balances across the <code>api</code> pods. Those pods are the <em>only</em> workloads allowed to reach the <code>db</code> pods, because a default-deny NetworkPolicy blocks everything else - including pods in the same namespace that have no business touching the database.</p>
       <div class="mermaid" role="img" aria-label="Ingress routing to services with network policy">
 graph LR
   U[User] -->|443| Ing[Ingress controller]
@@ -73,19 +78,108 @@ graph LR
   API -->|policy allow| DB[db pods]
   Other[other pods] -. default deny .- DB
       </div>
+      <p>Three layers do the work here. <strong>kube-proxy</strong> programs iptables or IPVS rules so a stable Service virtual IP forwards to healthy pod endpoints. <strong>The Ingress controller</strong> (a reverse proxy such as NGINX running as a pod) watches Ingress resources and rewrites its own config to match. <strong>The CNI plugin</strong> (Calico or Cilium) enforces NetworkPolicy at the pod's virtual interface, dropping packets that match no allow rule. NetworkPolicy itself is only a declaration - without a policy-capable CNI it is silently ignored.</p>
     </section>
 
     <section><h2>Environment Setup</h2>
       <p><strong>You will need:</strong> a cluster, an Ingress controller (ingress-nginx), and a policy-capable CNI (Calico/Cilium).</p>
       <p><strong>Before you begin:</strong> the default cluster allows all pod traffic until you add a policy.</p>
+
+      <p>First confirm your context points at the right cluster and that every node is <code>Ready</code>. A NotReady node will silently swallow pod scheduling later and waste your debugging time.</p>
+      <p class="code-label">Check cluster access and node health</p>
+      <pre><code class="language-bash">kubectl cluster-info
+kubectl get nodes -o wide</code></pre>
+      <p class="code-label">Expected output</p>
+      <pre><code class="language-text">Kubernetes control plane is running at https://127.0.0.1:6443
+CoreDNS is running at https://127.0.0.1:6443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+
+NAME       STATUS   ROLES           AGE   VERSION   INTERNAL-IP
+lab-cp     Ready    control-plane   12d   v1.29.4   192.168.49.2</code></pre>
+
+      <p>Next, verify the CNI actually enforces policy. Look for Calico or Cilium pods in <code>kube-system</code>. If you are on kind or Docker Desktop with the default CNI (kindnet), NetworkPolicy will apply without error but do nothing - the classic silent failure of this lab.</p>
+      <p class="code-label">Confirm a policy-capable CNI is running</p>
+      <pre><code class="language-bash">kubectl -n kube-system get pods | grep -Ei 'calico|cilium'</code></pre>
+      <p class="code-label">Expected output</p>
+      <pre><code class="language-text">calico-kube-controllers-7ddc4f6b9f-x2kpv   1/1     Running   0          12d
+calico-node-8m4qw                         1/1     Running   0          12d</code></pre>
+      <div class="note"><strong>How to verify:</strong> no output from that grep means no policy enforcement. On a fresh cluster, install Calico with <code>kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml</code> before continuing.</div>
+
+      <p>Install the ingress-nginx controller if it is not present. The manifest creates the <code>ingress-nginx</code> namespace, the controller Deployment, and a Service of type LoadBalancer that fronts it.</p>
+      <p class="code-label">Install ingress-nginx and wait for the controller</p>
+      <pre><code class="language-bash">kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.1/deploy/static/provider/cloud/deploy.yaml
+kubectl -n ingress-nginx wait --for=condition=ready pod -l app.kubernetes.io/component=controller --timeout=120s</code></pre>
+      <p>On minikube use <code>minikube addons enable ingress</code> instead. On bare metal or kind with no cloud load balancer, the controller Service will sit at <code>&lt;pending&gt;</code> for EXTERNAL-IP - see the Troubleshooting section for the port-forward workaround.</p>
+
+      <p>Finally, sanity-check CoreDNS, because every Service lookup in this lab depends on it:</p>
+      <p class="code-label">Verify CoreDNS is healthy</p>
+      <pre><code class="language-bash">kubectl -n kube-system get pods -l k8s-app=kube-dns</code></pre>
+      <p class="code-label">Expected output</p>
+      <pre><code class="language-text">coredns-76f75df574-4znpt   1/1   Running   0   12d
+coredns-76f75df574-w8qh2   1/1   Running   0   12d</code></pre>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
       <div class="steps">
-        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Expose a service internally</strong>
-          <div class="command-block" data-copy><div class="command"><code>kubectl expose deploy web -port 80 -target-port 80 -name web</code></div></div>
+
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Deploy the three-tier demo app</strong>
+          <p>Work in a dedicated namespace so policies are easy to reason about and cleanup is one command. Deploy <code>web</code> (NGINX), <code>api</code> (a simple HTTP responder), and <code>db</code> (PostgreSQL), each labelled so Services and NetworkPolicies can select them.</p>
+          <p class="code-label">Create the namespace and workloads</p>
+          <pre><code class="language-bash">kubectl create namespace netlab
+kubectl -n netlab create deployment web --image=nginx:1.25 --port=80
+kubectl -n netlab create deployment api --image=hashicorp/http-echo -- -text="api-ok"
+kubectl -n netlab create deployment db --image=postgres:16 --port=5432
+kubectl -n netlab set env deployment/db POSTGRES_PASSWORD=labpass</code></pre>
+          <p class="code-label">Verify all pods are running</p>
+          <pre><code class="language-bash">kubectl -n netlab get pods -o wide --show-labels</code></pre>
+          <p class="code-label">Expected output</p>
+          <pre><code class="language-text">NAME                   READY   STATUS    RESTARTS   AGE   IP            LABELS
+api-5f8c9d7b6d-k2j9x   1/1     Running   0          40s   10.244.0.12   app=api,...
+db-6c8b5f7c9-4mztq     1/1     Running   0          40s   10.244.0.13   app=db,...
+web-7d9c4b8f5-rp2lw    1/1     Running   0          40s   10.244.0.11   app=web,...</code></pre>
+          <div class="note"><strong>Common mistake:</strong> forgetting the label. Every <code>kubectl create deployment</code> automatically sets <code>app=&lt;name&gt;</code>, and steps below rely on exactly those labels. If you build your own YAML later, keep <code>app: web</code>, <code>app: api</code>, and <code>app: db</code> consistent or your selectors will match nothing.</div>
         </div></div>
-        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Route external traffic with Ingress</strong>
+
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Expose a service internally</strong>
+          <p>Pod IPs are ephemeral - they change on every restart, reschedule, or scale event. A Service gives a stable virtual IP and DNS name that load-balances across matching pods. The default type, <strong>ClusterIP</strong>, is reachable only from inside the cluster, which is the correct default for anything that is not public-facing.</p>
+          <div class="command-block" data-copy><div class="command"><code>kubectl expose deploy web -port 80 -target-port 80 -name web</code></div></div>
+          <p>Do the same for <code>api</code> and <code>db</code>, then inspect what was created:</p>
+          <p class="code-label">Expose remaining tiers and inspect the Services</p>
+          <pre><code class="language-bash">kubectl -n netlab expose deployment api --port 8080 --target-port 5678
+kubectl -n netlab expose deployment db --port 5432 --target-port 5432
+kubectl -n netlab get svc</code></pre>
+          <p class="code-label">Expected output</p>
+          <pre><code class="language-text">NAME   TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+api    ClusterIP   10.96.214.87    &lt;none&gt;        8080/TCP   10s
+db     ClusterIP   10.96.108.201   &lt;none&gt;        5432/TCP   8s
+web    ClusterIP   10.96.45.173    &lt;none&gt;        80/TCP     2m</code></pre>
+          <p>Prove internal reachability by curling the Service name (not the pod IP) from a throwaway pod. CoreDNS resolves <code>web</code> because the test pod lives in the same namespace:</p>
+          <p class="code-label">Test Service DNS from inside the cluster</p>
+          <pre><code class="language-bash">kubectl -n netlab run test --rm -it --image=busybox:1.36 -- wget -qO- http://web</code></pre>
+          <p class="code-label">Expected output (NGINX welcome page, truncated)</p>
+          <pre><code class="language-text">&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+&lt;title&gt;Welcome to nginx!&lt;/title&gt;</code></pre>
+          <div class="note"><strong>How to verify:</strong> <code>kubectl -n netlab describe svc web</code> shows an <code>Endpoints:</code> list. If Endpoints is <code>&lt;none&gt;</code>, the Service selector does not match any pod labels - that mismatch, not DNS, is your problem.</div>
+        </div></div>
+
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Compare ClusterIP, NodePort, and Ingress</strong>
+          <p>Before going further, be deliberate about the exposure model, because it decides your attack surface:</p>
+          <ul>
+            <li><strong>ClusterIP</strong> - internal only. Use for <code>api</code> and <code>db</code>; they should never be reachable from outside.</li>
+            <li><strong>NodePort</strong> - opens a high port (30000-32767) on <em>every</em> node. Fine for quick demos, poor for production: no TLS, no host routing, and it bypasses your edge controls.</li>
+            <li><strong>Ingress</strong> - one external entry point that routes many hostnames and paths to many Services, terminates TLS, and centralizes logging and rate limiting. This is what you will use for <code>web</code>.</li>
+          </ul>
+          <p>You can see the NodePort mechanics without keeping it: patch the Service, observe the allocated port, then revert so the lab continues with only Ingress as the external path.</p>
+          <p class="code-label">Peek at NodePort behaviour, then revert</p>
+          <pre><code class="language-bash">kubectl -n netlab patch svc web -p '{"spec":{"type":"NodePort"}}'
+kubectl -n netlab get svc web   # note the 80:31xxx/TCP mapping
+kubectl -n netlab patch svc web -p '{"spec":{"type":"ClusterIP"}}'</code></pre>
+          <div class="note"><strong>Why this matters for security:</strong> every NodePort is an unauthenticated listener on every node IP. Auditing for stray NodePorts (<code>kubectl get svc -A | grep NodePort</code>) is a real hygiene check on any cluster you inherit.</div>
+        </div></div>
+
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Route external traffic with Ingress</strong>
+          <p>An Ingress resource is just a rule set; the controller you installed in setup turns it into live reverse-proxy config. This rule sends any request whose <code>Host</code> header is <code>web.lab.tyfsadik.org</code> to the <code>web</code> Service on port 80.</p>
 <pre><code class="language-bash"># ingress.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -98,11 +192,118 @@ spec:
           - path: /
             pathType: Prefix
             backend: { service: { name: web, port: { number: 80 } } }</code></pre>
+          <p class="code-label">Apply and confirm the rule is programmed</p>
+          <pre><code class="language-bash">kubectl -n netlab apply -f ingress.yaml
+kubectl -n netlab get ingress web
+kubectl -n ingress-nginx get svc ingress-nginx-controller   # grab the EXTERNAL-IP</code></pre>
+          <p class="code-label">Expected output</p>
+          <pre><code class="language-text">NAME   CLASS   HOSTS                  ADDRESS        PORTS   AGE
+web    nginx   web.lab.tyfsadik.org   203.0.113.50   80      15s</code></pre>
+          <p>Since the lab hostname is not in public DNS, send the Host header explicitly against the controller's external address:</p>
+          <p class="code-label">Curl through the Ingress</p>
+          <pre><code class="language-bash">curl -s -H 'Host: web.lab.tyfsadik.org' http://203.0.113.50/ | head -5</code></pre>
+          <div class="note"><strong>Common mistake:</strong> a 404 here almost always means the Host header does not match the <code>host:</code> field, or the request hit a different controller. Confirm with <code>kubectl -n netlab describe ingress web</code> - the Events section shows whether the controller synced the rule.</div>
         </div></div>
-        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Apply a default-deny policy</strong>
+
+        <div class="step"><div class="step-num">05</div><div class="step-body"><strong>Verify CoreDNS service discovery</strong>
+          <p>Everything above worked because CoreDNS answers names like <code>web</code>, <code>web.netlab</code>, and the fully qualified <code>web.netlab.svc.cluster.local</code>. Take thirty seconds to see the record directly - you will need this reflex later when debugging egress policies, because a default-deny egress rule also blocks DNS if you forget to allow it.</p>
+          <p class="code-label">Resolve the Service from inside a pod</p>
+          <pre><code class="language-bash">kubectl -n netlab run dnscheck --rm -it --image=busybox:1.36 -- nslookup web.netlab.svc.cluster.local</code></pre>
+          <p class="code-label">Expected output</p>
+          <pre><code class="language-text">Server:    10.96.0.10
+Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
+
+Name:      web.netlab.svc.cluster.local
+Address 1: 10.96.45.173 web.netlab.svc.cluster.local</code></pre>
+          <div class="note"><strong>How to verify:</strong> the answering server should be the <code>kube-dns</code> ClusterIP (<code>10.96.0.10</code> by default). If lookups hang, check <code>kubectl -n kube-system logs deploy/coredns</code> before suspecting your app.</div>
+        </div></div>
+
+        <div class="step"><div class="step-num">06</div><div class="step-body"><strong>Apply a default-deny policy</strong>
           <p>Default-deny then explicit-allow is the zero-trust posture for pod traffic.</p>
+          <p>A NetworkPolicy with an empty <code>podSelector</code> selects <em>every</em> pod in the namespace, and an empty rule set means "allow nothing". The moment this applies, all ingress and egress in <code>netlab</code> is dropped - including DNS lookups from your pods, which is why step 07 adds DNS egress back immediately.</p>
+<pre><code class="language-yaml"># default-deny.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: netlab
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress</code></pre>
           <div class="command-block" data-copy><div class="command"><code>kubectl apply -f default-deny.yaml &amp;&amp; kubectl apply -f allow-api-to-db.yaml</code></div></div>
+          <p class="code-label">Confirm the policy exists and selects all pods</p>
+          <pre><code class="language-bash">kubectl -n netlab get networkpolicy
+kubectl -n netlab describe networkpolicy default-deny | head -12</code></pre>
+          <p class="code-label">Expected output</p>
+          <pre><code class="language-text">NAME            POD-SELECTOR   AGE
+default-deny    &lt;none&gt;         6s</code></pre>
+          <div class="note"><strong>Common mistake:</strong> a <code>POD-SELECTOR</code> of <code>&lt;none&gt;</code> is correct here - it means "all pods", not "no pods". An empty <code>podSelector: {}</code> selects everything; forgetting the field entirely is invalid and the API will reject it.</div>
         </div></div>
+
+        <div class="step"><div class="step-num">07</div><div class="step-body"><strong>Poke only the holes you need</strong>
+          <p>Now open exactly two paths: <code>api</code> pods may reach <code>db</code> on TCP 5432, and every pod may reach CoreDNS on UDP/TCP 53 so name resolution keeps working. Nothing else in the namespace can initiate anything.</p>
+<pre><code class="language-yaml"># allow-api-to-db.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-to-db
+  namespace: netlab
+spec:
+  podSelector:
+    matchLabels: { app: db }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: api }
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# allow-dns.yaml - egress to kube-dns so lookups survive default-deny
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: netlab
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53</code></pre>
+          <p class="code-label">Apply the allow rules</p>
+          <pre><code class="language-bash">kubectl apply -f allow-api-to-db.yaml
+kubectl apply -f allow-dns.yaml
+kubectl -n netlab get networkpolicy</code></pre>
+          <div class="note"><strong>How to verify:</strong> rules are additive - the union of all policies selecting a pod is what is allowed. There is no "deny" statement and no rule ordering. If traffic flows that you expected to be blocked, some other policy is allowing it; list them all with <code>kubectl -n netlab get netpol -o wide</code>.</div>
+        </div></div>
+
+        <div class="step"><div class="step-num">08</div><div class="step-body"><strong>Prove both the allow and the deny</strong>
+          <p>Segmentation that you have not tested is a hope, not a control. From a pod labelled <code>app=other</code> (which no policy permits), the database connection must fail; from an <code>api</code> pod it must succeed.</p>
+          <p class="code-label">Launch an unauthorized pod and test the DB path</p>
+          <pre><code class="language-bash">kubectl -n netlab run other --rm -it --image=busybox:1.36 --labels app=other -- nc -zv -w3 db 5432 || echo denied
+kubectl -n netlab exec deploy/api -- nc -zv -w3 db 5432</code></pre>
+          <p class="code-label">Expected output</p>
+          <pre><code class="language-text">denied                                  # from the unlabelled 'other' pod
+db (10.96.108.201:5432) open            # from an 'api' pod</code></pre>
+          <p>The external path should still work end to end, because Ingress traffic enters through the controller in its own namespace and the <code>web</code> pod is only serving, not initiating:</p>
+          <p class="code-label">Re-test the public path</p>
+          <pre><code class="language-bash">curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: web.lab.tyfsadik.org' http://203.0.113.50/</code></pre>
+          <p class="code-label">Expected output</p>
+          <pre><code class="language-text">200</code></pre>
+          <div class="note"><strong>If <code>nc</code> from the api pod hangs instead of printing <code>open</code>:</strong> the egress side is blocking it. The <code>allow-api-to-db</code> policy governs ingress <em>to</em> db, but default-deny also dropped egress <em>from</em> api. Add an egress rule on <code>app: api</code> pods toward <code>app: db</code> on 5432 - symmetric allow rules are the most commonly forgotten half of a policy.</div>
+        </div></div>
+
       </div>
     </section>
 
@@ -118,21 +319,31 @@ graph LR
     </section>
 
     <section><h2>Testing &amp; Validation</h2>
+      <p>Run the full acceptance check in one pass: external reachability through the Ingress, and denial of an unauthorized internal path.</p>
       <div class="command-block" data-copy><div class="command"><code>curl -H 'Host: web.lab.tyfsadik.org' http://INGRESS_IP/ ; kubectl exec other - nc -zv db 5432 || echo denied</code></div></div>
       <p>External access through the Ingress should succeed, while a non-authorized pod reaching the DB should print <code>denied</code>. That confirms exposure plus segmentation.</p>
+      <p>For a final review, dump the effective policy set and the Ingress programming so you can read exactly what the cluster enforces:</p>
+      <p class="code-label">Review the final state</p>
+      <pre><code class="language-bash">kubectl -n netlab get svc,ingress,networkpolicy
+kubectl -n netlab describe ingress web | tail -8
+kubectl -n ingress-nginx logs deploy/ingress-nginx-controller | tail -5</code></pre>
+      <p>Three green checks to look for: the Ingress has an <code>ADDRESS</code>, every NetworkPolicy lists the selectors you intended, and the controller access log shows your <code>200</code> for <code>web.lab.tyfsadik.org</code>. When you are done, <code>kubectl delete namespace netlab</code> tears down the entire lab - workloads, Services, and policies together.</p>
     </section>
 
     <details><summary>Troubleshooting</summary>
       <ul>
-        <li><strong>Ingress 404:</strong> the host/path rule must match the request Host header.</li>
-        <li><strong>Policy has no effect:</strong> your CNI must support NetworkPolicy (Calico/Cilium), not all do.</li>
-        <li><strong>DNS fails inside pods:</strong> check CoreDNS pods are Running in kube-system.</li>
+        <li><strong>Ingress 404:</strong> the host/path rule must match the request Host header. Verify with <code>kubectl -n netlab describe ingress web</code> and confirm you are hitting the right controller address. A missing <code>ingressClassName</code> on clusters with multiple controllers causes the same symptom.</li>
+        <li><strong>Policy has no effect:</strong> your CNI must support NetworkPolicy (Calico/Cilium), not all do. kind's default kindnet and some managed-node images ignore policies entirely - traffic keeps flowing and nothing logs why. Check <code>kubectl -n kube-system get pods | grep -Ei 'calico|cilium'</code>.</li>
+        <li><strong>DNS fails inside pods:</strong> check CoreDNS pods are Running in kube-system. If DNS broke only <em>after</em> applying default-deny, your egress policy is blocking port 53 - apply the <code>allow-dns</code> policy from step 07.</li>
+        <li><strong>Ingress EXTERNAL-IP stuck at <code>&lt;pending&gt;</code>:</strong> there is no cloud load balancer to allocate one. On minikube run <code>minikube tunnel</code> in a second terminal; elsewhere, port-forward directly with <code>kubectl -n ingress-nginx port-forward svc/ingress-nginx-controller 8080:80</code> and test against <code>http://localhost:8080</code>.</li>
+        <li><strong>Everything in the namespace broke after default-deny:</strong> that is the policy working, not failing. Rebuild connectivity one allow rule at a time - DNS egress first, then app-to-app paths - and test after each so you know which rule restored which flow.</li>
       </ul>
     </details>
 
     <section><h2>Extension Ideas</h2>
       <ul>
-        <li>Add TLS to the Ingress with cert-manager.</li>
+        <li>Add TLS to the Ingress with cert-manager: install the CRDs, create a ClusterIssuer against Let's Encrypt staging, and annotate the Ingress with <code>cert-manager.io/cluster-issuer</code> so the certificate is issued and rotated automatically.</li>
+        <li>Write an egress policy that allows <code>api</code> to reach only one external API endpoint by CIDR, and observe how ipBlock rules interact with DNS resolution.</li>
         <li>Move to eBPF policy in the <a href="../security/zero-trust-hybrid-cloud.html">Zero-Trust Hybrid Cloud</a> lab.</li>
         <li>Deploy this on managed Kubernetes in <a href="aks-deployment.html">AKS</a>.</li>
       </ul>
@@ -144,6 +355,16 @@ graph LR
         <li>Enforced default-deny pod traffic with explicit allow rules.</li>
         <li>Verified both external reachability and internal segmentation.</li>
         <li>Applied a zero-trust posture inside the cluster.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li>Services give stable IPs and DNS names over ephemeral pods; ClusterIP is the safe default, NodePort and LoadBalancer widen the attack surface.</li>
+        <li>An Ingress is only a rule set - the controller does the work, and the Host header must match the rule exactly.</li>
+        <li>NetworkPolicy is enforced by the CNI, not by Kubernetes itself; without a policy-capable CNI it fails silently.</li>
+        <li>Default-deny first, then additive allow rules - and remember egress covers DNS too, or everything appears "down".</li>
+        <li>Always test both sides: an allowed path that works <em>and</em> a denied path that fails are the proof the segmentation is real.</li>
       </ul>
     </section>
 

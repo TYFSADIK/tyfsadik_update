@@ -53,18 +53,24 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">git init</span><span class="tag">commit</span><span class="tag">branch</span><span class="tag">remote</span></div>
     </div>
 
-    <section><p class="lead">You will initialize a repository, stage and commit changes, branch, and push to a remote. By the end you will have a clean, recoverable history and understand the staging-area model that makes Git powerful.</p></section>
+    <section><p class="lead">You will initialize a repository, stage and commit changes, branch, and push to a remote. By the end you will have a clean, recoverable history and understand the staging-area model that makes Git powerful.</p>
+      <p>Git is the version control system behind almost every professional workflow in security and IT: code, infrastructure definitions, documentation, and lab notes all live in repositories. Unlike older tools that stored snapshots of whole folders, Git records commits as a linked chain of changes, which means you can answer three questions at any moment: <em>what changed</em>, <em>who changed it</em>, and <em>why</em>. That audit trail is exactly what you lean on during incident reviews and collaborative work.</p>
+      <p>This lab is deliberately hands-on. You will create a small project from nothing, build a short but real history on a feature branch, merge it back, and publish everything to GitHub. Each command below is run in a terminal, and each step includes the output you should expect so you can verify you are on track before moving on. Work through the steps in order; later steps assume the earlier ones succeeded.</p>
+    </section>
 
     <div class="learning-objectives"><h2>Learning Objectives</h2>
       <ul>
         <li>Track changes with the staging area and meaningful commits.</li>
         <li>Branch and switch context safely.</li>
         <li>Push to and pull from a remote.</li>
+        <li>Inspect history with <code>git log</code>, <code>git status</code>, and <code>git diff</code>, and recover from a staged-file mistake.</li>
+        <li>Merge a feature branch back into the default branch and keep the local and remote copies in sync.</li>
         <li><strong>Time:</strong> ~2 hours &middot; <strong>Difficulty:</strong> Beginner &middot; <strong>Prereqs:</strong> Git installed and a GitHub account.</li>
       </ul>
     </div>
 
     <section><h2>Architecture Overview</h2>
+      <p>Everything in Git moves between four areas. Your <strong>working tree</strong> is the folder you edit files in. When you run <code>git add</code>, you copy selected changes into the <strong>staging area</strong> (also called the index) - a draft of the next commit. <code>git commit</code> freezes that draft into a permanent snapshot inside the <strong>local repository</strong>, the hidden <code>.git</code> directory. Finally, <code>git push</code> copies commits from your local repository to the <strong>remote</strong> (here, GitHub), and <code>git pull</code> brings remote commits back down. The staging area is the piece beginners skip and then regret: it is what lets you commit only the changes that belong together, instead of whatever happens to be on disk.</p>
       <div class="mermaid" role="img" aria-label="Git areas from working tree to remote">
 graph LR
   WT[Working tree] -->|git add| Stage[Staging area]
@@ -72,32 +78,213 @@ graph LR
   Local -->|git push| Remote[(Remote: GitHub)]
   Remote -->|git pull| Local
       </div>
+      <p>Notice that the working tree has no direct arrow to the remote. Nothing reaches GitHub unless it first went through staging and became a commit. Keep that mental model and most confusing Git output starts to make sense.</p>
     </section>
 
     <section><h2>Environment Setup</h2>
       <p><strong>You will need:</strong> Git 2.4x and a remote (GitHub) repository.</p>
-      <p><strong>Before you begin:</strong> set your identity with <code>git config -global user.name/email</code>.</p>
+      <p>First confirm Git is installed and check the version. Any 2.x release from the last few years works for everything in this lab; the <code>git switch</code> command used later requires Git 2.23 or newer.</p>
+      <p class="code-label">CHECK GIT VERSION</p>
+      <pre><code>git --version</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">git --version</span></div>
+        <div class="terminal-output">git version 2.46.0</div>
+      </div>
+      <p><strong>Before you begin:</strong> set your identity with <code>git config --global user.name/user.email</code>. Git stamps this identity onto every commit you make. Use the same email as your GitHub account so GitHub attributes the commits to you.</p>
+      <p class="code-label">CONFIGURE YOUR IDENTITY</p>
+      <pre><code>git config --global user.name "Taki Sadik"
+git config --global user.email "taki@tyfsadik.org"</code></pre>
+      <p>Verify the configuration was saved before continuing - a typo here follows every commit you ever make:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">git config --global --list</span></div>
+        <div class="terminal-output">user.name=Taki Sadik
+user.email=taki@tyfsadik.org</div>
+      </div>
+      <p><strong>Common mistake:</strong> writing <code>-global</code> with a single dash. Git silently treats it as an unknown option or splits it into short flags, and your identity is never set. Long options in Git always take two dashes. If <code>git config --global --list</code> does not show your name and email, go back and re-run the two commands above.</p>
+      <p>Optionally, set the default branch name to <code>main</code> so new repositories match GitHub's convention instead of the older <code>master</code>:</p>
+      <p class="code-label">SET DEFAULT BRANCH NAME</p>
+      <pre><code>git config --global init.defaultBranch main</code></pre>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
       <div class="steps">
         <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Initialize and make the first commit</strong>
-          <p>The staging area lets you craft exactly what goes into each commit.</p>
+          <p>The staging area lets you craft exactly what goes into each commit. Here you create a project folder, turn it into a repository, add two files, and commit them. <code>git init</code> creates the hidden <code>.git</code> directory that stores the entire history - delete it and the folder becomes plain files again, which makes experimenting risk-free.</p>
           <div class="command-block" data-copy><div class="command"><code>git init &amp;&amp; git add . &amp;&amp; git commit -m "initial commit"</code></div></div>
+          <p>For this lab, break that one-liner into explicit steps so you can see each area change state. First create the project and a couple of files:</p>
+          <p class="code-label">CREATE THE PROJECT</p>
+          <pre><code>mkdir lab-notes &amp;&amp; cd lab-notes
+echo "# Lab Notes" &gt; README.md
+echo "passwords.txt" &gt; .gitignore
+git init</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git init</span></div>
+            <div class="terminal-output">Initialized empty Git repository in /home/taki/lab-notes/.git/</div>
+          </div>
+          <p>The <code>.gitignore</code> file above tells Git to never track <code>passwords.txt</code> - a small habit worth building early, because committing a secret is one of the classic mistakes covered in Troubleshooting. Now check the repository state:</p>
+          <p class="code-label">INSPECT STATUS BEFORE STAGING</p>
+          <pre><code>git status</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git status</span></div>
+            <div class="terminal-output">On branch main
+
+No commits yet
+
+Untracked files:
+  (use "git add &lt;file&gt;..." to include in what will be committed)
+        .gitignore
+        README.md
+
+nothing added to commit but untracked files present (use "git add" to track)</div>
+          </div>
+          <p>"Untracked" means Git sees the files but has never been told to record them. Stage them, then commit:</p>
+          <p class="code-label">STAGE AND COMMIT</p>
+          <pre><code>git add .
+git commit -m "Initial commit: README and .gitignore"</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git commit -m "Initial commit: README and .gitignore"</span></div>
+            <div class="terminal-output">[main (root-commit) 3f9a1c2] Initial commit: README and .gitignore
+ 2 files changed, 2 insertions(+)
+ create mode 100644 .gitignore
+ create mode 100644 README.md</div>
+          </div>
+          <p>The output confirms the commit hash (yours will differ), the branch, and exactly what was recorded. A good commit message reads like a changelog entry: short, present tense, specific.</p>
+          <p><strong>How to verify:</strong> run <code>git status</code> again - it should report "nothing to commit, working tree clean". If it still lists untracked files, you staged before creating them; run <code>git add .</code> and commit again.</p>
         </div></div>
         <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Branch for a change</strong>
+          <p>A branch is a movable pointer to a commit. Working on a branch means your half-finished experiment never touches <code>main</code>, which should always stay in a state you could show someone. <code>git switch -c</code> creates the branch and moves you onto it in one command (the older spelling is <code>git checkout -b</code>).</p>
           <div class="command-block" data-copy><div class="command"><code>git switch -c feature/login &amp;&amp; git commit -am "add login"</code></div></div>
+          <p>In this lab the "feature" is a notes file - the mechanics are identical to real code. Create the branch first and confirm where you are:</p>
+          <p class="code-label">CREATE AND SWITCH TO A FEATURE BRANCH</p>
+          <pre><code>git switch -c feature/login
+git branch --show-current</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git switch -c feature/login</span></div>
+            <div class="terminal-output">Switched to a new branch 'feature/login'</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git branch --show-current</span></div>
+            <div class="terminal-output">feature/login</div>
+          </div>
+          <p>Now make the change and commit it. The <code>-a</code> flag stages modifications to files Git already tracks, so you can skip a separate <code>git add</code> - but note it does <em>not</em> pick up brand-new files, which is why the file below is created before the commit, and staged explicitly first:</p>
+          <p class="code-label">MAKE A CHANGE ON THE BRANCH</p>
+          <pre><code>echo "- Draft: login flow notes" &gt;&gt; login-notes.md
+git add login-notes.md
+git commit -m "Add draft login flow notes"</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git commit -m "Add draft login flow notes"</span></div>
+            <div class="terminal-output">[feature/login 7c2e4b8] Add draft login flow notes
+ 1 file changed, 1 insertion(+)
+ create mode 100644 login-notes.md</div>
+          </div>
+          <p>Prove the isolation is real: switch back to <code>main</code> and the new file disappears from the working tree, because that commit only exists on <code>feature/login</code>.</p>
+          <p class="code-label">SWITCH BACK AND CHECK</p>
+          <pre><code>git switch main
+ls</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git switch main</span></div>
+            <div class="terminal-output">Switched to branch 'main'</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">ls</span></div>
+            <div class="terminal-output">README.md</div>
+          </div>
+          <p>Switch back to the feature branch before continuing:</p>
+          <pre><code>git switch feature/login</code></pre>
+          <p><strong>Common mistake:</strong> making commits on <code>main</code> because you forgot to create the branch first. Get in the habit of running <code>git branch --show-current</code> (or glancing at your shell prompt) before every commit. If you do slip, create the branch now - it points at the commit you just made - then reset <code>main</code> back one commit.</p>
         </div></div>
         <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Connect a remote and push</strong>
+          <p>A remote is a named pointer to a copy of the repository on another server. The conventional name is <code>origin</code>. Create an empty repository on GitHub first (do <em>not</em> initialize it with a README - an existing commit there would create a divergent history and your first push would be rejected), then link it and push your branch.</p>
           <div class="terminal-session">
             <div class="terminal-line"><span class="prompt">$</span> <span class="input">git remote add origin git@github.com:tyfsadik/app.git &amp;&amp; git push -u origin feature/login</span></div>
             <div class="terminal-output">branch 'feature/login' set up to track 'origin/feature/login'.</div>
           </div>
+          <p>The <code>-u</code> (short for <code>--set-upstream</code>) flag links your local branch to the remote one so that future <code>git push</code> and <code>git pull</code> need no arguments. You only do it once per branch. A full push transcript looks like this:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git push -u origin feature/login</span></div>
+            <div class="terminal-output">Enumerating objects: 7, done.
+Counting objects: 100% (7/7), done.
+Delta compression using up to 8 threads
+Compressing objects: 100% (4/4), done.
+Writing objects: 100% (7/7), 602 bytes | 602.00 KiB/s, done.
+Total 7 (delta 0), reused 0 (delta 0), pack-reused 0
+To github.com:tyfsadik/app.git
+ * [new branch]      feature/login -&gt; feature/login
+branch 'feature/login' set up to track 'origin/feature/login'.</div>
+          </div>
+          <p>Confirm the remote is registered correctly:</p>
+          <p class="code-label">VERIFY REMOTE CONFIGURATION</p>
+          <pre><code>git remote -v</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git remote -v</span></div>
+            <div class="terminal-output">origin  git@github.com:tyfsadik/app.git (fetch)
+origin  git@github.com:tyfsadik/app.git (push)</div>
+          </div>
+          <p><strong>How to verify:</strong> the branch should also appear on the GitHub web page for the repository. If the push fails with a permission error, your SSH key is not set up - see Troubleshooting. Also push <code>main</code> while you are here, so both branches exist remotely:</p>
+          <pre><code>git push -u origin main</code></pre>
+        </div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Inspect history and recover from a staged-file mistake</strong>
+          <p>Before merging, learn the two inspection commands you will use daily. <code>git log</code> shows the commit chain; <code>git diff</code> shows line-level changes. Together they answer "what happened" and "what is about to happen" - run them before every commit and every merge until it becomes reflex.</p>
+          <p class="code-label">READ THE HISTORY</p>
+          <pre><code>git log --oneline --graph --all</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git log --oneline --graph --all</span></div>
+            <div class="terminal-output">* 7c2e4b8 (HEAD -&gt; feature/login, origin/feature/login) Add draft login flow notes
+* 3f9a1c2 (main) Initial commit: README and .gitignore</div>
+          </div>
+          <p>The graph shows both commits in a straight line because <code>main</code> has not moved since you branched. <code>HEAD</code> marks which commit your working tree is based on.</p>
+          <p>Now rehearse the most common recovery: you staged something that should not be committed. Stage a stray file, then unstage it without losing the file itself:</p>
+          <p class="code-label">UNSTAGE WITHOUT LOSING WORK</p>
+          <pre><code>echo "scratch" &gt; scratch.tmp
+git add scratch.tmp
+git restore --staged scratch.tmp
+git status --short</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git status --short</span></div>
+            <div class="terminal-output">?? scratch.tmp</div>
+          </div>
+          <p>The <code>??</code> means the file is untracked again - back out of staging, but still on disk. (<code>git restore --staged</code> is the modern spelling; older tutorials use <code>git reset HEAD &lt;file&gt;</code>, which does the same thing.) Delete the scratch file when done. <strong>Warning:</strong> plain <code>git restore &lt;file&gt;</code> without <code>--staged</code> discards uncommitted changes in the working tree permanently - that is the destructive twin of this command.</p>
+        </div></div>
+        <div class="step"><div class="step-num">05</div><div class="step-body"><strong>Merge the feature branch back into main</strong>
+          <p>Branching is only half the story; the change has to come home. Switch to <code>main</code> and merge. Because <code>main</code> never moved, Git performs a <strong>fast-forward</strong>: it simply slides the <code>main</code> pointer forward to the feature commit. No merge commit, no conflict.</p>
+          <p class="code-label">MERGE INTO MAIN</p>
+          <pre><code>git switch main
+git merge feature/login</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git merge feature/login</span></div>
+            <div class="terminal-output">Updating 3f9a1c2..7c2e4b8
+Fast-forward
+ login-notes.md | 1 +
+ 1 file changed, 1 insertion(+)
+ create mode 100644 login-notes.md</div>
+          </div>
+          <p>With the merge done, the feature branch has served its purpose. Delete it locally and on the remote to keep the branch list clean - deleting a branch deletes only the pointer, never the commits, because they are now reachable from <code>main</code>:</p>
+          <p class="code-label">CLEAN UP THE MERGED BRANCH</p>
+          <pre><code>git branch -d feature/login
+git push origin --delete feature/login
+git push</code></pre>
+          <p><code>git branch -d</code> (lowercase) refuses to delete a branch that is not fully merged - a built-in safety check. The uppercase <code>-D</code> forces deletion and will silently discard unmerged work, so reach for it only when you are certain.</p>
+          <p><strong>How to verify:</strong> <code>ls</code> should now show <code>login-notes.md</code> on <code>main</code>, and <code>git log --oneline</code> on <code>main</code> should include the "Add draft login flow notes" commit. If the merge instead reported a conflict, both branches changed the same lines - that scenario has its own lab, <a href="merge-conflicts.html">Merge Conflicts</a>.</p>
+        </div></div>
+        <div class="step"><div class="step-num">06</div><div class="step-body"><strong>Pull to sync with the remote</strong>
+          <p>Collaboration means the remote moves without you: a teammate pushes, or you edit a file in the GitHub web UI. <code>git pull</code> fetches those commits and merges them into your current branch. Simulate it by fetching first - <code>git fetch</code> downloads remote state without touching your working tree, which makes it the safe way to look before you leap:</p>
+          <p class="code-label">FETCH, INSPECT, THEN PULL</p>
+          <pre><code>git fetch origin
+git status
+git pull</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git status</span></div>
+            <div class="terminal-output">On branch main
+Your branch is up to date with 'origin/main'.
+
+nothing to commit, working tree clean</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git pull</span></div>
+            <div class="terminal-output">Already up to date.</div>
+          </div>
+          <p>When the remote <em>does</em> have new commits, the status line instead reads "Your branch is behind 'origin/main' by N commits", and <code>git pull</code> fast-forwards you forward. Make <code>git pull</code> the first command of every work session; merging a small drift daily is painless, merging a month of drift is not.</p>
+          <p><strong>Common mistake:</strong> pushing before pulling. If a teammate pushed first, your push is rejected as "non-fast-forward". The fix is simply <code>git pull</code> (resolve any conflicts if they appear), then push again - covered in Troubleshooting.</p>
         </div></div>
       </div>
     </section>
 
     <section><h2>Progress So Far</h2>
+      <p>Steps 01 through 03 are the core loop every Git user must be able to do from memory; steps 04 through 06 extend it into a complete daily workflow - inspect, merge, clean up, sync. The diagram tracks the core loop:</p>
       <div class="mermaid" role="img" aria-label="Git fundamentals progress">
 graph LR
   A[01 init + commit] -->|done| B[02 branch]
@@ -109,15 +296,34 @@ graph LR
     </section>
 
     <section><h2>Testing &amp; Validation</h2>
-      <div class="command-block" data-copy><div class="command"><code>git log -oneline -graph -all &amp;&amp; git status</code></div></div>
-      <p>You should see your commits on the branch and a clean working tree. If so, your history is tracked and pushed.</p>
+      <p>Run the two health-check commands below. They are the same pair you will run a dozen times a day in real work, and together they answer "where am I?" and "is anything unsaved?"</p>
+      <div class="command-block" data-copy><div class="command"><code>git log --oneline --graph --all &amp;&amp; git status</code></div></div>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">git log --oneline --graph --all</span></div>
+        <div class="terminal-output">* 7c2e4b8 (HEAD -&gt; main, origin/main) Add draft login flow notes
+* 3f9a1c2 Initial commit: README and .gitignore</div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">git status</span></div>
+        <div class="terminal-output">On branch main
+Your branch is up to date with 'origin/main'.
+
+nothing to commit, working tree clean</div>
+      </div>
+      <p>You should see your commits on the branch and a clean working tree. If so, your history is tracked and pushed. Check three things specifically:</p>
+      <ul>
+        <li><code>HEAD -&gt; main</code> and <code>origin/main</code> point at the same commit - local and remote are in sync.</li>
+        <li>Both of your commits appear in the log - nothing was lost in the merge.</li>
+        <li>The working tree is clean and the feature branch no longer appears - cleanup succeeded.</li>
+      </ul>
+      <p>Final cross-check: open the repository on GitHub. The file list should show <code>README.md</code>, <code>.gitignore</code>, and <code>login-notes.md</code>, and the commit list should match your local <code>git log</code> exactly. If the web page disagrees with your terminal, trust the terminal and run <code>git push</code> - the local repository is the source of truth until you push.</p>
     </section>
 
     <details><summary>Troubleshooting</summary>
       <ul>
-        <li><strong>Author unknown:</strong> set <code>user.name</code>/<code>user.email</code> before committing.</li>
-        <li><strong>Push rejected:</strong> pull/rebase first; the remote has commits you lack.</li>
-        <li><strong>Committed a secret:</strong> remove it and rewrite history with git filter-repo, then rotate the secret.</li>
+        <li><strong>Author unknown:</strong> set <code>user.name</code>/<code>user.email</code> before committing. If you already made commits with a wrong identity, fix the config, then amend the most recent one with <code>git commit --amend --reset-author</code>.</li>
+        <li><strong>Push rejected:</strong> pull/rebase first; the remote has commits you lack. Run <code>git pull</code>, resolve any conflicts if Git reports them, commit the resolution, then push again. Do not reach for <code>--force</code> on a shared branch.</li>
+        <li><strong>Committed a secret:</strong> remove it and rewrite history with git filter-repo, then rotate the secret. Deleting the file in a new commit is not enough - the old commit still contains it and is visible on GitHub. Rotation is mandatory because you must assume the secret was seen the moment it was pushed.</li>
+        <li><strong>Permission denied (publickey) on push:</strong> GitHub cannot authenticate your SSH key. Test with <code>ssh -T git@github.com</code>; if it does not greet you by username, generate a key with <code>ssh-keygen -t ed25519</code> and add the public half under GitHub &rarr; Settings &rarr; SSH keys. Alternatively switch the remote to HTTPS: <code>git remote set-url origin https://github.com/tyfsadik/app.git</code>.</li>
+        <li><strong>Detached HEAD:</strong> you checked out a commit hash instead of a branch, so commits would not belong to any branch. Recover by creating a branch where you stand: <code>git switch -c rescue</code>, then merge or cherry-pick as needed. Nothing is lost as long as you do not switch away without creating that branch.</li>
       </ul>
     </details>
 
@@ -126,6 +332,8 @@ graph LR
         <li>Adopt a workflow in <a href="branching-strategies.html">Branching &amp; Merging</a>.</li>
         <li>Collaborate via <a href="pull-requests.html">Pull Requests</a>.</li>
         <li>Automate checks with <a href="github-actions.html">GitHub Actions</a>.</li>
+        <li>Repeat this lab with a second clone in another folder to simulate a teammate and force a real non-fast-forward push rejection.</li>
+        <li>Practice <code>git stash</code>: shelve half-finished work, switch branches to fix something urgent, then pop the stash and resume.</li>
       </ul>
     </section>
 
@@ -135,6 +343,16 @@ graph LR
         <li>Used branches to isolate a change from main.</li>
         <li>Pushed work to a tracked remote branch.</li>
         <li>Verified state with log and status.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li>Changes move in one direction: working tree &rarr; staging &rarr; local repo &rarr; remote. Nothing reaches the remote without a commit.</li>
+        <li>The staging area is a draft, not a formality - it is how you keep each commit focused on one logical change.</li>
+        <li>Branches are cheap pointers; create one per task and delete it after merging.</li>
+        <li><code>git status</code> and <code>git log --oneline --graph --all</code> answer almost every "what is going on?" question - run them constantly.</li>
+        <li>Pull before you push, and never commit secrets: history is forever, so prevention beats cleanup.</li>
       </ul>
     </section>
 

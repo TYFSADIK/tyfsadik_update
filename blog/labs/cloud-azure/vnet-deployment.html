@@ -89,6 +89,21 @@ graph LR
       </ul>
     </section>
 
+    <section><h2>Core Concepts Before You Start</h2>
+      <p>Three ideas carry this entire lab. Skim them even if you have touched Azure networking before - most peering failures trace back to one of these being misunderstood.</p>
+      <h3>1. CIDR notation is a contract, not a suggestion</h3>
+      <p>A CIDR block like 10.0.0.0/16 says "the first 16 bits are fixed, the remaining 16 are mine." That gives you 2^16 = 65,536 addresses, from 10.0.0.0 to 10.0.255.255. When you carve a subnet out of it - say 10.0.1.0/24 - you are promising Azure that the web tier gets exactly the 256 addresses 10.0.1.0 through 10.0.1.255, and that no other subnet may touch them. Of those 256, Azure reserves five for itself (the network address, broadcast, and three internal addresses for its virtual router and DNS), leaving 251 usable. Two practical consequences:</p>
+      <ul>
+        <li>Subnet prefixes must fit entirely inside the VNet prefix and must not overlap any sibling subnet. Azure enforces both at creation time.</li>
+        <li>VNet prefixes of peered networks must not overlap <em>at all</em> - 10.0.0.0/16 cannot peer with 10.0.0.0/24, even though one "contains" the other. Overlap is overlap.</li>
+      </ul>
+      <p>If binary subnetting is rusty, the only math you need for this lab: a /16 is 256 blocks of /24, and 10.0.x.x and 10.1.x.x never intersect. That is why the design uses them.</p>
+      <h3>2. Subnets are the security and routing boundary</h3>
+      <p>Every NIC in Azure attaches to exactly one subnet, and Network Security Groups (NSGs) attach to subnets (or NICs, but subnet-level is the maintainable pattern). There is no such thing as an NSG on a VNet. This is the whole reason the architecture has three subnets instead of one big /22 per VNet: the tier boundaries are where the firewall rules will live in the follow-up labs. Decide your tiers now; moving a VM between subnets later means stopping it and moving its NIC.</p>
+      <h3>3. Peering is connectivity, not merging</h3>
+      <p>Peering connects two VNets at the fabric level so packets route privately, but the VNets stay separate administrative objects: separate address spaces, separate NSGs, separate DNS zones if you use them. Peering also composes asymmetric flags - <code>allowVirtualNetworkAccess</code>, <code>allowForwardedTraffic</code>, <code>allowGatewayTransit</code>, and <code>useRemoteGateways</code> - each set per direction. This lab uses only the first (allow access); the gateway-transit pair matters later if one VNet owns a VPN/ExpressRoute gateway and the other wants to share it. And remember the golden rule: peering is <strong>non-transitive</strong>. A peered to B and B peered to C does not give A a path to C.</p>
+    </section>
+
     <section><h2>Environment Setup</h2>
       <p><strong>You will need:</strong> the Azure CLI authenticated with a default resource group set.</p>
       <p><strong>Before you begin:</strong> plan non-overlapping CIDR ranges; peered VNets cannot overlap.</p>
@@ -110,6 +125,15 @@ Pay-As-You-Go  11111111-2222-3333-4444-555555555555 Enabled</div>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
+      <p>Before touching the CLI, write the address plan down. This is the artifact you will check every command against, and it is what a reviewer (or future you) needs to understand the network:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">#</span> <span class="input">Address plan - tyf-net-rg, eastus</span></div>
+        <div class="terminal-output">VNet    Address space    Subnet    Prefix        Purpose
+vnet-a  10.0.0.0/16      web       10.0.1.0/24   front-end / load-balanced tier
+vnet-a  10.0.0.0/16      app       10.0.2.0/24   middle tier, no public exposure
+vnet-b  10.1.0.0/16      data      10.1.1.0/24   databases and stateful services</div>
+      </div>
+      <p>Notice what the plan leaves free: 10.0.3.0/24 onward in vnet-a, and almost all of vnet-b. Growth headroom is a design feature, not waste - reserved ranges cost nothing until you allocate them.</p>
       <div class="steps">
         <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create the VNet and subnets</strong>
           <p><strong>What:</strong> create vnet-a with its /16 address space and the first subnet (web) in one command. <strong>Why:</strong> <code>az network vnet create</code> requires at least one subnet if you pass subnet flags, so defining the web tier up front saves a second call. The subnet prefix must sit inside the VNet prefix - 10.0.1.0/24 is the first /24 carve-out of 10.0.0.0/16.</p>

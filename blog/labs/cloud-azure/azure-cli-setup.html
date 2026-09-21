@@ -101,6 +101,17 @@ curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash</code></pre>
 }</div>
       </div>
       <p>Anything in the 2.5x-2.6x range is fine for this lab. If <code>az version</code> works, your PATH is correct and you can move on. <strong>Common mistake:</strong> running the verify command in the same terminal window that was open during the install - the shell caches the old PATH, so it reports <code>az: command not found</code> even though the install succeeded.</p>
+      <p>Three optional quality-of-life settings worth deciding up front. First, the CLI sends anonymous usage telemetry by default; on a lab machine this is harmless, but know how to turn it off. Second, the CLI can prompt to upgrade itself mid-command, which is distracting in scripts - control it explicitly. Third, tab completion saves real time once commands get long:</p>
+<pre><code class="language-bash"># Disable telemetry (optional)
+az config set core.collect_telemetry=false
+
+# Never auto-upgrade mid-command; upgrade deliberately instead
+az config set auto-upgrade.enable=no
+az upgrade        # run this yourself when you choose to
+
+# Enable tab completion for bash/zsh (adds a line to your shell profile)
+az completion</code></pre>
+      <p>All of these write to the same <code>~/.azure/config</code> file you will see again in Step 03, so there is one place to audit your CLI's behavior.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
@@ -127,6 +138,7 @@ curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash</code></pre>
           <p><strong>How to verify:</strong> run <code>az account show</code> immediately. If it returns subscription JSON (instead of an error like <code>Please run 'az login'</code>), your token cache is working.</p>
           <div class="command-block" data-copy><div class="command"><code>az account show --query "{Name:name, Id:id, Tenant:tenantId}" -o table</code></div></div>
           <p><strong>Common mistake:</strong> if your account belongs to multiple Entra ID tenants (for example a work tenant and a personal tenant), <code>az login</code> may sign you into the wrong one. Pin the tenant explicitly with <code>az login --tenant &lt;tenant-id-or-domain&gt;</code>. On a headless Linux box with no browser, use <code>az login --use-device-code</code> and complete the flow from any device.</p>
+          <p><strong>Security note worth remembering:</strong> the tokens from this login are cached on disk under <code>~/.azure</code> (on Linux/macOS) or <code>%USERPROFILE%\.azure</code> (on Windows), protected only by your user account's file permissions. Anyone who can read your home directory can act as you in Azure until the tokens expire. On a shared or lab machine, run <code>az logout</code> when you are done - it clears the cache, and Step 01 is cheap to repeat.</p>
         </div></div>
         <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Select the subscription</strong>
           <p>Even if you only have one subscription, make the selection explicit. Commands like <code>az group create</code> never ask which subscription to use - they silently target whatever is active, and the active subscription persists across terminal sessions. Setting it by name is safer than by ID because a typo in a name fails loudly, while a pasted GUID from the wrong subscription can look plausible.</p>
@@ -193,6 +205,44 @@ graph LR
   style D fill:#1a4a1a,stroke:#00ff00,color:#fff
       </div>
       <p>All four stages are complete: you hold a cached token for your account, the CLI is pinned to the intended subscription, defaults shorten every future command, and a least-privilege service principal exists for automation. The only thing left is to prove the whole chain works end to end.</p>
+    </section>
+
+    <section><h2>Reading CLI Output: Formats and JMESPath</h2>
+      <p>Everything in this lab (and every later one) gets easier once you control what the CLI prints. Every <code>az</code> command accepts an <code>-o</code> / <code>--output</code> flag with four formats you will actually use: <code>json</code> (the default, complete, best for piping to files), <code>table</code> (human-readable summary), <code>tsv</code> (tab-separated values with no headers, ideal for shell variables), and <code>jsonc</code> (colorized JSON for reading). The same command in three formats:</p>
+<pre><code class="language-bash">az account show                        # full JSON document
+az account show -o table               # one readable row
+az account show --query id -o tsv      # just the subscription GUID, nothing else</code></pre>
+      <p>The <code>--query</code> flag uses <strong>JMESPath</strong>, a query language for JSON, and it is the single most useful skill for scripting with <code>az</code>. Two patterns cover most daily work: renaming and reshaping fields into a clean table, and filtering a list down to matching items:</p>
+<pre><code class="language-bash"># Reshape: pick and rename fields for a table
+az account list --query "[].{Subscription:name, ID:id, Default:isDefault}" -o table
+
+# Filter: only enabled subscriptions, and only their names
+az account list --query "[?state=='Enabled'].name" -o tsv</code></pre>
+      <p>The <code>tsv</code> pattern is how you capture values into shell variables without parsing JSON yourself - you already used it in Step 04, where <code>$(az account show --query id -o tsv)</code> fed the subscription ID into the <code>--scopes</code> argument:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">SUB=$(az account show --query id -o tsv) &amp;&amp; echo "/subscriptions/$SUB"</span></div>
+        <div class="terminal-output">/subscriptions/a1b2c3d4-0000-1111-2222-333344445555</div>
+      </div>
+      <p><strong>Common mistake:</strong> forgetting <code>-o tsv</code> inside <code>$()</code>. Without it the variable contains a JSON string <em>with quotes</em> (<code>"a1b2c3d4-..."</code>), and the quotes silently corrupt whatever you build from it - resource IDs that almost-but-not-quite match are a miserable thing to debug.</p>
+    </section>
+
+    <section><h2>Where the CLI Stores Its State</h2>
+      <p>Everything you configured in this lab lives in one directory, and knowing its layout turns "the CLI is acting weird" from superstition into debugging. On Linux/macOS it is <code>~/.azure</code>; on Windows, <code>%USERPROFILE%\.azure</code>. The contents that matter:</p>
+      <ul>
+        <li><code>config</code> - your defaults from Step 03 plus telemetry/upgrade settings, in plain INI format. Safe to read and hand-edit.</li>
+        <li><code>azureProfile.json</code> - which account and subscription are active. Deleting it is a crude but effective "log out".</li>
+        <li><code>msal_token_cache.json</code> (or the <code>msal_cache</code>/service-principal entries) - the actual tokens. Treat this like a password file: never commit it, never sync it to cloud storage, never copy it to another machine.</li>
+        <li><code>logs/</code> - command history when logging is enabled. Note that failed commands can land here with their arguments, another reason secrets belong in variables, not on command lines.</li>
+      </ul>
+      <p>A fast way to confirm what is actually on disk:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">ls -la ~/.azure | head -8</span></div>
+        <div class="terminal-output">drwx------  12 taki  staff   384 Mar  3 10:14 .
+-rw-------   1 taki  staff   214 Mar  3 10:14 azureProfile.json
+-rw-------   1 taki  staff   389 Mar  3 09:58 config
+-rw-------   1 taki  staff  8122 Mar  3 10:14 msal_token_cache.json</div>
+      </div>
+      <p>Notice the permissions: <code>0600</code> on the token cache and profile, <code>0700</code> on the directory. If you ever see these files world-readable, something (often an over-eager <code>chmod -R</code>) has weakened them - fix with <code>chmod 700 ~/.azure &amp;&amp; chmod 600 ~/.azure/*.json</code>.</p>
     </section>
 
     <section><h2>Testing &amp; Validation</h2>

@@ -83,6 +83,23 @@ graph TD
       <p>The default <code>bridge</code> network that Docker attaches containers to when you specify nothing has none of the DNS behaviour - containers there can only find each other by raw IP address. That single difference is the reason every real deployment uses named networks.</p>
     </section>
 
+    <section><h2>Under the Hood: What Docker Actually Creates</h2>
+      <p>You can treat bridge networks as magic, or you can look at the four moving parts once and never be confused by them again. When you run <code>docker network create app-net</code> and attach a container, the Docker daemon:</p>
+      <ul>
+        <li><strong>Creates a Linux bridge interface</strong> named <code>br-&lt;network-id-prefix&gt;</code> on the host and assigns it the network's gateway address (here, <code>172.18.0.1</code>).</li>
+        <li><strong>Creates a veth pair per container:</strong> a virtual Ethernet cable with one end inside the container's network namespace (its <code>eth0</code>) and the other plugged into the bridge. Traffic between containers on the same bridge is pure L2 switching - it never touches the host's routing table.</li>
+        <li><strong>Programs iptables rules:</strong> a NAT masquerade rule so containers can reach the internet, isolation rules that drop packets crossing between bridges, and (only when you use <code>-p</code>) a DNAT rule in the <code>DOCKER</code> chain that forwards the published host port to the container.</li>
+        <li><strong>Starts the embedded DNS responder</strong> bound to <code>127.0.0.11:53</code> inside each container's namespace, fronting the daemon's name table for that network.</li>
+      </ul>
+      <p>On a native Linux host you can watch all of this directly - the interfaces appear and disappear as you create networks and start containers:</p>
+      <p class="code-label">OBSERVE THE BRIDGE ON A LINUX HOST</p>
+      <pre><code>ip link show type bridge
+ip addr show br-$(docker network inspect -f '{{.Id}}' app-net | cut -c1-12)
+sudo iptables -t nat -L DOCKER -n</code></pre>
+      <p><strong>Docker Desktop caveat (macOS and Windows):</strong> the daemon runs inside a lightweight Linux VM, so <code>br-*</code> interfaces and iptables rules live in that VM, not on your Mac. Everything in this lab still works identically from the container's point of view; the only visible difference is that published ports are forwarded through the VM, which is why <code>localhost:8080</code> works at all on Desktop.</p>
+      <p>The practical payoff of knowing this: when isolation "leaks", it leaks at one of these four layers, and <code>docker network inspect</code> plus the iptables listing will show you which one.</p>
+    </section>
+
     <section><h2>Environment Setup</h2>
       <p><strong>You will need:</strong> Docker and two or three small images (nginx and postgres work well).</p>
       <p><strong>Before you begin:</strong> the default bridge has no DNS; always use user-defined networks.</p>

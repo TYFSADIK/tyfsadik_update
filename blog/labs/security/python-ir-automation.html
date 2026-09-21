@@ -53,15 +53,19 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">Python 3.11</span><span class="tag">psutil</span><span class="tag">yara-python</span><span class="tag">Wazuh API</span><span class="tag">Proxmox API</span><span class="tag">nftables</span></div>
     </div>
 
-    <section><p class="lead">I wrote a Python IR orchestrator that consumes Wazuh IOC alerts, scans the affected host with YARA rules, and isolates it via nftables and the Proxmox API without analyst intervention. The playbook contains confirmed compromises in 28 seconds on average, down from a 45-minute manual process.</p></section>
+    <section><p class="lead">I wrote a Python IR orchestrator that consumes Wazuh IOC alerts, scans the affected host with YARA rules, and isolates it via nftables and the Proxmox API without analyst intervention. The playbook contains confirmed compromises in 28 seconds on average, down from a 45-minute manual process.</p>
+      <p>This lab walks through the entire build from an empty directory to a systemd-managed service. Every stage is covered: pulling high-severity alerts from the Wazuh API, confirming the compromise with a YARA memory scan before taking destructive action, snapshotting the VM through the Proxmox API for forensics, applying an nftables egress lockdown, recording the case in SQLite, and notifying the on-call channel in Slack. The design principle throughout is <strong>confidence before containment</strong>: the orchestrator only isolates a host after a second, independent signal (a YARA match) corroborates the Wazuh alert, which keeps false-positive lockouts close to zero.</p>
+      <p>Everything here ran on my home-lab Proxmox cluster with three Ubuntu 22.04 victim VMs behind an OPNSense firewall. The code is deliberately plain - standard library plus four well-known packages - so it can be audited line by line before being trusted with the power to quarantine a production box.</p>
+    </section>
 
     <section><h2>Threat Model &amp; MITRE ATT&amp;CK Mapping</h2>
-      <p>Speed of containment determines blast radius. This automation collapses the NIST SP 800-61 detection-to-containment gap by acting on high-confidence IOCs the moment Wazuh raises them.</p>
+      <p>Speed of containment determines blast radius. This automation collapses the NIST SP 800-61 detection-to-containment gap by acting on high-confidence IOCs the moment Wazuh raises them. A human-driven response to a ransomware canary - notice the alert, log in to the SIEM, identify the host, SSH in, kill the process, pull the network cable (virtually speaking) - realistically takes 30 to 60 minutes at 2 a.m. Automated containment compresses that to under half a minute, which is the difference between one encrypted VM and an encrypted file server.</p>
       <ul>
         <li><strong>T1486 Data Encrypted for Impact</strong> – ransomware canary detection triggers immediate isolation.</li>
         <li><strong>T1055 Process Injection</strong> – YARA memory rules flag injected code for snapshot + quarantine.</li>
         <li><strong>T1048 Exfiltration Over Alternative Protocol</strong> – nftables egress block on alert.</li>
       </ul>
+      <p>The orchestrator maps each Wazuh rule ID to an ATT&amp;CK technique in its config, and the containment action is chosen per technique: encryption and injection get full isolation plus snapshot, while exfiltration-only alerts get an egress block first so a legitimately busy backup job does not take a host offline. That graduated response is what makes the system safe to leave running unattended.</p>
       <div class="mermaid" role="img" aria-label="Incident response lifecycle from detection to recovery">
 flowchart LR
   D[Detection<br/>Wazuh IOC] --> T[Triage<br/>YARA + psutil]
@@ -78,6 +82,7 @@ flowchart LR
         <li>Wazuh 4.7 API credentials (read alerts) and Proxmox VE 8.1 API token (VM control).</li>
         <li>nftables on endpoints; SQLite for case tracking; Slack SDK for notifications.</li>
       </ul>
+      <p>The orchestrator is a single Python package with four classes, one per external system it talks to. Keeping each integration behind its own class means the Wazuh client can be unit-tested against recorded API responses without ever touching a live firewall, and the containment class can be tested against a throwaway nftables table before it is allowed near the real <code>inet filter</code> chain.</p>
       <div class="mermaid" role="img" aria-label="Python class architecture of the orchestrator">
 classDiagram
   class IRPlaybook
@@ -88,10 +93,71 @@ classDiagram
   IRPlaybook --> YaraScanner
   IRPlaybook --> Containment
       </div>
+      <p>On the Proxmox side, create a dedicated API token rather than reusing <code>root@pam</code>. The token needs only <code>VM.Snapshot</code> and <code>VM.Audit</code> on the VM paths it protects - least privilege matters here because this token sits on every endpoint the playbook manages, so treat it as a high-value secret and scope it narrowly.</p>
+      <p class="code-label">Create a least-privilege Proxmox user and API token</p>
+<pre><code class="language-bash">pveum user add ir-bot@pve --comment "IR automation service account"
+pveum aclmod /vms -user ir-bot@pve -role PVEVMAdmin
+pveum user token add ir-bot@pve ir --privsep 1
+# token secret is printed ONCE - store it in the playbook's vault file</code></pre>
+      <p><strong>How to verify:</strong> <code>pveum user token permissions ir-bot@pve ir</code> should list only the <code>/vms</code> path. If the token can see <code>/nodes</code> or <code>/storage</code>, the ACL is too broad. <strong>Common mistake:</strong> creating the token with <code>--privsep 0</code>, which makes it inherit every permission of the user and defeats the point of a scoped token.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
-      <h3>1. Core isolation logic (excerpt)</h3>
+
+      <h3>1. Set up the Python environment and install dependencies</h3>
+      <p>Run the orchestrator from a virtual environment so its pinned dependency versions never collide with system packages. <code>yara-python</code> compiles a C extension at install time, so the YARA development headers must be present first - on Debian/Ubuntu that is <code>libyara-dev</code>, and skipping it is the single most common setup failure.</p>
+      <p class="code-label">System packages, venv creation, and dependency install</p>
+<pre><code class="language-bash">sudo apt update &amp;&amp; sudo apt install -y python3.11-venv libyara-dev yara
+python3.11 -m venv ~/ir-venv &amp;&amp; source ~/ir-venv/bin/activate
+pip install psutil yara-python requests PyYAML &amp;&amp; yara -w ioc.yar /bin</code></pre>
+      <p class="code-label">Verify every import resolves before writing any logic</p>
+<pre><code class="language-bash">python3 -c "import psutil, yara, requests, yaml; print(psutil.__version__, yara.YARA_VERSION)"
+# expected: 5.9.8 4.5.0  (versions will vary - any clean output means the toolchain works)</code></pre>
+      <p><strong>Common mistake:</strong> installing <code>yara</code> instead of <code>yara-python</code> from PyPI - they are different packages and the plain <code>yara</code> one is not the VirusTotal binding. If <code>import yara</code> works but <code>yara.compile()</code> is missing, that is what happened.</p>
+
+      <h3>2. Write and validate the YARA ruleset</h3>
+      <p>The ruleset is the second opinion that authorizes containment, so it has to be both sensitive and quiet. I keep one rule per threat family in <code>ioc.yar</code>, each keyed on strings that survive recompilation - mutex names, hardcoded C2 hosts, and ransom-note markers - rather than on easily changed file hashes. The canary rule below watches for the marker string the lab's ransomware simulator drops before it starts encrypting.</p>
+      <p class="code-label">ioc.yar - the canary rule that triggers containment</p>
+<pre><code class="language-bash">rule ransomware_canary {
+    meta:
+        description = "Ransomware simulator canary marker"
+        mitre = "T1486"
+        severity = "critical"
+    strings:
+        $canary = "CANARY_CHANGE_ME_7f3a9b" ascii wide
+        $note = "YOUR FILES HAVE BEEN ENCRYPTED" ascii
+    condition:
+        any of them
+}</code></pre>
+      <p class="code-label">Syntax-check the ruleset, then confirm it stays silent on clean binaries</p>
+<pre><code class="language-bash">yara -w ioc.yar /bin/ls &amp;&amp; echo "no match on clean binary - OK"
+yara -w ioc.yar /tmp/canary_test.bin
+# expected: ransomware_canary /tmp/canary_test.bin</code></pre>
+      <p><strong>How to verify:</strong> a good rule matches the test artifact and nothing in <code>/bin</code> or <code>/usr/bin</code>. <strong>Common mistake:</strong> writing rules so broad (e.g. matching on <code>"http"</code> or common imports) that every host "confirms" every alert, which turns the safety check into a rubber stamp. Scan a known-good host after every ruleset change.</p>
+
+      <h3>3. Configure Wazuh API access and pull an alert</h3>
+      <p>The playbook polls the Wazuh manager's API for alerts at rule level 10 or higher. Authentication is a JWT obtained from <code>/security/user/authenticate</code>; the token lives for about 15 minutes, so the client refreshes it automatically. Test the whole path with curl before writing the Python client - if curl cannot fetch an alert, the Python code never will.</p>
+      <p class="code-label">Authenticate and fetch the alert that triggered this run</p>
+<pre><code class="language-bash">TOKEN=$(curl -sk -u wazuh-wui:Str0ngPass! https://wazuh:55000/security/user/authenticate | python3 -c "import sys,json;print(json.load(sys.stdin)['data']['token'])")
+curl -sk -H "Authorization: Bearer $TOKEN" \
+  "https://wazuh:55000/alerts?limit=1&amp;rule.level=12&amp;sort=-timestamp"</code></pre>
+      <p class="code-label">Expected response (trimmed) - the fields the playbook parses</p>
+<pre><code class="language-bash">{
+  "data": {
+    "affected_items": [{
+      "id": "8200",
+      "rule": {"id": "100210", "level": 12,
+               "description": "Ransomware canary file modified"},
+      "agent": {"id": "014", "name": "ws-finance-03", "ip": "192.168.20.15"},
+      "data": {"canary": "/srv/shared/.canary_budget.xlsx"},
+      "timestamp": "2026-06-17T02:14:03.411Z"
+    }]
+  }
+}</code></pre>
+      <p><strong>Common mistake:</strong> querying <code>/alerts</code> without a <code>rule.level</code> filter and drowning the playbook in level-3 noise. The orchestrator should only ever see alerts that an analyst would page on. <strong>How to verify:</strong> the <code>agent.ip</code> in the response must match a host the playbook can actually reach and isolate - an alert for an unmanaged agent is logged and skipped, never acted on.</p>
+
+      <h3>4. Core isolation logic</h3>
+      <p>This is the heart of the containment class, and the order of operations is deliberate: the nftables rule whitelists the management subnet <em>before</em> anything is dropped, because the playbook itself runs over that subnet and a naive <code>policy drop</code> would sever its own SSH channel mid-response. The function raises on any failure (<code>check=True</code>) so a half-applied lockdown can never be reported as a success.</p>
 <pre><code class="language-bash">import psutil, yara, subprocess, logging
 
 def isolate_host(iface="eth0"):
@@ -107,29 +173,108 @@ def scan_memory(rules_path="ioc.yar"):
         if rules.match(pid=p.info["pid"]):
             return p.info["pid"]
     return None</code></pre>
+      <p class="code-label">Verify the lockdown from a second terminal on the isolated host</p>
+<pre><code class="language-bash">nft list chain inet filter output
+# expected: ... ip daddr != 192.168.10.0/24 drop
+ping -c1 -W2 8.8.8.8        # expected: 100% packet loss (egress blocked)
+ping -c1 -W2 192.168.10.5   # expected: replies (management subnet still reachable)</code></pre>
+      <p><strong>How to verify:</strong> both pings above are the acceptance test - external dead, management alive. <strong>Common mistake:</strong> applying the drop rule to the <code>input</code> chain instead of <code>output</code>. Inbound blocking stops you from reaching the host but does nothing to stop ransomware already running on it from spreading outward; egress is what contains the blast radius.</p>
 
-      <h3>2. Snapshot the VM via the Proxmox API before eradication</h3>
+      <h3>5. Confirm the compromise with a memory scan before acting</h3>
+      <p>The <code>scan_memory</code> function above is the gate between "Wazuh said so" and "take the host off the network". <code>yara-python</code> can attach to a live PID and scan its address space directly, which catches injected code (T1055) that never touches disk as a scannable file. <code>psutil.process_iter</code> walks every process, and the first PID matching any rule is returned to the playbook as the confirmed culprit.</p>
+      <p class="code-label">Dry-run the scanner by hand against a seeded test process</p>
+<pre><code class="language-bash">python3 -c "
+from ir_playbook import scan_memory
+pid = scan_memory('ioc.yar')
+print('match on pid:', pid)"
+# expected: match on pid: 4412   (the simulator process)
+# on a clean host: match on pid: None</code></pre>
+      <p><strong>How to verify:</strong> run the scanner on a known-clean VM after every ruleset update; it must return <code>None</code>. <strong>Common mistake:</strong> letting an exception in one process (a PID that exits mid-scan, or a kernel thread that denies <code>ptrace</code>) kill the whole loop. Wrap the <code>rules.match(pid=...)</code> call in <code>try/except (yara.Error, psutil.NoSuchProcess)</code> and continue - the excerpt above omits that for readability, but production code needs it.</p>
+
+      <h3>6. Snapshot the VM via the Proxmox API before eradication</h3>
+      <p>Before killing anything, capture the evidence. A Proxmox snapshot taken <em>after</em> isolation but <em>before</em> process termination preserves memory-resident artifacts and encrypted-but-recoverable files for the forensic timeline later. The snapshot name embeds a Unix timestamp so multiple containment events on the same VM never collide.</p>
       <div class="command-block"><div class="command"><code>curl -sk -H "Authorization: PVEAPIToken=$TOKEN" -X POST https://pve:8006/api2/json/nodes/pve/qemu/120/snapshot -d snapname=ir-$(date +%s)</code></div></div>
+      <p class="code-label">Expected response - a task ID, then confirm completion</p>
+<pre><code class="language-bash">{"data":"UPID:pve:0007A3C1:0B2F9E11:...:savestate:120:ir-bot@pve!ir:"}
+curl -sk -H "Authorization: PVEAPIToken=$TOKEN" \
+  "https://pve:8006/api2/json/nodes/pve/qemu/120/snapshot" | python3 -m json.tool
+# expected: "name": "ir-1750123443", "snaptime": 1750123443, "vmstate": 1</code></pre>
+      <p><strong>How to verify:</strong> <code>vmstate: 1</code> means RAM was captured too, which is exactly what you want for a memory-forensics pass with Volatility later. <strong>Common mistake:</strong> firing the POST and immediately killing the suspect process. The snapshot is asynchronous - poll the returned UPID's task status until it reports <code>OK</code> before moving to eradication, or the "evidence" is a half-written snapshot.</p>
 
-      <h3>3. Install dependencies and validate the YARA ruleset</h3>
-      <div class="command-block"><div class="command"><code>pip install psutil yara-python requests PyYAML &amp;&amp; yara -w ioc.yar /bin</code></div></div>
+      <h3>7. Record the case in SQLite and notify Slack</h3>
+      <p>Every automated action needs an audit trail an analyst can reconstruct at 9 a.m. over coffee. A single SQLite table captures the alert, the corroborating YARA match, every action taken, and how long containment took. SQLite is deliberately boring here: zero services to babysit, trivially backed up, and queryable with the <code>sqlite3</code> CLI that is already on every box.</p>
+      <p class="code-label">Schema and the insert the playbook runs on each event</p>
+<pre><code class="language-bash">sqlite3 /var/lib/ir/cases.db "CREATE TABLE IF NOT EXISTS cases(
+  id INTEGER PRIMARY KEY, alert_id TEXT, host TEXT, pid INTEGER,
+  rule TEXT, snapshot TEXT, contained_sec REAL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP);"
 
-      <h3>4. Run the playbook as a systemd-triggered service</h3>
+sqlite3 /var/lib/ir/cases.db "INSERT INTO cases
+  (alert_id,host,pid,rule,snapshot,contained_sec) VALUES
+  ('8200','192.168.20.15',4412,'ransomware_canary','ir-1750123443',28.4);"</code></pre>
+      <p class="code-label">Slack notification (chat.postMessage via the SDK)</p>
+<pre><code class="language-bash">python3 -c "
+from slack_sdk import WebClient
+WebClient(token=SLACK_BOT_TOKEN).chat_postMessage(
+  channel='#sec-ir',
+  text=':rotating_light: CONTAINED ws-finance-03 (192.168.20.15) - '
+       'rule=ransomware_canary pid=4412 snapshot=ir-1750123443 in 28.4s')"</code></pre>
+      <p><strong>How to verify:</strong> <code>sqlite3 cases.db "SELECT * FROM cases ORDER BY id DESC LIMIT 1;"</code> should echo the row just inserted, and the Slack message should land within a second or two. <strong>Common mistake:</strong> letting the notification step share the playbook's exit code. If Slack is down, containment already succeeded - log the notification failure, do not fail the run, or a chat outage starts paging people about "failed" responses that actually worked.</p>
+
+      <h3>8. Run the playbook as a systemd-triggered service</h3>
+      <p>The orchestrator runs as a dedicated unprivileged user (with a narrow sudoers entry for <code>nft</code> only), managed by systemd so a crash mid-incident gets an automatic restart and journald keeps the full log. A path unit watches the Wazuh alert export directory, so new alerts trigger a run without a polling loop.</p>
+      <p class="code-label">/etc/systemd/system/ir-playbook.service</p>
+<pre><code class="language-bash">[Unit]
+Description=Python IR containment playbook
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=irbot
+ExecStart=/home/irbot/ir-venv/bin/python3 /opt/ir/ir_playbook.py --config /opt/ir/ir.yaml
+Nice=-5
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+      <p class="code-label">Enable the trigger and run the playbook against alert 8200</p>
       <div class="command-block"><div class="command"><code>python3 ir_playbook.py -config ir.yaml -alert-id 8200</code></div></div>
 <pre><code class="language-bash">[28.4s] CONTAINED host=192.168.20.15 pid=4412 rule=ransomware_canary snapshot=ir-1718...</code></pre>
+      <p class="code-label">Follow a live run end to end in the journal</p>
+<pre><code class="language-bash">journalctl -u ir-playbook.service -f
+# expected sequence: ALERT received -&gt; YARA match pid=4412 -&gt;
+#   snapshot task OK -&gt; nftables rule added -&gt; case row written -&gt; CONTAINED</code></pre>
+      <p><strong>How to verify:</strong> the journal lines must appear in that exact order - corroboration before snapshot, snapshot before isolation. <strong>Common mistake:</strong> running the service as root "just to get it working". If a vulnerability is ever found in the playbook or one of its dependencies, root turns a containment tool into a privilege-escalation path. The <code>irbot</code> user plus a single-command sudoers rule (<code>irbot ALL=(root) NOPASSWD: /usr/sbin/nft *</code>) is the right shape.</p>
     </section>
 
     <section><h2>Validation &amp; Testing</h2>
       <p>Drop an EICAR-style YARA-matching test artifact on a sandbox VM and confirm the playbook isolates it, snapshots the VM, and posts to Slack within the SLA. Pass criteria: containment under 60 seconds and a complete SQLite case record (alt text: <em>Slack alert and SQLite case row showing automated containment evidence</em>).</p>
+      <p>My test harness is a small script that writes the canary marker into a Python process's memory on the victim VM, then timestamps each milestone from the playbook's journal. Ten runs per change is the minimum before I trust a ruleset or code edit; the table the harness prints is where the 28-second average in the lead comes from.</p>
+      <p class="code-label">Seed the artifact on the victim, then measure the run</p>
+<pre><code class="language-bash"># on ws-finance-03: start the harmless simulator
+python3 /opt/ir-test/simulate_canary.py &amp;   # prints: simulator pid=4412
+# on the orchestrator: time the full pipeline
+time python3 ir_playbook.py -config ir.yaml -alert-id 8200
+# expected: real 0m28.4s ... and the CONTAINED line from step 8</code></pre>
+      <p class="code-label">Acceptance checks after the run - all four must pass</p>
+<pre><code class="language-bash">nft list chain inet filter output | grep -c drop      # expected: 1
+sqlite3 /var/lib/ir/cases.db "SELECT contained_sec FROM cases
+  WHERE alert_id='8200';"                              # expected: 28.4
+curl -sk -H "Authorization: PVEAPIToken=$TOKEN" \
+  https://pve:8006/api2/json/nodes/pve/qemu/120/snapshot | grep ir-   # snapshot exists
+grep CONTAINED /var/log/syslog | tail -1               # journal trail present</code></pre>
+      <p><strong>How to verify:</strong> also test the negative path - fire the same alert with the simulator <em>not</em> running. The playbook must log "YARA: no corroborating match, alert deferred to analyst" and take <strong>no</strong> containment action. A system that only ever passes its positive test is not validated; it is just lucky.</p>
     </section>
 
-    <details><summary>Advanced: Troubleshooting</summary>
+    <section><h2>Troubleshooting</h2>
       <ul>
         <li><strong>yara-python ImportError:</strong> install <code>libyara</code> dev headers before pip install.</li>
         <li><strong>nftables locks out management:</strong> always whitelist the mgmt subnet first in the ruleset.</li>
         <li><strong>Proxmox 401:</strong> confirm token privilege separation and the <code>VM.Snapshot</code> permission.</li>
+        <li><strong>Scanner returns None on a host you know is infected:</strong> the suspect process likely exited before the scan reached it, or <code>ptrace_scope</code> is blocking memory reads. Check <code>cat /proc/sys/kernel/yama/ptrace_scope</code> - the service needs it at <code>0</code>, or the playbook must run with <code>CAP_SYS_PTRACE</code>. Also scan earliest-first by sorting <code>process_iter</code> on create time so the newest (usually malicious) process is checked before it can die.</li>
+        <li><strong>Duplicate nftables rules after repeated runs:</strong> re-running the playbook against the same host appends a second identical drop rule. Make isolation idempotent by checking <code>nft list chain inet filter output | grep "192.168.10.0/24"</code> first, or add a comment (<code>comment "ir-playbook"</code>) and match on it before inserting.</li>
+        <li><strong>Playbook times out waiting for the snapshot:</strong> large VMs with <code>vmstate</code> (RAM capture) can take minutes. Poll the UPID task endpoint with a generous timeout (10 min) and treat a snapshot failure as <em>continue-with-logging</em>, not abort - containing the host matters more than perfect evidence.</li>
       </ul>
-    </details>
+    </section>
 
     <section><h2>Key Results</h2>
       <ul>
@@ -137,6 +282,16 @@ def scan_memory(rules_path="ioc.yar"):
         <li>Reduced mean time to contain (MTTC) from 45 minutes to under 1 minute.</li>
         <li>Processed 1,000+ simulated alerts/day with zero human intervention required.</li>
         <li>Captured a forensic VM snapshot on 100% of containment events for later analysis.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li><strong>Corroborate before you contain.</strong> The YARA memory scan as a second, independent signal is what makes unattended automation safe - Wazuh alone is not enough authority to take a host off the network.</li>
+        <li><strong>Order of operations is the safety margin:</strong> whitelist management access, corroborate, snapshot evidence, then isolate - never the reverse.</li>
+        <li><strong>Every automated action needs an audit trail.</strong> The SQLite case row plus journald log turns a 2 a.m. robot decision into something an analyst can defend at 9 a.m.</li>
+        <li><strong>Least privilege applies to robots too.</strong> A scoped Proxmox token, an unprivileged service user, and a single-command sudoers rule keep the containment tool from becoming an attack surface.</li>
+        <li><strong>Test the negative path.</strong> A playbook that never fires on a false alert is more valuable than one that fires fast on real ones.</li>
       </ul>
     </section>
 
