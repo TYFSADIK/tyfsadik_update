@@ -85,6 +85,8 @@ graph TD
         <li><strong>Service</strong> - a stable virtual IP (ClusterIP) and DNS name that load-balances across every pod whose labels match its <code>selector</code>. Because it matches on labels, pods can be killed and recreated freely and the Service keeps working.</li>
       </ul>
       <p>The glue in the whole system is the label <code>app: web</code>: the Deployment selector matches pod template labels, and the Service selector matches the same labels on the running pods. If any of those three label sets drift apart, the workload either becomes unmanaged or loses its endpoints - this is the single most common mistake in this lab.</p>
+      <p>Notice what is deliberately absent from this design: you never create a bare Pod manifest for a real workload. A standalone pod is scheduled exactly once - if its node dies or the pod is evicted, nothing recreates it. The Deployment/ReplicaSet layering exists to make pods disposable: any pod can be deleted at any moment and the controller replaces it from the template, which is what the self-healing check in the validation section demonstrates.</p>
+      <p>On the traffic side, the Service object itself is only a control-plane record. The actual packet forwarding is done by <span class="glossary-term" data-definition="kube-proxy: an agent running on every node that programs iptables or IPVS rules so connections to a Service's virtual IP are forwarded to a healthy backing pod.">kube-proxy</span> on each node, which programs iptables/IPVS rules mapping the ClusterIP to the live endpoint IPs. That is why <code>kubectl get endpoints</code> is such a useful debugging view: it shows exactly which backends kube-proxy will pick from.</p>
     </section>
 
     <section><h2>Environment Setup</h2>
@@ -92,6 +94,13 @@ graph TD
       <p><strong>Before you begin:</strong> keep manifests in a directory so you can version them in Git.</p>
       <p>Confirm kubectl is talking to the cluster you expect before touching anything. Applying a manifest against the wrong context is a classic way to deploy a test workload into a shared cluster.</p>
       <div class="command-block" data-copy><div class="command"><code>kubectl config current-context &amp;&amp; kubectl cluster-info</code></div><div class="note">Should print your local context (e.g. kind-lab) and the control plane address.</div></div>
+      <p>Confirm at least one node is Ready to accept pods before you deploy anything:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get nodes</span></div>
+        <div class="terminal-output">NAME               STATUS   ROLES           AGE   VERSION
+lab-control-plane   Ready    control-plane   2d    v1.29.2</div>
+      </div>
+      <p>If the cluster from the basics lab is gone (kind clusters do not survive a Docker restart), recreate it with <code>kind create cluster -name lab</code> and re-check the two commands above.</p>
       <p>Create a working directory for the manifests and, if you plan to commit them, initialise it as a Git repository now rather than later - the whole point of this lab is that the YAML <em>is</em> the source of truth.</p>
       <div class="command-block" data-copy><div class="command"><code>mkdir -p k8s-lab/manifests &amp;&amp; cd k8s-lab/manifests &amp;&amp; git init</code></div><div class="note">All kubectl commands below are run from this directory.</div></div>
       <p>Everything in this lab runs in the <code>default</code> namespace to keep the commands short. On a real cluster you would create a dedicated namespace per app or team and scope your work with <code>-n</code> or <code>kubectl config set-context --current --namespace=...</code>.</p>
@@ -129,6 +138,12 @@ spec:
   ports: [{ port: 80 }]</code></pre>
           <p>The Service is deliberately minimal: <code>selector: { app: web }</code> tells it to send traffic to every pod carrying that label, and <code>port: 80</code> is the port the Service itself listens on. Because no <code>type</code> is given, it defaults to <code>ClusterIP</code> - reachable only from inside the cluster. No <code>targetPort</code> is set either, so traffic is forwarded to the same port number (80) on the pods, which is where nginx listens by default.</p>
           <p><strong>Common mistake:</strong> writing the Service selector as <code>app: web-svc</code> or the pod label as <code>app: frontend</code> "to be descriptive". The objects are wired together purely by these strings - they must match character for character. If you are ever unsure of a field, <code>kubectl explain deployment.spec.template</code> prints the API documentation for any field path.</p>
+          <p>Finally, validate the file before it ever touches the cluster. A client-side dry run catches schema errors (bad indentation, a wrong apiVersion) instantly, and once the objects exist, <code>kubectl diff</code> previews exactly what a future apply would change:</p>
+          <div class="command-block" data-copy><div class="command"><code>kubectl apply -f web.yaml -dry-run=client</code></div><div class="note">Prints "created (dry run)" per object; no cluster state is changed.</div></div>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl diff -f web.yaml</span></div>
+            <div class="terminal-output">(empty output after a successful apply means the file and the cluster agree)</div>
+          </div>
         </div></div>
         <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Apply it</strong>
           <p><code>kubectl apply</code> is declarative: it diffs your file against the live state and makes only the changes needed. Re-running it with an unchanged file is a no-op, which is why it - not <code>kubectl create</code> - is the command you script and commit to CI. Follow it immediately with <code>rollout status</code>, which blocks until all replicas are updated and ready, so your terminal prompt returning means the deployment actually succeeded.</p>
@@ -156,6 +171,13 @@ NAME   ENDPOINTS                                   AGE
 web    10.244.0.10:80,10.244.0.8:80,10.244.0.9:80   1m</div>
           </div>
           <p>The <code>endpoints</code> output is the proof that the label wiring works: the Service's virtual IP <code>10.96.143.21</code> is backed by exactly the three pod IPs from the first command. If the endpoints list were <code>&lt;none&gt;</code>, the selector does not match any pod labels.</p>
+          <p>The Deployment's own status row is the compact summary operators watch:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get deploy web</span></div>
+            <div class="terminal-output">NAME   READY   UP-TO-DATE   AVAILABLE   AGE
+web    3/3     3            3           2m</div>
+          </div>
+          <p><code>UP-TO-DATE</code> counts pods running the latest template revision; <code>AVAILABLE</code> counts pods passing readiness (with no probes defined, that simply means "container started"). During a rollout these two columns briefly disagree - that gap <em>is</em> the update in progress.</p>
           <p><strong>How to verify:</strong> <code>READY 1/1</code> on all three pods, the rollout status line "successfully rolled out", and three IPs in the endpoints list. All three must be true before moving on.</p>
         </div></div>
         <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Roll out a new image version</strong>
@@ -166,6 +188,14 @@ web    10.244.0.10:80,10.244.0.8:80,10.244.0.9:80   1m</div>
           </div>
           <p>To watch the swap happen in real time, open a second terminal before running the update and stream the pod list:</p>
           <div class="command-block" data-copy><div class="command"><code>kubectl get pods -l app=web -w</code></div><div class="note">You will see new pods enter ContainerCreating then Running while old pods Terminate one by one. Ctrl+C to exit the watch.</div></div>
+          <p>Catch the rollout mid-flight and the ReplicaSet view tells the whole story - the old ReplicaSet scaling down while the new one scales up:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get rs -l app=web</span></div>
+            <div class="terminal-output">NAME              DESIRED   CURRENT   READY   AGE
+web-584f6c6d9b    2         2         2       8m
+web-7d9c4b58f7    2         2         1       20s</div>
+          </div>
+          <p>Each ReplicaSet name embeds a hash of its pod template, which is how the Deployment tells revisions apart. When the rollout completes, the old ReplicaSet sits at 0 replicas but is kept around - it becomes your rollback target in step 04.</p>
           <p>Every template change is recorded as a numbered revision. This history is what makes the next step possible:</p>
           <div class="terminal-session">
             <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl rollout history deploy/web</span></div>
@@ -187,6 +217,13 @@ web    10.244.0.10:80,10.244.0.8:80,10.244.0.9:80   1m</div>
 nginx:1.25</div>
           </div>
           <p>One subtlety: a rollback does not erase history, it creates a <em>new</em> revision whose template is a copy of the one you reverted to. After the undo, <code>kubectl rollout history</code> shows revision 3 with the nginx:1.25 template - revisions only ever move forward.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl rollout history deploy/web</span></div>
+            <div class="terminal-output">REVISION  CHANGE-CAUSE
+2         &lt;none&gt;
+3         &lt;none&gt;</div>
+          </div>
+          <p>Revision 1 disappeared from the list because its template now lives at revision 3 - Kubernetes renumbers the newest copy rather than resurrecting the old slot. The change-cause annotation habit from step 03 is what keeps this list meaningful on a real project.</p>
           <p><strong>How to verify:</strong> the image is back to <code>nginx:1.25</code>, all pods show <code>Running</code>, and <code>kubectl get endpoints web</code> still lists three healthy IPs. In a real incident you would then curl the Service (next section) to confirm the app itself, not just the pods, is healthy.</p>
         </div></div>
       </div>

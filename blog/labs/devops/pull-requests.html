@@ -230,6 +230,49 @@ graph LR
       <p>The three core moves - open, review, merge - are the loop you will run dozens of times a week. Steps 00 and 04 bookend it: a well-prepared branch makes the PR easy to review, and branch protection makes the loop mandatory rather than optional.</p>
     </section>
 
+    <section><h2>Anatomy of a Good PR</h2>
+      <p>Reviewers decide how carefully to read based on signals you control. A PR that gets a fast, useful review usually has all of these:</p>
+      <ul>
+        <li><strong>Small diff:</strong> under ~400 lines changed. Bigger than that and reviewers skim; split large work into stacked PRs.</li>
+        <li><strong>Single purpose:</strong> one feature or one fix. "Add endpoint + refactor logging + bump deps" forces the reviewer to hold three conversations at once.</li>
+        <li><strong>A body that answers what / why / how-tested</strong> - the template from step 01.</li>
+        <li><strong>Green checks before review is requested:</strong> asking a human to read code CI has already rejected wastes the most expensive resource in the loop.</li>
+        <li><strong>Linked issue:</strong> <code>Closes #17</code> ties the change to the reason it exists and auto-closes the ticket on merge.</li>
+      </ul>
+      <p>The inverse is also a skill: as a reviewer, a PR missing these signals is itself feedback. Ask for a split or a better description before diving into the diff - that is a legitimate <code>--comment</code> review.</p>
+    </section>
+
+    <section><h2>Draft PRs and Work in Progress</h2>
+      <p>Open a PR as a <strong>draft</strong> when you want CI feedback and early eyes but the change is not ready to merge. Drafts cannot be merged, which makes them a safe way to share half-finished work without risking an accidental merge:</p>
+      <p class="code-label">DRAFT PR WORKFLOW</p>
+<pre><code class="language-bash">gh pr create --draft --title "WIP: caching layer" --body "Early feedback welcome"
+# ...keep pushing commits; CI runs on every push...
+gh pr ready                 # flip to ready-for-review when done
+gh pr ready --undo          # back to draft if review uncovers big problems</code></pre>
+      <p>Drafts are also the answer to "how do I run CI without merging": the checks run on every push to the PR branch whether or not the PR is a draft, so you get the full pipeline signal long before a reviewer is involved.</p>
+    </section>
+
+    <section><h2>Keeping a PR Up to Date with main</h2>
+      <p>PRs age. While yours waits for review, main moves, and with <code>strict=true</code> in branch protection you must be current before merging. Two ways to catch up, both ending in a force-free push:</p>
+      <p class="code-label">UPDATE THE PR BRANCH</p>
+<pre><code class="language-bash"># option A: merge main in (keeps history, adds a merge commit)
+git checkout feature/api
+git fetch origin
+git merge origin/main
+git push
+
+# option B: rebase onto main (linear, but rewrites the branch)
+git fetch origin
+git rebase origin/main
+git push --force-with-lease</code></pre>
+      <p>Prefer merge on shared branches and rebase on branches only you touch; <code>--force-with-lease</code> (never plain <code>--force</code>) refuses to overwrite commits someone else pushed since your last fetch. Either way, expect CI to re-run and, with <code>dismiss_stale_reviews</code> on, expect to ask for a re-approval.</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">gh pr view 42 --json mergeable,reviews --jq '{mergeable, approvals: [.reviews[] | select(.state=="APPROVED")] | length}'</span></div>
+        <div class="terminal-output">{"mergeable":"MERGEABLE","approvals":1}</div>
+      </div>
+      <p><strong>How to verify:</strong> <code>mergeable</code> reports <code>MERGEABLE</code> and the approval count is back above your required threshold before you reach for <code>gh pr merge</code>.</p>
+    </section>
+
     <section><h2>The Reviewer's Side</h2>
       <p>Reviews are easier to do well when you can run the code, not just read it. gh can check out any PR into a local branch in one command, so you can run the tests, poke the endpoint, and then leave your verdict:</p>
       <p class="code-label">CHECK OUT AND TEST A PR LOCALLY</p>
@@ -243,6 +286,7 @@ curl -s localhost:8080/health   # manual smoke test</code></pre>
 4 passed in 0.42s</div>
       </div>
       <p>When you are done, <code>git checkout main</code> drops you back; the PR branch is disposable. Review the behavior first, the diff second - a change that reads beautifully but breaks the smoke test still gets <code>--request-changes</code>.</p>
+      <p>Review etiquette worth adopting early: comment on the code, not the author ("this branch dereferences null" beats "you broke this"); distinguish blockers from nits explicitly (<code>nit:</code> prefix means "optional, your call"); and respond to every review comment, even if only with "done in 3f2a1b9" - silence forces the reviewer to re-read the diff to find out what changed.</p>
     </section>
 
     <section><h2>Testing &amp; Validation</h2>
@@ -258,10 +302,11 @@ gh api repos/TYFSADIK/demo-api/branches/main/protection --jq '.enforce_admins.en
         <div class="terminal-output">42  Add /health endpoint for uptime checks  TYFSADIK:feature/api  MERGED</div>
       </div>
       <p>For a negative test, push a branch with a deliberately failing test and open a PR. The merge command must refuse. If it does not, your protection rule or required check context is wrong - revisit step 04.</p>
+      <p>Finally, confirm the audit trail is intact: the PR page should show the full conversation, the approving review, the green check rollup, and the squash commit linking back to the PR number. That trail is what you will dig through six months from now when the endpoint misbehaves - if it is all there, the lab is done.</p>
     </section>
 
     <section><h2>gh PR Command Cheat Sheet</h2>
-      <p>The commands from this lab, collected for reference:</p>
+      <p>The commands from this lab, collected for reference. Everything assumes you are inside the repo clone; add <code>--repo owner/name</code> to run them from anywhere:</p>
       <p class="code-label">EVERYDAY gh PR COMMANDS</p>
 <pre><code class="language-bash">gh pr create --base main --fill          # open PR, reuse commit messages
 gh pr status                             # your PRs + review/check state

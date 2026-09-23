@@ -64,6 +64,8 @@
         <li><strong>T1190 Exploit Public-Facing Application</strong> – default-deny shrinks the reachable service set adversaries can target.</li>
         <li><strong>T1046 Network Service Discovery</strong> – dropped probes deny attackers an accurate service map.</li>
       </ul>
+      <p>Equally important is what this lab deliberately does <em>not</em> cover. Egress filtering (restricting what the host may initiate outbound) is a separate policy with a much higher breakage risk and its own lab; here OUTPUT stays permissive. Native <code>nft</code> syntax is only touched for inspection – the management interfaces used are iptables-nft, firewalld, and ufw, because those are what a working administrator actually encounters on RHEL and Ubuntu today. And application-layer filtering (WAF, reverse-proxy rules) sits above netfilter entirely and is out of scope.</p>
+      <p>The threat model the policy answers is simple and honest: an opportunistic scanner or a worm-class adversary sweeping the subnet for low-hanging services. A host firewall will not stop a determined attacker who has valid credentials to an allowed port, which is why the firewall is one layer beside SSH hardening, SELinux, and patching – never a substitute for them.</p>
       <div class="mermaid" role="img" aria-label="Packet evaluation flow through firewall chains">
 flowchart LR
   P[Inbound Packet] --> C{Match allow rule?}
@@ -84,6 +86,9 @@ flowchart LR
       <div class="command-block"><div class="command"><code>iptables -V</code></div></div>
 <pre><code class="language-bash">iptables v1.8.9 (nf_tables)</code></pre>
       <p>The <code>(nf_tables)</code> suffix confirms iptables commands are being translated into nftables rules in the kernel, which matters later when we inspect rules with <code>nft list ruleset</code>.</p>
+      <p>Two more preparations before touching a single rule. First, take a restorable backup of the current ruleset – even an empty one – so rollback is a one-liner instead of a rebuild:</p>
+      <div class="command-block"><div class="command"><code>mkdir -p ~/fw-backups &amp;&amp; iptables-save &gt; ~/fw-backups/rules-$(date +%F-%H%M).v4</code></div></div>
+      <p>Restore, if ever needed, is <code>iptables-restore &lt; ~/fw-backups/rules-2026-09-19-1415.v4</code>. Second, make sure the scanning and inspection tools exist on both nodes – <code>nmap</code> on the scanner host, and <code>conntrack</code> plus <code>jq</code>-free basics on the targets. On the Ubuntu node that is <code>apt install nmap conntrack iptables-persistent</code>; on RHEL, <code>dnf install nmap conntrack-tools</code>. Installing <code>iptables-persistent</code> up front also pre-creates <code>/etc/iptables/</code>, which the persistence step needs later.</p>
     </section>
 
     <section><h2>Methodology</h2>
@@ -91,6 +96,12 @@ flowchart LR
       <p>An allow-list policy is only sound if the default action is DROP. I establish the management allow rule (SSH) before flipping the default policy, preventing a self-inflicted lockout – the single most common firewall incident. The ordering is the whole trick: netfilter evaluates chain rules top to bottom, and the chain policy only applies to packets that fall off the end of the rule list. Allow rules for what must keep working go in first; only then is the default policy flipped to DROP.</p>
       <h3>Choosing the tool</h3>
       <p>firewalld zones suit multi-interface servers; ufw suits single-purpose Ubuntu hosts; raw iptables/nftables suits scripted, auditable rule sets. All three compile to the same kernel netfilter hooks, which is why running two managers at once is dangerous – each believes it owns the ruleset and will silently overwrite the other's work on reload.</p>
+      <ul>
+        <li><strong>iptables (nft backend):</strong> maximum control and scriptability; rules are exactly what you type, in the order you type them. Best for audited, version-controlled rulesets. Weakest on guardrails – nothing stops you locking yourself out.</li>
+        <li><strong>firewalld:</strong> adds zones (per-interface trust levels), runtime-vs-permanent configs, and D-Bus integration so tools like libvirt can manage their own rules. Default on RHEL-family systems. Slightly more abstraction to debug when something unexpected matches.</li>
+        <li><strong>ufw:</strong> deliberately tiny command surface over the same machinery, with IPv6 rules generated automatically. Ideal for single-purpose Ubuntu hosts; too coarse for complex multi-zone setups.</li>
+      </ul>
+      <p>The selection heuristic I used: match the distribution default unless there is a concrete reason not to. firewalld stays on RHEL, ufw on Ubuntu, and hand-rolled iptables only where the ruleset must be diffable in Git.</p>
       <h3>Statefulness does the heavy lifting</h3>
       <p>The single most important rule in the entire policy is the connection-tracking accept for ESTABLISHED,RELATED traffic. With it in place, the INPUT chain only needs rules for <em>new</em> inbound connections; return traffic for connections the host initiated (DNS answers, package downloads, NTP) is matched by conntrack and accepted without any per-service inbound rules. This is what lets a default-deny inbound policy coexist with a fully functional server.</p>
     </section>

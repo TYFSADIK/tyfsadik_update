@@ -53,18 +53,25 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">Actions</span><span class="tag">workflow YAML</span><span class="tag">jobs</span><span class="tag">caching</span></div>
     </div>
 
-    <section><p class="lead">You will write a GitHub Actions workflow that lints and tests your code on every push. By the end, broken code is caught automatically before it can be merged into main.</p></section>
+    <section><p class="lead">You will write a GitHub Actions workflow that lints and tests your code on every push. By the end, broken code is caught automatically before it can be merged into main.</p>
+      <p>Continuous integration (CI) is the habit of validating every change the moment it lands. Instead of discovering a broken test suite the night before a demo, the repository itself rejects bad code within minutes of a push. GitHub Actions is the CI engine built into every GitHub repo: you describe the checks you want in a YAML file, commit that file, and GitHub runs it on a fresh virtual machine every time the trigger conditions are met.</p>
+      <p>This lab builds the smallest CI setup that is still genuinely useful in real projects: a workflow with two jobs (lint and test), dependency caching so runs stay fast, and a branch protection rule that makes the workflow a <em>required status check</em> on <code>main</code>. Every command is included, along with the output you should expect and the mistakes that most often bite first-time users.</p>
+    </section>
 
     <div class="learning-objectives"><h2>Learning Objectives</h2>
       <ul>
         <li>Define triggers, jobs, and steps in workflow YAML.</li>
         <li>Cache dependencies to speed up runs.</li>
         <li>Make the workflow a required status check.</li>
+        <li>Read run logs from the terminal with <code>gh run view</code> and find failing steps fast.</li>
+        <li>Prove the protection works by pushing a deliberately failing change and watching the merge get blocked.</li>
         <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> a GitHub repo with tests.</li>
       </ul>
     </div>
 
     <section><h2>Architecture Overview</h2>
+      <p>Everything in Actions flows from an <strong>event</strong>. A <code>git push</code> (or a pull request) fires the event; GitHub matches it against the <code>on:</code> triggers declared in your workflow file; and each matching workflow is queued. Every <strong>job</strong> in the workflow gets its own fresh virtual machine called a <strong>runner</strong> &mdash; here, <code>ubuntu-latest</code>. Jobs run in parallel by default, which is why the lint and test jobs below finish in roughly the time of the slower one. Inside a job, <strong>steps</strong> run sequentially: they either reuse a published action (<code>uses:</code>) or execute a shell command (<code>run:</code>).</p>
+      <p>When all jobs finish, GitHub rolls their results up into a single <strong>status check</strong> attached to the commit. Branch protection watches that check: if it is red, the merge button stays disabled. That last link in the chain is what turns "a script that runs tests" into actual protection for <code>main</code>.</p>
       <div class="mermaid" role="img" aria-label="Push triggers a CI workflow with jobs">
 graph LR
   Push[git push] -->|on: push| WF[Workflow]
@@ -74,16 +81,56 @@ graph LR
   J2 --> St
   St -->|required| Main[protected main]
       </div>
+      <p>Two properties of this design are worth remembering. First, runners are ephemeral &mdash; nothing you install or download survives the run, which is exactly why caching (step 01) matters for speed. Second, the workflow file itself is versioned code: it is reviewed in pull requests like everything else, and a broken workflow file fails loudly in the Actions tab rather than silently skipping your checks.</p>
     </section>
 
     <section><h2>Environment Setup</h2>
       <p><strong>You will need:</strong> a GitHub repo with a test command (for example pytest or npm test).</p>
       <p><strong>Before you begin:</strong> workflows live in <code>.github/workflows/</code>.</p>
+      <p>Any file with a <code>.yml</code> or <code>.yaml</code> extension placed in that directory and pushed to the default branch becomes a workflow &mdash; there is nothing to enable in the UI. The examples below use a small Python project, but every concept maps one-to-one onto Node, Go, or anything else with a test command.</p>
+      <p class="code-label">EXAMPLE REPO LAYOUT USED IN THIS LAB</p>
+<pre><code class="language-text">my-project/
+&boxvr;&boxh;&boxh; .github/
+&boxv;   &boxur;&boxh;&boxh; workflows/
+&boxv;       &boxur;&boxh;&boxh; ci.yml        &lt;-- the workflow you are about to write
+&boxvr;&boxh;&boxh; src/
+&boxv;   &boxur;&boxh;&boxh; app.py
+&boxvr;&boxh;&boxh; tests/
+&boxv;   &boxur;&boxh;&boxh; test_app.py
+&boxur;&boxh;&boxh; requirements.txt</code></pre>
+      <p>Install the GitHub CLI (<code>gh</code>) if you have not already &mdash; it lets you watch runs, read logs, and configure branch protection without leaving the terminal. Verify it is authenticated against the account that owns the repo:</p>
+      <p class="code-label">VERIFY THE GH CLI IS AUTHENTICATED</p>
+<pre><code class="language-bash">gh auth status</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">gh auth status</span></div>
+        <div class="terminal-output">github.com
+  &check; Logged in to github.com account TYFSADIK (keyring)
+  - Active account: true
+  - Git operations protocol: https
+  - Token scopes: 'gist', 'read:org', 'repo', 'workflow'</div>
+      </div>
+      <p>Two things to check in that output: the account matches the repo owner, and the token includes the <code>workflow</code> scope &mdash; without it, pushing a file under <code>.github/workflows/</code> is rejected with an opaque "refusing to allow an OAuth App to create or update workflow" error. If the scope is missing, re-authenticate with <code>gh auth login --scopes workflow</code>.</p>
+      <p>Finally, confirm the test command actually passes locally <em>before</em> automating it. CI should encode a known-good check, not debug one:</p>
+      <p class="code-label">SANITY-CHECK THE TEST SUITE LOCALLY</p>
+<pre><code class="language-bash">python -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -r requirements.txt
+pytest -q</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">pytest -q</span></div>
+        <div class="terminal-output">....                                                                     [100%]
+4 passed in 0.12s</div>
+      </div>
+      <p><strong>Common mistake:</strong> writing the workflow first and discovering in CI that the tests never passed locally in the first place. A green local run is your baseline; every red run afterwards is a real regression.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
       <div class="steps">
         <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Write the workflow</strong>
+          <p>Create the workflow directory and the file itself. The name is arbitrary &mdash; <code>ci.yml</code> is the usual convention &mdash; but the directory path is not: GitHub only discovers workflows under <code>.github/workflows/</code> at the repository root.</p>
+          <p class="code-label">CREATE THE WORKFLOW FILE</p>
+<pre><code class="language-bash">mkdir -p .github/workflows
+touch .github/workflows/ci.yml</code></pre>
+          <p>Start with the minimal version below. It already does the essential job: on every push and every pull request, check out the code, install Python 3.11 with pip caching enabled, install dependencies, and run the test suite.</p>
 <pre><code class="language-bash"># .github/workflows/ci.yml
 name: CI
 on: [push, pull_request]
@@ -96,16 +143,276 @@ jobs:
         with: { python-version: '3.11', cache: 'pip' }
       - run: pip install -r requirements.txt
       - run: pytest -q</code></pre>
+          <p>Walk through what each line means, because every workflow you will ever write is a variation on this shape:</p>
+          <ul>
+            <li><code>name: CI</code> &mdash; the display name in the Actions tab and, importantly, the first half of the status check name that branch protection will reference in step 03.</li>
+            <li><code>on: [push, pull_request]</code> &mdash; the triggers. <code>push</code> covers direct commits to any branch; <code>pull_request</code> covers proposed merges so the check runs on the merged result <em>before</em> anyone clicks the merge button.</li>
+            <li><code>runs-on: ubuntu-latest</code> &mdash; the runner image. GitHub-hosted runners are free for public repos and include generous monthly minutes for private ones.</li>
+            <li><code>actions/checkout@v4</code> &mdash; clones your repo onto the runner. Without this step the runner starts with an empty directory; forgetting it is a classic beginner bug that produces "No such file or directory" on the very next step.</li>
+            <li><code>actions/setup-python@v5</code> with <code>cache: 'pip'</code> &mdash; installs the requested Python version <em>and</em> caches the pip download cache keyed on a hash of <code>requirements.txt</code>. The first run populates the cache; later runs skip re-downloading every package.</li>
+            <li>The two <code>run:</code> steps are plain shell. Any command you would type locally works here.</li>
+          </ul>
+          <p>Once the minimal version is green, grow it into the two-job shape from the architecture diagram: lint and test run in parallel, and a failing linter stops bad style from reaching main just as surely as a failing test. The full file also pins the cache key explicitly so you can see how caching works under the hood.</p>
+          <p class="code-label">FULL WORKFLOW — .github/workflows/ci.yml</p>
+<pre><code class="language-yaml">name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same branch to save runner minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install ruff
+      - run: ruff check src tests
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: pytest -q --cov=src --cov-report=term-missing</code></pre>
+          <p>Notes on the additions: <code>concurrency</code> cancels the previous in-flight run when you push again to the same branch &mdash; handy when you spot a typo seconds after pushing. The <code>push.branches</code> filter keeps pushes to throwaway feature branches from burning minutes, while <code>pull_request</code> still validates every proposed merge into <code>main</code>. The two jobs have no <code>needs:</code> relationship, so GitHub schedules them in parallel.</p>
+          <p><strong>How to verify:</strong> the file is just YAML, so a syntax error will break the whole workflow before it ever runs. Lint it locally before pushing:</p>
+          <p class="code-label">VALIDATE THE YAML BEFORE COMMITTING</p>
+<pre><code class="language-bash">python -c "import yaml,sys; yaml.safe_load(open('.github/workflows/ci.yml'))" &amp;&amp; echo "YAML OK"
+# or, better, use the purpose-built linter:
+actionlint .github/workflows/ci.yml</code></pre>
+          <p><code>actionlint</code> goes beyond YAML syntax &mdash; it catches misspelled action inputs, unknown contexts like <code>${{ github.branhc }}</code>, and shellcheck issues inside <code>run:</code> blocks. It is the single highest-value tool for workflow debugging.</p>
+          <p><strong>Common mistake:</strong> YAML is whitespace-sensitive, and mixing tabs with spaces produces errors like <code>mapping values are not allowed here</code>. Configure your editor to insert two spaces for <code>.yml</code> files. A subtler gotcha: some YAML 1.1 parsers (including Python's <code>yaml.safe_load</code>) read the bare key <code>on:</code> as the boolean <code>True</code> &mdash; GitHub parses it correctly, but do not be alarmed if a generic YAML tool shows the key as <code>true</code>.</p>
         </div></div>
         <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Push and watch the run</strong>
+          <p>Commit the workflow file and push it. Because the trigger list includes <code>push</code>, this very push is also the workflow's first run &mdash; a satisfying feedback loop.</p>
+          <p class="code-label">COMMIT AND PUSH THE WORKFLOW</p>
+<pre><code class="language-bash">git add .github/workflows/ci.yml
+git commit -m "Add CI workflow: lint + test on push and PR"
+git push origin main</code></pre>
+          <p>Then watch the run live from the terminal. <code>gh run watch</code> attaches to the most recent run and streams each job's status until it completes; <code>--exit-status</code> makes the command itself fail if the run fails, which is useful in scripts.</p>
           <div class="terminal-session">
             <div class="terminal-line"><span class="prompt">$</span> <span class="input">git push &amp;&amp; gh run watch</span></div>
             <div class="terminal-output">CI · test (push)  completed  success</div>
           </div>
+          <p>A full two-job run looks like this in the terminal:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">gh run watch --exit-status</span></div>
+            <div class="terminal-output">&check; main CI · 14473922110
+Triggered via push about 1 minute ago
+
+JOBS
+&check; lint in 24s (ID 40567891234)
+&check; test in 41s (ID 40567891887)
+
+&check; Run CI (14473922110) completed with 'success'</div>
+          </div>
+          <p>Notice the run time: the first run is the slow one because it populates the pip cache. Push a trivial change (edit a comment, amend, push again) and compare &mdash; the <code>setup-python</code> step should now log a cache hit:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">gh run view --log | grep -i "cache"</span></div>
+            <div class="terminal-output">test	Set up Python	Cache restored from key: setup-python-Linux-22.04-Ubuntu-python-3.11.9-pip-9f2c1e...
+test	Set up Python	Successfully restored from cache</div>
+          </div>
+          <p>When a run goes red, do not click around the web UI hunting for the failure &mdash; pull the failing logs straight into your terminal:</p>
+          <p class="code-label">READ ONLY THE FAILED STEPS OF A RUN</p>
+<pre><code class="language-bash">gh run list --limit 5
+gh run view --log-failed          # logs from failed steps of the latest run
+gh run view 40567891887 --log     # full log of a specific job</code></pre>
+          <p><strong>How to verify:</strong> after the push, the commit on GitHub should carry a green check (or yellow dot while running). Clicking it shows both jobs. In the Actions tab, the run appears under the workflow name "CI" with the commit message as its title.</p>
+          <p><strong>Common mistake:</strong> committing the file but forgetting <code>git add .github/workflows/ci.yml</code> (the directory is easy to overlook because it is hidden), or pushing to a feature branch while <code>push.branches</code> filters to <code>[main]</code> &mdash; in both cases the Actions tab stays empty and it looks like Actions is broken. Check <code>git status</code> and your trigger filters first.</p>
         </div></div>
         <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Require the check on main</strong>
+          <p>A workflow that only reports failures is advisory; developers can ignore it and merge anyway. Branch protection turns the status check into a gate: until the checks named in the rule pass on the exact commit being merged, GitHub disables the merge button. You can configure this in the UI under <em>Settings &rsaquo; Branches &rsaquo; Add branch ruleset</em>, but doing it with the API is repeatable and reviewable.</p>
           <p>Set the workflow as a required status check in branch protection so failing code cannot merge.</p>
           <div class="command-block" data-copy><div class="command"><code>gh api repos/:owner/:repo/branches/main/protection -X PUT -f required_status_checks.strict=true</code></div></div>
+          <p>The <code>:owner</code> and <code>:repo</code> placeholders are filled in automatically by <code>gh</code> from your git remote. <code>strict=true</code> means the PR branch must also be <em>up to date</em> with main before merging &mdash; the strictest and safest mode, since the check then ran against exactly what will land on main.</p>
+          <p>The one-flag version above enables strict checks but does not name <em>which</em> checks are required. Name them explicitly so the gate waits for your two jobs. The check names follow the pattern <code>workflow name / job name</code> &mdash; here, <code>lint</code> and <code>test</code> as jobs inside the <code>CI</code> workflow:</p>
+          <p class="code-label">REQUIRE BOTH JOBS AS NAMED STATUS CHECKS</p>
+<pre><code class="language-bash">gh api repos/:owner/:repo/branches/main/protection -X PUT \
+  --input - &lt;&lt;'EOF'
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": ["lint", "test"]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": null,
+  "restrictions": null
+}
+EOF</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">gh api repos/:owner/:repo/branches/main/protection/required_status_checks</span></div>
+            <div class="terminal-output">{
+  "url": "https://api.github.com/repos/TYFSADIK/my-project/branches/main/protection/required_status_checks",
+  "strict": true,
+  "contexts": [
+    "lint",
+    "test"
+  ]
+}</div>
+          </div>
+          <p>That GET call is your verification: it confirms the rule stuck and lists exactly which contexts GitHub will wait for. <code>enforce_admins: true</code> is deliberate &mdash; without it, repository admins can merge over a red check, which is how "temporary" exceptions become permanent holes.</p>
+          <p><strong>Common mistake:</strong> a context name that does not match any real check. If you require <code>CI / test</code> but the job is named <code>test</code>, the PR waits forever on a check that will never report. The context must match the <em>job</em> name (or <code>workflow / job</code> for reusable workflows). The check must also have run at least once before GitHub will offer it in the branch-protection search box &mdash; one more reason step 02 comes first.</p>
+        </div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Expand the triggers: schedules and path filters</strong>
+          <p>The minimal <code>on: [push, pull_request]</code> covers active development, but two more trigger shapes earn their keep quickly: a <em>schedule</em> that runs CI even when nobody is pushing (this catches "dependency rot" &mdash; a passing suite that starts failing because a transitive dependency or a GitHub runner image changed), and <em>path filters</em> that skip CI for changes that cannot break code, like edits to documentation.</p>
+          <p>Replace the <code>on:</code> block of <code>ci.yml</code> with this expanded version:</p>
+          <p class="code-label">TRIGGERS — PUSH, PR, SCHEDULE, MANUAL, WITH PATH FILTERS</p>
+<pre><code class="language-yaml">on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    branches: [main]
+  schedule:
+    # 03:17 UTC every Monday — cron is always UTC on GitHub.
+    - cron: '17 3 * * 1'
+  workflow_dispatch: {}   # adds a "Run workflow" button in the Actions tab</code></pre>
+          <p>Each key does one thing: <code>paths-ignore</code> skips the run when every changed file matches the ignore list; <code>schedule</code> takes standard five-field cron expressions (minute, hour, day-of-month, month, day-of-week) <em>in UTC</em>; <code>workflow_dispatch</code> enables manual runs from the web UI or <code>gh workflow run ci.yml</code>, which is invaluable when debugging the workflow itself.</p>
+          <p><strong>How to verify:</strong> after pushing, run <code>gh workflow list</code> to confirm the workflow is active, then trigger a manual run and confirm it appears:</p>
+          <p class="code-label">LIST WORKFLOWS AND TRIGGER ONE MANUALLY</p>
+<pre><code class="language-bash">gh workflow list
+gh workflow run ci.yml
+gh run list --workflow=ci.yml --limit 3</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">gh workflow list</span></div>
+            <div class="terminal-output">CI    active    14473922110    .github/workflows/ci.yml</div>
+          </div>
+          <p>For the schedule, you do not need to wait until Monday: confirm the cron expression parses the way you think with a tool like crontab.guru, and check that the workflow file containing it is on the <em>default branch</em> &mdash; schedules are read from the default branch only.</p>
+          <p><strong>Common mistake:</strong> editing the <code>schedule</code> trigger on a feature branch and wondering why nothing runs at the appointed time. Scheduled runs only use the workflow as it exists on the default branch. Two related gotchas: GitHub delays scheduled runs during high-load periods (a 03:17 cron may start at 03:40), and GitHub disables schedules entirely on repos with no activity for 60 days.</p>
+        </div></div>
+        <div class="step"><div class="step-num">05</div><div class="step-body"><strong>Test across versions with a matrix</strong>
+          <p>Code that passes on Python 3.11 can still break on 3.10 (a typing feature) or 3.12 (a removed stdlib API). A <em>matrix</em> turns one job definition into N parallel jobs, one per combination of the variables you list. Replace the <code>test</code> job with this matrix version:</p>
+          <p class="code-label">MATRIX BUILD — OS × PYTHON VERSION</p>
+<pre><code class="language-yaml">  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false   # let every combination finish even if one fails
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ['3.10', '3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: pytest -q</code></pre>
+          <p>This single job block produces 3 &times; 2 = 6 parallel jobs. <code>fail-fast: false</code> matters: the default is <code>true</code>, which cancels the other five jobs the moment one fails &mdash; convenient for saving minutes, but it hides whether a failure is version-specific or universal, which is exactly what you want to know from a matrix.</p>
+          <p><strong>How to verify:</strong> push and watch the run. You should see six jobs, each named from the matrix values:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">gh run watch</span></div>
+            <div class="terminal-output">JOBS
+&check; lint in 22s
+&check; test (3.10, ubuntu-latest) in 38s
+&check; test (3.11, ubuntu-latest) in 35s
+&check; test (3.12, ubuntu-latest) in 36s
+&check; test (3.10, windows-latest) in 71s
+&check; test (3.11, windows-latest) in 68s
+&cross; test (3.12, windows-latest) fail in 64s</div>
+          </div>
+          <p>That sample output also shows the matrix doing its job: a failure isolated to one OS-and-version cell points at a platform-specific bug, not a general regression.</p>
+          <p><strong>Common mistake:</strong> the matrix changes the <em>status check names</em> &mdash; they become <code>test (3.10, ubuntu-latest)</code> and so on. The branch protection rule from step 03 that requires <code>test</code> will now wait forever, because no check named exactly <code>test</code> exists anymore. Fix it by updating the required contexts to each matrix combination, or by adding a single <code>test-result</code> job with <code>needs: test</code> and <code>if: always()</code> that fails unless <code>needs.test.result == 'success'</code>, and requiring only that one aggregator check. The aggregator pattern scales much better as the matrix grows.</p>
+        </div></div>
+        <div class="step"><div class="step-num">06</div><div class="step-body"><strong>Add secrets and a protected environment</strong>
+          <p>Build and deploy steps need credentials &mdash; an API token, a registry password, an SSH key. Secrets are stored encrypted in the repo (or organization), injected into the workflow at runtime, and masked in logs. Create one with the CLI so the value never appears in your shell history as plain text:</p>
+          <p class="code-label">CREATE A REPOSITORY SECRET</p>
+<pre><code class="language-bash">gh secret set DEPLOY_TOKEN
+# (paste the token at the prompt, press Enter)
+gh secret list</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">gh secret list</span></div>
+            <div class="terminal-output">DEPLOY_TOKEN  Updated 2026-09-21</div>
+          </div>
+          <p>Note what the listing shows: the name and the update date, never the value. There is no read-back API &mdash; if you lose the value, you rotate it, which is the correct security posture.</p>
+          <p>Next, create an <em>environment</em>. Environments are named deployment targets (<code>staging</code>, <code>production</code>) that can carry their own secrets and, crucially, <strong>protection rules</strong> such as required reviewers &mdash; a human must approve before a job touching production starts. Create it in the UI under <em>Settings &rsaquo; Environments &rsaquo; New environment</em>, name it <code>production</code>, and optionally add yourself as a required reviewer. Reference both in the workflow:</p>
+          <p class="code-label">USING A SECRET AND AN ENVIRONMENT IN A JOB</p>
+<pre><code class="language-yaml">  deploy:
+    needs: [lint, test]
+    if: github.ref == 'refs/heads/main' &amp;&amp; github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to production
+        env:
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+        run: ./scripts/deploy.sh</code></pre>
+          <p>Two details worth reading twice: the secret is passed through <code>env:</code> rather than written inline in the <code>run:</code> script (inline values can leak via process listing and error messages), and the <code>if:</code> condition restricts deploys to pushes on <code>main</code> &mdash; without it, every pull request would attempt a production deploy.</p>
+          <p><strong>Common mistake:</strong> assuming secrets are available in every context. Workflows triggered by pull requests <em>from forks</em> receive no secrets at all (a deliberate defense against a malicious PR exfiltrating them), so a deploy step on a forked PR fails with an empty credential. Also note that log masking is literal string matching: if your token is very short or its value is a common substring, masking becomes unreliable &mdash; prefer long, randomly generated tokens.</p>
+        </div></div>
+        <div class="step"><div class="step-num">07</div><div class="step-body"><strong>Build once, ship the artifact</strong>
+          <p>Remember that every job gets a fresh, empty runner &mdash; files created in the <code>test</code> job do <em>not</em> exist in a later <code>deploy</code> job. The bridge between jobs is an <strong>artifact</strong>: a named bundle of files uploaded at the end of one job and downloaded at the start of another. Add a <code>build</code> job that packages the application and hands the package downstream:</p>
+          <p class="code-label">BUILD JOB WITH ARTIFACT UPLOAD</p>
+<pre><code class="language-yaml">  build:
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build the package
+        run: |
+          pip install build
+          python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-package
+          path: dist/
+          retention-days: 7</code></pre>
+          <p><code>needs: [lint, test]</code> is the sequencing mechanism: build waits until both upstream jobs succeed, and is skipped entirely if either fails &mdash; no point packaging broken code. <code>retention-days: 7</code> keeps storage costs down; the default is much longer.</p>
+          <p>The deploy job from step 06 then pulls exactly the bits that were built and tested, instead of rebuilding them:</p>
+          <p class="code-label">DOWNLOAD THE ARTIFACT IN THE DEPLOY JOB</p>
+<pre><code class="language-yaml">      - uses: actions/download-artifact@v4
+        with:
+          name: dist-package
+          path: dist/
+      - run: ls -lh dist/    # the exact package from the build job is here</code></pre>
+          <p><strong>How to verify:</strong> open the run summary in the Actions tab &mdash; a "Artifacts" section lists <code>dist-package</code> with its size and expiry date. From the terminal, <code>gh run view</code> shows the same list, and you can pull the artifact down locally to inspect what would have been deployed:</p>
+          <p class="code-label">DOWNLOAD AN ARTIFACT LOCALLY FOR INSPECTION</p>
+<pre><code class="language-bash">gh run download --name dist-package --dir ./artifact-check
+ls ./artifact-check</code></pre>
+          <p><strong>Common mistake:</strong> treating artifacts as shared storage between <em>runs</em> or <em>workflows</em>. An artifact belongs to the run that created it; another workflow &mdash; or a re-run a week later after retention expired &mdash; cannot fetch it by name alone. If you need durable outputs, publish to a real package registry or a release, and keep artifacts for short-lived hand-offs inside one run.</p>
+        </div></div>
+        <div class="step"><div class="step-num">08</div><div class="step-body"><strong>Wire deploy after build and add a status badge</strong>
+          <p>The final pipeline shape chains everything: lint and test in parallel, then build, then deploy &mdash; each stage gated by the previous one through <code>needs:</code>. Update the deploy job so it runs after <code>build</code> (not just after lint and test) and downloads the artifact as shown in step 07:</p>
+          <p class="code-label">FINAL JOB CHAIN — LINT + TEST → BUILD → DEPLOY</p>
+<pre><code class="language-yaml">  deploy:
+    needs: [build]   # build already needs [lint, test], so this transitively gates on all three
+    if: github.ref == 'refs/heads/main' &amp;&amp; github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: dist-package, path: dist/ }
+      - name: Deploy
+        env: { DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }} }
+        run: ./scripts/deploy.sh dist/</code></pre>
+          <p>Because <code>needs</code> is transitive, requiring <code>build</code> is enough: build itself required lint and test, so deploy can never start on unverified code. In the Actions UI the run renders as a left-to-right graph of these dependencies.</p>
+          <p>Last, make the pipeline's health visible without opening the Actions tab: every workflow exposes a badge SVG. Add it to the top of your <code>README.md</code>:</p>
+          <p class="code-label">STATUS BADGE FOR README.md</p>
+<pre><code class="language-markdown">![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg?branch=main)</code></pre>
+          <p>Replace <code>OWNER/REPO</code> with your repository slug. The <code>?branch=main</code> query keeps the badge pinned to the default branch so a red feature-branch experiment does not make the project look broken.</p>
+          <p><strong>How to verify:</strong> paste the badge URL into a browser &mdash; it should return an SVG reading "CI | passing" once the latest run on main is green. For the deploy gating, push to a feature branch and confirm in the Actions tab that the deploy job is skipped, then merge to main and confirm it runs (and pauses for approval if you configured required reviewers on the <code>production</code> environment).</p>
+          <p><strong>Common mistake:</strong> putting the badge in a private repo's README and getting a broken image &mdash; badge SVGs for private repos require authentication. Also common: a deploy step that "succeeds" while doing nothing because <code>deploy.sh</code> exits 0 on every path. Make the script fail loudly (<code>set -euo pipefail</code> in bash) and verify a real post-deploy signal &mdash; a health-check endpoint, a version endpoint, a log line on the server &mdash; rather than trusting the green checkmark alone.</p>
         </div></div>
       </div>
     </section>
@@ -122,8 +429,35 @@ graph LR
     </section>
 
     <section><h2>Testing &amp; Validation</h2>
+      <p>Never trust a gate you have not tried to walk through. Validation has two halves: confirm the happy path is green, then deliberately break something and confirm the gate actually closes.</p>
+      <p><strong>Part 1 &mdash; happy path.</strong> The latest run should be green:</p>
       <div class="command-block" data-copy><div class="command"><code>gh run list -limit 1 &amp;&amp; gh run view -log-failed 2>/dev/null | head</code></div></div>
       <p>The latest run should show success. Push a deliberately failing test and confirm the workflow goes red and blocks the merge.</p>
+      <p><strong>Part 2 &mdash; break it on purpose.</strong> Open a feature branch, sabotage one test, and open a pull request:</p>
+      <p class="code-label">CREATE A DELIBERATELY FAILING PULL REQUEST</p>
+<pre><code class="language-bash">git switch -c demo/failing-test
+# change an expected value in tests/test_app.py so one assertion fails
+git commit -am "Demo: break a test to prove CI blocks it"
+git push -u origin demo/failing-test
+gh pr create --title "Demo: failing test" --body "Should be blocked by CI."</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">gh pr checks</span></div>
+        <div class="terminal-output">Some checks were not successful
+1 failing, 1 successful, 0 skipped, and 0 pending checks
+
+&cross; test  fail   43s  https://github.com/TYFSADIK/my-project/actions/runs/14473924501
+&check; lint  pass   22s  https://github.com/TYFSADIK/my-project/actions/runs/14473924501</div>
+      </div>
+      <p>On the pull request page the merge button is now disabled with the message "Merging is blocked: required status check 'test' is failing." That disabled button is the entire point of the lab &mdash; the repository, not human discipline, enforces quality. Confirm the failure is also visible from the API, which is what the merge box itself consults:</p>
+      <p class="code-label">CONFIRM THE CHECK STATE FROM THE API</p>
+<pre><code class="language-bash">gh api repos/:owner/:repo/commits/HEAD/check-runs \
+  --jq '.check_runs[] | "\(.name): \(.conclusion)"'</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">gh api repos/:owner/:repo/commits/HEAD/check-runs --jq '.check_runs[] | "\(.name): \(.conclusion)"'</span></div>
+        <div class="terminal-output">lint: success
+test: failure</div>
+      </div>
+      <p>Clean up by fixing the assertion, pushing the fix to the same branch, and watching <code>gh pr checks</code> flip green &mdash; the merge button unlocks automatically. Close the demo PR unmerged if you prefer; either way, delete the branch afterwards. You have now observed the full red-to-green lifecycle that every future contributor to this repo will experience.</p>
     </section>
 
     <details><summary>Troubleshooting</summary>
@@ -131,14 +465,24 @@ graph LR
         <li><strong>Workflow not triggering:</strong> the file must be in <code>.github/workflows/</code> on the default branch.</li>
         <li><strong>Cache misses:</strong> ensure the cache key matches the lockfile path.</li>
         <li><strong>Secrets needed:</strong> add them under repo Settings, reference via <code>${{ secrets.NAME }}</code>.</li>
+        <li><strong>"Resource not accessible by integration" when a step comments on a PR or pushes:</strong> the default <code>GITHUB_TOKEN</code> is read-only on many repos. Grant what the job needs explicitly at the top of the workflow &mdash; least privilege, named per permission:
+<pre><code class="language-yaml">permissions:
+  contents: read
+  pull-requests: write</code></pre>
+        Also check <em>Settings &rsaquo; Actions &rsaquo; General &rsaquo; Workflow permissions</em> is not set to read-only if a job genuinely needs to write.</li>
+        <li><strong>Push rejected with "refusing to allow an OAuth App to create or update workflow":</strong> your <code>gh</code> token is missing the <code>workflow</code> scope. Run <code>gh auth login --scopes workflow</code> (or <code>gh auth refresh -s workflow</code>) and push again. This only affects commits that touch files under <code>.github/workflows/</code>.</li>
+        <li><strong>Required check listed as "Expected &mdash; waiting for status to be reported" forever:</strong> the context name in branch protection does not match the job name, or the workflow's triggers do not cover this event (for example <code>push.branches: [main]</code> only, but the PR targets <code>develop</code>). Compare the protection contexts from <code>gh api repos/:owner/:repo/branches/main/protection/required_status_checks</code> against the exact job names in <code>ci.yml</code>.</li>
+        <li><strong>Runs randomly killed or steps hang:</strong> long-running steps without output can hit the 6-hour job limit or appear frozen. Add a timeout to keep failures fast and cheap: <code>timeout-minutes: 15</code> on the job, and check <code>concurrency.cancel-in-progress</code> is not cancelling runs you actually wanted (each branch needs its own <code>group</code> key).</li>
       </ul>
     </details>
 
     <section><h2>Extension Ideas</h2>
       <ul>
-        <li>Add build + deploy stages in <a href="cicd-pipeline.html">Full CI/CD Pipeline</a>.</li>
+        <li>Add build + deploy stages in <a href="cicd-pipeline.html">Full CI/CD Pipeline</a> &mdash; chain jobs with <code>needs:</code> so deploy only runs after lint and test pass.</li>
         <li>Scan images (see <a href="../containers-kubernetes/docker-images.html">Docker Images</a>) in CI.</li>
         <li>Deploy to Azure with a service principal from <a href="../cloud-azure/azure-cli-setup.html">Azure CLI Setup</a>.</li>
+        <li>Add a matrix to test on multiple Python versions at once: <code>strategy.matrix.python-version: ['3.10', '3.11', '3.12']</code>.</li>
+        <li>Run the workflow on a schedule (<code>on: schedule: cron: '17 3 * * 1'</code>) to catch dependency rot even when nobody is pushing.</li>
       </ul>
     </section>
 
@@ -148,6 +492,17 @@ graph LR
         <li>Sped up runs with dependency caching.</li>
         <li>Made CI a required check protecting main.</li>
         <li>Confirmed failing code is blocked from merge.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li>A workflow is versioned YAML: events (<code>on:</code>) trigger jobs, jobs run on ephemeral runners, steps are either <code>uses:</code> (an action) or <code>run:</code> (shell).</li>
+        <li>Always <code>actions/checkout</code> first &mdash; the runner starts empty.</li>
+        <li>Caching is keyed on the lockfile hash; when the lockfile changes, the cache rebuilds itself. Verify with "Cache restored from key" in the logs.</li>
+        <li>A green workflow is only half the protection &mdash; branch protection with named, strict required checks is what actually blocks bad merges.</li>
+        <li>Prove the gate works: a deliberately failing PR that gets blocked is the only trustworthy evidence the setup is correct.</li>
+        <li><code>gh run watch</code>, <code>gh run view --log-failed</code>, and <code>actionlint</code> cover nearly all day-to-day workflow debugging from the terminal.</li>
       </ul>
     </section>
 

@@ -64,6 +64,7 @@
         <li><strong>T1078.004 Cloud Accounts</strong> – IAM privilege-escalation path scanning.</li>
       </ul>
       <p>T1530 is why public S3 buckets and anonymous blob access sit at the top of the remediation queue: any internet client can enumerate and read the data. T1078.004 is why IAM findings (root without MFA, wildcard policies, access keys older than 90 days) come next - a stolen or guessed valid cloud credential converts directly into control-plane access without exploiting anything.</p>
+      <p>Concretely, the audit targets CIS AWS Foundations Benchmark v2.0 and CIS Microsoft Azure Foundations Benchmark v2.1. Compliance percentage is computed per benchmark as PASS / (PASS + FAIL), deliberately ignoring INFO and MANUAL results, so the number is never inflated by checks the scanner could not evaluate. Every stored finding keeps its CIS control ID, severity, resource ARN/ID, and region - that metadata is what makes triage and trend tracking possible later.</p>
       <div class="mermaid" role="img" aria-label="Multi-cloud audit architecture">
 flowchart LR
   subgraph AWS
@@ -113,6 +114,13 @@ az account set --subscription "Pay-As-You-Go-Lab"
 az account show --query "{name:name, id:id, state:state}" -o table
 az role assignment list --assignee $(az ad signed-in-user show --query id -o tsv) \
   --query "[].{role:roleDefinitionName, scope:scope}" -o table</code></pre>
+      <p>Findings are written to a dated directory layout so any scan day can be reproduced, diffed, or handed to an auditor later:</p>
+      <p class="code-label">LAYOUT - dated findings store on the bastion</p>
+      <pre><code>/var/lib/cspm/findings/2026-06-14/
+  aws/prowler-output-123456789012.csv
+  aws/prowler-output-123456789012.json
+  azure/scoutsuite-results/
+/var/lib/cspm/compliance-trend.txt   # one line per scan day, per cloud</code></pre>
       <p><strong>Common mistake:</strong> scanning the wrong subscription or AWS account because of stale CLI context. Always run <code>az account show</code> and <code>aws sts get-caller-identity</code> first and record the account IDs at the top of the findings report - otherwise you cannot later prove which environment a finding belonged to.</p>
       <div class="mermaid" role="img" aria-label="Remediation workflow from finding to verified fix">
 flowchart TB
@@ -144,6 +152,7 @@ grep ";FAIL;" prowler-output-*.csv | cut -d';' -f4 | sort | uniq -c | sort -rn |
       6 iam_access_key_rotated_90_days
       4 iam_root_mfa_enabled</code></pre>
       <p><strong>How to verify:</strong> generate the HTML summary too (<code>prowler aws -M html</code>) and confirm its FAIL count matches the CSV. <strong>Common mistake:</strong> running Prowler with credentials missing a service's read permissions - those checks silently report as INFO or get skipped, so a "clean" result can actually mean "could not look". Check the run summary line for skipped checks before trusting the score.</p>
+      <p>By default Prowler scans every enabled region, which matters: forgotten regions are exactly where attackers stage resources. While iterating on fixes, scope the loop with <code>--region ca-central-1</code> or <code>--service s3</code> for speed - but always run the final, recorded audit unscoped so no region is invisible.</p>
 
       <h3>2. Audit Azure with ScoutSuite</h3>
       <p><strong>What:</strong> ScoutSuite pulls the Azure management-plane configuration through the authenticated CLI session and renders an offline HTML report with findings grouped by service and CIS control. <strong>Why ScoutSuite here:</strong> its Azure coverage (Entra ID, Storage, Networking, SQL Database) complements Prowler, whose Azure module was still maturing at the time of this lab.</p>
@@ -155,6 +164,10 @@ grep ";FAIL;" prowler-output-*.csv | cut -d';' -f4 | sort | uniq -c | sort -rn |
       <pre><code>"flagged_items": 6
 "flagged_items": 4
 "flagged_items": 2</code></pre>
+      <p>On large subscriptions, re-scan services individually - it isolates throttling failures and lets you re-run one service without repeating the whole audit:</p>
+      <p class="code-label">PER-SERVICE - re-run only the noisy services</p>
+      <pre><code>scout azure --cli --services storageaccounts --report-dir ./azure-out/storage
+scout azure --cli --services network --report-dir ./azure-out/network</code></pre>
       <p>In this environment the top counts were storage accounts not requiring secure transfer (6), NSG rules allowing any:any inbound (4), and SQL databases with auditing disabled (2). <strong>How to verify:</strong> spot-check two flagged resources directly with <code>az</code> - for example <code>az storage account show -n &lt;acct&gt; --query enableHttpsTrafficOnly</code> - and confirm the report matches reality. <strong>Common mistake:</strong> treating every flagged item as equally urgent. ScoutSuite flags informational gaps too; cross-reference each item against its CIS Azure Foundations control ID before queueing it for remediation.</p>
 
       <h3>3. Remediate a public bucket with Terraform</h3>
@@ -164,6 +177,14 @@ grep ";FAIL;" prowler-output-*.csv | cut -d';' -f4 | sort | uniq -c | sort -rn |
   for_each = toset(["legacy-logs-2023", "team-assets", "backup-export-tmp"])
 
   bucket                  = each.key
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}</code></pre>
+      <p>Per-bucket blocks fix today's leak; an account-level Public Access Block stops the next bucket from ever going public, even if someone creates it with a permissive ACL or policy:</p>
+      <p class="code-label">main.tf - account-level Public Access Block (defense in depth)</p>
+      <pre><code>resource "aws_s3_account_public_access_block" "account" {
   block_public_acls       = true
   block_public_policy     = true
   ignore_public_acls      = true
@@ -190,6 +211,11 @@ Apply complete! Resources: 1 added, 0 changed, 0 destroyed.</code></pre>
       <pre><code>aws iam get-account-summary --query 'SummaryMap.AccountMFAEnabled'</code></pre>
       <p class="code-label">Expected output</p>
       <pre><code>1</code></pre>
+      <p>While working in the root account, also confirm root has no access keys - an existing root key is a critical finding even if it has never been used:</p>
+      <p class="code-label">VERIFY - root must have zero access keys</p>
+      <pre><code>aws iam get-account-summary --query 'SummaryMap.AccountAccessKeysPresent'</code></pre>
+      <p class="code-label">Expected output</p>
+      <pre><code>0</code></pre>
       <p><strong>How to verify:</strong> <code>1</code> means enabled; re-run the single check with <code>prowler aws -c iam_root_mfa_enabled</code> and it flips to PASS. <strong>Common mistake:</strong> enabling MFA on the everyday IAM admin user and assuming the root finding is closed - they are different identities, and the check only looks at root.</p>
 
       <h3>5. Enforce guardrails with Azure Policy</h3>
@@ -199,6 +225,12 @@ Apply complete! Resources: 1 added, 0 changed, 0 destroyed.</code></pre>
   while read -r acct; do
     az storage account update --name "$acct" --https-only true
   done</code></pre>
+      <p>The same pattern closes the NSG findings - replace any:any inbound rules with a deny and add scoped allows only where the application actually needs them:</p>
+      <p class="code-label">FIX NOW - replace the any:any inbound rule with a deny</p>
+      <pre><code>az network nsg rule update -g rg-prod --nsg-name nsg-web -n allow-any-inbound \
+  --access Deny --source-address-prefixes "*" --destination-port-ranges "*" --priority 100
+az network nsg rule create -g rg-prod --nsg-name nsg-web -n allow-https-from-appgw \
+  --access Allow --source-address-prefixes "10.0.1.0/24" --destination-port-ranges 443 --priority 110</code></pre>
       <p class="code-label">GUARDRAIL - deny future non-compliant storage accounts</p>
       <pre><code>az policy assignment create \
   --name "deny-storage-no-https" \
@@ -242,6 +274,22 @@ jobs:
       - run: prowler aws --compliance cis_2.0_aws -M csv json --output-directory findings/
       - uses: actions/upload-artifact@v4
         with: { name: prowler-findings, path: findings/ }</code></pre>
+      <p>The same workflow audits Azure in a second job, authenticating with a federated workload identity (no stored client secret):</p>
+      <p class="code-label">AZURE JOB - same workflow file, second job</p>
+      <pre><code>  audit-azure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install scoutsuite
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - run: scout azure --cli --report-dir azure-out/
+      - uses: actions/upload-artifact@v4
+        with: { name: scout-findings, path: azure-out/ }</code></pre>
       <p class="code-label">ROLLUP - one compliance percentage per scan day, from the artifacts</p>
       <pre><code>#!/bin/bash
 # compliance = PASS / (PASS + FAIL) across the day's CSV
@@ -256,6 +304,14 @@ echo "$(date +%F) $(( 100 * pass / (pass + fail) ))" &gt;&gt; compliance-trend.t
 
       <h3>7. Publish the posture dashboard</h3>
       <p><strong>What:</strong> both clouds' findings land in a single store, and a small static dashboard renders compliance percentage per benchmark over time. <strong>Why:</strong> a number that only moves when someone remembers to look is not a control - the trend line is what catches drift between audits, and it is the artifact that answers management's "are we getting better?" question.</p>
+      <p>The dashboard reads a flat JSON feed that the rollup script appends to after every scan - one object per cloud per day:</p>
+      <p class="code-label">posture.json - feed the dashboard renders</p>
+      <pre><code>[
+  { "date": "2026-06-14", "cloud": "aws",   "benchmark": "cis_2.0", "compliance": 61 },
+  { "date": "2026-06-15", "cloud": "aws",   "benchmark": "cis_2.0", "compliance": 74 },
+  { "date": "2026-06-16", "cloud": "aws",   "benchmark": "cis_2.0", "compliance": 92 },
+  { "date": "2026-06-16", "cloud": "azure", "benchmark": "cis_2.1", "compliance": 88 }
+]</code></pre>
       <p><strong>How to verify:</strong> the percentage computed for a re-scan day must equal the number shown in Prowler's own HTML summary for that same run. If they disagree, the rollup script is parsing the wrong delimiter or reading stale artifacts. <strong>Common mistake:</strong> mixing AWS and Azure findings into one percentage - the two benchmarks have different control counts and severities, so track one trend line per cloud and per framework.</p>
     </section>
 

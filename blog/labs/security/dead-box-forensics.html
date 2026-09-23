@@ -57,6 +57,7 @@
 
     <section><h2>Objective &amp; Context</h2>
       <p>Dead box forensics analyzes non-volatile storage from a system that is off, preserving the disk exactly. Unlike live forensics, nothing on the machine is running: there is no volatile memory to capture, but also no risk of the operating system overwriting evidence while you work. The trade-off is strictness — because the disk is a static artifact, every action you take on it must be provably non-destructive. This lab follows NIST SP 800-86 acquisition principles: write-block, image, hash, then analyze only the copy.</p>
+      <p>The "dead box" approach is the default whenever the machine is already off, when the evidence must survive legal scrutiny, or when the volume of data makes live triage impractical. Its weaknesses are the mirror image of its strengths: you lose RAM contents, running processes, network connections, and any data protected by encryption that was only unlocked in memory. When the drive uses full-disk encryption and the key is not available, dead-box acquisition may yield an image you cannot read at all — which is why the live-vs-dead decision is made at seizure time, not in the lab.</p>
       <p>Why image the disk at all instead of just copying files off it? A logical copy only sees what the filesystem exposes through its directory tree: it skips deleted files, file slack, unallocated space, the partition table, and anything hidden between partitions. A bit-for-bit (physical) image captures every sector regardless of what the filesystem says about it, which is exactly where anti-forensic traces survive. The image is also a stable, hashable object — a set of copied files is not.</p>
       <p>The scenario: a compromised web server was seized and powered down. The suspect attempted anti-forensics — deleted web server logs and dropped a web shell in a web root directory — so the investigative goals map to two MITRE ATT&amp;CK techniques:</p>
       <ul>
@@ -91,6 +92,12 @@ flowchart LR
 Filesystem      Size  Used Avail Use% Mounted on
 /dev/sdc1       1.8T   12G  1.7T   1% /evidence</code></pre>
       <p>Confirm the free space is at least the full capacity of the source disk (not just its used space) — dd images every block, allocated or not. If any tool is missing, stop here and install it before the evidence drive is attached, so the acquisition window is not spent troubleshooting a workstation. It is also worth syncing the workstation clock (<code>timedatectl</code>) now, because every timestamp you log from this point forward anchors the chain of custody.</p>
+      <p>The custody log starts before the acquisition, not after. A minimal opening entry records the evidence item, its source, and its condition on receipt:</p>
+<pre><code class="language-text">CASE 2025-014  | ITEM 03 (1x 128GB SATA SSD, Samsung 860 EVO)
+Received:      2025-06-17 09:05 UTC from J. Rivera (field team)
+Condition:     Anti-static bag sealed, no physical damage, seal #4471 intact
+Examiner:      T. Sadik   Workstation: forensic-ws-02
+Blocker:       Tableau T8u (firmware 2.19)</code></pre>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
@@ -122,7 +129,7 @@ User Capacity:    128,035,676,160 bytes [128 GB]</code></pre>
       <p>Log the date/time (UTC), the examiner's name, the workstation hostname, and the write blocker model and firmware version alongside this. <strong>Verify:</strong> the reported capacity must match the block count from <code>lsblk</code> (250,059,350 sectors × 512 bytes). A mismatch means a host-protected area (HPA) or device configuration overlay (DCO) is hiding part of the disk, which dd alone will not capture — that hidden region must be exposed with <code>hdparm</code> before imaging or disclosed as a known gap.</p>
 
       <h3>3. Take the pre-acquisition hash of the source</h3>
-      <p>Hash the raw device <em>before</em> imaging. This pre-acquisition hash is the baseline the finished image will be compared against. Hashing the whole device (not just partitions) captures the partition table, slack between partitions, and every byte dd will later read. SHA-256 is the modern baseline; MD5 appears in older case law but is collision-broken and should not be the only hash used.</p>
+      <p>Hash the raw device <em>before</em> imaging. This pre-acquisition hash is the baseline the finished image will be compared against. Hashing the whole device (not just partitions) captures the partition table, slack between partitions, and every byte dd will later read. SHA-256 is the modern baseline; MD5 appears in older case law but is collision-broken and should not be the only hash used. Some teams record both SHA-256 and SHA-1 in parallel (<code>sha256sum</code> and <code>sha1sum</code> in the same pass via <code>tee</code>) purely so older tooling can cross-check later.</p>
       <p class="code-label">SHA-256 the raw source device</p>
       <div class="command-block"><div class="command"><code>sudo sha256sum /dev/sdb | tee /evidence/sdb.pre-acquisition.sha256</code></div></div>
 <pre><code class="language-bash">a1b2c3d4e5f6...  /dev/sdb</code></pre>
@@ -134,7 +141,8 @@ User Capacity:    128,035,676,160 bytes [128 GB]</code></pre>
 <pre><code class="language-bash">128035676160 bytes (128 GB, 119 GiB) copied, 432.18 s, 296 MB/s
 30535+1 records in
 30535+1 records out</code></pre>
-      <p>The byte count must equal the device capacity recorded in step 2. The <code>+1</code> on the record count is normal — it is the final partial block at the end of the disk. This lab uses a raw (<code>dd</code>) image because every Sleuth Kit tool reads it natively with zero conversion; casework that needs compression, embedded metadata, or segmented files would use the EWF/E01 format via <code>ewfacquire</code> instead, at the cost of a conversion step (<code>ewfmount</code>) before TSK can read it.</p>
+      <p>The byte count must equal the device capacity recorded in step 2. The <code>+1</code> on the record count is normal — it is the final partial block at the end of the disk. At ~300 MB/s a 128 GB SSD takes about seven minutes; a 2 TB spinning disk over USB 2 can take half a day, so estimate the window from the observed throughput before promising a timeline, and never interrupt dd mid-run — a partial image is not evidence, it is a do-over.</p>
+      <p>This lab uses a raw (<code>dd</code>) image because every Sleuth Kit tool reads it natively with zero conversion; casework that needs compression, embedded metadata, or segmented files would use the EWF/E01 format via <code>ewfacquire</code> instead, at the cost of a conversion step (<code>ewfmount</code>) before TSK can read it.</p>
       <p>Note that <code>conv=noerror,sync</code> is a compromise: it preserves offsets but the padded blocks mean the image hash will no longer match a re-read of a drive whose bad sectors return different data each attempt. For genuinely failing media, use <code>ddrescue</code> instead (see Troubleshooting). <strong>Verify:</strong> zero read errors in the dd output and a record count consistent with <code>capacity / bs</code>.</p>
 
       <h3>5. Verify acquisition integrity</h3>
@@ -142,7 +150,15 @@ User Capacity:    128,035,676,160 bytes [128 GB]</code></pre>
       <div class="command-block"><div class="command"><code>sha256sum /dev/sdb /evidence/case.img</code></div></div>
 <pre><code class="language-bash">a1b2...  /dev/sdb
 a1b2...  /evidence/case.img   # match = sound acquisition</code></pre>
-      <p>Append both hashes, the dd command line, and the wall-clock time to the custody log, then disconnect the source drive, bag it, and return it to evidence storage. From this point on the original is never touched again. <strong>Common mistake:</strong> skipping the second source hash to save ten minutes. Without it, a mismatch later cannot distinguish "imaging went wrong" from "the workstation wrote to the source", and the entire acquisition becomes questionable.</p>
+      <p>Append the result to the custody log as a self-contained entry — anyone reading the log months later should be able to reconstruct exactly what was done without asking you:</p>
+<pre><code class="language-text">2025-06-17 09:41 UTC  Acquisition complete
+  Command:   dd if=/dev/sdb of=/evidence/case.img bs=4M conv=noerror,sync
+  Source:    ITEM 03 (Samsung 860 EVO, SN S3Y9NB0K123456A, via Tableau T8u)
+  SHA-256 (pre):    a1b2c3d4e5f6...
+  SHA-256 (post):   a1b2c3d4e5f6...   MATCH
+  SHA-256 (image):  a1b2c3d4e5f6...   MATCH
+  Disposition: ITEM 03 re-sealed (seal #4472), returned to evidence locker B</code></pre>
+      <p><strong>Common mistake:</strong> skipping the second source hash to save ten minutes. Without it, a mismatch later cannot distinguish "imaging went wrong" from "the workstation wrote to the source", and the entire acquisition becomes questionable.</p>
 
       <h3>6. Create a working copy and freeze the master image</h3>
       <p>The verified image is now the master. Before any analysis, make a working copy and hash it, so that a mistake during analysis (an accidental mount, a tool that writes alongside the image) can never force a re-acquisition from the original — you just re-copy from the master. Then mark the master read-only at the filesystem level.</p>
@@ -164,17 +180,23 @@ Units are in 512-byte sectors
 001:  -------   0000000000   0000002047   0000002048   Unallocated
 002:  000:000   0000002048   0246083583   0246081536   Linux (0x83)
 003:  000:001   0246083584   0250058751   0003975168   Linux Swap (0x82)</code></pre>
-      <p>The Linux partition starts at sector <strong>2048</strong> — that offset is the key argument for the next steps. Note also the 2048-sector unallocated gap at the front; unallocated regions anywhere on the disk are prime carving territory, and data has been hidden deliberately in exactly these gaps before. <strong>Verify:</strong> partition sizes should sum (plus gaps) to the total sector count from step 1. If mmls reports "cannot determine partition type", the image may be a single-partition dump rather than a full-disk image — re-check what was imaged.</p>
+      <p>The Linux partition starts at sector <strong>2048</strong> — that offset is the key argument for the next steps. This image has a DOS/MBR partition table; a GPT disk would show a protective MBR entry plus a GPT header and typically a small EFI system partition, but the workflow is identical: read the table, note each filesystem's start sector, pass it as <code>-o</code> to the other tools. Note also the 2048-sector unallocated gap at the front; unallocated regions anywhere on the disk are prime carving territory, and data has been hidden deliberately in exactly these gaps before. <strong>Verify:</strong> partition sizes should sum (plus gaps) to the total sector count from step 1. If mmls reports "cannot determine partition type", the image may be a single-partition dump rather than a full-disk image — re-check what was imaged.</p>
 
       <h3>8. Extract unallocated space with blkls</h3>
       <p>Deleted-file recovery via inodes (next steps) only works while the deleted inode's metadata survives. Data whose inode has already been reused or wiped still lives in unallocated blocks, reachable only by pulling those blocks out wholesale. <code>blkls</code> copies every unallocated block of a filesystem into a flat file that carving tools and grep can then work over.</p>
       <p class="code-label">Dump unallocated blocks from the Linux partition</p>
       <div class="command-block"><div class="command"><code>blkls -o 2048 /evidence/case.img > /evidence/unalloc.bin &amp;&amp; ls -lh /evidence/unalloc.bin</code></div></div>
 <pre><code class="language-bash">-rw-r--r-- 1 examiner examiner 31G Jun 17 14:22 /evidence/unalloc.bin</code></pre>
-      <p>About 31 GB of this 118 GB partition was unallocated — a large haystack, but the right one: deleted log fragments, prior versions of the web shell, and staging archives all land here. Signature carvers such as <code>photorec</code> or <code>bulk_extractor</code> can be pointed at <code>unalloc.bin</code> directly, and simple string searches (<code>srch_strings</code>, or <code>grep -a</code> for log timestamps and IP addresses) often surface readable log lines that no longer belong to any file. <strong>Common mistake:</strong> running carvers against the full image instead of just unallocated space — you get every live file duplicated in the output and drown in noise.</p>
+      <p>About 31 GB of this 118 GB partition was unallocated — a large haystack, but the right one: deleted log fragments, prior versions of the web shell, and staging archives all land here. Signature carvers such as <code>photorec</code> or <code>bulk_extractor</code> can be pointed at <code>unalloc.bin</code> directly, and simple string searches often surface readable log lines that no longer belong to any file:</p>
+      <p class="code-label">Hunt for attacker IPs and shell invocations in unallocated space</p>
+      <div class="command-block"><div class="command"><code>grep -aob 'Failed password' /evidence/unalloc.bin | head -n 5</code></div></div>
+<pre><code class="language-bash">1049887744:Failed password for root from 203.0.113.44 port 51122 ssh2
+1049890304:Failed password for invalid user admin from 203.0.113.44 port 51136 ssh2
+1049912320:Failed password for root from 203.0.113.44 port 51201 ssh2</code></pre>
+      <p>The <code>-a</code> flag treats the binary blob as text and <code>-b</code> prints byte offsets, so each hit can be re-examined in context with <code>dd if=/evidence/unalloc.bin bs=1 skip=&lt;offset&gt; count=2000</code> or a hex viewer. Here, fragments of the deleted auth log survive in unallocated space and reveal a brute-force source IP — corroborating the recovered <code>auth.log.1</code> from the inode-based recovery below. <strong>Common mistake:</strong> running carvers against the full image instead of just unallocated space — you get every live file duplicated in the output and drown in noise.</p>
 
       <h3>9. Inventory files, including deleted ones, with fls</h3>
-      <p><code>fls</code> lists file and directory entries from the filesystem metadata. <code>-r</code> recurses, <code>-d</code> shows deleted entries, and <code>-o 2048</code> points it at the filesystem offset from mmls. Deleted entries are prefixed with <code>*</code> and are the direct leads for the T1070 objective.</p>
+      <p><code>fls</code> lists file and directory entries from the filesystem metadata. <code>-r</code> recurses, <code>-d</code> shows deleted entries, and <code>-o 2048</code> points it at the filesystem offset from mmls. Deleted entries are prefixed with <code>*</code> and are the direct leads for the T1070 objective. Each output line gives the entry type (<code>r/r</code> for a regular file, <code>d/d</code> for a directory), the inode number, and the name — the inode is the handle you feed to <code>istat</code> and <code>icat</code>.</p>
       <div class="command-block"><div class="command"><code>fls -rd /evidence/case.img &amp;&amp; icat /evidence/case.img 12345 > recovered.bin</code></div></div>
 <pre><code class="language-bash">r/r 4:      var
 + r/r 11:   log
@@ -207,12 +229,13 @@ Direct Blocks: 88412</code></pre>
       <p>The recovered file is a one-line web shell — a textbook T1505.003 artifact. Hash every recovered file so it can be searched against threat intel feeds and cited in the report. <strong>Verify:</strong> <code>file</code> identifies the expected type and the content is coherent, not binary garbage. Garbage usually means the inode was reallocated and its block pointers now belong to a different file — that data is gone from this inode; check unallocated space carving instead.</p>
 
       <h3>11. Build a filesystem timeline with mactime</h3>
-      <p>Single artifacts answer "what"; a timeline answers "when" and "in what order". <code>fls -m</code> emits a body file of every file's metadata timestamps, and <code>mactime</code> sorts it chronologically. Filtering to the intrusion window shows whether the web shell drop, the log deletion, and any known malicious logins line up.</p>
+      <p>Single artifacts answer "what"; a timeline answers "when" and "in what order". <code>fls -m</code> emits a body file — one pipe-delimited line per file with its MACB (modified, accessed, changed, born) timestamps — and <code>mactime</code> sorts that body file chronologically. Filtering to the intrusion window shows whether the web shell drop, the log deletion, and any known malicious logins line up.</p>
       <p class="code-label">Generate and filter a MAC timeline for the incident window</p>
       <div class="command-block"><div class="command"><code>fls -r -m / -o 2048 /evidence/case.img > /evidence/body.txt &amp;&amp; mactime -b /evidence/body.txt -d 2025-06-13..2025-06-15 > /evidence/timeline.csv</code></div></div>
 <pre><code class="language-bash">Fri Jun 13 2025 22:41:07,412,macb,-rw-r--r--,5021,12398,/var/www/html/cmd.php
 Sat Jun 14 2025 03:16:58,412,.a..,-rw-r--r--,5021,12398,/var/www/html/cmd.php
 Sat Jun 14 2025 03:17:42,0,.a..,-rw-r--r--,11,12345,/var/log/auth.log.1 (deleted)</code></pre>
+      <p>Read the <code>macb</code> column positionally: a letter means that timestamp falls at this row's time, a dot means it does not. The first row shows all four timestamps on <code>cmd.php</code> at 22:41 Friday — the file was created and immediately touched. The third row's <code>.a..</code> on the deleted auth log at 03:17:42 lines up with its istat deletion time.</p>
       <p>The sequence is coherent with the hypothesis: <code>cmd.php</code> created Friday night, accessed early Saturday, and the auth log deleted 44 seconds later — an attacker cleaning up immediately after using the shell. Timeline analysis gets its own deep dive in the linked Forensics Timeline Analysis lab. <strong>Verify:</strong> sanity-check a handful of timeline rows against <code>istat</code> output for the same inodes; disagreements usually mean a timezone mismatch between the image and the workstation (<code>mactime -z</code> sets the zone explicitly).</p>
 
       <h3>12. Bulk extraction and deeper analysis in Autopsy</h3>
@@ -221,9 +244,24 @@ Sat Jun 14 2025 03:17:42,0,.a..,-rw-r--r--,11,12345,/var/log/auth.log.1 (deleted
         <li>Create a new case (case number and examiner name matching the custody log), then add <code>/evidence/case.img</code> as a <strong>Disk Image or VM File</strong> data source.</li>
         <li>On ingest modules, enable <em>Recent Activity</em>, <em>Hash Lookup</em> (with an NSRL-known-good set plus a web-shell hash set), <em>File Type Identification</em>, <em>Embedded File Extractor</em>, and <em>Keyword Search</em> with a custom list: <code>eval(</code>, <code>base64_decode</code>, <code>passthru</code>, <code>cmd.php</code>, the recovered shell's hash.</li>
         <li>Let ingest finish, then check the <em>Deleted Files</em> tree and the keyword hit results. Autopsy should independently surface <code>auth.log.1</code> and <code>cmd.php</code>, corroborating the manual fls/icat findings.</li>
+        <li>Cross-check the Autopsy <em>Timeline</em> view against the mactime CSV from step 11 — two independent timeline engines agreeing on the event sequence is strong corroboration for the report.</li>
         <li>Tag both artifacts, add them to a report (<em>Generate Report &gt; HTML</em>), and export the tagged files with their hashes. The generated report, the timeline CSV, the hash files, and the custody log together form the case deliverable.</li>
       </ul>
       <p><strong>Common mistake:</strong> running every ingest module on a large image "just in case". Ingest time grows superlinearly with enabled modules; enable what the questions demand and re-run a module later if new leads require it — ingest is non-destructive and repeatable.</p>
+
+      <h3>13. Spot-check the image with a read-only loop mount</h3>
+      <p>Sleuth Kit and Autopsy read the image without mounting it, and that should remain the primary method. Occasionally, though, you want to browse the filesystem with ordinary tools — open a config file in an editor, run <code>grep</code> across the web root, or diff a directory against a known-good baseline. That is acceptable on the <em>image</em> (never the original) if and only if the mount is truly read-only: the <code>loop</code> device presents the file as a block device, <code>ro</code> forbids writes, and <code>noload</code> stops ext3/4 from replaying the journal, which would otherwise write into the image file even on a "read-only" mount.</p>
+      <p class="code-label">Mount the Linux partition read-only via loop device</p>
+      <div class="command-block"><div class="command"><code>sudo mkdir -p /mnt/case &amp;&amp; sudo mount -o ro,loop,noload,offset=$((2048*512)) /evidence/work.img /mnt/case</code></div></div>
+      <p>The offset is the partition start sector from mmls (2048) multiplied by the sector size (512 bytes) — 1,048,576 bytes into the image. Note this mounts <code>work.img</code>, the working copy, not the master. Browse, and confirm the key artifacts are visible from the live filesystem side too:</p>
+      <div class="command-block"><div class="command"><code>ls -la /mnt/case/var/www/html/ &amp;&amp; grep -rl 'eval\|base64_decode' /mnt/case/var/www/html/ 2>/dev/null</code></div></div>
+<pre><code class="language-bash">drwxr-xr-x 2 root root 4096 Jun 14 03:17 .
+drwxr-xr-x 3 root root 4096 Jun 12 11:02 ..
+-rw-r--r-- 1 root root 612 Jun 10 09:14 index.php
+-rw-r--r-- 1 root root 941 Jun 13 21:58 upload.php</code></pre>
+      <p>Note that <code>cmd.php</code> does <em>not</em> appear in the live listing — it was deleted, which is exactly why the fls/icat recovery in steps 9–10 was necessary. A pure live-filesystem review would have missed the shell entirely; the directory listing shows only what survived deletion. When finished, unmount cleanly:</p>
+      <div class="command-block"><div class="command"><code>sudo umount /mnt/case &amp;&amp; sha256sum /evidence/case.img</code></div></div>
+      <p><strong>Verify:</strong> re-hash the master image after unmounting and confirm it still matches the acquisition hash — this closes the loop on "analysis was non-destructive" for the report. <strong>Common mistake:</strong> forgetting <code>noload</code> on ext filesystems and silently journaling into the image, or mounting the master instead of the working copy. If the hash changed, restore the master from your hash-verified backup procedure and repeat the mount with the correct flags.</p>
     </section>
 
     <section><h2>Validation &amp; Testing</h2>
@@ -233,7 +271,8 @@ Sat Jun 14 2025 03:17:42,0,.a..,-rw-r--r--,11,12345,/var/log/auth.log.1 (deleted
         <li><strong>Source hash == image hash:</strong> proves the image is a bit-for-bit copy. Recompute the image hash once more after copying it to working storage to catch a bad copy.</li>
         <li><strong>Manual findings == Autopsy findings:</strong> the same deleted artifacts surfaced by two independent methods (fls/icat and Autopsy ingest) corroborate each other.</li>
         <li><strong>Recovered files open and parse:</strong> <code>file</code>, a text viewer, and the PHP interpreter's lint mode (<code>php -l</code>) agree the artifacts are what they claim to be.</li>
-        <li><strong>Timeline consistency:</strong> the mactime sequence (shell created → accessed → log deleted) is internally coherent and matches the inode timestamps from istat.</li>
+        <li><strong>Timeline consistency:</strong> the mactime sequence (shell created → accessed → log deleted) is internally coherent and matches the inode timestamps from istat and the Autopsy timeline view.</li>
+        <li><strong>Reproducibility spot-check:</strong> re-run one recovery command (e.g., the <code>icat</code> extraction of inode 12398) from a fresh shell and confirm the output hash matches the first extraction — the same input must always yield the same bytes.</li>
       </ul>
       <p>Pass criteria: hash equality, at least one recovered deleted artifact, and analysis performed exclusively on the image copy. Any failed check invalidates the run — re-image rather than proceed on a questionable copy.</p>
     </section>
@@ -255,6 +294,7 @@ Sat Jun 14 2025 03:17:42,0,.a..,-rw-r--r--,11,12345,/var/log/auth.log.1 (deleted
         <li><code>conv=noerror,sync</code> preserves byte offsets on bad media; for truly failing drives, ddrescue's map file is the right tool.</li>
         <li>Deleted does not mean gone: unlinked directory entries and surviving inode block pointers (fls <code>-d</code>, istat, icat) recover "erased" attacker artifacts until the blocks are reused, and blkls carving catches what inode recovery cannot.</li>
         <li>Chain of custody is created in real time — device identity, hashes, commands, and timestamps logged as they happen, not reconstructed afterward.</li>
+        <li>Timelines turn isolated artifacts into a narrative; a web shell created, used, and covered up within 44 seconds is a story a single recovered file cannot tell.</li>
         <li>Corroborate across tools: manual TSK findings and Autopsy ingest agreeing on the same artifacts is a validation signal, not redundancy.</li>
       </ul>
     </section>

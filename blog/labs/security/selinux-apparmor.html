@@ -73,6 +73,7 @@ flowchart LR
   MAC -->|no| Audit[Denied + AVC log]
   MAC -->|yes| Allow[Access granted]
       </div>
+      <p>Under SELinux, the decision the diagram calls "MAC policy allows?" is a lookup between two labels: the process's domain (its type) and the object's type. Under AppArmor it is a lookup in the profile attached to the executable's path. In both cases the policy is administered centrally - the process being confined has no say in the outcome, which is the entire point of MAC.</p>
     </section>
 
     <section><h2>Environment &amp; Prerequisites</h2>
@@ -108,9 +109,12 @@ apparmor module is loaded.
 2 profiles are in complain mode.
    ...
 0 processes are unconfined but have a profile defined.</code></pre>
+      <p>On RHEL, also confirm SELinux was not disabled at boot - the config file can say <code>enforcing</code> while the kernel actually booted with <code>selinux=0</code>. Check with <code>cat /proc/cmdline | tr ' ' '\n' | grep selinux</code> (should print nothing) and, once enforcing is set, <code>cat /sys/fs/selinux/enforce</code> (should print <code>1</code>).</p>
+      <p>Finally, install and start the test service with its defaults <em>before</em> touching policy - confine a known-good baseline first, then tighten. Run <code>systemctl enable --now nginx</code> on both hosts and confirm <code>curl -s localhost</code> returns the default page, so every later failure can be attributed to policy rather than a broken install.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
+      <p>The workflow splits into two tracks. Steps 1-5 are the RHEL/SELinux track: enforce, observe, generate policy, fix labels, flip booleans. Steps 6-7 are the Ubuntu/AppArmor track: enforce the shipped profile, then author a custom one. Both tracks end in the same validation routine.</p>
 
       <h3>1. Confirm and set SELinux enforcing [ROOT REQUIRED]</h3>
       <p>SELinux has three modes. <strong>Enforcing</strong> blocks and logs policy violations. <strong>Permissive</strong> logs violations but allows them - useful for policy development. <strong>Disabled</strong> turns SELinux off entirely (and on RHEL requires a relabel of the whole filesystem on the way back, which is slow and risky). <code>setenforce</code> changes the runtime mode only; the persistent value lives in <code>/etc/selinux/config</code> and is read at boot. Set both so a reboot cannot silently drop the system back to permissive.</p>
@@ -121,6 +125,7 @@ Enforcing
 $ grep ^SELINUX= /etc/selinux/config
 SELINUX=enforcing</code></pre>
       <p><strong>Common mistake:</strong> editing <code>/etc/selinux/config</code> but never running <code>setenforce 1</code>, so the running kernel stays in whatever mode it booted with. Always verify with <code>getenforce</code> (runtime) <em>and</em> the config file (persistent) - they must agree.</p>
+      <p>If <code>getenforce</code> ever returns <code>Disabled</code>, check the kernel command line for <code>selinux=0</code> and fix it in the GRUB configuration. A config-file edit alone cannot re-enable a kernel that booted with SELinux off, and the first boot back requires a full filesystem relabel - <code>touch /.autorelabel</code> before rebooting - which can take a long time on large disks. Plan for that window instead of discovering it during an incident.</p>
 
       <h3>2. Inspect the service's SELinux domain and current denials</h3>
       <p>Before writing policy, look at what the kernel already sees. Every process and file carries a context in the form <code>user:role:type:level</code>; for type enforcement the <strong>type</strong> field is the one that matters. nginx workers run in the <code>httpd_t</code> domain, and web content is labeled <code>httpd_sys_content_t</code>. The <code>-Z</code> flag on <code>ps</code> and <code>ls</code> shows these contexts.</p>
@@ -129,7 +134,7 @@ SELINUX=enforcing</code></pre>
       <pre><code class="language-bash">system_u:system_r:httpd_t:s0      2043 ?  00:00:00 nginx
 system_u:system_r:httpd_t:s0      2044 ?  00:00:00 nginx
 -rw-r--r--. root root system_u:object_r:httpd_sys_content_t:s0 index.html</code></pre>
-      <p>Denials are recorded by the audit subsystem as AVC (Access Vector Cache) messages. <code>ausearch -m avc</code> pulls them from <code>/var/log/audit/audit.log</code>; <code>-ts recent</code> restricts the search to the last ten minutes, which keeps the noise down when you are iterating on one service.</p>
+      <p>Denials are recorded by the audit subsystem as AVC (Access Vector Cache) messages. <code>ausearch -m avc</code> pulls them from <code>/var/log/audit/audit.log</code>; <code>-ts recent</code> restricts the search to the last ten minutes, which keeps the noise down when you are iterating on one service, and <code>-i</code> renders numeric fields (UIDs, syscall names) in human-readable form.</p>
       <div class="command-block"><div class="command"><code>sudo ausearch -m avc -ts recent -i | less</code></div></div>
       <p class="code-label">Example AVC denial (illustrative)</p>
       <pre><code class="language-bash">type=AVC msg=audit(1758160800.412:311): avc:  denied  { name_connect } for
@@ -137,6 +142,14 @@ system_u:system_r:httpd_t:s0      2044 ?  00:00:00 nginx
   tcontext=system_u:object_r:http_port_t:s0 tclass=tcp_socket permissive=0</code></pre>
       <p>Read the denial as a sentence: source context <code>httpd_t</code> tried <code>name_connect</code> on a <code>tcp_socket</code> labeled <code>http_port_t</code> and was denied. That sentence is exactly what the policy rule you are about to generate will permit. <code>sealert</code> (from setroubleshoot) renders the same event in plain language with a suggested fix - worth reading before you generate anything.</p>
       <div class="command-block"><div class="command"><code>sudo sealert -a /var/log/audit/audit.log | less</code></div></div>
+      <p class="code-label">sealert rendering of the same denial (illustrative)</p>
+      <pre><code class="language-bash">SELinux is preventing /usr/sbin/nginx from name_connect access on the tcp_socket port 8080.
+
+*****  Plugin connect_ports (85.9 confidence) suggests   *****
+If you want to allow /usr/sbin/nginx to connect to network port 8080
+Then you need to modify the port type.
+Do
+# semanage port -a -t PORT_TYPE -p tcp 8080</code></pre>
       <p><strong>Common mistake:</strong> seeing no AVC messages and assuming the policy is perfect. Check that <code>auditd</code> is actually running (<code>systemctl status auditd</code>) and that the service was restarted <em>after</em> enforcing was enabled - quiet logs often mean nothing was tested, not that nothing was denied.</p>
 
       <h3>3. Generate a policy module from denials</h3>
@@ -157,7 +170,11 @@ require {
 #============= httpd_t ==============
 allow httpd_t http_port_t:tcp_socket name_connect;</code></pre>
       <p>This rule says: processes in <code>httpd_t</code> may connect to ports labeled <code>http_port_t</code>. That is a reasonable, narrow rule. If the review showed <code>allow httpd_t shadow_t:file read;</code> instead, you would reject the module - that is a webshell's behavior, not nginx's.</p>
-      <p><strong>How to verify:</strong> <code>semodule -l | grep nginx_local</code> confirms the module is loaded; re-run the action that was denied and confirm it now succeeds with no new AVC entries.</p>
+      <p>For reference-policy style, <code>audit2allow -R</code> emits macro calls (for example <code>corenet_tcp_connect_http_port(httpd_t)</code>) instead of raw allow rules. Macros are more readable and tend to survive distribution policy updates better, but they require the development headers of the modules they reference. The raw <code>allow</code> form above has no such dependency and is fine for a small local module.</p>
+      <p class="code-label">Confirm the module is loaded and the denial is gone</p>
+      <pre><code class="language-bash">$ sudo semodule -l | grep nginx_local
+nginx_local
+$ sudo ausearch -m avc -ts recent -i   # no new output after re-testing</code></pre>
       <p><strong>Common mistake:</strong> piping the output of <code>audit2allow -a</code> (all denials since boot) into a module. You end up permitting months of unrelated noise. Always scope with <code>-ts recent</code>, and restart the service in a clean window before collecting.</p>
 
       <h3>4. Fix file contexts with semanage and restorecon</h3>
@@ -168,7 +185,12 @@ allow httpd_t http_port_t:tcp_socket name_connect;</code></pre>
       <pre><code class="language-bash">$ sudo restorecon -Rv /srv/www
 Relabeled /srv/www from unconfined_u:object_r:var_t:s0 to unconfined_u:object_r:httpd_sys_content_t:s0
 Relabeled /srv/www/index.html from unconfined_u:object_r:var_t:s0 to unconfined_u:object_r:httpd_sys_content_t:s0</code></pre>
-      <p><strong>How to verify:</strong> <code>matchpathcon /srv/www/index.html</code> prints the context the policy <em>expects</em> for that path; compare it against <code>ls -Z</code>. If they match and the denials stop, the label was the whole problem.</p>
+      <p class="code-label">Confirm the persistent rule and the on-disk label agree</p>
+      <pre><code class="language-bash">$ sudo semanage fcontext -l | grep /srv/www
+/srv/www(/.*)?       all files    system_u:object_r:httpd_sys_content_t:s0
+$ matchpathcon /srv/www/index.html
+/srv/www/index.html    system_u:object_r:httpd_sys_content_t:s0</code></pre>
+      <p><strong>How to verify:</strong> <code>matchpathcon</code> prints the context the policy <em>expects</em> for a path; compare it against <code>ls -Z</code>. If they match and the denials stop, the label was the whole problem.</p>
       <p><strong>Common mistake:</strong> using <code>chcon -t httpd_sys_content_t -R /srv/www</code>. It works until the next <code>restorecon</code> or filesystem relabel, which silently reverts everything. <code>semanage fcontext</code> writes to the policy store, so the label is reapplied forever.</p>
 
       <h3>5. Tune SELinux booleans instead of writing policy</h3>
@@ -177,6 +199,10 @@ Relabeled /srv/www/index.html from unconfined_u:object_r:var_t:s0 to unconfined_
       <p class="code-label">Expected output</p>
       <pre><code class="language-bash">$ getsebool httpd_can_network_connect
 httpd_can_network_connect --&gt; on</code></pre>
+      <p>A related fix that is neither a boolean nor a custom module: labeling a non-standard port. When nginx must connect to or listen on a port outside the defaults, add the port to an existing type rather than writing allow rules. This is exactly the fix <code>sealert</code> suggested in step 2. Use <code>-m</code> (modify) instead of <code>-a</code> (add) if the port already carries a label you need to change.</p>
+      <div class="command-block"><div class="command"><code>sudo semanage port -a -t http_port_t -p tcp 8080 &amp;&amp; sudo semanage port -l | grep http_port_t</code></div></div>
+      <p class="code-label">Expected output</p>
+      <pre><code class="language-bash">http_port_t    tcp    8080, 80, 81, 443, 488, 8008, 8009, 8443, 9000</code></pre>
       <p><strong>Common mistake:</strong> forgetting <code>-P</code>. Without it the change is runtime-only and disappears on reboot - the classic "it worked yesterday" failure. <code>setsebool -P</code> writes to the policy store and can take a few seconds; that pause is normal.</p>
 
       <h3>6. Enforce an AppArmor profile on Ubuntu</h3>
@@ -192,6 +218,7 @@ httpd_can_network_connect --&gt; on</code></pre>
    /usr/sbin/nginx (2043)
    /usr/sbin/nginx (2044)</code></pre>
       <p>Note the last section: a profile in enforce mode only confines processes started <em>after</em> the profile loaded. If the process list does not show nginx, restart it with <code>systemctl restart nginx</code> and re-check - an enforced profile with an unconfined running process protects nothing.</p>
+      <p>To go the other direction during development, <code>aa-complain /etc/apparmor.d/usr.sbin.nginx</code> logs violations without blocking them, and <code>aa-disable</code> unloads the profile entirely (rarely what you want). Profiles load at boot via the <code>apparmor</code> systemd unit, so an enforced profile survives reboots with no extra work.</p>
 
       <h3>7. Author and tune a custom AppArmor profile</h3>
       <p>For a binary with no existing profile, <code>aa-genprof</code> automates the learning loop: put the profile in complain mode, exercise the application normally, then let <code>aa-genprof</code> propose rules from the logged accesses. This mirrors the permissive-mode/audit2allow workflow on SELinux.</p>
@@ -221,6 +248,19 @@ httpd_can_network_connect --&gt; on</code></pre>
   deny /root/** rw,
 }</code></pre>
       <p>Load or reload the profile with <code>apparmor_parser -r /etc/apparmor.d/usr.local.bin.myapp</code>, then enforce it. The explicit <code>deny</code> rules are defense in depth: they make the intent auditable and protect against future edits accidentally widening access. Use <code>aa-logprof</code> later to fold newly logged denials back into the profile interactively.</p>
+      <p class="code-label">aa-logprof reviewing a logged denial (interactive, illustrative)</p>
+      <pre><code class="language-bash">$ sudo aa-logprof
+Reading log entries from /var/log/syslog.
+Updating AppArmor profiles in /etc/apparmor.d.
+
+Profile:  /usr/local/bin/myapp
+Path:     /var/lib/myapp/cache.db
+Mode:     rw
+Severity: unknown
+
+ [1 - /var/lib/myapp/cache.db rw,]
+(A)llow / [(D)eny] / (I)gnore / (G)lob / (N)ew / (Q)uit</code></pre>
+      <p>Pressing <code>A</code> appends the rule; when the prompts are exhausted, save to write the updated profile to disk and reload it into the kernel. Then re-test the application - tuning is convergent, and each pass should produce fewer prompts than the last.</p>
       <p><strong>Common mistake:</strong> writing a profile, running <code>aa-enforce</code>, and declaring victory without ever loading it into the kernel. The file on disk does nothing until <code>apparmor_parser</code> loads it. Verify with <code>aa-status</code> that the profile is listed and the process is confined.</p>
     </section>
 
@@ -242,7 +282,40 @@ type=AVC msg=audit(1758161402.881:347): avc:  denied  { read } for
 audit: type=1400 audit(1758161510.214:88): apparmor="DENIED" operation="open"
   profile="/usr/local/bin/myapp" name="/etc/shadow" pid=2412 comm="cat"
   requested_mask="r" denied_mask="r" fsuid=0 ouid=0</code></pre>
-      <p>Also test the good path, not just the bad one: curl the site (<code>curl -s -o /dev/null -w "%{http_code}" http://localhost/</code> should return <code>200</code>), restart the service, and confirm zero <em>new</em> AVC/AppArmor denials during normal traffic. A policy that blocks everything is easy to write and useless in production; the pass criterion is that legitimate work flows while every out-of-policy access is blocked and logged.</p>
+      <p>Run the full validation as a small matrix so nothing is assumed:</p>
+      <ul>
+        <li><strong>Legitimate path:</strong> <code>curl -s -o /dev/null -w "%{http_code}" http://localhost/</code> returns <code>200</code> - the service still works for real traffic.</li>
+        <li><strong>Out-of-policy read:</strong> the <code>runcon</code>/<code>aa-exec</code> shadow tests above are denied and logged.</li>
+        <li><strong>Out-of-policy network:</strong> a confined process attempting an outbound connection to an unlabeled port is denied with a <code>name_connect</code> AVC (RHEL) or a <code>network</code> denial (Ubuntu).</li>
+        <li><strong>Persistence:</strong> reboot the host, then re-run <code>getenforce</code>, <code>semodule -l | grep nginx_local</code>, <code>getsebool httpd_can_network_connect</code>, and <code>aa-status</code> - enforcing mode, the custom module, the boolean, and the enforced profile must all survive.</li>
+      </ul>
+      <p class="code-label">Post-reboot persistence check</p>
+      <pre><code class="language-bash">$ getenforce &amp;&amp; sudo semodule -l | grep nginx_local &amp;&amp; getsebool httpd_can_network_connect
+Enforcing
+nginx_local
+httpd_can_network_connect --&gt; on</code></pre>
+      <p>For the network row of the matrix, run the probe in the confined context as well. On RHEL, <code>curl</code> executed under <code>httpd_t</code> may only connect to ports whose type the domain is allowed to reach - port 9090 carries no HTTP label, so the connect fails before a single byte is sent:</p>
+      <p class="code-label">Out-of-policy network test (RHEL) - connect as httpd_t to an unlabeled port</p>
+      <pre><code class="language-bash">$ sudo runcon system_u:system_r:httpd_t:s0 curl -s -m 3 -o /dev/null -w "%{http_code}\n" http://127.0.0.1:9090/
+000
+$ sudo ausearch -m avc -ts recent -i | grep name_connect | tail -1
+type=AVC msg=audit(1758161612.533:352): avc:  denied  { name_connect } for
+  pid=2455 comm="curl" dest=9090 scontext=system_u:system_r:httpd_t:s0
+  tcontext=system_u:object_r:unreserved_port_t:s0 tclass=tcp_socket permissive=0</code></pre>
+      <p>The <code>000</code> from curl means no HTTP response was ever received - the kernel refused the connect itself. On Ubuntu, an AppArmor profile with no matching <code>network</code> rule fails the same way, with a kernel log entry naming the profile and the socket operation:</p>
+      <p class="code-label">Out-of-policy network test (Ubuntu) - no network rule in the profile</p>
+      <pre><code class="language-bash">$ sudo aa-exec -p /usr/local/bin/myapp curl -s -m 3 -o /dev/null -w "%{http_code}\n" http://127.0.0.1:9090/
+000
+$ sudo journalctl -k --since "-1 min" | grep -i denied | tail -1
+audit: type=1400 audit(1758161701.120:91): apparmor="DENIED" operation="create"
+  profile="/usr/local/bin/myapp" pid=2491 comm="curl" family="inet"
+  sock_type="stream" protocol=6 requested_mask="create" denied_mask="create"</code></pre>
+      <p>Note how the two systems report the same event differently: SELinux names the source and target <em>labels</em> (<code>scontext</code>/<code>tcontext</code>), while AppArmor names the <em>profile</em> and the <em>path or operation</em>. Learning to read both fluently is half the skill this lab is practicing.</p>
+      <p>One last sanity check closes the loop: count the denials raised during the validation window and reconcile them against the matrix. Every denial should map to a deliberate test - an unexplained denial means an undocumented access path, which you investigate rather than reflexively allow.</p>
+      <p class="code-label">Reconcile the test window - every denial should be one of yours</p>
+      <pre><code class="language-bash">$ sudo ausearch -m avc -ts recent -i | grep -c 'avc:  denied'
+3   # shadow read, port-9090 connect, one earlier repro - all accounted for</code></pre>
+      <p>A policy that blocks everything is easy to write and useless in production; the pass criterion is deliberately two-sided. Legitimate work must flow while every out-of-policy access is blocked <em>and logged</em> - the log entry is what turns a silent control into a detective one, feeding the same audit trail an incident responder would use later.</p>
     </section>
 
     <details><summary>Advanced: Troubleshooting</summary>
@@ -254,6 +327,23 @@ audit: type=1400 audit(1758161510.214:88): apparmor="DENIED" operation="open"
         <li><strong>No AVC messages at all:</strong> either <code>auditd</code> is not running (<code>systemctl status auditd</code>) or dontaudit rules are swallowing the denials. Rebuild the policy without dontaudit rules temporarily with <code>semodule -DB</code>, reproduce the issue, then restore with <code>semodule -B</code>.</li>
       </ul>
     </details>
+
+    <section><h2>Maintaining the Policy</h2>
+      <p>MAC policy is living configuration: every application update can introduce new accesses the old policy does not allow. Bake a quick review into routine maintenance instead of discovering drift during an outage.</p>
+      <ul>
+        <li>After package updates, check for new denials: <code>ausearch -m avc -ts today -i</code> on RHEL, <code>journalctl -k --since today | grep -i denied</code> on Ubuntu.</li>
+        <li>Keep the generated <code>.te</code> source files (not just the compiled <code>.pp</code>) in version control, so policy changes are reviewable and revertible like any other code change.</li>
+        <li>List custom modules before distribution upgrades with <code>semodule -l</code>; vendor policy updates occasionally conflict with hand-built modules.</li>
+        <li>On Ubuntu, keep custom profiles in <code>/etc/apparmor.d/</code> and local overrides in <code>/etc/apparmor.d/local/</code>, so package updates to shipped profiles do not clobber your edits.</li>
+      </ul>
+      <p class="code-label">Weekly denial sweep (both platforms)</p>
+      <pre><code class="language-bash"># RHEL
+$ sudo ausearch -m avc -ts this-week -i | grep -c denied
+0
+# Ubuntu
+$ sudo journalctl -k --since "1 week ago" | grep -c 'apparmor="DENIED"'
+0</code></pre>
+    </section>
 
     <section><h2>Key Results</h2>
       <ul>

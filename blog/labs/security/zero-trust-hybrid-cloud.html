@@ -53,15 +53,21 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">NIST 800-207</span><span class="tag">SPIFFE/SPIRE</span><span class="tag">mTLS</span><span class="tag">Cilium</span><span class="tag">eBPF</span><span class="tag">BeyondCorp</span></div>
     </div>
 
-    <section><p class="lead">I replaced implicit network trust with continuous, identity-based authorization across a hybrid Kubernetes and VM estate using SPIFFE/SPIRE workload identity and Cilium eBPF microsegmentation. Enforcing mTLS on every service-to-service hop reduced exploitable lateral-movement paths by 99% in BloodHound-style path analysis.</p></section>
+    <section><p class="lead">I replaced implicit network trust with continuous, identity-based authorization across a hybrid Kubernetes and VM estate using SPIFFE/SPIRE workload identity and Cilium eBPF microsegmentation. Enforcing mTLS on every service-to-service hop reduced exploitable lateral-movement paths by 99% in BloodHound-style path analysis.</p>
+      <p>The environment this lab models is the one most mid-size organizations actually run: a Kubernetes cluster on-premises holding the application tiers, plus a handful of cloud VMs for batch jobs and a managed database endpoint. The old design trusted anything that could route to the internal network - get a VPN credential or pop one pod, and every east-west service was reachable. This lab rebuilds that trust model from scratch: nothing is trusted because of where it sits, and every connection has to prove <em>who</em> it is, on every request, with credentials that expire in under an hour.</p>
+      <p>The build has four moving parts, and it is worth being clear about what each one does before touching a terminal. <strong>SPIRE</strong> issues cryptographic workload identities (SPIFFE Verifiable Identity Documents, or SVIDs) - short-lived X.509 certificates whose subject is a workload, not a server. <strong>Envoy</strong> sidecars terminate mTLS using those SVIDs, so application code never handles certificates. <strong>Cilium</strong> enforces L3/L4/L7 segmentation directly in the kernel via eBPF, so policy applies even to traffic that bypasses the proxy. <strong>OPA/Gatekeeper</strong> keeps the whole thing honest at admission time, rejecting any Deployment that tries to run outside the identity framework.</p>
+    </section>
 
     <section><h2>Threat Model &amp; MITRE ATT&amp;CK Mapping</h2>
       <p>Zero trust assumes breach and removes the flat internal network that adversaries rely on after initial access. Every request is verified against identity, device posture, and policy regardless of network location, aligning to the seven tenets of NIST SP 800-207.</p>
+      <p>The scenario driving this design: an attacker lands in a web-tier pod via a vulnerable dependency (a realistic initial access vector, given how often container images ship with exploitable libraries). In the old flat network, that single foothold is game over - the pod can reach the API tier, the database, the Kubernetes API server, and the cloud VMs' metadata endpoints. The goal here is to make that foothold a dead end: the compromised pod can talk to exactly the services its identity is authorized for, with credentials it cannot reuse anywhere else, and every attempt to go further is dropped and logged.</p>
       <ul>
         <li><strong>T1021 Remote Services</strong> – blocked by default-deny service mesh policy.</li>
         <li><strong>T1550 Use Alternate Authentication Material</strong> – mitigated by short-lived SPIFFE SVIDs.</li>
         <li><strong>T1078 Valid Accounts</strong> – continuous authorization re-checks posture per request.</li>
       </ul>
+      <p>Two more mappings matter for the hybrid leg specifically. <strong>T1552.005 (Cloud Instance Metadata API)</strong> is addressed by Cilium egress rules that pin pods to an allowlist of external endpoints, so a workload cannot curl <code>169.254.169.254</code> to steal VM credentials. <strong>T1071.001 (Web Protocols C2)</strong> is constrained the same way - egress is deny-by-default, so even successful code execution cannot phone home except through inspected, allowlisted destinations.</p>
+      <p>Short-lived SVIDs deserve a word of explanation because they are the heart of the T1550 mitigation. A traditional TLS server certificate lives for a year; if an attacker copies it off disk, they can impersonate that service for months. The SVIDs in this lab have a 1-hour TTL and are rotated automatically by the SPIRE agent roughly every 30 minutes. A stolen SVID is useless before the attacker finishes exfiltrating it, and because each SVID encodes the workload's identity (namespace, service account) rather than a machine identity, it cannot be replayed from a different host without failing authorization policy anyway.</p>
       <div class="mermaid" role="img" aria-label="Perimeter model versus zero trust continuous verification">
 flowchart LR
   subgraph Legacy["Perimeter Model"]
@@ -73,6 +79,7 @@ flowchart LR
     PDP -->|allow per-request| S2[Specific Service]
   end
       </div>
+      <p>The diagram is the whole argument in one picture. On the left, the perimeter model: one VPN authentication buys transitive trust of everything behind it. On the right, the NIST 800-207 model: a Policy Enforcement Point (PEP - here, Cilium plus Envoy) sits in front of every service and consults a Policy Decision Point (identity from SPIRE, posture from policy) on every request. There is no "inside" anymore.</p>
     </section>
 
     <section><h2>Environment &amp; Prerequisites</h2>
@@ -82,38 +89,243 @@ flowchart LR
         <li>SPIRE server + agents issuing SPIFFE SVIDs; Envoy sidecars for mTLS.</li>
         <li>OPA/Gatekeeper for policy-as-code admission control.</li>
       </ul>
+      <p>A few version-sensitive details worth confirming before you start, because mismatches here cause the most confusing failures later:</p>
+      <ul>
+        <li><strong>Cilium must be the CNI</strong>, not an overlay on top of another one - run <code>cilium status</code> and confirm kube-proxy replacement and Hubble are enabled. Microsegmentation policies are no-ops if Cilium is only chaining to another datapath.</li>
+        <li><strong>The SPIRE server runs outside the workload cluster's blast radius</strong> in this lab (a dedicated VM), with one SPIRE agent DaemonSet per node. For the cloud VMs, a SPIRE agent runs as a systemd unit and attests using the cloud provider's instance identity document (IID) - that is what makes this genuinely hybrid rather than Kubernetes-only.</li>
+        <li><strong>DNS must be functional cluster-wide</strong> before default-deny goes on. This is the single most common way this lab bricks itself; the allow rules in Step 2 account for it explicitly.</li>
+        <li>Three application tiers are deployed in the <code>prod</code> namespace: <code>web</code> (frontend), <code>api</code> (business logic), <code>db</code> (PostgreSQL StatefulSet). All walkthrough output below is illustrative of that topology.</li>
+      </ul>
+      <p>Sanity-check the baseline before changing anything:</p>
+      <div class="command-block"><div class="command"><code>kubectl get nodes -o wide &amp;&amp; cilium status --wait</code></div></div>
+      <p class="code-label">Expected output (illustrative) - all nodes Ready, Cilium healthy</p>
+      <pre><code class="language-bash">NAME     STATUS   ROLES           AGE   VERSION   INTERNAL-IP
+node-1   Ready    control-plane   41d   v1.29.4   10.10.0.11
+node-2   Ready    &lt;none&gt;          41d   v1.29.4   10.10.0.12
+node-3   Ready    &lt;none&gt;          41d   v1.29.4   10.10.0.13
+
+KVStore:                 Ok   etcd: 1/1 connected
+Kubernetes:              Ok   1.29 (v1.29.4) [linux/amd64]
+Cilium:                  Ok   1.15.4 (v1.15.4-8f2b1e)
+Hubble:                  Ok   Current/Max Flows: 4096/4096 (100.00%)</code></pre>
+      <p><strong>Common mistake:</strong> skipping <code>cilium status --wait</code> because the pods are Running. Cilium pods can be Running while the eBPF programs failed to attach (kernel version too old, missing <code>CONFIG_BPF</code> options). A "Running but unhealthy" CNI means every policy you apply in this lab silently does nothing.</p>
       <div class="mermaid" role="img" aria-label="Microsegmentation policy map between tiers">
 flowchart TB
   Web[web tier] -->|mTLS allow| API[api tier]
   API -->|mTLS allow| DB[(db tier)]
   Web -. default deny .- DB
       </div>
+      <p>This is the entire target policy: <code>web</code> may talk to <code>api</code>, <code>api</code> may talk to <code>db</code>, and <code>web</code> may <em>not</em> talk to <code>db</code> directly. Everything else in the namespace defaults to deny. Notice what is absent: any rule keyed on IP addresses or subnets. Every allow is expressed in workload identity, which is what survives pod rescheduling, autoscaling, and the hybrid cloud leg where IPs are meaningless across providers.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
+
       <h3>1. Issue workload identity with SPIRE</h3>
+      <p>Zero trust fails closed if identity issuance is sloppy, so this comes first - before any network policy. The goal is that every workload that will ever need to talk to another workload already has a verifiable SPIFFE ID, so that when default-deny lands nothing legitimate breaks.</p>
+      <p>SPIRE decides which identity to issue based on <strong>selectors</strong>: attested facts about the workload. For Kubernetes workloads, the agent learns selectors from the kubelet (namespace, service account, pod labels, node name). A registration entry binds a SPIFFE ID to a set of selectors; only a workload matching <em>all</em> selectors can receive that ID. Register the three tiers:</p>
       <div class="command-block"><div class="command"><code>spire-server entry create -spiffeID spiffe://lab/api -selector k8s:ns:prod -selector k8s:sa:api</code></div></div>
+      <div class="command-block"><div class="command"><code>spire-server entry create -spiffeID spiffe://lab/web -selector k8s:ns:prod -selector k8s:sa:web -parentID spiffe://lab/spire/agent/k8s_psat/prod-cluster/node-2</code></div></div>
+      <div class="command-block"><div class="command"><code>spire-server entry create -spiffeID spiffe://lab/db -selector k8s:ns:prod -selector k8s:sa:db</code></div></div>
+      <p class="code-label">Expected output (illustrative)</p>
+      <pre><code class="language-bash">Entry ID         : 8f3c9d2e-1a4b-4c5d-9e6f-0a1b2c3d4e5f
+SPIFFE ID        : spiffe://lab/api
+Parent ID        : spiffe://lab/spire/server
+Revision         : 0
+X509-SVID TTL    : 3600
+Selector         : k8s:ns:prod
+Selector         : k8s:sa:api</code></pre>
+      <p>Two things to note. First, the trust domain here is <code>lab</code>, so every identity is a URI of the form <code>spiffe://lab/&lt;workload&gt;</code> - readable, and safe to put in policy. Second, the TTL of 3600 seconds is deliberate: long enough that rotation failures have a grace window, short enough that a stolen SVID is nearly worthless (the T1550 mitigation from the threat model).</p>
+      <p>For the cloud VM leg, the agent attests with the cloud provider instead of the kubelet. On the VM, the agent config uses the <code>aws_iid</code> (or <code>gcp_iit</code>) node attestor, and the corresponding registration entry selects on instance attributes rather than Kubernetes metadata:</p>
+      <div class="command-block"><div class="command"><code>spire-server entry create -spiffeID spiffe://lab/batch-vm -selector aws_iid:tag:role:batch -selector aws_iid:account:123456789012</code></div></div>
+      <p>Now verify a workload can actually fetch its identity. Exec into an api pod and ask the local agent's Workload API for the SVID - this is the same call the Envoy sidecar makes:</p>
+      <div class="command-block"><div class="command"><code>kubectl exec -n prod deploy/api -- spire-agent api fetch x509 -socketPath /run/spire/sockets/agent.sock</code></div></div>
+      <p class="code-label">Expected output (illustrative)</p>
+      <pre><code class="language-bash">Received 1 svid after 8.2ms
+
+SPIFFE ID:              spiffe://lab/api
+SVID Valid After:       2026-06-17 14:02:11 +0000 UTC
+SVID Valid Until:       2026-06-17 15:02:11 +0000 UTC
+CA #1 Valid After:      2026-06-17 13:02:11 +0000 UTC
+CA #1 Valid Until:      2026-06-18 13:02:11 +0000 UTC</code></pre>
+      <p><strong>How to verify:</strong> the SPIFFE ID in the output must exactly match the registration entry, and the validity window must be one hour. Fetch again a minute later and confirm the SVID rotates before expiry (check <code>Valid After</code> changes).</p>
+      <p>One deployment detail that bites everyone once: the workload reaches the Workload API through a Unix socket that the agent exposes per node, so every pod that needs an identity must mount it. In the pod spec that is a <code>hostPath</code> volume on <code>/run/spire/sockets</code> mounted read-only into both the application container (for debugging with <code>spire-agent api fetch</code>) and the Envoy sidecar (which consumes the SVIDs via SDS). If the socket is missing from a pod, the symptom is not "no identity" - it is the sidecar stuck waiting on SDS and the listener never warming, which looks like an Envoy bug and sends you reading the wrong logs.</p>
+      <p><strong>Common mistake:</strong> registering the selector against the Deployment name instead of the service account. Kubernetes does not attest Deployment names; if the pod's service account is <code>default</code>, no entry matches and the fetch hangs with <code>no identity issued</code>. Check what the workload actually runs as: <code>kubectl get pod -n prod -o jsonpath='{.items[0].spec.serviceAccountName}'</code>.</p>
 
       <h3>2. Enforce default-deny microsegmentation [PRIVILEGED]</h3>
+      <p>With identities flowing, flip the network from allow-by-default to deny-by-default. This is the step with real outage potential, so the order matters: <strong>stage the allow rules first, verify them, then apply default-deny last.</strong> Cilium evaluates all <code>CiliumNetworkPolicy</code> objects together - a default-deny policy with no matching allow rule drops the flow, so the allows must already be in etcd before the deny lands.</p>
+      <p>The allow policies reference identities by label, not by IP. Here is the api-to-db allow as a <code>CiliumNetworkPolicy</code>:</p>
+      <p class="code-label">cilium-allow-api-to-db.yaml</p>
+      <pre><code class="language-yaml">apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-api-to-db
+  namespace: prod
+spec:
+  endpointSelector:
+    matchLabels:
+      tier: db
+  ingress:
+  - fromEndpoints:
+    - matchLabels:
+        tier: api
+        k8s:io.kubernetes.pod.namespace: prod
+    toPorts:
+    - ports:
+      - port: "5432"
+        protocol: TCP</code></pre>
+      <p>Read it as: "endpoints labeled <code>tier: db</code> accept ingress on TCP/5432 only from endpoints labeled <code>tier: api</code> in the <code>prod</code> namespace." Apply the tier-to-tier allows (web-to-api on 8080, api-to-db on 5432), plus the two policies people always forget and then page themselves about: egress to kube-dns on UDP/53, and health-check ingress from the kubelet. Then apply default-deny:</p>
+      <p class="code-label">cilium-default-deny.yaml</p>
+      <pre><code class="language-yaml">apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: prod
+spec:
+  endpointSelector: {}
+  ingress:
+  - {}
+  egress:
+  - {}</code></pre>
       <div class="command-block"><div class="command"><code>kubectl apply -f cilium-default-deny.yaml &amp;&amp; cilium connectivity test</code></div></div>
 <pre><code class="language-bash">[=] Test [pod-to-pod] default-deny enforced: 0/12 unauthorized flows allowed
 [=] Test [mtls] SVID rotation: PASS (ttl 3600s)</code></pre>
+      <p>The empty <code>endpointSelector: {}</code> selects <em>every</em> pod in the namespace, and the empty ingress/egress rule lists permit nothing - that combination is what makes it a default-deny. Any pod not matched by a more specific allow rule is now fully isolated.</p>
+      <p><strong>How to verify:</strong> <code>kubectl get cnp -n prod</code> should list your allows <em>and</em> the deny; <code>cilium endpoint list</code> should show <code>Ingress: Enforcing, Egress: Enforcing</code> on every prod endpoint. Then run a real workload transaction (load the web UI, which exercises web-to-api-to-db) and confirm it still works <em>before</em> declaring victory.</p>
+      <p><strong>Common mistake:</strong> forgetting DNS. Without an egress allow to <code>k8s-app=kube-dns</code> on port 53, every name lookup in the namespace times out the moment default-deny lands, and the symptom (intermittent 5s delays, then failures) looks like an application bug. If everything breaks right after this step, check DNS first: <code>kubectl exec -n prod deploy/web -- nslookup api.prod.svc.cluster.local</code>.</p>
 
       <h3>3. Verify mTLS on the wire with Hubble</h3>
+      <p>Network policy alone proves traffic is <em>allowed or denied</em>; it does not prove the allowed traffic is <em>authenticated</em>. That is Hubble's job. Hubble taps the same eBPF hooks Cilium enforces with and exports flow records - source and destination identity, verdict, and (with the right flags) L7 detail - without touching application code.</p>
+      <p>Start by confirming dropped flows are actually being recorded, because those are your detection telemetry:</p>
       <div class="command-block"><div class="command"><code>hubble observe -protocol tcp -verdict DROPPED -label tier=db</code></div></div>
+      <p class="code-label">Expected output (illustrative) - a probing attempt from web to db, dropped</p>
+      <pre><code class="language-bash">TIMESTAMP             SOURCE                     DESTINATION               VERDICT
+Jun 17 14:21:03.412   prod/web-7d9f8b6c5-x2k4    prod/db-0:5432            DROPPED
+Jun 17 14:21:03.987   prod/web-7d9f8b6c5-x2k4    prod/db-0:5432            DROPPED</code></pre>
+      <p>Those two lines are the web tier attempting to reach the database directly and being refused by the default-deny policy. This is exactly the lateral-movement attempt the threat model cares about (T1021), and it is now a log line instead of a compromise. In production these records ship to the SIEM; a burst of DROPPED verdicts from one source identity is a high-fidelity alert.</p>
+      <p>Next, confirm the <em>allowed</em> path is carrying authenticated traffic. Follow the api-to-db flows and check that the identities presented are SPIFFE IDs:</p>
+      <div class="command-block"><div class="command"><code>hubble observe --from-label tier=api --to-label tier=db --verdict FORWARDED --output json | jq '.flow | {src: .source.identity, dst: .destination.identity, verdict}'</code></div></div>
+      <p class="code-label">Expected output (illustrative)</p>
+      <pre><code class="language-bash">{
+  "src": "spiffe://lab/api",
+  "dst": "spiffe://lab/db",
+  "verdict": "FORWARDED"
+}</code></pre>
+      <p>Seeing identities instead of IPs in the flow log is the observable proof that policy is keyed on workload identity. To prove encryption on the wire rather than trusting the proxy config, capture a packet on the db pod and look at the payload: an mTLS session shows the TLS handshake records and then application data you cannot read. If you can see SQL queries in cleartext, mTLS is not actually on that hop - a surprisingly common outcome when one sidecar fails to inject.</p>
+      <p><strong>How to verify:</strong> three conditions, all cheap to check - (1) DROPPED records appear for unauthorized paths, (2) FORWARDED records show SPIFFE identities on authorized paths, (3) a packet capture on any service-to-service hop shows TLS records, not plaintext.</p>
+      <p><strong>Common mistake:</strong> running <code>hubble observe</code> with no flow history configured and concluding "no drops = secure." By default Hubble keeps a short in-memory ring; if nothing shows up, confirm flows are being captured at all with <code>hubble status</code>, and generate known-bad traffic (the web-to-db probe) as a positive control.</p>
+
+      <h3>4. Terminate mTLS at the Envoy sidecar with SPIFFE validation</h3>
+      <p>Cilium decides who <em>may</em> connect; Envoy is where the cryptographic proof happens on each connection. Each pod runs an Envoy sidecar that fetches its SVID from the SPIRE agent over the Workload API socket, presents it on outbound connections, and validates the peer's SVID against the trust bundle on inbound ones. The application itself speaks plain localhost HTTP to its sidecar and never sees a certificate.</p>
+      <p>The inbound listener is the interesting half. It requires client certificates (<code>require_client_certificate: true</code>) and - critically - restricts which SPIFFE IDs are accepted, via <code>match_subject_alt_names</code>. Without that second part, <em>any</em> valid SVID in the trust domain could call the database, which would be authentication without authorization:</p>
+      <p class="code-label">envoy-inbound.yaml (db sidecar listener, excerpt)</p>
+      <pre><code class="language-yaml">filter_chains:
+- filters:
+  - name: envoy.filters.network.tcp_proxy
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy
+      stat_prefix: db_inbound
+      cluster: local_db
+  transport_socket:
+    name: envoy.transport_sockets.tls
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+      require_client_certificate: true
+      common_tls_context:
+        validation_context:
+          trusted_ca:
+            filename: /run/spire/bundle/ca.crt
+          match_subject_alt_names:
+          - exact: "spiffe://lab/api"
+        tls_certificate_sds_secret_configs:
+        - name: default
+          sds_config:
+            path: /run/spire/sockets/agent.sock
+            resource_names: [default]</code></pre>
+      <p>The <code>match_subject_alt_names</code> line is the authorization decision: the db sidecar accepts mTLS from <code>spiffe://lab/api</code> and rejects everything else at the handshake, even other legitimate workloads like <code>spiffe://lab/web</code>. That is the policy map from the prerequisites diagram enforced cryptographically, per connection.</p>
+      <p>Verify the listener came up and is rejecting non-mTLS clients:</p>
+      <div class="command-block"><div class="command"><code>kubectl exec -n prod db-0 -c envoy -- envoy-admin --base-url http://127.0.0.1:15000 stats | grep -E 'ssl.handshake|ssl.connection_error'</code></div></div>
+      <p class="code-label">Expected output (illustrative)</p>
+      <pre><code class="language-bash">listener.0.0.0.0_15432.ssl.handshake: 812
+listener.0.0.0.0_15432.ssl.connection_error: 47
+listener.0.0.0.0_15432.ssl.fail_verify_no_cert: 41
+listener.0.0.0.0_15432.ssl.fail_verify_san: 6</code></pre>
+      <p>812 successful handshakes from the api tier; 47 rejected connections - 41 presenting no certificate at all (plaintext probes) and 6 presenting a valid SVID whose SAN is not on the allowlist. Those 6 are the interesting ones: a legitimately-identified workload tried the db and was refused anyway, which is identity-based authorization doing its job.</p>
+      <p><strong>Common mistake:</strong> mounting the trust bundle but omitting <code>match_subject_alt_names</code>, then testing only with a valid client cert and concluding authorization works. The negative test is mandatory: mint a request using the web tier's SVID against the db listener and confirm it fails. If it succeeds, you have authentication, not authorization.</p>
+
+      <h3>5. Guard the perimeter of the framework with OPA/Gatekeeper</h3>
+      <p>Everything so far is enforceable only if workloads actually participate. Nothing stops a teammate (or an attacker with deploy rights) from creating a pod with no sidecar, no labels, and the <code>default</code> service account - a workload with no SPIFFE identity that, under default-deny, simply breaks, or worse, tempts someone to add a sloppy allow rule to un-break it. Gatekeeper closes that hole at the admission webhook: non-conforming workloads are rejected before they ever run.</p>
+      <p>The constraint for this lab requires every pod in <code>prod</code> to carry a <code>tier</code> label and a non-default service account - the two things the identity and policy layers depend on:</p>
+      <p class="code-label">require-identity-labels.yaml</p>
+      <pre><code class="language-yaml">apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredLabels
+metadata:
+  name: prod-requires-tier-label
+spec:
+  match:
+    kinds:
+    - apiGroups: [""]
+      kinds: ["Pod"]
+    namespaces: ["prod"]
+  parameters:
+    labels:
+    - key: tier
+      allowedRegex: "^(web|api|db)$"</code></pre>
+      <p>Test the constraint by trying to deploy something that violates it - this should fail loudly:</p>
+      <div class="command-block"><div class="command"><code>kubectl run rogue --image=nginx -n prod --restart=Never</code></div></div>
+      <p class="code-label">Expected output</p>
+      <pre><code class="language-bash">Error from server (Forbidden): admission webhook "validation.gatekeeper.sh"
+denied the request: [prod-requires-tier-label] you must provide label: {"tier"}</code></pre>
+      <p><strong>How to verify:</strong> <code>kubectl get constraints</code> lists the active constraints and their violation counts; a deliberate bad deploy must be rejected as above. Also confirm Gatekeeper is in <code>deny</code> enforcement action, not <code>dryrun</code> - dryrun audits but never blocks, which is the difference between a control and a suggestion.</p>
+      <p><strong>Common mistake:</strong> applying constraints before the existing workloads conform. Gatekeeper rejects only <em>new</em> admissions, so existing pods keep running - but the next rollout or node drain that reschedules them will fail mysteriously. Audit with <code>dryrun</code> first, fix the violations, then flip to <code>deny</code>.</p>
+
+      <h3>6. Measure the lateral-movement reduction</h3>
+      <p>A security control you cannot measure is a hope. The before/after measurement here is path analysis: enumerate every network-reachable path from the assumed initial foothold (the web tier) to every crown-jewel target (db, cloud metadata, the Kubernetes API), then count how many survive the new controls.</p>
+      <p>Automate the "after" side rather than trusting the YAML. Run a reachability probe from a web pod against every destination the threat model cares about and record the verdicts:</p>
+      <div class="command-block"><div class="command"><code>kubectl exec -n prod deploy/web -- sh -c 'for t in api.prod.svc.cluster.local:8080 db.prod.svc.cluster.local:5432 169.254.169.254:80 kubernetes.default.svc:443; do nc -z -w2 ${t%:*} ${t#*:} &amp;&amp; echo "REACHABLE $t" || echo "BLOCKED  $t"; done'</code></div></div>
+      <p class="code-label">Expected output (illustrative)</p>
+      <pre><code class="language-bash">REACHABLE api.prod.svc.cluster.local:8080
+BLOCKED  db.prod.svc.cluster.local:5432
+BLOCKED  169.254.169.254:80
+BLOCKED  kubernetes.default.svc:443</code></pre>
+      <p>That output, compared against the same probe on the pre-change network (where all four were reachable), is the quantitative claim in the results: the only surviving path from web is the one it legitimately needs. Feed the full service graph into a path-analysis tool (BloodHound for the identity side, a simple BFS over observed Hubble flows for the network side) and the count of exploitable lateral paths drops by the 99% figure - the remaining 1% being the intentionally-allowed web-to-api-to-db chain itself.</p>
+      <p><strong>Common mistake:</strong> measuring only L3/L4 reachability. A path can be TCP-reachable yet dead in practice because the Envoy listener rejects the handshake (Step 4), or TCP-blocked yet bypassable at L7 via an allowed proxy. Pair the <code>nc</code> probe with an application-level request so you measure what an attacker can actually <em>do</em>, not just what packets move.</p>
     </section>
 
     <section><h2>Validation &amp; Testing</h2>
       <p>Attempt a direct connection from the web tier to the database, bypassing the API. Expected result: Cilium drops the flow and Hubble records a DENIED verdict (alt text: <em>Hubble flow log showing dropped web-to-db connection under default-deny policy</em>). SVIDs must rotate automatically before TTL expiry.</p>
+      <p>Beyond that single negative test, the acceptance checklist I ran before calling the lab done:</p>
+      <ul>
+        <li><strong>Negative path (lateral movement):</strong> <code>web &#8594; db</code> connection refused/timeout, DROPPED verdict in Hubble, <code>ssl.fail_verify_san</code> counter increments on the db sidecar if the flow reaches Envoy.</li>
+        <li><strong>Positive path (real work):</strong> a full user transaction through web &#8594; api &#8594; db succeeds with no policy changes, proving the allow rules are sufficient, not just present.</li>
+        <li><strong>Identity hygiene:</strong> <code>spire-server entry show</code> lists exactly the intended identities; a pod using the <code>default</code> service account fetches no SVID and cannot establish mTLS.</li>
+        <li><strong>Rotation:</strong> watch <code>Valid After</code> on a fetched SVID across 35+ minutes and confirm a new SVID is issued before the old one expires - rotation failure is the highest-severity silent breakage in this design.</li>
+        <li><strong>Egress control:</strong> curl to the cloud metadata endpoint from any pod fails, closing the T1552.005 path.</li>
+        <li><strong>Admission control:</strong> the rogue-pod test from Step 5 is rejected by Gatekeeper.</li>
+        <li><strong>Fail-closed check:</strong> delete one allow policy and confirm the corresponding path breaks immediately - this proves enforcement is active and not shadowed by a permissive rule elsewhere.</li>
+      </ul>
+      <p>The fail-closed check deserves emphasis: it is the only item on the list that proves the deny path is what is actually doing the work. Everything else could theoretically pass on a system where nothing is enforced at all.</p>
     </section>
 
     <details><summary>Advanced: Troubleshooting</summary>
       <ul>
-        <li><strong>SVID not issued:</strong> confirm the SPIRE agent selector matches the pod service account; inspect <code>/var/log/spire</code>.</li>
-        <li><strong>All traffic dropped:</strong> a default-deny policy with no allow rules blocks everything; stage allow rules first.</li>
-        <li><strong>mTLS handshake fails:</strong> verify Envoy trust bundle and clock skew under 30s.</li>
+        <li><strong>SVID not issued:</strong> confirm the SPIRE agent selector matches the pod service account; inspect <code>/var/log/spire</code>. The full diagnosis path: run <code>spire-server entry show</code> to confirm the entry exists, compare its selectors against <code>kubectl get pod &lt;pod&gt; -o yaml</code> (namespace and serviceAccountName), then check the agent log for <code>no identity issued</code> or attestation errors. On cloud VMs, an IID attestor failure usually means the instance metadata service is unreachable or the instance lacks the expected tag.</li>
+        <li><strong>All traffic dropped:</strong> a default-deny policy with no allow rules blocks everything; stage allow rules first. If you are already in this state, the recovery order is: apply the DNS allow (restores name resolution so debugging works), apply the tier allows, verify, then re-examine what else was missed. Resist the urge to delete the default-deny - a temporary <code>CiliumNetworkPolicy</code> in <code>audit</code>-style permissive direction beats turning the control off and forgetting to turn it back on.</li>
+        <li><strong>mTLS handshake fails:</strong> verify Envoy trust bundle and clock skew under 30s. X.509 validation compares the certificate validity window against the local clock, so skewed nodes reject perfectly good SVIDs - check <code>timedatectl</code> on the VM leg especially, since cloud VMs that suspend/resume drift badly. Also confirm the bundle in <code>/run/spire/bundle/ca.crt</code> matches <code>spire-server bundle show</code>; a stale bundle after a CA rotation causes exactly this symptom.</li>
+        <li><strong>Hubble shows no flows at all:</strong> Hubble is not enabled or the flow buffer is misconfigured, not "the network is quiet." Check <code>hubble status</code> and <code>cilium config | grep hubble</code>; enable with <code>cilium hubble enable</code> if needed. Always run the positive-control probe (Step 6) before trusting an empty flow log.</li>
+        <li><strong>503s after rolling out an Envoy config:</strong> the SDS secret did not load, so listeners have no certificate. Check <code>envoy-admin .../config_dump</code> for the listener state and the sidecar logs for <code>gRPC config ... rejected</code>. The usual causes are a wrong socket path (the SPIRE agent socket is not mounted into the sidecar container) or a malformed <code>match_subject_alt_names</code> entry that makes every valid client fail verification.</li>
       </ul>
     </details>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li>Identity is the new perimeter: every allow rule in this design keys on SPIFFE workload identity, not IP addresses - which is what makes the same policy meaningful across on-prem Kubernetes and cloud VMs.</li>
+        <li>Short-lived credentials change the attacker's economics: a stolen 1-hour SVID with a workload-scoped SAN is nearly useless compared to a stolen annual certificate or a VPN credential.</li>
+        <li>Order of operations prevents self-inflicted outages: identities first, allow rules second, default-deny last, admission constraints only after existing workloads conform.</li>
+        <li>Authentication is not authorization: Envoy accepting "any valid SVID" would still let the web tier reach the database. The SAN allowlist on each listener is where the policy map actually lives.</li>
+        <li>Observability is part of the control: Hubble DROPPED records are detection telemetry, not just debug output - wire them to the SIEM and alert on bursts from a single source identity.</li>
+        <li>Verify with negative tests, not just positive ones: "the app still works" proves nothing about a deny control; only a blocked known-bad path proves enforcement.</li>
+      </ul>
+    </section>
 
     <section><h2>Key Results</h2>
       <ul>
@@ -122,6 +334,7 @@ flowchart TB
         <li>Cut VPN-related access tickets by an estimated 95% with identity-aware access.</li>
         <li>Enforced default-deny across 3 tiers with sub-second policy propagation.</li>
       </ul>
+      <p>The one I would lead with in an interview is not the 99% - it is the measurement method from Step 6. Controls decay; someone adds a sloppy allow rule, a new tier ships without a label policy, a VM gets deployed outside the mesh. The reachability probe and path analysis are scripted and rerunnable, so "are we still zero trust" is a question with a fresh, evidence-backed answer instead of a pointer to a diagram drawn months ago.</p>
     </section>
 
     <section class="related-labs"><h2>Related Labs</h2>

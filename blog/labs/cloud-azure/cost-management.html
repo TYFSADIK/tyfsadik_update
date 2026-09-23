@@ -127,6 +127,7 @@ tyfstore01  Microsoft.Storage/storageAccounts     tyf        lab</div>
           <p>The minimal form creates a budget with default settings:</p>
           <div class="command-block" data-copy><div class="command"><code>az consumption budget create -budget-name tyf-monthly -amount 50 -time-grain Monthly -category Cost</code></div></div>
           <p><code>--category Cost</code> means the budget tracks actual billed cost (including taxes and marketplace charges where applicable), as opposed to <code>Usage</code>, which tracks raw consumption. For personal guardrails, Cost is the right choice - it matches what the invoice will show.</p>
+          <p>Worth knowing before you create anything: budgets are scoped. Created with no extra flags (as here) a budget watches the <em>whole subscription</em>. Pass <code>--resource-group tyf-rg</code> to scope it to one group instead - useful for capping a single experiment without noise from the rest of the subscription. Enterprise environments can also scope budgets to billing accounts and management groups, but the CLI pattern stays the same.</p>
           <p>To actually receive alerts, first create an action group with your email as a receiver, then attach it to the budget's notifications. An action group is Azure Monitor's reusable "who to notify" object, so the same group can later serve uptime alerts and security alerts too:</p>
           <p class="code-label">CREATE THE ACTION GROUP AND CAPTURE ITS ID</p>
           <pre><code>az monitor action-group create -g tyf-rg -n budget-alerts \
@@ -195,6 +196,14 @@ Microsoft.Compute/virtualMachines/tyf-vm01  High  Virtual machine has low CPU an
             <li><strong>Deallocate:</strong> <code>az vm deallocate -g tyf-rg -n tyf-vm01</code> stops billing for compute (disks still bill). A plain <code>stop</code> from inside the OS does <em>not</em> stop compute charges.</li>
             <li><strong>Delete orphans:</strong> unattached disks and old public IPs keep billing after their parent VM is gone. Find disks with <code>az disk list --query "[?diskState=='Unattached']" -o table</code>.</li>
           </ul>
+          <p>Advisor's Cost category recycles a handful of recommendation types. Knowing them by name makes the triage faster:</p>
+          <table>
+            <tr><th>Recommendation</th><th>Signal behind it</th><th>Typical fix</th></tr>
+            <tr><td>Right-size or shut down underutilized VMs</td><td>CPU/network under ~5% for 7+ days</td><td>Smaller SKU or deallocate</td></tr>
+            <tr><td>Buy reserved instances</td><td>Steady pay-as-you-go usage over 30 days</td><td>1- or 3-year reservation, up to ~70% off</td></tr>
+            <tr><td>Delete unattached disks / public IPs</td><td>Resource billed with nothing consuming it</td><td>Delete after confirming no dependency</td></tr>
+            <tr><td>Right-size underutilized SQL / App Service</td><td>DTU or instance metrics far below capacity</td><td>Drop a service tier</td></tr>
+          </table>
           <div class="note"><strong>Common mistake:</strong> stopping a VM from inside the OS and assuming the billing stopped. Only <em>deallocated</em> VMs stop accruing compute charges. <strong>Verify:</strong> <code>az vm get-instance-view -g tyf-rg -n tyf-vm01 --query instanceView.statuses[1].displayStatus -o tsv</code> should read <code>VM deallocated</code>.</div>
         </div></div>
         <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Break down spend by tag in Cost Analysis</strong>
@@ -255,6 +264,7 @@ az policy assignment create --name inherit-project-tag \
 
     <section><h2>Progress So Far</h2>
       <p>The core loop from the architecture diagram is now live: resources are tagged, the budget is armed with alerts, and Advisor's waste list has been actioned. Steps 04-06 layered reporting and enforcement on top of that foundation.</p>
+      <p>What remains deliberately manual is the monthly ritual: skim the Advisor list, check the budget's current-spend figure, and clear any new untagged row in Cost Analysis. Ten minutes a month keeps the whole system honest - and the Extension Ideas below show how to automate even that away.</p>
       <div class="mermaid" role="img" aria-label="Cost management progress">
 graph LR
   A[01 Tagging] -->|done| B[02 Budget]

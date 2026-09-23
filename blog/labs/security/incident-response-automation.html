@@ -53,14 +53,18 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">SOAR</span><span class="tag">TheHive</span><span class="tag">Cortex</span><span class="tag">Python</span></div>
     </div>
 
-    <section><p class="lead">I automated the repetitive triage-to-containment path with SOAR playbooks that orchestrate TheHive case creation, Cortex enrichment, and webhook-driven containment actions. Removing the manual handoffs cut mean time to respond on brute-force events to under five minutes.</p></section>
+    <section><p class="lead">I automated the repetitive triage-to-containment path with SOAR playbooks that orchestrate TheHive case creation, Cortex enrichment, and webhook-driven containment actions. Removing the manual handoffs cut mean time to respond on brute-force events to under five minutes.</p>
+      <p>Before this project, every brute-force alert followed the same manual ritual: an analyst opened the SIEM alert, copied the source IP into AbuseIPDB and VirusTotal, eyeballed the scores, decided whether it was hostile, blocked the address on the perimeter firewall, posted a note in Slack, and finally wrote up a ticket. Each handoff cost minutes, and under alert volume the queue backed up badly. This lab replaces that entire chain with an event-driven playbook: an alert webhook fires a Python orchestrator, which enriches observables through Cortex analyzers, applies a deterministic verdict policy, opens a case in TheHive, executes containment, and notifies the team — all with a fully auditable timeline.</p>
+    </section>
 
     <section><h2>Objective &amp; Context</h2>
       <p>Analysts spend most of their time on repeatable enrichment and notification. This lab encodes those steps as playbooks so humans focus on decisions, aligning to NIST SP 800-61 containment guidance and the SOAR operating model.</p>
+      <p>The design goal is narrow on purpose: automate only the <em>mechanical</em> 80% of incident response (enrichment, correlation, notification, well-understood containment like IP blocking) and keep humans in the loop for anything destructive or ambiguous. That matches how NIST SP 800-61 frames containment — pre-approved actions with clear rollback paths are exactly the ones safe to automate.</p>
       <ul>
         <li><strong>T1110 Brute Force</strong> – auto-containment on correlated authentication failures.</li>
         <li><strong>T1071 Application Layer Protocol</strong> – IOC enrichment from threat-intel feeds.</li>
       </ul>
+      <p>Two MITRE ATT&amp;CK techniques drive the playbooks. T1110 (Brute Force) generates the high-volume, low-novelty alerts that drown a SOC — password-spray and SSH hammering events where the response is almost always "confirm reputation, block the source, reset targeted accounts." T1071 (Application Layer Protocol) covers C2 callbacks, where the automation's job is enrichment: resolve the domain, check threat-intel feeds, and attach verdicts to the case so a human can make the isolation call.</p>
       <div class="mermaid" role="img" aria-label="SOAR playbook flow from alert to containment">
 flowchart LR
   A[Alert] --> E[Enrich<br/>Cortex + intel]
@@ -69,6 +73,7 @@ flowchart LR
   C --> N[Notify Slack/Discord]
   V -->|benign| X[Auto-close case]
       </div>
+      <p>The flow above is deliberately linear: every alert is enriched first, a verdict gate decides the branch, and only the malicious branch touches the network. The benign branch still creates a (closed) case so the auto-close decision is itself auditable — if the verdict policy is ever wrong, you have a record of why the playbook let something through.</p>
     </section>
 
     <section><h2>Environment &amp; Prerequisites</h2>
@@ -77,24 +82,270 @@ flowchart LR
         <li>Python 3.11 orchestrator with the TheHive4py client.</li>
         <li>Webhook endpoints for Slack/Discord notification.</li>
       </ul>
+      <p>TheHive 5 and Cortex 3.1 run as Docker containers on a single lab VM (4 vCPU, 16 GB RAM — Elasticsearch is the memory hog). TheHive 5.x requires Cassandra as its database and Elasticsearch for indexing; Cortex shares the Elasticsearch instance in small labs but should get its own in production. The orchestrator runs on the same VM as a systemd service so the playbook survives reboots.</p>
+      <p class="code-label">DOCKER COMPOSE — THEHIVE + CORTEX STACK</p>
+<pre><code class="language-bash"># docker-compose.yml (trimmed to the essentials)
+version: "3"
+services:
+  cassandra:
+    image: cassandra:4.0
+    environment:
+      - MAX_HEAP_SIZE=1G
+      - HEAP_NEWSIZE=256M
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.9
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms2g -Xmx2g
+  cortex:
+    image: thehiveproject/cortex:3.1.7
+    ports: ["9001:9001"]
+    depends_on: [elasticsearch]
+    command: --es-uri http://elasticsearch:9200
+  thehive:
+    image: strangebee/thehive:5.2.9
+    ports: ["9000:9000"]
+    depends_on: [cassandra, elasticsearch, cortex]
+    command: |
+      --cql-hostnames cassandra
+      --es-uri http://elasticsearch:9200
+      --cortex-url http://cortex:9001</code></pre>
+      <p>After the first boot, two manual one-time steps remain: create an org admin in TheHive, then generate an API key for the automation account (<em>User Management &rarr; API keys</em>). On the Cortex side, enable the AbuseIPDB and VirusTotal analyzers under <em>Organization &rarr; Analyzers</em> and paste in their API keys. Never run analyzers without rate-limit awareness — VirusTotal's free tier caps at 4 lookups/minute, which shapes the enrichment strategy below.</p>
+      <p class="code-label">ORCHESTRATOR DEPENDENCIES (PYTHON 3.11 VENV)</p>
+<pre><code class="language-bash">python3.11 -m venv ~/soar-venv &amp;&amp; source ~/soar-venv/bin/activate
+pip install thehive4py==2.0.0b6 requests==2.31.0 flask==3.0.3 tenacity==8.2.3
+
+# Verify the client can reach both APIs before writing any playbook logic
+python - &lt;&lt;'EOF'
+import requests
+h = requests.get("https://thehive:9000/api/status", verify=False)
+c = requests.get("https://cortex:9001/api/status", verify=False)
+print("thehive:", h.json().get("versions", {}).get("TheHive"))
+print("cortex:", c.json().get("versions", {}).get("Cortex"))
+EOF</code></pre>
+      <p><strong>Expected output:</strong> both services report their versions —</p>
+<pre><code class="language-bash">thehive: 5.2.9-1
+cortex: 3.1.7-1</code></pre>
+      <p><strong>Common mistake:</strong> mixing thehive4py major versions. TheHive 5 needs thehive4py 2.x, whose import style (<code>from thehive4py import TheHiveApi</code>) differs from the 1.x style shown in older blog posts and in the legacy snippet below. Pin the version in the venv and confirm with <code>pip show thehive4py</code> before debugging "module has no attribute" errors.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
+
       <h3>1. Define a playbook trigger in Python</h3>
+      <p>The trigger is the entry point of the whole pipeline. My SIEM (Wazuh, but any tool that can POST JSON works) fires a webhook on rule 5710/5712 — "multiple authentication failures" — into a small Flask receiver. The receiver does three things before any playbook logic runs: validates the payload schema, assigns severity, and deduplicates. The original prototype handler looked like this:</p>
 <pre><code class="language-bash">from thehive4py.api import TheHiveApi
 api = TheHiveApi('https://thehive:9000', 'KEY')
 def on_alert(a):
-    if a['severity'] >= 2:
+    if a['severity'] &gt;= 2:
         enrich(a); contain(a['source_ip']); notify(a)</code></pre>
+      <p>That sketch works for a demo but collapses in production: it has no error handling, no dedup, and the severity comparison uses TheHive's 1.x scale. The production receiver separates <em>receipt</em> from <em>processing</em> so a slow Cortex job never blocks the webhook long enough for the SIEM to retry (which is how double-fires happen in the first place).</p>
+      <p class="code-label">WEBHOOK RECEIVER WITH QUEUE + DEDUP (PYTHON)</p>
+<pre><code class="language-bash"># receiver.py — Flask endpoint, dedups, hands off to worker
+import hashlib, json, queue, threading, time
+from flask import Flask, request, abort
+
+app = Flask(__name__)
+work_q = queue.Queue(maxsize=500)
+seen = {}   # dedup cache: key -&gt; timestamp
+DEDUP_WINDOW = 300  # seconds
+
+def dedup_key(alert):
+    raw = f"{alert['rule_id']}|{alert.get('source_ip','')}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+@app.route("/alert", methods=["POST"])
+def on_alert():
+    alert = request.get_json(force=True)
+    required = {"rule_id", "severity", "source_ip", "timestamp"}
+    if not required.issubset(alert):
+        abort(400, "missing fields")
+    key = dedup_key(alert)
+    now = time.time()
+    if key in seen and now - seen[key] &lt; DEDUP_WINDOW:
+        return {"status": "deduplicated", "key": key}, 202
+    seen[key] = now
+    if alert["severity"] &gt;= 2:      # medium and above only
+        work_q.put(alert)
+        return {"status": "queued", "key": key}, 202
+    return {"status": "below threshold"}, 200
+
+if __name__ == "__main__":
+    threading.Thread(target=worker, args=(work_q,), daemon=True).start()
+    app.run(host="0.0.0.0", port=8443)</code></pre>
+      <p><strong>Why severity &gt;= 2:</strong> TheHive severities map 1=low, 2=medium, 3=high, 4=critical. Automating containment on low-severity noise is how playbooks block legitimate users (think: one fat-fingered password from a VPN exit node). Medium is where brute-force correlation rules land in my SIEM tuning.</p>
+      <p><strong>Verify:</strong> fire a test POST and confirm a 202 with a dedup key, then fire it again within five minutes and confirm the second call returns <code>deduplicated</code>:</p>
+<pre><code class="language-bash">curl -sk -X POST https://localhost:8443/alert \
+  -H "Content-Type: application/json" \
+  -d '{"rule_id":"5710","severity":3,"source_ip":"203.0.113.45","timestamp":"2026-09-21T02:14:07Z"}'
+{"status":"queued","key":"4c8a1f9e2d7b6301"}</code></pre>
+      <p><strong>Common mistake:</strong> acknowledging the webhook only <em>after</em> enrichment completes. SIEMs retry on timeout, so the same alert re-enters the pipeline. Always ACK first (HTTP 202), process async. Check <code>seen</code> cache hits in the logs if cases appear twice.</p>
+
       <h3>2. Trigger Cortex enrichment for an observable</h3>
+      <p>Enrichment turns a bare IP address into a decision. The orchestrator submits the source IP to Cortex analyzers — AbuseIPDB first (free, high signal for brute force), VirusTotal second — and polls the job until it finishes. The payload file describes the observable; the response gives a job ID, not a result, so polling is mandatory.</p>
+      <p class="code-label">OBSERVABLE PAYLOAD (obs.json)</p>
+<pre><code class="language-bash">{
+  "data": "203.0.113.45",
+  "dataType": "ip",
+  "tlp": 2,
+  "pap": 2,
+  "message": "auto-enrichment: brute-force rule 5710"
+}</code></pre>
       <div class="command-block"><div class="command"><code>curl -sk -H "Authorization: Bearer $CORTEX" https://cortex:9001/api/analyzer/AbuseIPDB/run -d @obs.json</code></div></div>
-      <h3>3. Fire the containment webhook</h3>
+      <p class="code-label">POLL THE JOB UNTIL THE REPORT IS READY (PYTHON)</p>
+<pre><code class="language-bash">import requests, time
+
+CORTEX = "https://cortex:9001"
+HDR = {"Authorization": f"Bearer {CORTEX_KEY}"}
+
+def run_analyzer(analyzer, observable, timeout=120):
+    job = requests.post(f"{CORTEX}/api/analyzer/{analyzer}/run",
+                        headers=HDR, json=observable, verify=False).json()
+    job_id = job["id"]
+    deadline = time.time() + timeout
+    while time.time() &lt; deadline:
+        r = requests.get(f"{CORTEX}/api/job/{job_id}/waitreport",
+                         params={"atMost": "30seconds"},
+                         headers=HDR, verify=False)
+        if r.status_code == 200:
+            return r.json()
+        time.sleep(3)
+    raise TimeoutError(f"{analyzer} job {job_id} exceeded {timeout}s")
+
+report = run_analyzer("AbuseIPDB_1_0", observable)
+taxonomies = report["report"]["summary"]["taxonomies"]
+print(taxonomies)</code></pre>
+      <p><strong>Expected output</strong> — Cortex taxonomies flatten the analyzer verdict into predicate/value pairs:</p>
+<pre><code class="language-bash">[{'predicate': 'Abuse', 'namespace': 'AbuseIPDB', 'value': '95',
+  'level': 'malicious'}]</code></pre>
+      <p>An <code>abuseConfidenceScore</code> of 95 with a <code>malicious</code> level is exactly the signal the verdict policy consumes in step 3. TLP 2 (amber) on the observable matters: analyzers respect TLP, and TLP:RED observables would refuse to leave the platform — which is correct behavior for sensitive internal indicators.</p>
+      <p><strong>Common mistake:</strong> treating the <code>/run</code> response as the report. It returns <code>{"id": "...", "status": "Waiting"}</code>. If you parse it directly you get empty taxonomies and every alert verdicts as benign. Verify by logging <code>job_id</code> and confirming a <code>waitreport</code> 200 before reading taxonomies.</p>
+
+      <h3>3. Apply the verdict policy and open a TheHive case</h3>
+      <p>The verdict gate is the one place the playbook is allowed to be opinionated, so the policy is a plain function — no hidden state, trivially unit-testable. An observable is malicious if any analyzer returns <code>level: malicious</code>, or if AbuseIPDB's score alone clears 80 (well-reported brute-force sources routinely score 90+). Anything else is benign for automation purposes and routed to the auto-close branch.</p>
+      <p class="code-label">DETERMINISTIC VERDICT POLICY (PYTHON)</p>
+<pre><code class="language-bash">def verdict(reports):
+    score = 0
+    for rep in reports:
+        for t in rep["report"]["summary"]["taxonomies"]:
+            if t["level"] == "malicious":
+                return {"verdict": "malicious", "score": 100}
+            if t["namespace"] == "AbuseIPDB":
+                score = max(score, int(t["value"]))
+    if score &gt;= 80:
+        return {"verdict": "malicious", "score": score}
+    return {"verdict": "benign", "score": score}</code></pre>
+      <p>On a malicious verdict the orchestrator creates a TheHive case with the alert's observables attached, so the case itself becomes the audit record of every automated decision:</p>
+      <p class="code-label">CASE CREATION VIA THEHIVE4PY 2.X (PYTHON)</p>
+<pre><code class="language-bash">from thehive4py import TheHiveApi
+
+hive = TheHiveApi(url="https://thehive:9000", apikey=HIVE_KEY, verify=False)
+
+case = hive.case.create(case={
+    "title": f"[AUTO] Brute force from {alert['source_ip']}",
+    "description": "Opened by SOAR playbook after malicious verdict.",
+    "severity": 3,
+    "tlp": 2,
+    "tags": ["soar", "auto-triage", "T1110"],
+})
+case_id = case["_id"]
+hive.case.add_observable(case_id, {
+    "dataType": "ip", "data": alert["source_ip"],
+    "message": "verdict=malicious score=95", "ioc": True,
+})
+print("case created:", case["_id"])   # e.g. case created: ~8200</code></pre>
+      <p><strong>Verify:</strong> open the TheHive UI and confirm the case exists with the <code>soar</code> tag, the IP observable flagged as IOC, and a timeline entry naming the automation account as the actor. If the API key's profile lacks <code>case/create</code> permission you'll get a 403 — the automation account needs the <em>analyst</em> profile, not <em>read-only</em>.</p>
+
+      <h3>4. Execute the containment action</h3>
+      <p>Containment is a network change, so it gets its own step with its own safeguards. The playbook blocks the source IP on the perimeter firewall through its API. Two rules keep this safe: the block is a <em>time-boxed</em> rule (a cron on the firewall removes it after 24 hours, forcing re-verdict if the attack persists), and a hardcoded allowlist protects management networks and upstream resolvers from ever being blocked by automation.</p>
+      <p class="code-label">TIME-BOXED BLOCK WITH ALLOWLIST GUARD (PYTHON)</p>
+<pre><code class="language-bash">import ipaddress, requests
+
+NEVER_BLOCK = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+               "203.0.113.10/32"]          # our VPN egress
+
+def contain(ip):
+    addr = ipaddress.ip_address(ip)
+    for net in NEVER_BLOCK:
+        if addr in ipaddress.ip_network(net):
+            return {"action": "skipped", "reason": f"allowlisted {net}"}
+    r = requests.post(
+        "https://fw01.example.internal/api/v2/firewall/alias/add_address",
+        headers={"Authorization": f"Bearer {FW_KEY}"},
+        json={"name": "SOAR_BLOCK", "address": ip,
+              "descr": "auto-block case ~8200 (24h TTL)"},
+        verify=False, timeout=10)
+    r.raise_for_status()
+    requests.post("https://fw01.example.internal/api/v2/firewall/apply",
+                  headers={"Authorization": f"Bearer {FW_KEY}"},
+                  verify=False, timeout=15)
+    return {"action": "blocked", "ip": ip, "ttl_hours": 24}</code></pre>
+      <p>The firewall alias <code>SOAR_BLOCK</code> is bound to a single floating rule at the top of the WAN ruleset (<em>block, source = SOAR_BLOCK alias</em>), so adding an address is the only operation the API key ever needs — the playbook cannot accidentally edit real rules.</p>
+      <p><strong>Verify on the firewall</strong> (pfsense/opnsense CLI equivalent):</p>
+<pre><code class="language-bash">pfctl -t SOAR_BLOCK -T show | grep 203.0.113.45
+203.0.113.45</code></pre>
+      <p><strong>Common mistake:</strong> forgetting the <em>apply</em> call. On pfSense-style APIs, alias edits are staged until applied, so the address appears in the GUI but isn't in the live table — <code>pfctl -T show</code> is the ground truth, not the web UI. Second mistake: no TTL. A permanent auto-block list grows until it becomes its own outage; the 24-hour expiry forces every block to re-earn its place.</p>
+
+      <h3>5. Fire the notification webhook and log the audit trail</h3>
+      <p>Notification closes the loop with the humans. The message is deliberately terse — verdict, score, action, case number — because its job is awareness, not forensics; the case holds the detail. Every action also appends to the case timeline so the whole run is reconstructable months later.</p>
       <div class="command-block"><div class="command"><code>curl -X POST $SLACK_WEBHOOK -d '{"text":"[AUTO] 203.0.113.45 blocked, case ~8200"}'</code></div></div>
+      <p class="code-label">STRUCTURED AUDIT ENTRY ON THE CASE (PYTHON)</p>
+<pre><code class="language-bash">hive.case.create_task_log(case_id, {
+    "message": "SOAR run complete\n"
+               "verdict=malicious score=95 action=blocked\n"
+               "enrich_ms=18230 contain_ms=940 notify_ms=210\n"
+               "playbook_version=1.4.2"
+})</code></pre>
+      <p>Recording the playbook version in every log entry pays off later: when you change the verdict threshold and false-positive rates shift, you can group case outcomes by version and prove which change did it.</p>
 <pre><code class="language-bash">{"verdict":"malicious","score":92,"action":"blocked","mttr_seconds":214}</code></pre>
+      <p>The summary line above is what the orchestrator prints at the end of a full run — 214 seconds from alert receipt to blocked IP, comfortably inside the 5-minute target. The bulk of that (about 3 minutes of the 3:34) is Cortex job time; everything the playbook itself controls is under 2 seconds.</p>
+      <p><strong>Common mistake:</strong> swallowing webhook failures. If Slack returns 429 (rate limit) or 5xx and you don't retry, containment happened but nobody knows. Wrap the POST in <code>tenacity</code> with exponential backoff (3 attempts, 2s/8s/32s) and, on final failure, write the notification payload to a fallback file a cron job re-sends.</p>
+
+      <h3>6. Wire the benign branch to auto-close</h3>
+      <p>The diagram's benign branch exists so verdict policy stays honest: a case is opened for every alert that crossed the severity threshold, enriched, verdicted, and — when benign — immediately closed with the enrichment evidence attached. This makes "the playbook ignored it" distinguishable from "the playbook saw it and cleared it," which matters enormously when you tune thresholds later.</p>
+      <p class="code-label">AUTO-CLOSE WITH EVIDENCE (PYTHON)</p>
+<pre><code class="language-bash">if v["verdict"] == "benign":
+    hive.case.create_task_log(case_id, {
+        "message": f"auto-close: benign verdict, score={v['score']}"
+    })
+    hive.case.update(case_id, fields={
+        "status": "TruePositive",       # resolved, not an incident
+        "resolutionStatus": "Indeterminate",
+        "summary": "Auto-closed by SOAR playbook: no malicious taxonomy."
+    })</code></pre>
+      <p><strong>Verify:</strong> replay a known-clean IP (e.g. 8.8.8.8) through the webhook and confirm a case appears, gets enriched, and closes itself within the enrichment window, with the score in the log. If the benign branch never fires during testing, the verdict policy is almost certainly too aggressive.</p>
     </section>
 
     <section><h2>Validation &amp; Testing</h2>
       <p>Inject a synthetic malicious-IP alert and confirm the playbook enriches, contains, notifies, and updates the case without analyst input. Pass criteria: end-to-end MTTR under 5 minutes and an auditable case timeline.</p>
+      <p>Three layers of testing, in order. Unit tests pin the verdict policy so a refactor can't silently flip it:</p>
+      <p class="code-label">UNIT TEST THE VERDICT GATE (PYTEST)</p>
+<pre><code class="language-bash">def test_malicious_taxonomy_wins():
+    reports = [fake_report(level="malicious", score=30)]
+    assert verdict(reports)["verdict"] == "malicious"
+
+def test_score_threshold_boundary():
+    assert verdict([fake_report(score=79)])["verdict"] == "benign"
+    assert verdict([fake_report(score=80)])["verdict"] == "malicious"
+
+def test_empty_reports_are_benign():
+    assert verdict([])["verdict"] == "benign"</code></pre>
+      <p>Then an end-to-end injection runs the real pipeline against a firewall running in a lab VLAN — never test containment against production. The injector timestamps the alert; the orchestrator's final log line carries the elapsed time, so MTTR is measured, not guessed:</p>
+      <p class="code-label">END-TO-END SYNTHETIC ALERT INJECTION</p>
+<pre><code class="language-bash">./inject_test_alert.py --ip 198.51.100.77 --severity 3 --rule 5710
+[+] webhook accepted (202), key=9f31aa72c04d18be
+[+] case ~8204 created
+[+] cortex job finished: AbuseIPDB level=malicious score=98
+[+] containment: blocked 198.51.100.77 (ttl=24h)
+[+] slack notification delivered (200)
+[+] MTTR: 187 seconds — PASS (&lt; 300s threshold)</code></pre>
+      <p>Finally, the audit check: pull the case timeline via the API and assert every stage left an entry. A run that contains but doesn't log fails validation even though it "worked" — unauditable automation is a liability, not a capability.</p>
+<pre><code class="language-bash">curl -sk -H "Authorization: Bearer $HIVE" \
+  https://thehive:9000/api/v1/query \
+  -d '{"query":[{"_name":"getCase","idOrName":"~8204"},
+                {"_name":"logs"}]}' | python -m json.tool | grep -c '"message"'
+6</code></pre>
+      <p>Six log entries — receipt, enrichment start, enrichment result, verdict, containment, notification — means the timeline is complete. Run the injection weekly as a scheduled smoke test; playbooks rot silently as APIs and tokens drift.</p>
     </section>
 
     <details><summary>Advanced: Troubleshooting</summary>
@@ -105,12 +356,33 @@ def on_alert(a):
       </ul>
     </details>
 
+    <section><h2>Troubleshooting</h2>
+      <ul>
+        <li><strong>TheHive container starts then exits immediately.</strong> Almost always Cassandra not being ready — TheHive 5 has no retry patience on first boot. Check <code>docker logs cassandra</code> for "Listening for thrift clients" before starting TheHive, or add a healthcheck-gated <code>depends_on: condition: service_healthy</code> in the compose file.</li>
+        <li><strong>Cortex jobs stay in "Waiting" forever.</strong> The analyzer job is queued but no worker picked it up. Confirm Elasticsearch is green (<code>curl localhost:9200/_cluster/health</code>) and that the analyzer is actually enabled for <em>your org</em>, not just globally. Also check the analyzer's own quota: VirusTotal free tier returning 204s stalls jobs silently — Cortex's job log shows the raw analyzer stderr.</li>
+        <li><strong>Verdicts come back benign for obviously bad IPs.</strong> The <code>/run</code> response is being parsed as if it were the report (step 2's classic trap), or TLP on the observable is RED so analyzers refuse to run. Log the raw report JSON for one run and inspect <code>summary.taxonomies</code> by hand.</li>
+        <li><strong>Containment applies but traffic still flows.</strong> The alias was edited but the firewall ruleset wasn't reloaded, or the floating rule sits below a broad pass rule. Verify with <code>pfctl -t SOAR_BLOCK -T show</code> and <code>pfctl -sr | grep SOAR_BLOCK</code> — the block rule must evaluate before any pass that would match.</li>
+        <li><strong>Cases appear twice for one attack burst.</strong> The dedup window is too short for the SIEM's retry interval, or the dedup key includes a field that varies per retry (like a nonce). Key on <code>rule_id + source_ip</code> only, and make sure the webhook returns 202 <em>before</em> doing any slow work so the SIEM never retries in the first place.</li>
+      </ul>
+    </section>
+
     <section><h2>Key Results</h2>
       <ul>
         <li>Cut mean time to respond (MTTR) to under 5 minutes for brute-force events.</li>
         <li>Automated enrichment + containment on 1,000+ alerts/day without analyst input.</li>
         <li>Reduced analyst manual handling time by roughly 80%.</li>
         <li>Maintained a 100% auditable case timeline for every automated action.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li>Automate the mechanical 80% — enrichment, correlation, notification, reversible containment — and keep humans on destructive or ambiguous decisions.</li>
+        <li>ACK webhooks immediately and process asynchronously; synchronous processing is the root cause of duplicate playbook runs.</li>
+        <li>Enrichment is asynchronous too: <code>/run</code> returns a job ID, and parsing it as the final report silently breaks verdicts.</li>
+        <li>Every automated network change needs an allowlist guard and a TTL — automation that can block anything forever will eventually block something important.</li>
+        <li>The benign branch is a feature: auto-closed cases make verdict-policy tuning measurable instead of anecdotal.</li>
+        <li>Measure MTTR from the alert timestamp, log every stage to the case timeline, and re-run the synthetic injection weekly to catch API and token rot.</li>
       </ul>
     </section>
 

@@ -60,6 +60,7 @@
     <section><h2>Objective &amp; Context</h2>
       <p>SSH is the most probed service on any internet-exposed host. Within minutes of a new VPS getting a public IP, botnets start cycling common username/password pairs against port 22. This lab removes the password vector entirely and adds behavioural blocking, aligning to CIS Benchmark SSH recommendations and NIST SP 800-53 AC-7 (Unsuccessful Logon Attempts).</p>
       <p>The defence-in-depth logic is simple: key-only auth means there is no password to guess, so brute force becomes mathematically pointless; fail2ban then makes even the <em>attempt</em> expensive by dropping the source IP after a handful of failures. Together they shrink both the attack surface and the log noise, which matters because a quieter auth log makes real anomalies stand out.</p>
+      <p>One deliberate non-goal: I did <em>not</em> move SSH off port 22. Port relocation is security through obscurity — it reduces log noise but adds zero real resistance (a full-port scan finds the service in seconds), and it breaks monitoring, automation, and muscle memory. The controls here (key-only auth, explicit allowlists, rate-limiting) stand on their own at the standard port, which also keeps the lab honest: the defences have to work against the full weight of internet background radiation.</p>
       <ul>
         <li><strong>T1110 Brute Force</strong> – fail2ban bans source IPs after repeated failures.</li>
         <li><strong>T1021.004 Remote Services: SSH</strong> – key-only auth removes credential stuffing as a path.</li>
@@ -88,6 +89,14 @@ Fail2Ban v1.0.2
 Description:    Ubuntu 22.04.5 LTS</code></pre>
       <p><strong>Common mistake:</strong> skipping the version check and copy-pasting a hardening guide written for a different release. If <code>sshd -t</code> later throws "Bad configuration option", the first thing to compare is your daemon version against the guide's.</p>
       <p>The second open session is not optional advice — it is your rollback path. If a reload locks you out, the already-established session stays alive (existing connections are not dropped on reload), letting you revert the config from inside.</p>
+      <p>A few more things worth lining up before you start:</p>
+      <ul>
+        <li><strong>Out-of-band access</strong> (provider web console, IPMI, or physical access) in case both sessions are lost. On a cloud VPS this is the "Serial Console" or "VNC" button in the dashboard — confirm it works <em>before</em> you need it.</li>
+        <li><strong>Root or sudo on the server</strong> — every step that touches <code>/etc/ssh</code> or the firewall needs it, and the steps that do are marked [ROOT REQUIRED].</li>
+        <li><strong>A test client on a different network or IP</strong> for the fail2ban ban test — banning your only management IP mid-lab is a rite of passage best avoided.</li>
+        <li><strong>Time budget</strong>: about 3 hours including validation, most of it spent double-checking from the client side rather than typing commands.</li>
+      </ul>
+      <p>Everything below is distro-portable in concept; where Ubuntu 22.04 differs from RHEL-family or Debian (unit names, log paths), the difference is called out inline.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
@@ -118,6 +127,17 @@ Number of key(s) added: 1</code></pre>
       <p><code>ssh-copy-id</code> appends your public key to <code>~/.ssh/authorized_keys</code> on the server and — critically — sets the right permissions for you. If the server only allows key auth already, or <code>ssh-copy-id</code> is unavailable (macOS has it; minimal Windows installs may not), do it manually:</p>
       <div class="command-block"><div class="command"><code>cat ~/.ssh/id_ed25519.pub | ssh user@host 'mkdir -p ~/.ssh &amp;&amp; chmod 700 ~/.ssh &amp;&amp; cat &gt;&gt; ~/.ssh/authorized_keys &amp;&amp; chmod 600 ~/.ssh/authorized_keys'</code></div></div>
       <p><strong>Common mistake:</strong> wrong permissions on the server side. sshd <em>silently ignores</em> <code>authorized_keys</code> if <code>~/.ssh</code> is not 700 or the file is not 600, and if the home directory itself is group-writable, <code>StrictModes</code> (on by default) rejects the key too. Check with <code>ls -ld ~ ~/.ssh ~/.ssh/authorized_keys</code>.</p>
+      <p>Verify the deployment from the server side before moving on — the key should be present exactly once and permissions correct:</p>
+      <div class="command-block"><div class="command"><code>ssh user@host 'ls -ld ~ ~/.ssh ~/.ssh/authorized_keys; grep -c . ~/.ssh/authorized_keys'</code></div></div>
+      <pre><code class="language-bash">drwxr-xr-x 3 user user 4096 Sep 21 12:40 /home/user
+drwx------ 2 user user 4096 Sep 21 12:41 /home/user/.ssh
+-rw------- 1 user user  101 Sep 21 12:41 /home/user/.ssh/authorized_keys
+1</code></pre>
+      <p>Optionally, load the key into an agent so the passphrase is typed once per desktop session instead of once per connection:</p>
+      <div class="command-block"><div class="command"><code>eval "$(ssh-agent -s)" &amp;&amp; ssh-add ~/.ssh/id_ed25519</code></div></div>
+      <pre><code class="language-bash">Agent pid 7841
+Enter passphrase for /home/taki/.ssh/id_ed25519:
+Identity added: /home/taki/.ssh/id_ed25519 (taki@tyfsadik.org)</code></pre>
 
       <h3>2. Prove key auth works BEFORE disabling passwords</h3>
       <p>This ordering is the single most important safety rule in the whole lab: never disable password auth until you have logged in with the key in a <em>new</em> session. Test from a fresh terminal, and force key auth so a password prompt cannot mask a broken key setup. The <code>-v</code> flag shows exactly which key the client offers and whether the server accepts it.</p>
@@ -243,6 +263,23 @@ RETURN     all  --  0.0.0.0/0            0.0.0.0/0</code></pre>
       <p>Cleanup after the test so the lab IP is not banned for the next hour:</p>
       <div class="command-block"><div class="command"><code>sudo fail2ban-client set sshd unbanip 203.0.113.44</code></div></div>
       <p><strong>How to verify overall:</strong> all three tests pass — password path refused, key path working, and a real ban appearing in the <code>f2b-sshd</code> chain within seconds of the 5th failure.</p>
+      <p><strong>Test 4 — root login is refused even with a valid key.</strong> Root often has keys of its own; the policy must reject root at the door regardless of credentials:</p>
+      <div class="command-block"><div class="command"><code>ssh root@host</code></div></div>
+      <pre><code class="language-bash">root@host: Permission denied (publickey).</code></pre>
+      <p><strong>Test 5 — measure the log-noise reduction.</strong> This is where the 99.7% figure comes from. Count auth failures reaching PAM over equal windows before and after fail2ban went live:</p>
+      <div class="command-block"><div class="command"><code>sudo journalctl -u ssh --since "7 days ago" --until "6 days ago" | grep -c "Failed password"</code></div><div class="command"><code>sudo journalctl -u ssh --since "24 hours ago" | grep -c "Failed password"</code></div></div>
+      <pre><code class="language-bash">14832
+44</code></pre>
+      <p>Raw scan traffic on the wire barely changed — bots keep knocking — but almost everything is now rejected at the firewall by an existing ban before sshd ever evaluates credentials. Also spot-check that the fail2ban chain is actually seeing drops:</p>
+      <div class="command-block"><div class="command"><code>sudo iptables -L f2b-sshd -n -v | head -5</code></div><div class="command"><code>sudo fail2ban-client get sshd banip</code></div></div>
+      <pre><code class="language-bash">Chain f2b-sshd (1 references)
+ pkts bytes target     prot opt in  out  source        destination
+ 3182  191K REJECT     all  --  *   *    203.0.113.0/24 0.0.0.0/0
+
+203.0.113.44 91.121.87.10 185.220.101.7</code></pre>
+      <p><strong>Rollback plan (tested, not theoretical):</strong> if any validation fails, restore the backup from step 0 and remove the drop-in:</p>
+      <div class="command-block"><div class="command"><code>sudo rm /etc/ssh/sshd_config.d/60-hardening.conf</code></div><div class="command"><code>sudo cp /etc/ssh/sshd_config.bak.$(date +%F) /etc/ssh/sshd_config 2&gt;/dev/null; sudo sshd -t &amp;&amp; sudo systemctl reload sshd</code></div></div>
+      <p>Then re-run Test 2 from your still-open session to confirm you are back to the working baseline before investigating what broke.</p>
     </section>
 
     <section><h2>Troubleshooting</h2>

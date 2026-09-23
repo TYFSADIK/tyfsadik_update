@@ -75,6 +75,7 @@ graph LR
   FW --> App[app subnet]
       </div>
       <p>Two properties of the drawing matter more than the drawing itself. First, NSG evaluation is <strong>priority-ordered, lowest number first</strong>: the first rule that matches a flow decides it, and rules below the match are never evaluated. Second, route selection follows a fixed precedence: <strong>user-defined routes beat BGP routes, which beat system routes</strong>. That precedence is why a single UDR can redirect an entire subnet's egress without touching any VM configuration.</p>
+      <p>One more NSG property saves you half the rules you think you need: NSGs are <strong>stateful</strong>. If an inbound rule allows a flow, the return traffic of that same flow is permitted automatically regardless of your outbound rules - you do not write a matching "allow replies" rule. This is also why the lab only needs one inbound allow rule for 443 instead of two.</p>
     </section>
 
     <section><h2>Environment Setup</h2>
@@ -98,6 +99,23 @@ az account set --subscription "My Subscription"
 az group create -n lab-rg -l eastus
 az configure --defaults group=lab-rg location=eastus</code></pre>
       <p>Verify the defaults took effect - <code>az configure --list-defaults</code> should show <code>group=lab-rg</code> and <code>location=eastus</code>. If you skip this, every <code>az network</code> command below fails with <code>(MissingResourceGroup)</code>, which is a confusing error when you are actually just missing a default.</p>
+      <p>If you do not already have a suitable VNet, build the skeleton in one pass. Note that none of these subnets gets an NSG or route table at creation time - attaching them later, deliberately, is the lab:</p>
+      <p class="code-label">OPTIONAL - QUICK-BUILD THE LAB VNET</p>
+      <pre><code>az network vnet create -n lab-vnet --address-prefixes 10.0.0.0/16 \
+  --subnet-name web-subnet --subnet-prefixes 10.0.1.0/24
+az network vnet subnet create --vnet-name lab-vnet -n app-subnet \
+  --address-prefixes 10.0.2.0/24
+az network vnet subnet create --vnet-name lab-vnet -n fw-subnet \
+  --address-prefixes 10.0.3.0/24
+
+# Minimal test VMs (one per subnet). Use your own admin password or SSH key.
+az vm create -n web01 --image Ubuntu2204 --size Standard_B2s \
+  --vnet-name lab-vnet --subnet web-subnet --admin-username azureuser \
+  --generate-ssh-keys --public-ip-sku Standard
+az vm create -n fw01 --image Ubuntu2204 --size Standard_B2s \
+  --vnet-name lab-vnet --subnet fw-subnet --admin-username azureuser \
+  --generate-ssh-keys</code></pre>
+      <p>A production firewall would be a Marketplace NVA (Azure Firewall, pfSense, FortiGate); for learning the routing mechanics, a plain Linux VM with IP forwarding enabled behaves identically as a next hop, which is all this lab exercises.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
@@ -105,7 +123,19 @@ az configure --defaults group=lab-rg location=eastus</code></pre>
         <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create an NSG allow rule</strong>
           <div class="command-block" data-copy><div class="command"><code>az network nsg create -n web-nsg &amp;&amp; az network nsg rule create -nsg-name web-nsg -n allow-https -priority 100 -destination-port-ranges 443 -access Allow -protocol Tcp</code></div></div>
           <p>WHAT: this creates the NSG itself, then adds an inbound rule named <code>allow-https</code> at priority 100 permitting TCP traffic to destination port 443. WHY priority 100: Azure reserves 65000-65500 for its default rules and 100-4096 is the usable band for your own. Starting your most specific allow at 100 leaves room above it for even-more-specific exceptions later, and keeps it well ahead of the final <code>DenyAllInBound</code> at 65500. Priority ordering is the whole game - a rule that never gets evaluated because a broader rule matched first is indistinguishable from a rule that does not exist.</p>
-          <p>Every new NSG comes with three inbound defaults you did not write: <code>AllowVNetInBound</code> (65000), <code>AllowAzureLoadBalancerInBound</code> (65001), and <code>DenyAllInBound</code> (65500), plus a mirrored set for outbound. Your allow rule only has to land below 65000 in number to beat the catch-all deny. For least privilege, also add an explicit deny for management ports from the internet so the intent is documented in the rule list, not just implied by the catch-all.</p>
+          <p>Every new NSG comes with three inbound defaults you did not write: <code>AllowVNetInBound</code> (65000), <code>AllowAzureLoadBalancerInBound</code> (65001), and <code>DenyAllInBound</code> (65500), plus a mirrored set for outbound. Your allow rule only has to land below 65000 in number to beat the catch-all deny. The full default set, for reference:</p>
+          <table>
+            <thead><tr><th>Default rule</th><th>Priority</th><th>Direction</th><th>Effect</th></tr></thead>
+            <tbody>
+              <tr><td><code>AllowVNetInBound</code></td><td>65000</td><td>Inbound</td><td>Allows any traffic originating inside the VNet</td></tr>
+              <tr><td><code>AllowAzureLoadBalancerInBound</code></td><td>65001</td><td>Inbound</td><td>Allows Azure load balancer health probes</td></tr>
+              <tr><td><code>DenyAllInBound</code></td><td>65500</td><td>Inbound</td><td>Catch-all deny for everything else inbound</td></tr>
+              <tr><td><code>AllowVNetOutBound</code></td><td>65000</td><td>Outbound</td><td>Allows traffic destined inside the VNet</td></tr>
+              <tr><td><code>AllowInternetOutBound</code></td><td>65001</td><td>Outbound</td><td>Allows all outbound internet traffic</td></tr>
+              <tr><td><code>DenyAllOutBound</code></td><td>65500</td><td>Outbound</td><td>Catch-all deny for everything else outbound</td></tr>
+            </tbody>
+          </table>
+          <p>You cannot delete these defaults - you can only override them with lower-numbered rules, which is exactly what the lab does. For least privilege, also add an explicit deny for management ports from the internet so the intent is documented in the rule list, not just implied by the catch-all.</p>
           <p class="code-label">FULL RULE SET - allow 443, explicitly deny management ports</p>
           <pre><code>az network nsg rule create --nsg-name web-nsg -n allow-https \
   --priority 100 --direction Inbound --access Allow --protocol Tcp \
@@ -116,6 +146,19 @@ az network nsg rule create --nsg-name web-nsg -n deny-mgmt-internet \
   --priority 200 --direction Inbound --access Deny --protocol Tcp \
   --source-address-prefixes Internet --source-port-ranges '*' \
   --destination-address-prefixes '*' --destination-port-ranges 22 3389</code></pre>
+          <p>Note the service tags used above: <code>Internet</code> is an Azure-defined tag representing all public address space, and it saves you from ever typing <code>0.0.0.0/0</code> as a source. The same mechanism offers <code>VirtualNetwork</code>, <code>AzureLoadBalancer</code>, and per-service tags like <code>Storage.EastUS</code> - using tags instead of hard-coded ranges keeps rules correct when Azure's own address space changes.</p>
+          <p>Inbound is only half of least privilege. The web tier also has no business initiating outbound connections to arbitrary internet hosts, so pin its egress down too: allow what the workload needs (here, Azure platform services and the app tier) and deny the rest. Outbound rules are evaluated with the same lowest-priority-first logic.</p>
+          <p class="code-label">OUTBOUND LEAST PRIVILEGE - allow what is needed, deny the rest</p>
+          <pre><code>az network nsg rule create --nsg-name web-nsg -n allow-out-app \
+  --priority 100 --direction Outbound --access Allow --protocol Tcp \
+  --source-address-prefixes 10.0.1.0/24 --source-port-ranges '*' \
+  --destination-address-prefixes 10.0.2.0/24 --destination-port-ranges 8080
+
+az network nsg rule create --nsg-name web-nsg -n deny-out-internet \
+  --priority 4096 --direction Outbound --access Deny --protocol '*' \
+  --source-address-prefixes '*' --source-port-ranges '*' \
+  --destination-address-prefixes Internet --destination-port-ranges '*'</code></pre>
+          <p>Why priority 4096 for the egress deny: it sits at the top of your usable band, still ahead of the default <code>AllowInternetOutBound</code> (65001) that would otherwise permit outbound internet access. Any future outbound allow you add lands between 100 and 4095 and beats the deny automatically.</p>
           <p>An NSG that is not associated with anything filters nothing. Attach it to the web subnet so it applies to every NIC in that subnet:</p>
           <p class="code-label">ASSOCIATE THE NSG WITH THE WEB SUBNET</p>
           <pre><code>az network vnet subnet update --vnet-name lab-vnet -n web-subnet \
@@ -126,13 +169,42 @@ az network nsg rule create --nsg-name web-nsg -n deny-mgmt-internet \
 Name                Priority  Direction  Access  Protocol  DestinationPortRanges
 ------------------  --------  ---------  ------  --------  ---------------------
 allow-https         100       Inbound    Allow   Tcp       443
-deny-mgmt-internet  200       Inbound    Deny    Tcp       22, 3389</code></pre>
+allow-out-app       100       Outbound   Allow   Tcp       8080
+deny-mgmt-internet  200       Inbound    Deny    Tcp       22, 3389
+deny-out-internet   4096      Outbound   Deny    *         *</code></pre>
           <p>Common mistake: creating the rule against the wrong NSG name (every lab has at least one orphaned NSG from a previous attempt) or forgetting the subnet association. Verify with the table above - if your rule appears but traffic behavior does not change, the association is the first thing to check with <code>az network vnet subnet show --vnet-name lab-vnet -n web-subnet --query networkSecurityGroup</code>.</p>
         </div></div>
         <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Create a UDR forcing traffic via a firewall</strong>
           <p>A user-defined route overrides Azure's default routing so traffic must pass your inspection point.</p>
           <div class="command-block" data-copy><div class="command"><code>az network route-table create -n rt-app &amp;&amp; az network route-table route create -route-table-name rt-app -n to-fw -address-prefix 0.0.0.0/0 -next-hop-type VirtualAppliance -next-hop-ip-address 10.0.3.4</code></div></div>
           <p>WHAT: a route table named <code>rt-app</code> holding one route, <code>to-fw</code>, that sends all traffic matching <code>0.0.0.0/0</code> to next-hop type <code>VirtualAppliance</code> at <code>10.0.3.4</code>. WHY: by default, Azure system routes give every subnet a direct path to the internet and to each other. The moment this UDR is associated with the app subnet, UDR precedence kicks in and the subnet's default route becomes the NVA - without logging into a single VM. This is the standard pattern for forced tunneling through a firewall, and <code>VirtualAppliance</code> is the next-hop type that requires an explicit IP (unlike <code>Internet</code> or <code>VirtualNetworkGateway</code>, which are symbolic).</p>
+          <p>To see what you are overriding, look at the effective routes <em>before</em> associating anything. Every route in the list is sourced <code>Default</code> - these are the system routes Azure builds automatically from the VNet's address space, and they are what any unmodified subnet follows:</p>
+          <p class="code-label">BASELINE - system routes on an app-subnet NIC before the UDR</p>
+          <pre><code>az network nic show-effective-route-table -n app01VMNic -o table
+
+Source   AddressPrefix  NextHopType      NextHopIp
+-------  -------------  ---------------  ----------
+Default  10.0.0.0/16    VnetLocal
+Default  0.0.0.0/0      Internet
+Default  10.0.0.0/8     None
+Default  172.16.0.0/12  None
+Default  192.168.0.0/16 None</code></pre>
+          <p>Two things to notice in the baseline. The <code>Default 0.0.0.0/0 -&gt; Internet</code> line is the route your UDR is about to replace - after association, the same command shows that prefix sourced as <code>User</code> with the appliance as next hop. And the three RFC 1918 <code>None</code> routes outside your VNet's range are deliberate blackholes: Azure drops private-range traffic that does not belong to the VNet, which is why peered or on-prem networks need explicit routes rather than goodwill.</p>
+          <p>Choosing the next-hop type is the design decision in any UDR. The five options:</p>
+          <table>
+            <thead><tr><th>Next-hop type</th><th>What it means</th><th>Typical use</th></tr></thead>
+            <tbody>
+              <tr><td><code>VirtualAppliance</code></td><td>A specific IP of an NVA (firewall, IDS, proxy)</td><td>This lab - forced inspection</td></tr>
+              <tr><td><code>VirtualNetworkGateway</code></td><td>VPN or ExpressRoute gateway</td><td>Force traffic back on-premises</td></tr>
+              <tr><td><code>Internet</code></td><td>Azure's default internet egress</td><td>Override a forced tunnel for one prefix</td></tr>
+              <tr><td><code>None</code></td><td>Blackhole - drop matching traffic</td><td>Deliberately kill a flow path</td></tr>
+              <tr><td><code>VnetLocal</code></td><td>Stay inside the VNet</td><td>Exempt intra-VNet traffic from a gateway override</td></tr>
+            </tbody>
+          </table>
+          <p>If the VNet is peered to an on-premises network over ExpressRoute or VPN, one more flag matters: BGP route propagation. A gateway can advertise routes (including a <code>0.0.0.0/0</code> from your on-prem edge) that would compete with your UDRs. Creating the table with propagation disabled makes the subnet deaf to those advertisements, so your UDRs are the only user intent in play:</p>
+          <p class="code-label">HYBRID BONUS - create the table deaf to BGP advertisements</p>
+          <pre><code>az network route-table create -n rt-app --disable-bgp-route-propagation true</code></pre>
+          <p>In this standalone lab it makes no observable difference; in a hybrid environment it is the difference between a deterministic route table and one that changes when the on-prem router does.</p>
           <p>Like the NSG, a route table does nothing until it is associated with a subnet. Associate it with the app subnet, and enable IP forwarding on the NVA's NIC - Azure drops packets delivered to a NIC whose IP is not the packet's destination unless forwarding is explicitly on. That Azure-side flag is separate from the OS-level forwarding inside the appliance, and you need both.</p>
           <p class="code-label">ASSOCIATE THE ROUTE TABLE AND ENABLE FORWARDING ON THE NVA</p>
           <pre><code>az network vnet subnet update --vnet-name lab-vnet -n app-subnet \
@@ -166,6 +238,10 @@ User    0.0.0.0/0      VirtualAppliance   10.0.3.4</div>
 # For full detail, ask for the JSON and filter to inbound allows:
 az network nic list-effective-nsg -n web01VMNic \
   --query "value[].association.networkSecurityGroup.id" -o tsv</code></pre>
+          <p>Both commands take a NIC, not a VM. If you only know the VM name, resolve its NICs first - a VM can have several, and each has its own effective views:</p>
+          <p class="code-label">RESOLVE A VM'S NICS WHEN YOU ONLY KNOW THE VM NAME</p>
+          <pre><code>az vm nic list --vm-name web01 -o table
+az vm nic show --vm-name web01 --nic web01VMNic --query "ipConfigurations[].privateIPAddress"</code></pre>
           <p>Common mistake: running these commands immediately after a change and reading a stale view - effective views can take a minute to converge after an association change. If the output does not match what you just configured, wait 60-90 seconds and re-run before assuming the configuration is wrong. Also remember both commands target a NIC, not a VM: use <code>az vm nic list -g lab-rg --vm-name web01</code> if you only know the VM name.</p>
         </div></div>
       </div>
@@ -180,6 +256,20 @@ graph LR
   style B fill:#1a4a1a,stroke:#00ff00,color:#fff
   style C fill:#1a4a1a,stroke:#00ff00,color:#fff
       </div>
+    </section>
+
+    <section><h2>NSG vs UDR: Which Tool for Which Job</h2>
+      <p>By this point both mechanisms are in place, and it is worth stating the division of labor explicitly because real designs mix them up constantly. If you are asking "should this be blocked?", you are writing an NSG rule. If you are asking "which path should this take?", you are writing a route. Neither can do the other's job: a UDR cannot drop a packet by policy (a <code>None</code> next hop drops by routing, not by 5-tuple), and an NSG cannot redirect a packet anywhere - allowed traffic follows the route table, always.</p>
+      <table>
+        <thead><tr><th>Question</th><th>Tool</th><th>Knob</th></tr></thead>
+        <tbody>
+          <tr><td>May the internet reach the web tier on 443?</td><td>NSG</td><td>Inbound allow rule, priority 100</td></tr>
+          <tr><td>May anyone SSH from the internet?</td><td>NSG</td><td>Explicit deny, or the default <code>DenyAllInBound</code></td></tr>
+          <tr><td>Does app-tier egress pass the firewall?</td><td>Route table</td><td><code>0.0.0.0/0</code> UDR to the NVA's IP</td></tr>
+          <tr><td>Does a specific prefix bypass the tunnel?</td><td>Route table</td><td>More-specific UDR with <code>Internet</code> next hop</td></tr>
+          <tr><td>Which combination is actually in effect?</td><td>Both</td><td>Effective rules / effective routes on the NIC</td></tr>
+        </tbody>
+      </table>
     </section>
 
     <section><h2>Testing &amp; Validation</h2>
@@ -198,11 +288,31 @@ graph LR
 # The same probe against port 22 should return:
 #   "access": "Deny",
 #   "ruleName": "securityRule/deny-mgmt-internet"</code></pre>
+      <p>The <code>ruleName</code> in the response is the most valuable part: it names the exact rule that decided the flow, so when an answer surprises you, you know which rule to fix instead of guessing.</p>
       <p>Second, test with real traffic, because stateful behavior and the appliance's own rules are not visible to a policy lookup. From an external host, HTTPS should connect and SSH should time out:</p>
       <p class="code-label">REAL TRAFFIC - allowed 443 succeeds, denied 22 times out</p>
       <pre><code>curl -vk https://&lt;web01-public-ip&gt;/       # TLS handshake completes
 ssh -o ConnectTimeout=5 &lt;web01-public-ip&gt; # hangs, then: Connection timed out</code></pre>
       <p>The difference between <em>timed out</em> and <em>connection refused</em> is diagnostic gold: a timeout means the NSG dropped the packet (no listener ever saw it), while a refusal means the packet arrived and the host rejected it - in other words, your NSG let it through. Third, confirm from a VM in the app subnet that egress really traverses the appliance: <code>traceroute</code> to any external address should show <code>10.0.3.4</code> as the first hop outside the subnet.</p>
+      <p class="code-label">PATH CHECK - from a VM in the app subnet, the NVA is the first hop</p>
+      <pre><code>sudo apt install -y traceroute
+traceroute -n 8.8.8.8
+
+# Expected first hops (illustrative):
+#   1  10.0.3.4    1.2 ms    &lt;- the firewall appliance
+#   2  ...
+#
+# If hop 1 is NOT 10.0.3.4, the UDR is not associated to this subnet.</code></pre>
+      <p>If you cannot log into the app VM to run <code>traceroute</code>, Network Watcher can answer the same question from the control plane. The next-hop tool reports which route a given destination would take from a given VM - the routing equivalent of IP flow verify:</p>
+      <p class="code-label">PATH CHECK FROM THE CONTROL PLANE - Network Watcher next hop</p>
+      <pre><code>az network watcher show-next-hop --vm app01 \
+  --source-ip 10.0.2.4 --dest-ip 8.8.8.8
+
+# Expected:
+#   "nextHopType": "VirtualAppliance",
+#   "nextHopIpAddress": "10.0.3.4",
+#   "routeTableId": ".../routeTables/rt-app"</code></pre>
+      <p>The response even names the route table responsible, which makes it the fastest way to confirm a UDR association from outside the guest OS.</p>
       <p class="code-label">OPTIONAL - enable NSG flow logs for ongoing evidence of denies</p>
       <pre><code>az network watcher flow-log create -n web-nsg-flowlog \
   --nsg web-nsg --storage-account labflowlogsa \
@@ -243,9 +353,17 @@ ssh -o ConnectTimeout=5 &lt;web01-public-ip&gt; # hangs, then: Connection timed 
         <li><strong>Priority order is the policy.</strong> Lowest number wins and evaluation stops at the first match, so specific allows go low in number and the catch-all deny (yours or the built-in 65500) cleans up behind them.</li>
         <li><strong>Nothing works until it is associated.</strong> NSGs attach to subnets or NICs; route tables attach to subnets. An unassociated resource is inert - most "the rule does nothing" bugs are association bugs.</li>
         <li><strong>Route precedence is fixed:</strong> user-defined routes beat BGP routes beat system routes. One UDR on a subnet redirects its whole egress path with zero guest-OS changes.</li>
+        <li><strong>NSGs are stateful.</strong> Allowed flows permit their own replies; you write the rule for the initiating direction only.</li>
         <li><strong>Trust the effective views, then prove with traffic.</strong> <code>show-effective-route-table</code> and <code>list-effective-nsg</code> show the merged truth; <code>test-ip-flow</code>, a real <code>curl</code>/<code>ssh</code> probe, and NSG flow logs confirm the behavior.</li>
         <li><strong>An NVA needs forwarding at two layers.</strong> Azure-side IP forwarding on the NIC and OS-side forwarding in the guest - one without the other drops routed packets silently.</li>
       </ul>
+    </section>
+
+    <section><h2>Cleanup</h2>
+      <p>Lab VMs and public IPs bill by the hour, so tear everything down when you are done. Because all resources live in one resource group, one command removes the whole lab. Deleting the group is irreversible - export anything you want to keep (flow logs, packet captures) first.</p>
+      <p class="code-label">TEAR DOWN - delete the entire lab</p>
+      <pre><code>az group delete -n lab-rg --yes --no-wait</code></pre>
+      <p>Verify with <code>az group exists -n lab-rg</code> - it should return <code>false</code> once the delete completes.</p>
     </section>
 
     <section class="related-labs"><h2>Related Labs</h2>

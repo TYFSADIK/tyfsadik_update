@@ -53,14 +53,20 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">OpenVAS/GVM</span><span class="tag">Nessus</span><span class="tag">Ansible</span><span class="tag">Jira API</span><span class="tag">Grafana</span><span class="tag">CVSS 3.1</span></div>
     </div>
 
-    <section><p class="lead">I built a closed-loop vulnerability management cycle that schedules OpenVAS scans, prioritizes findings by CVSS 3.1 and business context, opens Jira tickets via API, and remediates with Ansible. The pipeline cut the critical-vulnerability exposure window from 7 days to 4 hours across 15+ Linux nodes.</p></section>
+    <section><p class="lead">I built a closed-loop vulnerability management cycle that schedules OpenVAS scans, prioritizes findings by CVSS 3.1 and business context, opens Jira tickets via API, and remediates with Ansible. The pipeline cut the critical-vulnerability exposure window from 7 days to 4 hours across 15+ Linux nodes.</p>
+      <p>The problem with the old process was not detection - it was latency and handoffs. A weekly manual scan produced a CSV that sat in someone's inbox, prioritization was a judgement call per analyst, and patching waited for the next maintenance window. By the time a critical CVE was patched, it had often been exposed for a week. This lab rebuilds that pipeline end to end so that every stage - scan, analyze, ticket, patch, verify - is automated, timestamped, and auditable.</p>
+      <p>The loop is deliberately boring: no exotic tooling, just GVM's GMP protocol for scanner control, the Jira REST API for ticketing, Ansible for idempotent remediation, and PostgreSQL/Grafana for metrics. Each stage emits a machine-readable artifact (report UUID, CSV, ticket key, playbook recap) that the next stage consumes, so a failed stage halts the pipeline instead of silently dropping findings.</p>
+    </section>
 
     <section><h2>Context &amp; Standards Alignment</h2>
       <p>The workflow implements the NIST SP 800-40 patch management lifecycle and CIS Control 7 (Continuous Vulnerability Management), turning ad-hoc scanning into a measurable, auditable process.</p>
+      <p>Concretely, the mapping looks like this: NIST SP 800-40r4's "Identify and Prioritize" phase is covered by the GVM scan plus CVSS 3.1 scoring enriched with asset criticality tags; "Remediate and Mitigate" is the Ansible stage; "Verify and Measure" is the delta rescan and Grafana trend. For CIS Control 7, the pipeline satisfies 7.1 (establish a vulnerability management process), 7.3 (perform automated operating system patch management), 7.4 (automated application patch management), and 7.5/7.6 (authenticated internal scans on a schedule). Because every stage writes to the results store, an auditor can reconstruct exactly when a CVE was detected, ticketed, patched, and verified closed.</p>
+      <p>On the threat-model side, the prioritization logic weights two MITRE ATT&amp;CK techniques heavily, because they describe how the lab's simulated adversaries actually get initial access:</p>
       <ul>
         <li><strong>T1190 Exploit Public-Facing Application</strong> – prioritized remediation of internet-reachable CVEs.</li>
         <li><strong>T1203 Exploitation for Client Execution</strong> – endpoint patch orchestration via Ansible.</li>
       </ul>
+      <p>A finding on an internet-facing host tagged <code>zone=dmz</code> gets its effective priority bumped one band (HIGH &rarr; CRITICAL) because T1190-style exploitation requires no user interaction, whereas a client-side CVE (T1203) behind patched browsers and email filtering can wait for the standard window. That business-context adjustment is the difference between a raw scanner dump and a risk-ranked work queue.</p>
       <div class="mermaid" role="img" aria-label="Vulnerability management cycle from scan to verification">
 flowchart LR
   S[Scan<br/>OpenVAS/GVM] --> A[Analyze<br/>CVSS 3.1]
@@ -78,6 +84,20 @@ flowchart LR
         <li>Ansible control node with inventory of 15+ RHEL 9 / Ubuntu 22.04 hosts.</li>
         <li>Jira Cloud project + API token; Grafana dashboard fed from a PostgreSQL results store.</li>
       </ul>
+      <p>A few details that matter before you start. The GVM scanner runs as a dedicated VM (4 vCPU / 16 GB RAM is a workable minimum - the NVT cache rebuild after a feed sync will happily eat all of it). The scanner, control node, and targets live on an isolated lab VLAN <code>192.168.20.0/24</code> so credentialed scanning never touches production. On the Ansible side, every managed host has a dedicated, non-root <code>patchbot</code> account with passwordless sudo scoped to package-manager and reboot commands only - this keeps the remediation blast radius small if the control node is ever compromised.</p>
+      <p>The Ansible inventory carries the asset-criticality metadata that step 4's prioritization joins against. Keeping zone and data-classification tags in the inventory (rather than a side spreadsheet) means the pipeline and the humans read from the same source of truth:</p>
+      <p class="code-label">INI — INVENTORY WITH ASSET-CRITICALITY TAGS</p>
+<pre><code class="language-ini">[dmz]
+192.168.20.31 zone=dmz role=web data=public
+
+[internal]
+192.168.20.18 zone=internal role=app data=restricted
+192.168.20.22 zone=internal role=db  data=restricted
+
+[critical_hosts:children]
+# populated dynamically by the pipeline each cycle</code></pre>
+      <p>The Jira project uses a dedicated issue type (<code>Vulnerability</code>) with custom fields for CVE ID, CVSS score, affected host, and due date, so the API-created tickets can be queried and SLA-tracked later. Grafana reads from a PostgreSQL table that the pipeline appends to after each stage - one row per finding per cycle - which is what makes the "exposure window" metric computable at all.</p>
+      <p>The same scanning stage also plugs into CI, so images with critical findings never reach deployment in the first place:</p>
       <div class="mermaid" role="img" aria-label="CI/CD integration for pre-deployment scanning">
 flowchart TB
   Commit[Git push] --> Build[CI build]
@@ -88,32 +108,244 @@ flowchart TB
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
-      <h3>1. Launch an authenticated scan via the GVM CLI [PRIVILEGED]</h3>
-      <div class="command-block"><div class="command"><code>gvm-cli -gmp-username admin socket -xml "&lt;start_task task_id='UUID'/&gt;"</code></div></div>
+      <h3>1. Sync the Greenbone feeds and verify scanner health [PRIVILEGED]</h3>
+      <p>Everything downstream depends on a current NVT (Network Vulnerability Test) feed. If the feed is stale, the scanner is running last week's signatures and will miss anything disclosed since. GVM splits its data into three feeds - NVTs, SCAP data (CVE/CPE), and CERT advisories - and each has its own sync command. Run them as the service user (<code>_gvm</code> on Debian packages, <code>gvm</code> on source builds), because the feed files are permission-locked to that account; running sync as root once is a classic way to break future automated syncs with ownership errors.</p>
+      <p class="code-label">BASH — FEED SYNC AS THE SERVICE USER</p>
+<pre><code class="language-bash">sudo -u _gvm greenbone-feed-sync --type nvt
+sudo -u _gvm greenbone-feed-sync --type scap
+sudo -u _gvm greenbone-feed-sync --type cert
+sudo -u _gvm greenbone-feed-sync --type gvmd-data</code></pre>
+      <p>After the sync, verify gvmd is up and answering GMP over its Unix socket before touching anything else. A quick <code>&lt;get_version/&gt;</code> request confirms both the daemon and the socket path:</p>
+      <div class="command-block"><div class="command"><code>gvm-cli --gmp-username admin socket --xml "&lt;get_version/&gt;"</code></div></div>
+      <p class="code-label">EXPECTED OUTPUT</p>
+<pre><code class="language-xml">&lt;get_version_response status="200" status_text="OK"&gt;
+  &lt;version&gt;22.4&lt;/version&gt;
+&lt;/get_version_response&gt;</code></pre>
+      <p><strong>Common mistake:</strong> automating this with <code>cron</code> as root. The sync succeeds but re-owns feed directories to root, and the next scan fails with cryptic "no NVTs available" errors. Verify with <code>ls -l /var/lib/openvas/plugins/</code> - everything should be owned by <code>_gvm:_gvm</code>.</p>
 
-      <h3>2. Export and prioritize by CVSS 3.1</h3>
+      <h3>2. Create scan credentials and a credentialed target</h3>
+      <p>Unauthenticated scanning only sees what an attacker across the network sees: open ports, banners, and a handful of remotely-probeable flaws. An authenticated scan logs in over SSH and queries the local package database (<code>rpm</code>/<code>dpkg</code>), which is where the vast majority of patch-level CVEs are found - in my lab, going credentialed roughly multiplied per-host findings by ten. Create a dedicated, low-privilege scan account on every target first (the Ansible inventory already has <code>patchbot</code>, and the scanner gets its own <code>scanuser</code>), then register the credential and target with gvmd.</p>
+      <p class="code-label">XML — CREATE AN SSH CREDENTIAL VIA GMP</p>
+<pre><code class="language-xml">&lt;create_credential&gt;
+  &lt;name&gt;lab-ssh-scanuser&lt;/name&gt;
+  &lt;type&gt;up&lt;/type&gt;
+  &lt;login&gt;scanuser&lt;/login&gt;
+  &lt;password&gt;STRONG-RANDOM-PW&lt;/password&gt;
+&lt;/create_credential&gt;</code></pre>
+      <p>Then define the target, attaching the credential UUID returned by the previous call. Port list <code>33d0cd82-57c6-11e1-8ed1-406186ea4fc5</code> is the built-in "All IANA assigned TCP" list - slow but thorough, which is fine for a nightly job:</p>
+      <p class="code-label">XML — CREATE A TARGET WITH THE CREDENTIAL ATTACHED</p>
+<pre><code class="language-xml">&lt;create_target&gt;
+  &lt;name&gt;lab-linux-vlan20&lt;/name&gt;
+  &lt;hosts&gt;192.168.20.0/24&lt;/hosts&gt;
+  &lt;port_list id="33d0cd82-57c6-11e1-8ed1-406186ea4fc5"/&gt;
+  &lt;ssh_credential id="CREDENTIAL-UUID"&gt;
+    &lt;port&gt;22&lt;/port&gt;
+  &lt;/ssh_credential&gt;
+&lt;/create_target&gt;</code></pre>
+      <p>Verify the credential actually works before scheduling anything - a target with a bad password scans "successfully" and returns almost nothing, which is worse than failing loudly. The <code>&lt;get_targets/&gt;</code> response should show your credential UUID nested under the target, and the first test scan's report should contain hundreds of "package version" style results, not just port banners.</p>
+      <p><strong>How to verify:</strong> grep the first report for <code>1.3.6.1.4.1.25623.1.0</code> OIDs (local security checks). If you only see remote/banner checks, the login failed - check <code>/var/log/secure</code> on a target for the scanner's SSH attempts.</p>
+
+      <h3>3. Launch an authenticated scan via the GVM CLI [PRIVILEGED]</h3>
+      <p>With the target registered, create a task that binds target + scan config ("Full and fast", ID <code>daba56c8-73ec-11df-a475-002264764cea</code>), then start it. The whole run is driven over GMP so it can live in a nightly systemd timer rather than a GUI session:</p>
+      <div class="command-block"><div class="command"><code>gvm-cli -gmp-username admin socket -xml "&lt;start_task task_id='UUID'/&gt;"</code></div></div>
+      <p class="code-label">EXPECTED OUTPUT — SCAN ACCEPTED, REPORT ID RETURNED</p>
+<pre><code class="language-xml">&lt;start_task_response status="202" status_text="OK, request submitted"&gt;
+  &lt;report_id&gt;b8f1c2a4-9e31-4c6d-8a52-1f7d3e90ab12&lt;/report_id&gt;
+&lt;/start_task_response&gt;</code></pre>
+      <p>The returned report UUID is the artifact the next stage consumes, so the wrapper script captures it immediately and polls task status until it flips to <code>Done</code>:</p>
+      <p class="code-label">BASH — POLL UNTIL THE SCAN COMPLETES</p>
+<pre><code class="language-bash">while true; do
+  STATUS=$(gvm-cli --gmp-username admin socket --xml \
+    "&lt;get_tasks task_id='$TASK_ID'/&gt;" | grep -oPm1 '(?&lt;=&lt;status&gt;)[^&lt;]+')
+  [ "$STATUS" = "Done" ] &amp;&amp; break
+  [ "$STATUS" = "Stopped" -o "$STATUS" = "Interrupted" ] &amp;&amp; exit 1
+  sleep 120
+done
+echo "scan complete, report=$REPORT_ID"</code></pre>
+      <p><strong>Common mistake:</strong> treating <code>Interrupted</code> as "done" and exporting a partial report. The loop above exits non-zero on anything that is not <code>Done</code>, which stops the pipeline instead of ticketing half a scan's worth of findings.</p>
+
+      <h3>4. Export and prioritize by CVSS 3.1</h3>
+      <p>Once the scan completes, pull the results and filter by severity. CVSS 3.1 base score is the first sort key - 9.0+ is CRITICAL, 7.0-8.9 HIGH - but the pipeline also joins each finding against an asset-criticality table (zone, role, data classification) so an internet-facing HIGH can outrank an internal CRITICAL. The export below grabs everything at 9.0+ for immediate action:</p>
       <div class="command-block"><div class="command"><code>gvm-script -gmp-username admin socket get_results.py -severity 9.0 | tee critical.csv</code></div></div>
 <pre><code class="language-bash">CVE-2024-3094  10.0  CRITICAL  xz-utils backdoor      host=192.168.20.31
 CVE-2023-4911  7.8   HIGH      glibc CVE-2023-4911    host=192.168.20.18</code></pre>
+      <p>The full result set (all severities) is exported the same way without the filter and appended to the PostgreSQL results store with the report UUID, scan timestamp, and ticket state. That append-only history is what lets Grafana compute "days open per CVE" later - you cannot measure an exposure window if you overwrite your findings each cycle.</p>
+      <p class="code-label">PYTHON — EFFECTIVE PRIORITY = CVSS BAND + ASSET CONTEXT</p>
+<pre><code class="language-python">def effective_priority(cvss, asset):
+    band = "CRITICAL" if cvss &gt;= 9.0 else "HIGH" if cvss &gt;= 7.0 else \
+           "MEDIUM"   if cvss &gt;= 4.0 else "LOW"
+    if asset["zone"] == "dmz" and band == "HIGH":
+        return "CRITICAL"          # internet-facing: bump one band
+    if asset["data"] == "restricted" and band == "MEDIUM":
+        return "HIGH"
+    return band</code></pre>
+      <p><strong>How to verify:</strong> cross-check a sample of the CSV against the GVM web UI's report view for the same report UUID. Counts should match exactly; if the CSV is short, the export filter string is wrong (severity filters are on the <em>result</em>, not the NVT).</p>
 
-      <h3>3. Remediate with Ansible</h3>
+      <h3>5. Open Jira tickets via the REST API</h3>
+      <p>Every HIGH/CRITICAL finding becomes a Jira ticket automatically - this is what killed the "CSV in an inbox" failure mode. The script reads <code>critical.csv</code>, deduplicates on <code>(cve, host)</code> against tickets already open (a JQL query first, so re-scans do not spawn duplicates), then POSTs one issue per new finding with the CVSS score, affected host, and a due date computed from the severity SLA (CRITICAL: 24 h, HIGH: 7 days).</p>
+      <p class="code-label">PYTHON — CREATE A JIRA ISSUE PER FINDING</p>
+<pre><code class="language-python">import requests
+from requests.auth import HTTPBasicAuth
+
+auth = HTTPBasicAuth("taki@tyfsadik.org", JIRA_API_TOKEN)
+payload = {
+    "fields": {
+        "project": {"key": "VULN"},
+        "issuetype": {"name": "Vulnerability"},
+        "summary": f"{cve} on {host} (CVSS {score})",
+        "description": f"Scanner report {report_id}\n{nvt_name}\n{solution}",
+        "customfield_10040": cve,      # CVE ID
+        "customfield_10041": score,    # CVSS 3.1
+        "customfield_10042": host,     # affected host
+        "duedate": sla_due_date(band),
+    }
+}
+r = requests.post("https://tyfsadik.atlassian.net/rest/api/3/issue",
+                  json=payload, auth=auth, timeout=30)
+r.raise_for_status()</code></pre>
+      <p class="code-label">EXPECTED OUTPUT</p>
+<pre><code class="language-json">{"id": "10042", "key": "VULN-128",
+ "self": "https://tyfsadik.atlassian.net/rest/api/3/issue/10042"}</code></pre>
+      <p>The returned issue key is written back into the results store next to the finding, which is the linkage that lets the verification stage auto-close tickets later. Note the <code>raise_for_status()</code> - a 401 (bad token) or 400 (missing required custom field) should abort the run loudly, not get logged and forgotten.</p>
+      <p><strong>Common mistake:</strong> skipping the dedup JQL query. Without it, every nightly rescan re-tickets every unpatched finding and the backlog becomes noise within a week. Query for <code>project = VULN AND "CVE ID" ~ "CVE-2024-3094" AND "Host" ~ "192.168.20.31" AND status != Done</code> before creating.</p>
+
+      <h3>6. Remediate with Ansible</h3>
+      <p>The remediation playbook is deliberately narrow: it only touches hosts in the <code>critical_hosts</code> group (populated dynamically from the results store), only updates the packages named in the findings, and runs one host at a time (<code>serial: 1</code>) so a bad patch can never take down the whole fleet in one pass. A <code>pre_tasks</code> snapshot/backup task runs first on anything tagged stateful.</p>
+      <p class="code-label">YAML — PATCH-CRITICAL.YML (ABRIDGED)</p>
+<pre><code class="language-yaml">- hosts: critical_hosts
+  become: true
+  serial: 1
+  vars:
+    patch_packages:
+      - xz
+      - glibc
+  tasks:
+    - name: Update affected packages (RHEL)
+      ansible.builtin.dnf:
+        name: "{{ patch_packages }}"
+        state: latest
+      when: ansible_os_family == "RedHat"
+
+    - name: Update affected packages (Debian)
+      ansible.builtin.apt:
+        name: "{{ patch_packages }}"
+        state: latest
+        update_cache: true
+      when: ansible_os_family == "Debian"
+
+    - name: Reboot only if the kernel or glibc changed
+      ansible.builtin.reboot:
+        reboot_timeout: 600
+      when: reboot_required_fact | default(false) | bool</code></pre>
       <div class="command-block"><div class="command"><code>ansible-playbook -i inventory patch-critical.yml -limit critical_hosts</code></div></div>
 <pre><code class="language-bash">PLAY RECAP
 192.168.20.31 : ok=6 changed=3 unreachable=0 failed=0
 192.168.20.18 : ok=6 changed=2 unreachable=0 failed=0</code></pre>
+      <p>Read the recap like a contract: <code>unreachable=0 failed=0</code> on every host is the pass condition. A non-zero <code>failed</code> count halts the pipeline and the offending host's ticket stays open with the Ansible error attached - partial remediation is reported, never swept under a green dashboard.</p>
+      <p><strong>How to verify:</strong> after the run, spot-check package versions directly: <code>ansible critical_hosts -m shell -a "rpm -q xz glibc"</code> and compare against the fixed versions in the CVE advisories. Trust the recap, but verify the bytes.</p>
+
+      <h3>7. Post-patch health checks before calling it fixed</h3>
+      <p>A package that installs cleanly can still break the service that depends on it - glibc updates are the classic offender. Before the verification rescan, each patched host runs a short health-check play: systemd services back to <code>active</code>, the app endpoint answering HTTP 200, and disk/memory within normal bounds. If any check fails, the host is rolled out of the patch group and its ticket escalated instead of closed.</p>
+      <p class="code-label">YAML — HEALTH CHECK TASKS</p>
+<pre><code class="language-yaml">- name: Confirm critical services are running
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: started
+  loop: "{{ critical_services }}"
+  register: svc
+
+- name: App endpoint answers
+  ansible.builtin.uri:
+    url: "http://{{ inventory_hostname }}:8080/healthz"
+    status_code: 200</code></pre>
+      <p><strong>Common mistake:</strong> rebooting the whole <code>critical_hosts</code> group unconditionally "just in case". Reboots are gated behind the <code>reboot_required</code> fact (set by checking <code>needs-restarting</code> on RHEL or <code>/var/run/reboot-required</code> on Ubuntu) so hosts that do not need one stay up.</p>
+
+      <h3>8. Schedule the whole cycle with a systemd timer</h3>
+      <p>The final piece is making the loop run without me. A single wrapper script chains the stages - scan, poll, export, ticket, patch, rescan - and each stage exits non-zero on failure so <code>set -euo pipefail</code> stops the run before bad data propagates. The wrapper runs from a systemd timer rather than cron because timers give me persistent logs (<code>journalctl -u vuln-cycle</code>), missed-run catch-up (<code>Persistent=true</code>), and a clean way to see when the next cycle fires.</p>
+      <p class="code-label">INI — VULN-CYCLE.TIMER (NIGHTLY AT 02:30)</p>
+<pre><code class="language-ini">[Unit]
+Description=Nightly vulnerability management cycle
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target</code></pre>
+      <p class="code-label">BASH — VULN-CYCLE.SH (WRAPPER, ABRIDGED)</p>
+<pre><code class="language-bash">#!/usr/bin/env bash
+set -euo pipefail
+
+./sync-feeds.sh               # step 1
+./run-scan.sh                 # steps 2-3, writes report UUID to state file
+./export-and-ticket.sh        # steps 4-5
+./remediate.sh                # steps 6-7
+./rescan-and-close.sh         # validation stage
+echo "$(date -Is) cycle complete" &gt;&gt; /var/log/vuln-cycle/cycle.log</code></pre>
+      <p class="code-label">EXPECTED OUTPUT — TIMER ARMED AND LAST RUN CLEAN</p>
+<pre><code class="language-bash">$ systemctl list-timers vuln-cycle.timer
+NEXT                        LEFT     LAST                        PASSED  UNIT
+Tue 2026-06-17 02:30:00 EDT 9h left  Mon 2026-06-16 02:30:01 EDT 9h ago  vuln-cycle.timer
+
+$ systemctl status vuln-cycle.service | grep -E "Active|code="
+   Active: inactive (dead) since Mon 2026-06-16 03:41:22 EDT; 9h ago
+ Main PID: 40213 (code=exited, status=0/SUCCESS)</code></pre>
+      <p><strong>How to verify:</strong> a nightly job you never look at will silently rot. The timer's status is itself scraped into the metrics store, and Grafana alerts if <code>code=exited, status=</code> is anything but 0 or if the LAST column ages past 26 hours - the pipeline pages me when the pipeline breaks.</p>
     </section>
 
     <section><h2>Validation &amp; Testing</h2>
       <p>Trigger an automated rescan of the patched hosts and confirm the previously critical CVEs no longer appear. The Grafana dashboard should show the open-critical count drop to zero (alt text: <em>Grafana panel trending open critical CVEs to zero after Ansible remediation</em>).</p>
+      <p>The verification scan is a separate, smaller task that targets only the hosts that were patched, using the identical scan config as the original - changing the config between scan and rescan would invalidate the comparison. The key artifact is the GVM <strong>delta report</strong>, which diffs the original report against the rescan and states, per result, whether it is <code>gone</code>, <code>new</code>, or <code>changed</code>:</p>
+      <p class="code-label">XML — REQUEST A DELTA REPORT AGAINST THE ORIGINAL SCAN</p>
+<pre><code class="language-xml">&lt;get_reports report_id="RESCAN-REPORT-UUID"
+             delta_report_id="ORIGINAL-REPORT-UUID"
+             format_id="c402cc3e-b531-11e1-9163-406186ea4fc5"/&gt;</code></pre>
+      <p class="code-label">EXPECTED OUTPUT — DELTA SHOWS THE CVEs AS GONE</p>
+<pre><code class="language-bash">CVE-2024-3094  10.0  xz-utils backdoor   host=192.168.20.31  state=gone
+CVE-2023-4911  7.8   glibc Looney Tunables host=192.168.20.18 state=gone
+delta: 2 gone, 0 new, 0 changed</code></pre>
+      <p>Only when every original CRITICAL finding shows <code>state=gone</code> does the pipeline transition the matching Jira tickets to Done (again via the REST API, using the issue keys stored in step 5) and stamp the closure timestamp into PostgreSQL. The exposure-window metric Grafana graphs is literally <code>closed_at - detected_at</code> per finding, so this stamp is what proves the 7-days-to-4-hours improvement with data rather than anecdote. Finally, once a month I cross-validate with a Nessus Professional scan of the same VLAN: the two scanners never agree perfectly, but any CRITICAL that Nessus sees and GVM missed gets its NVT investigated and the feed/sync process re-checked.</p>
+      <p><strong>How to verify:</strong> if a finding still appears after patching, check whether the fixed package actually supersedes the vulnerable one (<code>rpm -q --changelog xz | head</code>) or whether the service is still running the old, memory-resident binary because it was never restarted.</p>
+      <p>The Grafana panel itself is one query against the append-only findings table. This is the query behind the "critical exposure window" trend line - anything still open contributes its age up to now, closed findings contribute their actual lifetime:</p>
+      <p class="code-label">SQL — MEAN EXPOSURE WINDOW FOR CRITICAL FINDINGS, PER WEEK</p>
+<pre><code class="language-sql">SELECT date_trunc('week', detected_at) AS week,
+       avg(extract(epoch FROM
+             coalesce(closed_at, now()) - detected_at) / 3600.0)
+         AS mean_exposure_hours
+FROM findings
+WHERE severity = 'CRITICAL'
+GROUP BY 1
+ORDER BY 1;</code></pre>
+      <p class="code-label">EXPECTED OUTPUT — WINDOW COLLAPSING ACROSS CYCLES</p>
+<pre><code class="language-bash">        week         | mean_exposure_hours
+---------------------+--------------------
+ 2026-04-13 00:00:00 |              168.4   # ~7 days, manual process
+ 2026-05-11 00:00:00 |               22.7
+ 2026-06-08 00:00:00 |                4.1   # pipeline fully closed-loop</code></pre>
     </section>
 
-    <details><summary>Advanced: Troubleshooting</summary>
-      <ul>
-        <li><strong>Authenticated scan returns few results:</strong> verify SSH credentials and that the scan target uses a credentialed config.</li>
-        <li><strong>Feed out of date:</strong> run <code>greenbone-feed-sync</code> and check <code>/var/log/gvm/</code>.</li>
-        <li><strong>Ansible patch reboot loops:</strong> gate reboots behind a <code>reboot_required</code> fact check.</li>
-      </ul>
-    </details>
+    <section><h2>Troubleshooting</h2>
+      <details><summary>Authenticated scan returns very few results</summary>
+        <p><strong>Symptom:</strong> the scan completes but each host shows only a handful of banner/port findings instead of hundreds of package checks.</p>
+        <p><strong>Fix:</strong> verify the SSH credential is actually attached to the target (<code>&lt;get_targets/&gt;</code> should show the credential UUID nested inside it) and that the account can log in manually from the scanner: <code>ssh scanuser@192.168.20.31</code>. Also confirm the target's scan config is credentialed-aware - "Full and fast" includes local checks, minimal custom configs often strip them. Check <code>/var/log/secure</code> on a target for failed logins; a locked-out account (too many failures via <code>sshd</code>'s MaxAuthTries) scans fine but silently.</p>
+      </details>
+      <details><summary>Feed out of date / "no NVTs available"</summary>
+        <p><strong>Symptom:</strong> scans run but return nothing, or gvmd logs complain the SCAP/NVT database is empty.</p>
+        <p><strong>Fix:</strong> run <code>greenbone-feed-sync</code> (all four types) as the service user and watch <code>/var/log/gvm/</code> while gvmd rebuilds its NVT cache - the rebuild can take 30+ minutes and scans started during it return junk. If syncs previously ran as root, fix ownership first: <code>chown -R _gvm:_gvm /var/lib/openvas /var/lib/gvm</code>. Verify feed currency with the timestamps under <code>/var/lib/gvm/scap-data/</code>.</p>
+      </details>
+      <details><summary>Ansible patch reboot loops</summary>
+        <p><strong>Symptom:</strong> hosts reboot, come back, and immediately get rebooted again by a re-run or the next play.</p>
+        <p><strong>Fix:</strong> gate reboots behind a <code>reboot_required</code> fact check - on RHEL use <code>needs-restarting -r</code> (exit code 1 = reboot needed), on Ubuntu check for <code>/var/run/reboot-required</code>. Never reboot unconditionally. Also make the fact check its own task that runs <em>after</em> all package tasks, so mid-play checks do not see a stale flag from an earlier boot.</p>
+      </details>
+      <details><summary>gvm-cli fails with "Failed to connect to socket"</summary>
+        <p><strong>Symptom:</strong> every GMP command errors out immediately with a socket connection failure.</p>
+        <p><strong>Fix:</strong> gvmd is either down or the socket path is wrong. Check <code>systemctl status gvmd</code> and confirm the socket exists at <code>/run/gvmd/gvmd.sock</code>. If it exists but you get permission denied, your user is not in the <code>_gvm</code> group - either add yourself or pass <code>--socketpath</code> with appropriate sudo. After a reboot, gvmd can take several minutes to finish loading the NVT cache before the socket accepts connections.</p>
+      </details>
+      <details><summary>Jira API returns 400 or 401 on ticket creation</summary>
+        <p><strong>Symptom:</strong> the ticketing script fails with HTTP 400 (bad request) or 401 (unauthorized).</p>
+        <p><strong>Fix:</strong> for 401, the API token is wrong or revoked - Jira Cloud requires basic auth of <code>email:api_token</code>, not a password, and tokens expire when rotated. For 400, read the response body's <code>errors</code> map: it almost always names a required custom field (the CVE/CVSS/Host fields here) that is missing from the payload or not on the issue type's create screen. Confirm field IDs with <code>GET /rest/api/3/field</code> - custom field numbers differ per Jira instance.</p>
+      </details>
+    </section>
 
     <section><h2>Key Results</h2>
       <ul>
@@ -121,6 +353,16 @@ CVE-2023-4911  7.8   HIGH      glibc CVE-2023-4911    host=192.168.20.18</code><
         <li>Prioritized 200+ CVEs by CVSS 3.1 and business criticality each cycle.</li>
         <li>Reduced the critical-vulnerability exposure window from 7 days to 4 hours.</li>
         <li>Automated Jira ticket creation for 100% of high/critical findings.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li><strong>Detection was never the bottleneck - handoffs were.</strong> Automating the scan &rarr; ticket &rarr; patch &rarr; verify chain mattered more than any single tool choice.</li>
+        <li><strong>Credentialed scans are non-negotiable.</strong> Unauthenticated scanning misses the package-level CVEs that make up the bulk of real risk.</li>
+        <li><strong>Every stage must emit an artifact the next stage consumes</strong> (report UUID, CSV, issue key, recap), so failures halt the pipeline loudly instead of silently dropping findings.</li>
+        <li><strong>Patch narrowly and verify with a delta report.</strong> Update only implicated packages, one host at a time, and let the scanner - not the playbook recap - have the final word on "fixed".</li>
+        <li><strong>Measure the exposure window with timestamps, not vibes.</strong> Append-only results in PostgreSQL turned "we patch faster now" into a defensible metric.</li>
       </ul>
     </section>
 

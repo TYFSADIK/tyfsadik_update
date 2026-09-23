@@ -221,8 +221,29 @@ WebClient(token=SLACK_BOT_TOKEN).chat_postMessage(
        'rule=ransomware_canary pid=4412 snapshot=ir-1750123443 in 28.4s')"</code></pre>
       <p><strong>How to verify:</strong> <code>sqlite3 cases.db "SELECT * FROM cases ORDER BY id DESC LIMIT 1;"</code> should echo the row just inserted, and the Slack message should land within a second or two. <strong>Common mistake:</strong> letting the notification step share the playbook's exit code. If Slack is down, containment already succeeded - log the notification failure, do not fail the run, or a chat outage starts paging people about "failed" responses that actually worked.</p>
 
-      <h3>8. Run the playbook as a systemd-triggered service</h3>
+      <h3>9. Run the playbook as a systemd-triggered service</h3>
       <p>The orchestrator runs as a dedicated unprivileged user (with a narrow sudoers entry for <code>nft</code> only), managed by systemd so a crash mid-incident gets an automatic restart and journald keeps the full log. A path unit watches the Wazuh alert export directory, so new alerts trigger a run without a polling loop.</p>
+      <p>Everything environment-specific lives in one YAML config rather than being hardcoded: API endpoints, the rule-ID-to-ATT&amp;CK-technique map, per-technique actions, and the SLA the harness measures against. Secrets are referenced by environment variable name, never pasted inline, so the file is safe to commit.</p>
+      <p class="code-label">/opt/ir/ir.yaml - the playbook's configuration</p>
+<pre><code class="language-bash">wazuh:
+  api_url: https://wazuh:55000
+  user: wazuh-wui
+  password_env: WAZUH_API_PASS
+  min_rule_level: 10
+proxmox:
+  api_url: https://pve:8006
+  token_env: PVE_API_TOKEN
+  node: pve
+  vm_map:
+    "192.168.20.15": 120
+responses:
+  T1486: [snapshot, isolate, kill]
+  T1055: [snapshot, isolate, kill]
+  T1048: [egress_block]
+sla_seconds: 60
+slack:
+  token_env: SLACK_BOT_TOKEN
+  channel: "#sec-ir"</code></pre>
       <p class="code-label">/etc/systemd/system/ir-playbook.service</p>
 <pre><code class="language-bash">[Unit]
 Description=Python IR containment playbook
@@ -236,6 +257,17 @@ Nice=-5
 
 [Install]
 WantedBy=multi-user.target</code></pre>
+      <p class="code-label">/etc/systemd/system/ir-playbook.path - fire on every new alert export</p>
+<pre><code class="language-bash">[Path]
+PathModified=/var/log/wazuh-alerts/
+Unit=ir-playbook.service
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+<pre><code class="language-bash">sudo systemctl daemon-reload
+sudo systemctl enable --now ir-playbook.path
+systemctl status ir-playbook.path
+# expected: Active: active (waiting) - the unit waits, it does not run yet</code></pre>
       <p class="code-label">Enable the trigger and run the playbook against alert 8200</p>
       <div class="command-block"><div class="command"><code>python3 ir_playbook.py -config ir.yaml -alert-id 8200</code></div></div>
 <pre><code class="language-bash">[28.4s] CONTAINED host=192.168.20.15 pid=4412 rule=ransomware_canary snapshot=ir-1718...</code></pre>

@@ -159,6 +159,15 @@ Connection to 192.168.30.17 80 port [tcp/http] succeeded!</code></pre>
       <div class="command-block"><div class="command"><code>grep -c "^Host:" iot-enum.gnmap</code></div></div>
       <p><strong>Common mistake:</strong> piping the raw Masscan output file (<code>iot-hosts.txt</code>, which is in Masscan list format) straight into <code>nmap -iL</code>. Nmap expects one target per line and will fail to parse Masscan's <code>open tcp 1883 192.168.30.41 ...</code> lines. Always extract clean IPs first, as shown in step 1.</p>
 
+      <p>Passive discovery complements the port scans: SSDP announcements reveal UPnP devices — smart TVs, printers, cameras — that close all TCP ports between broadcasts. Nmap's broadcast script listens on the multicast group instead of probing:</p>
+      <div class="command-block"><div class="command"><code>nmap --script broadcast-upnp-info -e eth1</code></div></div>
+<pre><code class="language-bash">| broadcast-upnp-info:
+|   192.168.30.77
+|       Server: Linux/4.4.198 UPnP/1.0 MediaRenderer/1.0
+|_      Location: http://192.168.30.77:49152/description.xml</code></pre>
+      <p>The <code>description.xml</code> URL is the payload: fetching it enumerates every UPnP service and action the device implements. On routers, a <code>WANIPConnection</code> service with <code>AddPortMapping</code> is the mechanism behind the WAN exposures found later in step 5 — any device on the LAN that can reach the router's UPnP endpoint can open inbound NAT mappings without credentials.</p>
+      <p><strong>Common mistake:</strong> running broadcast scripts from the wrong segment. Multicast SSDP (239.255.255.250) does not cross routers, so this probe runs from a tap interface on VLAN 30 (<code>eth1</code> here), not from the management-side <code>eth0</code>. A broadcast scan that returns zero results usually means you are on the wrong side of the router, not that no UPnP devices exist.</p>
+
       <h3>3. Protocol analysis with Wireshark</h3>
       <p>Capturing MQTT confirms whether telemetry is sent in cleartext and whether brokers allow anonymous subscription to <code>$SYS</code> topics.</p>
       <p>Port scans show what is reachable; packet capture shows what is actually said. IoT protocols are notoriously chatty and frequently unencrypted, so five minutes of passive capture often reveals device names, firmware strings, sensor readings, and sometimes credentials. Start a targeted capture against the broker with tshark (Wireshark's CLI), filtering at both the capture layer (<code>-f</code>, BPF syntax, cheap) and the display layer (<code>-Y</code>, Wireshark syntax, expressive):</p>
@@ -177,6 +186,13 @@ home/camera/front/motion 1
 $SYS/broker/uptime 48213 seconds
 $SYS/broker/version mosquitto version 1.6.9</code></pre>
       <p>Five messages captured (<code>-C 5</code>) with no <code>-u</code>/<code>-P</code> credentials supplied confirms anonymous read access to the entire topic tree, including the <code>$SYS</code> broker internals that leak the exact software version.</p>
+      <p>The CoAP sensor on 192.168.30.52 gets the same treatment. CoAP devices answer a GET to <code>/.well-known/core</code> with a machine-readable list of every resource they publish, so one request enumerates the device's entire interface:</p>
+      <div class="command-block"><div class="command"><code>coap-client -m get coap://192.168.30.52/.well-known/core</code></div></div>
+<pre><code class="language-bash">&lt;/temp&gt;;rt="temperature-c";if="sensor",
+&lt;/humidity&gt;;rt="humidity-pct";if="sensor",
+&lt;/firmware&gt;;rt="version";if="param",
+&lt;/reset&gt;;rt="factory-reset";if="actuator"</code></pre>
+      <p>Three sensor endpoints are harmless; the fourth is not. An unauthenticated <code>/reset</code> actuator means anyone who can reach UDP 5683 can factory-reset the device with a single POST — a denial-of-service primitive that never appears in a port scan, because the scan can only report that 5683/udp is open, not what it will do.</p>
       <p><strong>Verify:</strong> cross-check the pcap against expectations by counting protocol distribution. A healthy IoT VLAN should be dominated by MQTT/CoAP/mDNS chatter; unexpected SMB or RDP traffic from a light bulb is an immediate red flag.</p>
       <div class="command-block"><div class="command"><code>tshark -r iot-capture.pcapng -q -z io,phs</code></div></div>
       <p><strong>Common mistake:</strong> running tshark without a ring buffer and filling the disk. On a chatty /24, an unbounded capture grows at several MB per minute. For long captures use a ring buffer: <code>dumpcap -i eth0 -b filesize:10240 -b files:24 -w /var/captures/iot.pcapng</code> keeps the last 24 ten-megabyte files and rotates automatically.</p>
@@ -194,6 +210,10 @@ nobody:*:99:99:nobody:/:/sbin/nologin
 etc/init.d/rcS:telnetd -l /bin/sh -p 23 &amp;
 ./etc/ssl/private/device-key.pem</code></pre>
       <p>Three findings from one extraction: a weakly-hashed root password (single DES-style <code>$1$$</code> MD5 hash with an empty salt — crackable in seconds with hashcat), a telnet daemon enabled at boot in <code>rcS</code>, and a baked-in private key shared across every unit of this model. Any one of these converts the port-scan observations into remote root.</p>
+      <p>The empty-salt MD5-crypt hash falls immediately to hashcat in mode 500 against a standard wordlist — this is the difference between &quot;weak hashing&quot; as a theoretical observation and a demonstrated credential:</p>
+      <div class="command-block"><div class="command"><code>echo 'root:$1$$CoERg7Wfgjdv6lq01dSUm1' &gt; root-hash.txt &amp;&amp; hashcat -m 500 root-hash.txt /usr/share/wordlists/rockyou.txt --quiet</code></div></div>
+<pre><code class="language-bash">$1$$CoERg7Wfgjdv6lq01dSUm1:12345</code></pre>
+      <p>The root password is <code>12345</code>, recovered in under a second on an integrated GPU. Combined with the <code>telnetd</code> line in <code>rcS</code>, every unit of this DVR model ships from the factory with a remotely reachable root shell protected by a five-digit dictionary word — and because the key and password live in firmware, a factory reset does not change them.</p>
       <p><strong>Verify:</strong> confirm the extracted filesystem is complete by checking for the standard skeleton — <code>bin/</code>, <code>etc/</code>, <code>lib/</code>, <code>usr/</code>. A squashfs-root containing only <code>www/</code> means you extracted an update package's web overlay, not the real rootfs, and the interesting files live in a different partition image.</p>
       <p><strong>Common mistake:</strong> trusting Binwalk's signature scan blindly. False positives are common on compressed blobs — a &quot;gzip compressed data&quot; hit at a random offset is often just entropy that looks like a magic byte. When extraction produces garbage, run <code>binwalk -E</code> for an entropy plot: encrypted firmware shows flat entropy near 1.0, while a real filesystem shows structure.</p>
 
@@ -226,6 +246,52 @@ Ports:
       <p><strong>Common mistake:</strong> reporting CVEs that match a version number but not the build. Vendors backport patches without bumping version strings, so a &quot;vulnerable&quot; mosquitto 1.6.9 from a distro package may already carry the fix. Where possible, confirm with the vendor's advisory or a changelog before listing a CVE as exploitable.</p>
     </section>
 
+    <section><h2>Automation: The Full Pipeline</h2>
+      <p>Manual commands are fine for a single engagement, but the value of this workflow is repeatability — the same inventory should regenerate on a schedule so new devices and regressions surface without anyone remembering to scan. A small driver script chains the phases, timestamps the evidence directory, and fails loudly when a phase produces no output:</p>
+      <div class="command-block"><div class="command"><code>cat iot-recon.sh</code></div></div>
+<pre><code class="language-bash">#!/usr/bin/env bash
+# iot-recon.sh - automated IoT VLAN reconnaissance pipeline
+set -euo pipefail
+
+SUBNET="192.168.30.0/24"
+OUT="recon-$(date +%Y%m%d-%H%M)"
+mkdir -p "$OUT" &amp;&amp; cd "$OUT"
+
+echo "[1/5] Masscan host discovery"
+sudo masscan "$SUBNET" -p1-65535 --rate 5000 -oL masscan.txt
+grep -oP '\d+\.\d+\.\d+\.\d+$' masscan.txt | sort -uV &gt; live-hosts.txt
+[[ -s live-hosts.txt ]] || { echo "no live hosts; aborting"; exit 1; }
+
+echo "[2/5] Nmap NSE fingerprinting"
+nmap -sV -p1883,5683,80,443,8080,37777 \
+  --script mqtt-subscribe,coap-resources,http-default-accounts \
+  -iL live-hosts.txt -oA nse-enum
+
+echo "[3/5] Passive MQTT capture (60s sample)"
+timeout 60 tshark -i eth1 -f "tcp port 1883" -w mqtt-sample.pcapng || true
+
+echo "[4/5] CVE mapping"
+nmap -sV --script vulners -p1883,80,8080,37777 \
+  -iL live-hosts.txt -oN cve-map.txt
+
+echo "[5/5] External exposure"
+shodan host "$(curl -s ifconfig.me)" &gt; shodan-wan.txt || true
+
+echo "done: $(wc -l &lt; live-hosts.txt) hosts, evidence in $OUT/"</code></pre>
+      <p>Expected output of a healthy run:</p>
+<pre><code class="language-bash">[1/5] Masscan host discovery
+[2/5] Nmap NSE fingerprinting
+[3/5] Passive MQTT capture (60s sample)
+[4/5] CVE mapping
+[5/5] External exposure
+done: 47 hosts, evidence in recon-20260617-0200/</code></pre>
+      <p>Cron runs the script weekly at a quiet hour (<code>17 2 * * 3 /opt/recon/iot-recon.sh</code>), and a one-line diff against the previous run turns the pipeline into a poor-man's network access control: any new address on the IoT VLAN triggers a review the same night it appears.</p>
+      <div class="command-block"><div class="command"><code>diff recon-prev/live-hosts.txt recon-latest/live-hosts.txt</code></div></div>
+<pre><code class="language-bash">&gt; 192.168.30.113</code></pre>
+      <p>One new address since last week — a smart bulb unboxed and plugged in by a family member. Because the diff caught it within hours, it was inventoried, pinned to the correct cloud account, and firmware-updated before the next scheduled run.</p>
+      <p><strong>Common mistake:</strong> running the whole pipeline as root. Only Masscan and the capture need elevated privileges; the script uses <code>sudo</code> on exactly those two phases so every evidence file stays owned by the analyst account and safe to archive, diff, and email without permission surgery.</p>
+    </section>
+
     <section><h2>Validation &amp; Testing</h2>
       <p>Cross-check the discovered inventory against the DHCP lease table to confirm zero shadow devices remain unaccounted for. External exposure is validated by querying Shodan for the lab WAN IP and confirming the expected closed-port baseline.</p>
       <p>The DHCP cross-check is the strongest completeness signal available on a managed network: every device that requested a lease is known to the router, so the set difference between the lease table and the scan results is exactly the set of devices you missed — or devices with static IPs, which are themselves worth flagging.</p>
@@ -233,6 +299,10 @@ Ports:
 <pre><code class="language-bash">192.168.30.88
 192.168.30.204</code></pre>
       <p>Two leases had no corresponding Masscan hit. Re-scanning just those two with a slower rate and timing template (<code>nmap -T2 -Pn -p- 192.168.30.88,192.168.30.204</code>) revealed a printer that rate-limits SYN floods and a camera that was mid-reboot during the first sweep. Both were added to the inventory, bringing coverage to 49 of 49 leased addresses.</p>
+      <p>A second completeness check catches devices that never touch DHCP at all — statically addressed gear like managed switches and access points. <code>arp-scan</code> sends an ARP request for every address on the subnet, and ARP cannot be filtered by a host firewall, so every powered-on device answers:</p>
+      <div class="command-block"><div class="command"><code>sudo arp-scan --interface=eth1 192.168.30.0/24 | grep -oP '^\d+\.\d+\.\d+\.\d+' | sort -uV &gt; arp-hosts.txt &amp;&amp; wc -l arp-hosts.txt</code></div></div>
+<pre><code class="language-bash">49 arp-hosts.txt</code></pre>
+      <p>Like the SSDP probe, arp-scan needs L2 adjacency, so it runs from the VLAN 30 tap interface. The ARP total (49) now matches the DHCP-plus-scan inventory exactly, closing the completeness argument from three independent directions: active scan, lease table, and ARP. The MAC prefixes in arp-scan's output also feed the device-class column of the inventory — OUI lookup turns an anonymous address into &quot;Espressif Inc.&quot; (an ESP8266-based smart plug) or &quot;Hangzhou Hikvision&quot; without sending a single packet beyond ARP.</p>
       <div class="command-block"><div class="command"><code>python3 -c "import shodan; print(shodan.Shodan('KEY').host('203.0.113.10')['ports'])"</code></div></div>
 <pre><code class="language-bash">[80, 1883, 37777]</code></pre>
       <p>Pass criteria: every Masscan host maps to a known DHCP lease (alt text: <em>annotated inventory spreadsheet correlating MAC, IP, and device class</em>), and Shodan returns no unexpected open ports. After remediation (closing the port forwards and rotating the camera/DVR credentials), the Shodan query should return an empty port list on its next crawl cycle — that is the retest criterion recorded in the report.</p>
@@ -256,6 +326,18 @@ Ports:
         <li>Reduced shadow-IT device visibility gap from an estimated 0% inventory to 100% mapped.</li>
         <li>Cut full-subnet recon time from ~90 minutes (naive Nmap) to under 12 minutes via Masscan pre-filtering.</li>
       </ul>
+    </section>
+
+    <section><h2>Remediation &amp; Hardening</h2>
+      <p>Recon is only worth the fixes it drives. The report closed with five concrete actions, ordered by the risk ranking from step 6:</p>
+      <ul>
+        <li><strong>Remove the WAN exposures.</strong> Deleted the router port forwards for the camera (80) and DVR (37777), and disabled UPnP on the router so no LAN device can re-create them silently. Retest: Shodan returned an empty port list for the WAN IP on its next crawl.</li>
+        <li><strong>Rotate every default credential.</strong> All 23 devices with vendor defaults were moved to unique per-device passwords stored in the password manager. The two devices whose web UIs forced a numeric-only PIN were flagged for replacement — a 6-digit PIN is not meaningfully better than a default.</li>
+        <li><strong>Require authentication on the MQTT broker.</strong> Enabled <code>password_file</code> and <code>allow_anonymous false</code> in <code>mosquitto.conf</code>, upgraded from 1.6.9 to a current 2.x release, and moved the listener to TLS on 8883. Retest: <code>mosquitto_sub -t '#'</code> without credentials now fails with <code>Connection Refused: not authorised</code>.</li>
+        <li><strong>Patch or isolate the DVR.</strong> The Dahua unit with CVE-2021-33045 (CVSS 9.8) had no fixed firmware from the vendor, so it was moved to a dedicated camera VLAN with an egress-only firewall rule — it can reach its NTP and cloud relay outbound, but nothing on any other VLAN can initiate to it.</li>
+        <li><strong>Keep the pipeline running.</strong> The weekly cron job from the automation section is the permanent control: it re-proves the inventory is complete and diffs alert on any new device, so the findings above cannot silently regress.</li>
+      </ul>
+      <p>Six weeks of scheduled re-runs confirmed the fixes held: no new default-credential hits, no WAN exposure, and two new devices (the smart bulb and a replacement printer) were caught by the diff within hours of being plugged in.</p>
     </section>
 
     <section><h2>Key Takeaways</h2>

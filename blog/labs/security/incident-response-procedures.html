@@ -66,6 +66,7 @@
         <li><strong>T1486 Data Encrypted for Impact</strong> – ransomware playbook with isolation-first containment.</li>
       </ul>
       <p>Valid-account abuse (T1078) is the detection challenge: the attacker is using legitimate credentials, so nothing trips a signature. Detection has to come from <em>behavioral</em> correlation — failure bursts followed by success, logons at unusual hours, or a source IP touching accounts it has never touched. Ransomware (T1486) is the opposite problem: detection is usually trivial (the victim calls you), but the containment decision — isolate now versus capture volatile evidence first — is time-critical and irreversible. Writing both playbooks forces you to think about severity-driven branching rather than a single linear flow.</p>
+      <p>The playbooks cover twelve incident types in total — phishing, malware detonation, credential abuse, ransomware, insider misuse, lost devices, web defacement, DDoS, data exposure, rogue devices, third-party compromise, and denial of access — but all twelve reduce to the same skeleton: detect, classify, decide evidence-versus-containment, execute, document, review. The scenario below walks that skeleton end to end for the credential-abuse case.</p>
       <div class="mermaid" role="img" aria-label="NIST 800-61 incident response lifecycle">
 flowchart LR
   P[Preparation] --> D[Detection & Analysis]
@@ -85,6 +86,19 @@ flowchart LR
         <li>A chain-of-custody template and out-of-band comms plan.</li>
       </ul>
       <p>Concretely, the lab stands on a small but representative stack: one Splunk Enterprise instance (single-node is fine) ingesting Linux <code>/var/log/auth.log</code> and Windows Security event logs via universal forwarders; a file server and two workstations to act as victims; and a Kali box that plays the attacker. The asset inventory is a CSV lookup — hostname, IP, owner, criticality — because triage questions like "who owns this host and is it production?" must be answerable in seconds, not emails.</p>
+      <p>The forwarder configuration on the Linux hosts is minimal — one <code>inputs.conf</code> stanza per log source, with the index and sourcetype pinned so the correlation searches later can rely on them:</p>
+      <div class="command-block"><div class="command"><code># /opt/splunkforwarder/etc/system/local/inputs.conf
+[monitor:///var/log/auth.log]
+index = auth
+sourcetype = linux_secure
+disabled = 0</code></div></div>
+      <p>The IR toolkit itself is staged in advance, on a dedicated jump box in the <code>192.168.10.0/24</code> management subnet — never downloaded mid-incident from a machine that may already be compromised:</p>
+      <ul>
+        <li><strong>AVML</strong> (or LiME) for memory capture on Linux; WinPmem on the Windows side.</li>
+        <li><strong>Statically-linked coreutils</strong> (ss, ps, ls) so collection does not depend on libraries an attacker may have trojaned.</li>
+        <li><strong>Write-blocked evidence share</strong> mounted read-only everywhere except the collection window.</li>
+        <li><strong>Printed playbooks and contact tree</strong> — ransomware incidents are exactly when the wiki hosting your runbooks may be unavailable.</li>
+      </ul>
       <p>The severity matrix is defined up front so classification is a lookup, not a debate:</p>
       <ul>
         <li><strong>SEV1</strong> – active compromise of a production system or confirmed data exfiltration; immediate isolation, all-hands bridge.</li>
@@ -94,10 +108,10 @@ flowchart LR
       </ul>
       <p>Before touching any detection logic, verify that logs are actually flowing. A correlation search over an empty index is the most common silent failure in this lab:</p>
       <div class="command-block"><div class="command"><code>| metadata type=hosts index=auth index=wineventlog | eval age=now()-lastTime | where age &lt; 900</code></div></div>
-<pre><code class="language-bash">host              lastTime     age
-fs01.lab.local    1747523145   62
-ws-20-15.lab.local 1747523139  68
-dc01.lab.local    1747523147   60</code></pre>
+<pre><code class="language-bash">host                lastTime     age
+fs01.lab.local      1747523145   62
+ws-20-15.lab.local  1747523139   68
+dc01.lab.local      1747523147   60</code></pre>
       <p><strong>Common mistake:</strong> assuming the forwarders are healthy because they were healthy at install time. <strong>Verify:</strong> every host you expect appears above with an age under 15 minutes. A missing host means a dead forwarder or a broken inputs.conf — fix ingestion before writing a single detection.</p>
     </section>
 
@@ -105,6 +119,22 @@ dc01.lab.local    1747523147   60</code></pre>
       <h3>Why severity drives the path</h3>
       <p>Each playbook branches on severity: SEV1 (active compromise) triggers immediate isolation, while SEV3 follows monitored analysis. This prevents over-reacting to noise and under-reacting to real intrusions.</p>
       <p>The branching matters because the two failure modes are asymmetric in cost. Isolating a production file server on a false positive costs the business real money and burns the incident team's credibility; <em>not</em> isolating during a real ransomware detonation can cost the entire network. The runbooks resolve this with an explicit evidence-versus-containment rule: for SEV1 on ransomware-class incidents, isolate first and accept the volatile-evidence loss; for credential-abuse incidents where the host is stable, capture volatile data (memory, active connections, logged-on sessions) <em>before</em> pulling the network, because that evidence is often the only record of what the attacker actually did.</p>
+      <h3>Communications: who needs to know, and when</h3>
+      <p>SEV1 opens an incident bridge within 15 minutes of classification and posts status updates on a fixed cadence — every 30 minutes for SEV1, hourly for SEV2 — so leadership never has to ask "what is happening," which is the single biggest time sink in real incidents. Crucially, comms for a suspected account-compromise incident run out-of-band (a pre-registered Signal group and personal phone numbers), because announcing the response over corporate email or chat tells an attacker who is watching those channels exactly what you know.</p>
+<pre><code class="language-text">[IR-2026-0142 | SEV1 | Update 2 | 03:45 UTC]
+Situation:  Spray attack from 203.0.113.45; 1 success (j.chen) on fs01.
+Actions:    Volatile evidence captured 03:41; host isolated 03:44.
+Next:       Credential rotation + persistence sweep; next update 04:15.
+Impact:     File services unaffected; no confirmed exfiltration yet.</code></pre>
+      <h3>Evidence handling and chain of custody</h3>
+      <p>Every artifact collected during an incident follows the same custody rules: a unique evidence ID (<code>CASE-HOST-SEQ</code>), the collector's name, UTC timestamps, the tool and version used, and a SHA-256 hash taken at collection time. The custody form itself is a template, filled in per artifact, and it travels with the evidence:</p>
+<pre><code class="language-text">Evidence ID:   IR-2026-0142-fs01-003
+Description:   Volatile memory image (AVML 0.14.0)
+Collected by:  T. Sadik            UTC: 2026-06-17 03:41:07
+Source host:   fs01.lab.local (192.168.20.15)
+SHA-256:       9f2c...a41b
+Custody log:   03:41 collected -&gt; 03:55 copied to analysis share
+               -&gt; 04:02 hash re-verified (match)</code></pre>
       <p>The second methodological choice is that every decision point produces an artifact. Classification produces a severity tag on the case; containment produces a timestamped isolation record; eradication produces a list of removed persistence mechanisms. If a step did not produce an artifact, it did not happen — this is what makes the post-incident review honest and the MTTD/MTTR metrics measurable rather than vibes.</p>
     </section>
 
@@ -113,7 +143,7 @@ dc01.lab.local    1747523147   60</code></pre>
       <h3>1. Detection: a Splunk correlation search</h3>
       <p>The detection goal is a burst of authentication failures from one source — the fingerprint of password spraying or brute force. The naive version of this search counts failures per source IP and fires above a fixed threshold:</p>
       <div class="command-block"><div class="command"><code>index=auth action=failure | stats count by src_ip | where count > 20</code></div></div>
-      <p>That works, but it has a blind spot: a low-and-slow spray of 20 failures over six hours is very different from 20 failures in one minute. The production version buckets events into 5-minute windows, tracks distinct targeted accounts (spraying hits many accounts once; brute force hammers one account many times), and appends a success check — one success after a failure burst is the signal that matters most:</p>
+      <p>That works, but it has a blind spot: a low-and-slow spray of 20 failures over six hours is very different from 20 failures in one minute. The production version buckets events into a 15-minute window, tracks distinct targeted accounts (spraying hits many accounts once; brute force hammers one account many times), and appends a success check — one success after a failure burst is the signal that matters most:</p>
       <div class="command-block"><div class="command"><code>index=auth earliest=-15m
 | stats count(eval(action="failure")) AS fails,
         dc(user) AS users_targeted,
@@ -121,7 +151,16 @@ dc01.lab.local    1747523147   60</code></pre>
 | where fails &gt; 20 OR (fails &gt; 10 AND successes &gt; 0)</code></div></div>
 <pre><code class="language-bash">src_ip          fails  users_targeted  successes
 203.0.113.45    312    47              1</code></pre>
-      <p>Save this as a scheduled search (cron <code>*/5 * * * *</code>, 15-minute window) with a trigger action that opens a case and pages on-call only when <code>successes &gt; 0</code>; failure-only bursts go to a review queue. That single condition is what keeps the pager quiet at night while still catching the spray that worked.</p>
+      <p>Save this as a scheduled search (cron <code>*/5 * * * *</code>, 15-minute window) with a trigger action that opens a case and pages on-call only when <code>successes &gt; 0</code>; failure-only bursts go to a review queue. That single condition is what keeps the pager quiet at night while still catching the spray that worked. The saved search stanza in <code>savedsearches.conf</code> looks like this:</p>
+<pre><code class="language-ini">[Auth - Spray Burst with Success]
+search = index=auth earliest=-15m | stats ... (as above)
+cron_schedule = */5 * * * *
+dispatch.earliest_time = -15m
+alert_condition = search successes &gt; 0
+alert.suppress = 1
+alert.suppress.period = 3600
+alert.suppress.fields = src_ip</code></pre>
+      <p>Throttling (<code>alert.suppress</code>) per source IP prevents one noisy incident from paging fifty times; one page per source per hour is enough — the case accumulates the rest. A baseline report run weekly (<code>stats avg(fails) max(fails) by src_ip</code> over 30 days) is how the threshold of 20 was chosen — it sits at roughly three standard deviations above the noisiest legitimate source in this environment.</p>
       <p><strong>Common mistake:</strong> alerting on the raw threshold without a time window, so a legitimate service account with a cached stale password pages the team every morning. <strong>Verify:</strong> run the search manually over the last 24 hours — you should see your known noise sources (they belong in a suppression list) and nothing unexpected.</p>
 
       <h3>2. Triage: enrich and classify severity</h3>
@@ -132,9 +171,15 @@ dc01.lab.local    1747523147   60</code></pre>
 | stats dc(user) AS users values(user) AS accounts count by src_ip dest
 | lookup threat_intel ip AS src_ip OUTPUT reputation category
 | lookup assets ip AS dest OUTPUT owner criticality</code></div></div>
-<pre><code class="language-bash">src_ip         dest          users  accounts                reputation  criticality
-203.0.113.45   fs01.lab.local  47   {..., j.chen, ...}      malicious   high</code></pre>
-      <p>Here the source is flagged malicious by threat intel and it reached a high-criticality file server with a successful logon — that is textbook T1078 Valid Accounts, classified <strong>SEV1</strong>. Had the source been an internal scanner with zero successes, this would be SEV3 and would follow the monitored-analysis branch instead. The classification, its justification, and the ATT&amp;CK mapping go into the case record immediately; the playbook you execute next is chosen by this tag.</p>
+<pre><code class="language-bash">src_ip         dest            users  accounts            reputation  criticality
+203.0.113.45   fs01.lab.local  47     {..., j.chen, ...}  malicious   high</code></pre>
+      <p>Before classifying, rule out the two classic false positives: the source being one of your own VPN egress IPs (users mistype passwords in bursts, especially on Monday mornings) and a scheduled service with a stale credential. Both are handled by a suppression lookup of known egress ranges and service accounts — checked <em>before</em> escalation, not after waking up the on-call.</p>
+      <p>The final pivot inspects the successful session itself — which account, from where, logon type (type 3 = network, type 10 = remote interactive — RDP/VPN-style sessions are the smoking gun for hands-on activity):</p>
+      <div class="command-block"><div class="command"><code>index=wineventlog EventCode=4624 src_ip=203.0.113.45
+| table _time Account_Name Workstation_Name Logon_Type Logon_Process</code></div></div>
+<pre><code class="language-bash">_time                Account_Name  Workstation  Logon_Type  Logon_Process
+2026-06-17 03:12:44  j.chen        VPN-GW01     10          User32</code></pre>
+      <p>Here the source is flagged malicious by threat intel and it reached a high-criticality file server with a successful remote-interactive logon — that is textbook T1078 Valid Accounts, classified <strong>SEV1</strong>. Had the source been an internal scanner with zero successes, this would be SEV3 and would follow the monitored-analysis branch instead. The classification, its justification, and the ATT&amp;CK mapping go into the case record immediately; the playbook you execute next is chosen by this tag.</p>
       <p><strong>Common mistake:</strong> classifying on the alert volume instead of the outcome — 312 failures <em>feels</em> worse than it is; one success is what makes it SEV1. <strong>Verify:</strong> pull the raw success event and confirm the logon type and destination yourself before escalating; never classify on an aggregate row alone.</p>
 
       <h3>3. Evidence capture: volatile data before the network pull</h3>
@@ -142,12 +187,15 @@ dc01.lab.local    1747523147   60</code></pre>
       <div class="command-block"><div class="command"><code>sudo avml /evidence/IR-2026-0142/fs01_20260617.mem     # memory, ~seconds
 ss -tulpen &gt; /evidence/IR-2026-0142/fs01_netstat.txt   # live connections
 who -a &gt; /evidence/IR-2026-0142/fs01_sessions.txt      # active sessions
-ps auxf &gt; /evidence/IR-2026-0142/fs01_procs.txt        # process tree</code></div></div>
+ps auxf &gt; /evidence/IR-2026-0142/fs01_procs.txt        # process tree
+ip neigh show &gt; /evidence/IR-2026-0142/fs01_arp.txt    # ARP cache
+mount | column -t &gt; /evidence/IR-2026-0142/fs01_mounts.txt</code></div></div>
       <p>Every artifact is hashed at capture time and logged in the chain-of-custody form with collector, timestamp, and tool version — this is what makes the evidence defensible later:</p>
       <div class="command-block"><div class="command"><code>cd /evidence/IR-2026-0142 &amp;&amp; sha256sum * &gt; SHA256SUMS.txt</code></div></div>
 <pre><code class="language-bash">9f2c...a41b  fs01_20260617.mem
 1c77...09d2  fs01_netstat.txt
 b4e0...5f88  fs01_sessions.txt</code></pre>
+      <p>Analysis happens on a copy, never the original. In the memory image from this scenario, a quick <code>strings fs01_20260617.mem | grep -i smbclient</code> pass (and a proper Volatility run later) surfaced an <code>smbclient</code> session to a staging share and a half-finished <code>tar</code> of the finance directory — the difference between "account compromised" and "exfiltration in progress," which changes the legal notification path.</p>
       <p><strong>Common mistake:</strong> running the capture tools <em>after</em> isolation on a host whose IR tooling phones home or writes to a network share — you have just cut off your own evidence path. <strong>Verify:</strong> <code>sha256sum -c SHA256SUMS.txt</code> re-run on the analysis copy; the memory image size should roughly match installed RAM (AVML images are compressed, so somewhat smaller is normal).</p>
 
       <h3>4. Containment: isolate the host</h3>
@@ -155,6 +203,7 @@ b4e0...5f88  fs01_sessions.txt</code></pre>
       <div class="command-block"><div class="command"><code>nft add rule inet filter output ip daddr != 192.168.10.0/24 drop  # [PRIVILEGED]</code></div></div>
 <pre><code class="language-bash">[SEV1] host 192.168.20.15 isolated; case IR-2026-0142 opened</code></pre>
       <p>Two details matter here. First, the rule allows the IR subnet (<code>192.168.10.0/24</code>) rather than a hard down — a total <code>ip link set down</code> is faster to type but leaves you with a host you can no longer examine remotely. Second, for ransomware-class incidents the runbook inverts this: switch-port shutdown or VLAN quarantine executed by the network team, because a software rule on a compromised host cannot be trusted once the attacker has root.</p>
+      <p>The playbook lists the containment options in order of trustworthiness, from most to least: switch-port shutdown (nothing on the host can override it), EDR-initiated network isolation (vendor agent, tamper-resistant but needs the agent alive), then host-based firewall rules like the nftables example — fastest, but only trustworthy while you still trust the kernel on that box.</p>
       <div class="command-block"><div class="command"><code>nft list chain inet filter output   # verify the rule is installed
 ping -c2 203.0.113.45               # from the host: must fail
 ping -c2 192.168.10.5               # IR jump box: must still work</code></div></div>
@@ -166,6 +215,8 @@ ping -c2 192.168.10.5               # IR jump box: must still work</code></div><
 }
 --- 203.0.113.45 ping statistics ---
 2 packets transmitted, 0 received, 100% packet loss</code></pre>
+      <p>Keep the rollback ready before you apply the rule — containment you cannot undo quickly is an outage waiting for a change window:</p>
+      <div class="command-block"><div class="command"><code>nft delete rule inet filter output handle 12   # handle from: nft -a list ruleset</code></div></div>
       <p>The isolation record — timestamp, method, who executed it, verification output — is attached to the case. <strong>Common mistake:</strong> adding the drop rule <em>after</em> a broad accept rule that matches first; nftables evaluates top-down, so a misordered rule silently does nothing. <strong>Verify:</strong> always test with real traffic from the isolated host, not just <code>nft list</code> output.</p>
 
       <h3>5. Eradication &amp; recovery: close the door, then rebuild trust</h3>
@@ -175,10 +226,14 @@ Disable-ADAccount -Identity j.chen
 Set-ADAccountPassword -Identity j.chen -Reset -NewPassword (Read-Host -AsSecureString)
 # Sweep for persistence planted during the session
 Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Run*"</code></div></div>
+      <p>On the Linux side the persistence sweep covers the usual hiding places — cron, SSH keys, and unexpected accounts:</p>
+      <div class="command-block"><div class="command"><code>crontab -l -u j.chen ; ls -la /etc/cron.d/
+grep -v "^#" /home/*/.ssh/authorized_keys 2&gt;/dev/null
+awk -F: '$3 &gt;= 1000 {print $1}' /etc/passwd   # any account you don't recognize?</code></div></div>
 <pre><code class="language-bash"># Splunk confirmation that the account goes quiet after rotation
 index=wineventlog user=j.chen action=success earliest=-1h
 # result: 0 events</code></pre>
-      <p>Recovery is deliberately boring: restore the host to the production VLAN in stages (monitoring-only first, full service after 24 quiet hours), and only after the root cause is closed. Bringing a host back before the VPN gap is fixed just schedules incident number two.</p>
+      <p>Recovery is deliberately boring: restore the host to the production VLAN in stages (monitoring-only first, full service after 24 quiet hours), and only after the root cause is closed. If anything needed restoring from backup, the backup is verified <em>before</em> the restore — a clean-room mount and hash check — because restoring yesterday's backup of an already-compromised host just re-installs the attacker. Bringing a host back before the VPN gap is fixed just schedules incident number two.</p>
       <p><strong>Common mistake:</strong> resetting only the one account that fired the alert. The spray touched 47 accounts; any of them with a weak or reused password is the next incident. <strong>Verify:</strong> the post-rotation search returns zero successful logons, and the correlation search from step 1 shows no further bursts from any source.</p>
 
       <h3>6. Post-incident: timeline, metrics, and playbook updates</h3>
@@ -186,16 +241,25 @@ index=wineventlog user=j.chen action=success earliest=-1h
       <div class="command-block"><div class="command"><code>index=auth (src_ip=203.0.113.45 OR user=j.chen)
 | stats min(_time) AS first_seen max(_time) AS last_seen by action
 | eval first_seen=strftime(first_seen,"%F %T")</code></div></div>
-<pre><code class="language-bash">MTTD: 11 min  (first spray event -> alert fired)
-MTTC: 26 min  (alert fired -> isolation verified)
-MTTR: 4 h 10 m (alert -> host back in full service)</code></pre>
+<pre><code class="language-bash">MTTD: 11 min  (first spray event -&gt; alert fired)
+MTTC: 26 min  (alert fired -&gt; isolation verified)
+MTTR: 4 h 10 m (alert -&gt; host back in full service)</code></pre>
+      <p>The written report follows a fixed skeleton so reviews are comparable across incidents and nobody invents a format while tired:</p>
+      <ul>
+        <li><strong>Executive summary</strong> – three sentences a director can read: what happened, what it cost, what changed.</li>
+        <li><strong>Timeline</strong> – every event and action with UTC timestamps, from first spray to case close.</li>
+        <li><strong>Root cause</strong> – the VPN's password-only logon path, not "a user had a weak password."</li>
+        <li><strong>Scope</strong> – the full list of 47 sprayed accounts, every host the session touched, data accessed.</li>
+        <li><strong>What worked / what failed</strong> – detection fired in 11 minutes; comms bridge took 25.</li>
+        <li><strong>Action items</strong> – each with a ticket number, owner, and due date.</li>
+      </ul>
       <p>The lessons-learned review (within five business days, blameless, with everyone who touched the case) produces the artifacts that feed back into Preparation: in this incident, a VPN-MFA gap ticket, a suppression-list entry for the scanner subnet, and a playbook amendment making the "failure burst + any success = page" condition explicit. The case only closes when those items are ticketed and owned.</p>
       <p><strong>Common mistake:</strong> treating the review as a formality and filing the report without updates — the loop back to Preparation in the lifecycle diagram above then does nothing. <strong>Verify:</strong> every action item has a ticket number and an owner in the report's closing section.</p>
     </section>
 
     <section><h2>Validation &amp; Testing</h2>
       <p>Run a tabletop using a simulated brute-force-then-lateral-movement scenario and time each phase. Pass criteria: detection under 15 minutes, containment decision documented, and a complete post-incident report with lessons learned.</p>
-      <p>The exercise is run with injects on a timer: the facilitator plants the attack telemetry (a scripted spray from the Kali box against the lab domain), starts the clock, and hands the team nothing but the alert. The team must execute steps 1–6 above against live data. A red-team twist worth including once the basics are solid: one of the 47 sprayed accounts is a honeypot with a deliberately weak password, which tests whether the team scopes beyond the first compromised account in step 5.</p>
+      <p>The exercise is run with injects on a timer: the facilitator plants the attack telemetry (a scripted spray from the Kali box against the lab domain), starts the clock, and hands the team nothing but the alert. The team must execute steps 1–6 above against live data. Timings are captured from the case log, not self-reported — the alert timestamp, the evidence hash timestamps, and the isolation record are all already in the artifacts, which is the payoff of the artifact-per-decision rule. A red-team twist worth including once the basics are solid: one of the 47 sprayed accounts is a honeypot with a deliberately weak password, which tests whether the team scopes beyond the first compromised account in step 5.</p>
       <p>Scoring rubric used across the tabletops:</p>
       <ul>
         <li><strong>Detection &lt; 15 min</strong> from first spray event to acknowledged alert.</li>

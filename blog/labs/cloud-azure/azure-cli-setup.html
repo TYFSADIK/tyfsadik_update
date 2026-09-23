@@ -156,6 +156,13 @@ Pay-As-You-Go    True         Enabled
 Visual Studio    False        Enabled</div>
           </div>
           <p><strong>Common mistake:</strong> confusing <code>az account set</code> (chooses which subscription commands target) with subscription <em>permissions</em>. If a subscription shows <code>State: Disabled</code> or is missing from the list entirely, that is a billing or RBAC issue on the account, not a CLI problem - no amount of re-login will fix it.</p>
+          <p>To see exactly what you are allowed to do in the active subscription, list your own role assignments. On a personal account you will see <code>Owner</code>; on a work or school account you may only have <code>Reader</code>, which is enough to follow along with every <code>show</code>/<code>list</code> command here but not the creates:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az role assignment list --assignee $(az ad signed-in-user show --query id -o tsv) --query "[].{Role:roleDefinitionName, Scope:scope}" -o table</span></div>
+            <div class="terminal-output">Role    Scope
+------  -----------------------------------------------
+Owner   /subscriptions/a1b2c3d4-0000-1111-2222-333344445555</div>
+          </div>
         </div></div>
         <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Set defaults to shorten commands</strong>
           <p>Almost every <code>az</code> command needs a resource group (<code>-g</code>) and often a location (<code>-l</code>). <code>az configure --defaults</code> stores these in <code>~/.azure/config</code> so you can omit them. This is not just convenience: it makes scripts reproducible and removes a whole class of "forgot the flag, deployed to the wrong region" errors. Note that defaults live on <em>this machine only</em> - a teammate running the same script elsewhere needs the same config or the explicit flags.</p>
@@ -169,6 +176,19 @@ defaults.group    tyf-rg   /home/taki/.azure/config
 defaults.location eastus   /home/taki/.azure/config</div>
           </div>
           <p><strong>How to verify:</strong> the real test is behavioral - after Step 04 validation, <code>az group show -n tyf-rg</code> should work without any location or subscription flags. <strong>Common mistake:</strong> setting a default resource group that does not exist yet. Defaults are just strings; the CLI will not create the group for you, and the first command that relies on the default will fail with <code>ResourceGroupNotFound</code> until you create it (we do that in the validation step).</p>
+          <p>Two more things worth knowing about defaults. First, an explicit flag always wins over a default - <code>az group create -n other-rg</code> ignores <code>defaults.group</code> entirely - so defaults never trap you. Second, choosing a location is a real decision: it determines data residency, latency, and which VM sizes are available. List what your subscription offers before committing to one:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az account list-locations --query "[?metadata.regionType=='Physical'].{Name:name, DisplayName:displayName}" -o table | head -8</span></div>
+            <div class="terminal-output">Name           DisplayName
+-------------  -------------------
+eastus         East US
+eastus2        East US 2
+canadacentral  Canada Central
+canadaeast     Canada East
+westus2        West US 2
+westeurope     West Europe</div>
+          </div>
+          <p>For a Canadian lab, <code>canadacentral</code> (Toronto) keeps data in-country; this lab uses <code>eastus</code> purely because it has the broadest service availability. Pick one, set it as your default, and stay consistent across labs so resource groups and networks line up.</p>
         </div></div>
         <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Create a service principal for automation</strong>
           <p>A <span class="glossary-term" data-definition="A non-human identity in Entra ID used by scripts and pipelines to authenticate to Azure.">service principal</span> lets pipelines authenticate without your personal account. Your interactive login from Step 01 is tied to you as a person - it expires, requires MFA, and should never be pasted into a CI system. The service principal we create here gets the <code>Contributor</code> role scoped to <em>one subscription only</em>, following least privilege: it can manage resources in that subscription but cannot touch billing, other subscriptions, or Entra ID itself.</p>
@@ -189,6 +209,14 @@ defaults.location eastus   /home/taki/.azure/config</div>
             <div class="terminal-output">Pay-As-You-Go</div>
           </div>
           <p>Log back in as yourself afterwards (<code>az login</code>) so your interactive identity is active for the rest of the lab. <strong>Common mistake:</strong> leaving the secret in your shell history or a script in a git repo. Clear it from history (<code>history -d &lt;line&gt;</code> or start the command with a leading space) and treat any committed secret as compromised - rotate it with <code>az ad sp credential reset</code>.</p>
+          <p><strong>Lifecycle note:</strong> secrets created by <code>create-for-rbac</code> expire (default one year). A pipeline that works today and dies next March with <code>AADSTS7000222</code> (expired client secret) is a classic. Put the expiry date in your calendar, and rotate on a schedule rather than after an outage:</p>
+<pre><code class="language-bash"># See when the current credential expires
+az ad app credential list --id b2c3d4e5-1111-2222-3333-444455556666 --query "[].endDateTime" -o tsv
+
+# Rotate: create a new secret, update the pipeline, THEN delete the old one
+az ad sp credential reset --id b2c3d4e5-1111-2222-3333-444455556666</code></pre>
+          <p>Rotation order matters: deploy the new secret to your pipeline first, verify a run succeeds, and only then remove the old credential - doing it in the other order guarantees downtime.</p>
+          <p><strong>Scoping note:</strong> we scoped the role to the whole subscription because this lab's later exercises touch multiple resource groups. In production you would narrow it further - <code>--scopes /subscriptions/&lt;sub&gt;/resourceGroups/tyf-rg</code> limits the principal to a single resource group, and a role like <code>Contributor</code> on that scope means even a leaked secret cannot reach anything outside it.</p>
         </div></div>
       </div>
     </section>
@@ -245,6 +273,32 @@ az account list --query "[?state=='Enabled'].name" -o tsv</code></pre>
       <p>Notice the permissions: <code>0600</code> on the token cache and profile, <code>0700</code> on the directory. If you ever see these files world-readable, something (often an over-eager <code>chmod -R</code>) has weakened them - fix with <code>chmod 700 ~/.azure &amp;&amp; chmod 600 ~/.azure/*.json</code>.</p>
     </section>
 
+    <section><h2>Using the Service Principal in Scripts and CI</h2>
+      <p>The point of Step 04 was to stop pasting credentials into command lines. In real automation, the three values (<code>appId</code>, <code>password</code>, <code>tenant</code>) travel as environment variables or CI secrets, never as literals in a script. The standard variable names the Azure tooling ecosystem expects:</p>
+<pre><code class="language-bash"># Store in a CI secret store or a local .env that is git-ignored - never in the repo
+export AZURE_CLIENT_ID="b2c3d4e5-1111-2222-3333-444455556666"
+export AZURE_CLIENT_SECRET="EXAMPLE~8xQ~secret~value~shown~once"
+export AZURE_TENANT_ID="9b1e5f2a-...."
+export AZURE_SUBSCRIPTION_ID="a1b2c3d4-0000-1111-2222-333344445555"</code></pre>
+      <p>A script then logs in non-interactively without exposing the secret in its process arguments (which any user on the box could read via <code>ps</code>):</p>
+<pre><code class="language-bash">#!/usr/bin/env bash
+set -euo pipefail
+
+: "${AZURE_CLIENT_ID:?set AZURE_CLIENT_ID}"      # fail fast if a secret is missing
+: "${AZURE_CLIENT_SECRET:?set AZURE_CLIENT_SECRET}"
+: "${AZURE_TENANT_ID:?set AZURE_TENANT_ID}"
+
+az login --service-principal \
+  -u "$AZURE_CLIENT_ID" \
+  -p "$AZURE_CLIENT_SECRET" \
+  --tenant "$AZURE_TENANT_ID" \
+  -o none        # don't echo subscription JSON (and token context) into CI logs
+
+az account set --subscription "$AZURE_SUBSCRIPTION_ID"
+echo "Authenticated as: $(az ad signed-in-user show --query userPrincipalName -o tsv 2&gt;/dev/null || echo $AZURE_CLIENT_ID)"</code></pre>
+      <p>Two details here are deliberate. <code>-o none</code> suppresses output because CI logs are often retained and broadly visible; and the <code>: "${VAR:?}"</code> guards turn a confusing downstream auth failure into an immediate, readable error. In GitHub Actions you will skip this entirely and use the <code>azure/login</code> action with OIDC federation - no stored secret at all - which the DevOps lab covers.</p>
+    </section>
+
     <section><h2>Testing &amp; Validation</h2>
       <p>Validation has two parts: confirm <em>who</em> the CLI thinks you are and <em>where</em> commands will land, then exercise the defaults by creating a real resource. The resource group created here is the same <code>tyf-rg</code> referenced by later labs, so this step doubles as scaffolding.</p>
       <div class="command-block" data-copy><div class="command"><code>az account show -o table &amp;&amp; az group create -n tyf-rg -l eastus</code></div></div>
@@ -275,6 +329,8 @@ az role assignment list --assignee b2c3d4e5-1111-2222-3333-444455556666 -o table
 # 3. No stale defaults pointing somewhere unexpected
 az config get defaults -o table</code></pre>
       <p>Check 2 should show exactly one <code>Contributor</code> assignment scoped to your subscription - nothing broader. If any check surprises you, stop and fix it now; every later lab builds on this state.</p>
+      <p><strong>Cost note:</strong> an empty resource group is free - it is a container, not a billable resource. Only the resources you later put inside <code>tyf-rg</code> (VMs, networks, storage) generate charges. The service principal is also free; Entra ID app registrations cost nothing at this scale. So nothing in this lab needs cleanup, and leaving <code>tyf-rg</code> in place is intentional: later labs deploy into it. If you ever do want a clean slate, deleting the group deletes everything inside it in one shot:</p>
+      <div class="command-block" data-copy><div class="command"><code>az group delete -n tyf-rg --yes --no-wait</code></div><div class="note">Destructive: removes the group and every resource inside it. Not needed for this lab.</div></div>
     </section>
 
     <details><summary>Troubleshooting</summary>

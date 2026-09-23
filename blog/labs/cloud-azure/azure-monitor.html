@@ -78,11 +78,25 @@ graph LR
       </div>
     </section>
 
+    <section><h2>Metrics vs Logs: Choosing the Right Signal</h2>
+      <p>Azure Monitor gives you two fundamentally different data types, and picking the wrong one is the most common design error beginners make. <strong>Metrics</strong> are lightweight, pre-aggregated numbers (CPU %, disk bytes, network in/out) stored for 93 days at no ingestion cost for platform metrics. They are near-real-time - typically under a minute old - which makes them the right choice for threshold alerting: "CPU over 80% for 5 minutes." <strong>Logs</strong> are rich, structured records (perf counter samples, syslog lines, Windows events) stored in Log Analytics tables. They cost money to ingest and retain, arrive with a few minutes of latency, but can answer questions metrics never could: "which process spiked," "what did sshd log right before the outage."</p>
+      <p>The rule of thumb this lab follows: <em>alert on metrics, investigate with logs.</em> The metric alert in step 03 wakes you up fast and cheap; the KQL queries in step 02 are what you run at 2 a.m. to figure out why. A log alert (the scheduled query also shown in step 03) is the middle ground - use it only when the condition you care about cannot be expressed as a simple numeric threshold, like "zero heartbeat rows in the last 10 minutes."</p>
+    </section>
+
     <section><h2>Environment Setup</h2>
       <p><strong>You will need:</strong> a VM, a Log Analytics workspace, and the Azure CLI.</p>
       <p><strong>Before you begin:</strong> enable diagnostic settings so data actually flows to the workspace.</p>
       <p>Concretely, the prerequisites are: an Azure subscription where you hold at least <em>Contributor</em> on the resource group, one running Linux or Windows VM (this walkthrough uses an Ubuntu VM named <code>web01</code> in resource group <code>tyf-rg</code>), and Azure CLI 2.50+ logged in with <code>az login</code>. If you need a VM first, follow the <a href="azure-vm-config.html">Azure VM Configuration</a> lab and come back.</p>
       <p>Set shell variables up front so the rest of the lab is copy-paste friendly. We will resolve the VM's resource ID now because the alert step needs it:</p>
+      <p class="code-label">Confirm CLI version and login context first</p>
+      <pre><code>az version --query '"azure-cli"' -o tsv
+az account show --query '{sub:name, user:user.name}' -o table</code></pre>
+      <p class="code-label">Expected output</p>
+      <pre><code>2.67.0
+Sub                 User
+------------------  -------------------------
+Pay-As-You-Go       taki@tyfsadik.org</code></pre>
+      <p>If <code>az account show</code> errors, run <code>az login</code> and, with multiple subscriptions, <code>az account set --subscription &lt;name&gt;</code> - every command after this point acts on whatever subscription is currently selected, and creating a workspace in the wrong sub is a frustrating way to spend an hour.</p>
       <p class="code-label">Set lab variables (bash)</p>
       <pre><code>RG=tyf-rg
 LAW=tyf-law
@@ -121,6 +135,16 @@ DCRID=$(az monitor data-collection rule show -g $RG -n tyf-dcr --query id -o tsv
 az monitor data-collection rule association create \
   -n tyf-dcr-assoc --resource $VMID --data-collection-rule-id $DCRID</code></pre>
           <p><strong>How to verify:</strong> wait 5-10 minutes (first-time ingestion is not instant), then confirm the agent is reporting in - the Heartbeat table should contain a row for <code>web01</code>. The verification query is in step 02. If the Heartbeat table is empty after 15 minutes, jump to the Troubleshooting section: it is almost always the DCR association.</p>
+          <p>Two workspace settings worth deciding now rather than later. <strong>Retention</strong> defaults to 30 days of interactive retention; bump it to 90 for a homelab you want to trend over a quarter. <strong>Pricing</strong>: the first 5 GB per month of ingestion is free, and a single VM's Heartbeat plus a modest Perf set is well under 1 GB/month - but a chatty Syslog DCR on a busy server is not. Check actual ingestion any time with the query below.</p>
+          <p class="code-label">Set 90-day retention and check ingestion volume</p>
+          <pre><code>az monitor log-analytics workspace update -g $RG -n $LAW --retention-time 90
+
+az monitor log-analytics query -w $WID --analytics-query "
+Usage
+| where TimeGenerated &gt; ago(1d)
+| summarize GB = sum(Quantity) / 1024 by DataType
+| order by GB desc"</code></pre>
+          <p><strong>Common mistake:</strong> creating the DCR in a different region than the workspace, or forgetting <code>--location</code> entirely. DCRs are regional resources and the association silently fails to deliver data when the region pairing is wrong - keep workspace, DCR, and VM in one region for this lab.</p>
         </div></div>
         <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Query telemetry with KQL</strong>
           <p>KQL reads like a pipeline: start with a table name, then pipe (<code>|</code>) through operators that filter, shape, and aggregate. The query runs against the whole workspace over the time range you specify, and it is read-only - you cannot damage anything by experimenting. Start with the simplest possible health check: who is heartbeating?</p>
@@ -144,7 +168,34 @@ web01     2026-09-19T14:00:00Z          12.4
 web01     2026-09-19T14:05:00Z          18.7
 web01     2026-09-19T14:10:00Z          61.2</code></pre>
           <p>Two useful variations to try once the basics work: <code>Heartbeat | summarize arg_max(TimeGenerated, *) by Computer</code> shows the last heartbeat per machine (a classic "is it down?" query), and <code>Perf | distinct CounterName</code> lists exactly which counters your DCR is collecting, which tells you what you are even allowed to alert on.</p>
-          <p><strong>Common mistakes:</strong> (1) the CLI defaults to a 24-hour lookback and a 10-minute query timeout - for big workspaces pass <code>--timespan PT1H</code> explicitly; (2) table and column names are case-sensitive in some operators, so <code>heartbeat</code> may not match <code>Heartbeat</code>; (3) counter names differ between Linux (<code>% Processor Time</code> under ObjectName <code>Processor</code>) and Windows - check with <code>distinct</code> before hardcoding.</p>
+          <p>If your DCR also collects Syslog (add the <code>Microsoft-Syslog</code> stream the same way as Perf), this is the query you reach for during an incident - every error-or-worse syslog line in the last day, counted by facility so noise from one chatty daemon does not drown the signal:</p>
+          <p class="code-label">Hunt syslog errors by severity</p>
+          <pre><code>az monitor log-analytics query -w $WID --analytics-query "
+Syslog
+| where TimeGenerated &gt; ago(1d)
+| where SeverityLevel in ('err', 'crit', 'alert', 'emerg')
+| summarize Events = count(), LastSeen = max(TimeGenerated) by Computer, Facility, SeverityLevel
+| order by Events desc"</code></pre>
+          <p class="code-label">Expected output (illustrative)</p>
+          <pre><code>Computer  Facility  SeverityLevel  Events  LastSeen
+web01     auth      err            14      2026-09-21T03:12:44Z
+web01     daemon    err            3       2026-09-21T02:58:01Z</code></pre>
+          <p>Fourteen <code>auth/err</code> rows on a VM that should see no failed logins is exactly the kind of thing worth a follow-up: drill in by replacing the <code>summarize</code> line with <code>| project TimeGenerated, HostName, ProcessName, SyslogMessage</code> to read the raw messages. This query-to-drilldown loop - aggregate to find the anomaly, then <code>project</code> to read the raw rows - is the core workflow in both Azure Monitor and Sentinel.</p>
+          <p>One more query you will reuse forever: disk space. A full disk is the most common cause of "the server is up but the app is dead," and the <code>% Free Space</code> counter (LogicalDisk object) catches it early. This version shows the worst disk per machine over the last day:</p>
+          <p class="code-label">Lowest disk free space per machine, last 24 hours</p>
+          <pre><code>az monitor log-analytics query -w $WID --analytics-query "
+Perf
+| where TimeGenerated &gt; ago(1d)
+| where ObjectName == 'LogicalDisk' and CounterName == '% Free Space'
+| where InstanceName != '_Total'
+| summarize MinFree = min(CounterValue) by Computer, InstanceName
+| order by MinFree asc"</code></pre>
+          <p class="code-label">Expected output (illustrative)</p>
+          <pre><code>Computer  InstanceName  MinFree
+web01     /             71.3
+web01     /mnt          98.9</code></pre>
+          <p>If <code>MinFree</code> for a real workload ever trends down week over week, that trend line is your capacity plan - and it is exactly the kind of condition you would later turn into a scheduled-query alert at 15% free.</p>
+          <p><strong>Common mistakes:</strong> (1) the CLI defaults to a 24-hour lookback and a 10-minute query timeout - for big workspaces pass <code>--timespan PT1H</code> explicitly; (2) table and column names are case-sensitive in some operators, so <code>heartbeat</code> may not match <code>Heartbeat</code>; (3) counter names differ between Linux (<code>% Processor Time</code> under ObjectName <code>Processor</code>) and Windows - check with <code>distinct</code> before hardcoding; (4) quoting: the query lives inside double quotes in bash, so use single quotes for KQL string literals and escape any embedded double quotes or the shell eats them.</p>
         </div></div>
         <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Create an alert with an action group</strong>
           <p>An alert rule without an action group fires silently - the portal shows it, but nobody gets paged. So we build the action group first. An action group is just a named list of notification targets (email, SMS, webhook, Azure Function) that any number of alert rules can share.</p>
@@ -166,7 +217,24 @@ AG_ID=$(az monitor action-group show -g $RG -n tyf-admins --query id -o tsv)</co
   --evaluation-frequency 5m --window-size 10m \
   --action-groups $AG_ID \
   --severity 2</code></pre>
+          <p>Severity is worth a deliberate decision: Azure uses 0 (critical) through 4 (verbose), and the number is what downstream tooling filters on. A sane homelab scheme is Sev 2 for "page me now" (heartbeat missing, disk full) and Sev 3 for "email me in the morning" (CPU warning at 70%). If everything is Sev 0, nothing is - alert fatigue is a real failure mode, and it starts with undifferentiated severity.</p>
+          <p>One more production habit: an <strong>alert processing rule</strong> suppresses notifications during planned maintenance so a reboot you scheduled does not page you at 3 a.m. This one mutes the action group every Saturday night:</p>
+          <p class="code-label">Suppress alerts during a maintenance window</p>
+          <pre><code>az monitor alert-processing-rule create -g $RG -n weekend-maintenance \
+  --rule-type RemoveAlerts \
+  --scopes $VMID \
+  --schedule-recurrence-type Weekly \
+  --schedule-recurrence "Saturday 22:00 Sunday 06:00" \
+  --description "Planned patch window - do not page"</code></pre>
           <p><strong>How to verify:</strong> <code>az monitor metrics alert show -g $RG -n cpu-high</code> should return JSON with <code>"enabled": true</code> and your action group ID under <code>actions</code>. If <code>actions</code> is an empty array, the <code>--action</code> flag did not resolve - echo <code>$AG_ID</code> and re-run. Also confirm the email address in the action group actually received the "you have been added to an action group" confirmation message Azure sends on creation.</p>
+          <p>Finish with an inventory of everything watching this resource group, so you know exactly what exists before you test it:</p>
+          <p class="code-label">List all alert rules in the resource group</p>
+          <pre><code>az monitor metrics alert list -g $RG -o table
+az monitor scheduled-query list -g $RG -o table</code></pre>
+          <p class="code-label">Expected output (first command)</p>
+          <pre><code>Name     Enabled    Severity    Condition
+-------  ---------  ----------  -------------------------
+cpu-high True                   avg Percentage CPU &gt; 80.0</code></pre>
         </div></div>
       </div>
     </section>
@@ -201,6 +269,51 @@ stress --cpu $(nproc) --timeout 600 &amp;</code></pre>
 2026-09-19T15:03:00Z  97.02
 2026-09-19T15:04:00Z  96.87</code></pre>
       <p>Within a few minutes of the average crossing 80, three things should happen: the alert's state in the portal flips to <em>Fired</em>, the action group sends the email, and the alert appears under Monitor &rsaquo; Alerts. When <code>stress</code> exits, the rule resolves itself back to healthy and (if the action group includes resolution notifications) you get a second "resolved" message. Keep that stress email - a screenshot of it is your proof the lab worked.</p>
+      <p>Do not forget the second alert. The <code>heartbeat-missing</code> scheduled query will never fire during a CPU stress test - it fires when telemetry stops. The clean way to trip it is to stop the agent service on the VM for longer than the 10-minute window, then start it again:</p>
+      <p class="code-label">Run on the VM - simulate an agent outage</p>
+      <pre><code>sudo systemctl stop azuremonitoragent
+# wait 12-15 minutes - past the 10-minute evaluation window
+sudo systemctl start azuremonitoragent
+systemctl is-active azuremonitoragent</code></pre>
+      <p class="code-label">Expected output</p>
+      <pre><code>active</code></pre>
+      <p>While the agent is stopped, the Heartbeat table goes quiet, the scheduled query's count drops below 1, and the log alert fires its own email. This validates the two failure modes independently: <em>bad state</em> (CPU saturated) and <em>no signal at all</em> (agent or machine down). Real outages are usually the second kind.</p>
+      <p>Final portal checklist before calling the lab done:</p>
+      <ul>
+        <li>Monitor &rsaquo; Alerts shows both <code>cpu-high</code> and <code>heartbeat-missing</code> with a Fired-then-Resolved history.</li>
+        <li>Your inbox holds four messages: CPU fired, CPU resolved, heartbeat fired, heartbeat resolved.</li>
+        <li>The Log Analytics workspace's Heartbeat table shows a gap matching your agent stop window - visual proof of what the alert detected.</li>
+        <li><code>az monitor metrics alert list -g $RG -o table</code> lists both rules with <code>Enabled: True</code>.</li>
+      </ul>
+      <p>One detail worth a look while the emails are fresh: open the "Fired" notification and read the payload. Azure alert notifications follow the common alert schema, and every field you will ever route on in a webhook or Logic App is in there:</p>
+      <p class="code-label">What the notification payload contains (abridged)</p>
+      <pre><code>{
+  "schemaId": "azureMonitorCommonAlertSchema",
+  "data": {
+    "essentials": {
+      "alertRule": "cpu-high",
+      "severity": "Sev3",
+      "monitorCondition": "Fired",
+      "firedDateTime": "2026-09-21T15:06:12Z",
+      "targetResource": "/subscriptions/.../virtualMachines/web01"
+    }
+  }
+}</code></pre>
+      <p>The three fields that matter operationally are <code>severity</code> (should this page anyone?), <code>monitorCondition</code> (Fired vs Resolved - a webhook handler must branch on it or you will treat recovery emails as new outages), and <code>targetResource</code> (which machine, when one rule watches fifty VMs).</p>
+    </section>
+
+    <section><h2>Visualizing Your Telemetry</h2>
+      <p>Alerts tell you when something broke; a dashboard tells you how the system breathes when it is healthy. The fastest win is pinning an existing query: run the CPU-trend KQL from step 02 in the portal's Log Analytics blade, click <em>Pin to dashboard</em>, and you have a living chart with zero new code. To do it from the CLI, save the query and share it:</p>
+      <p class="code-label">Save a query pack entry for reuse</p>
+      <pre><code>cat &gt; cpu-trend.kql &lt;&lt;'EOF'
+Perf
+| where TimeGenerated &gt; ago(6h)
+| where ObjectName == 'Processor' and CounterName == '% Processor Time'
+| summarize AvgCPU = avg(CounterValue) by bin(TimeGenerated, 5m)
+| render timechart
+EOF</code></pre>
+      <p>Notice the <code>render timechart</code> operator at the end: in the portal it turns the result table into a line chart automatically. Keep a folder of these <code>.kql</code> files in version control - the queries are the real deliverable of this lab, and they port directly into workbooks, dashboards, and Sentinel analytics rules later.</p>
+      <p>For a proper multi-panel view, open Monitor &rsaquo; Workbooks, start from the "VM Performance" template, and point it at your workspace. Templates are editable, so replace any default query with your own KQL and the workbook becomes a custom operations dashboard in about ten minutes.</p>
     </section>
 
     <section><h2>Troubleshooting</h2>
@@ -211,6 +324,21 @@ stress --cpu $(nproc) --timeout 600 &amp;</code></pre>
         <li><strong>Alert fires but no email arrives:</strong> the rule and the notification are separate links. Run <code>az monitor action-group show -g $RG -n tyf-admins</code> and check the <code>emailReceivers</code> array - a typo in the address still deploys cleanly. Check spam, then check Monitor &rsaquo; Alerts in the portal: if the alert is listed as Fired there, the rule is fine and the action group delivery is the broken hop. Test the action group in isolation with <code>az monitor action-group test-notifications create</code>.</li>
         <li><strong><code>az monitor log-analytics query</code> fails with "BadRequest" or a path error:</strong> you almost certainly passed the workspace's customer GUID or a workspace <em>name</em> where the <code>-w</code> flag expects the full resource ID (<code>/subscriptions/.../workspaces/tyf-law</code>). Re-capture it with the <code>--query id</code> command from step 01. If the error is a 403 instead, your account is missing the <em>Log Analytics Reader</em> role on the workspace.</li>
       </ul>
+    </section>
+
+    <section><h2>Cost Guardrails</h2>
+      <p>Log Analytics bills per GB ingested beyond the monthly free allowance, and a misconfigured DCR (debug-level syslog from a busy host is the classic offender) can turn a learning exercise into an invoice. Two cheap defenses: a daily ingestion cap on the workspace, and an alert on the <code>Usage</code> table itself so you hear about a data flood the same day it starts.</p>
+      <p class="code-label">Set a daily ingestion cap of 0.5 GB</p>
+      <pre><code>az monitor log-analytics workspace update -g $RG -n $LAW --quota 0.5</code></pre>
+      <p>Understand the trade-off before using a cap in production: when the cap hits, collection <em>stops</em> for the rest of the day, which means your log alerts go blind exactly when something unusual is happening. For a homelab the cap is the right choice; for production, alert on volume instead of capping it:</p>
+      <p class="code-label">Alert when daily ingestion exceeds 1 GB</p>
+      <pre><code>az monitor scheduled-query create -g $RG -n ingestion-spike \
+  --scopes $WID \
+  --condition "count 'Usage | where TimeGenerated &gt; ago(1d) | where sum(Quantity) &gt; 1024' &gt; 0" \
+  --condition-query "Usage | where TimeGenerated &gt; ago(1d) | summarize sum(Quantity) | where sum_Quantity &gt; 1024" \
+  --evaluation-frequency 1h --window-size 1h \
+  --action-groups $AG_ID --severity 3</code></pre>
+      <p>Check the <a href="cost-management.html">Azure Cost Management</a> lab for the budget-alert half of this story - workspace caps watch gigabytes, budgets watch dollars, and you want both.</p>
     </section>
 
     <section><h2>Extension Ideas</h2>
@@ -239,6 +367,20 @@ stress --cpu $(nproc) --timeout 600 &amp;</code></pre>
         <li><strong>An alert without a tested action group is decoration:</strong> always generate real load and watch the notification arrive before you call monitoring done.</li>
         <li><strong>Capture resource IDs into variables early:</strong> half the failures in this lab come from passing a name or GUID where a full resource ID was expected.</li>
       </ul>
+    </section>
+
+    <section><h2>Cleanup</h2>
+      <p>Monitoring resources are cheap but not free - alert rules bill a small monthly fee each, and workspace ingestion costs grow with retention. When you are done experimenting, tear down in dependency order: alerts first, then the DCR association, then the DCR, then the workspace.</p>
+      <p class="code-label">Remove everything this lab created</p>
+      <pre><code>az monitor metrics alert delete -g $RG -n cpu-high
+az monitor scheduled-query delete -g $RG -n heartbeat-missing --yes
+az monitor alert-processing-rule delete -g $RG -n weekend-maintenance
+az monitor data-collection rule association delete -n tyf-dcr-assoc --resource $VMID --yes
+az monitor data-collection rule delete -g $RG -n tyf-dcr --yes
+az monitor action-group delete -g $RG -n tyf-admins
+az monitor log-analytics workspace delete -g $RG -n $LAW --force true --yes</code></pre>
+      <p>The agent extension can stay on the VM harmlessly once its DCR association is gone, but remove it too if you want a truly clean slate: <code>az vm extension delete -g $RG --vm-name $VM -n AzureMonitorLinuxAgent</code>. Note that workspace deletion has a soft-delete window - if you plan to reuse the name <code>tyf-law</code> soon, either wait out the soft-delete period or permanently purge it from the portal.</p>
+      <p><strong>Verify cleanup:</strong> <code>az resource list -g $RG -o table</code> should no longer show any <code>Microsoft.Insights</code> or <code>Microsoft.OperationalInsights</code> resources from this lab. If a delete fails with a dependency error, you skipped the dependency order - delete the association or alert it names, then retry.</p>
     </section>
 
     <section class="related-labs"><h2>Related Labs</h2>

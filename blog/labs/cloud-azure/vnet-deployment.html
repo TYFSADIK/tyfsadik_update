@@ -122,6 +122,8 @@ Pay-As-You-Go  11111111-2222-3333-4444-555555555555 Enabled</div>
         <div class="terminal-output">Succeeded</div>
       </div>
       <p><strong>Common mistake:</strong> forgetting that <code>az configure --defaults</code> persists across terminal sessions. If a later lab deploys somewhere unexpected, check <code>az configure --list-defaults</code> first.</p>
+      <p><strong>Permissions:</strong> creating VNets and peerings requires the <code>Network Contributor</code> role (or higher) on the resource group, and peering requires it on <em>both</em> VNets. If you are on a shared subscription and step 03 fails with an authorization error, this - not the command syntax - is the first thing to check.</p>
+      <p><strong>Cost:</strong> VNets, subnets, and same-region peerings are free. The only billable items in this lab are the optional test VMs in the validation section and any public IPs they get. Peering across <em>regions</em> (global VNet peering) does bill per GB transferred - irrelevant here, but worth knowing before you copy this pattern across regions.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
@@ -151,6 +153,9 @@ vnet-b  10.1.0.0/16      data      10.1.1.0/24   databases and stateful services
 }</div>
           </div>
           <p><strong>How to verify:</strong> <code>az network vnet list -o table</code> should show vnet-a with provisioning state <code>Succeeded</code>. <strong>Common mistake:</strong> typos in the CIDR (e.g. 10.0.0.0/8 when you meant /16) succeed silently - nothing validates your intent, only the syntax. Always echo the address space back with the query above before moving on.</p>
+          <p><strong>DNS comes for free, but know what you got:</strong> unless you pass <code>--dns-servers</code>, every VNet uses Azure-provided DNS (168.63.129.16), which resolves names of resources inside that VNet automatically. It does <em>not</em> resolve names in the peered VNet - name resolution does not ride across peering. After this lab, VMs in vnet-a can ping vnet-b hosts by IP, but resolving their names needs a Private DNS zone linked to both VNets. That is a deliberate follow-up exercise, not a bug.</p>
+          <p><strong>Add tags while you are here.</strong> Networking resources outlive the people who created them, and tags are how the next person learns why a VNet exists:</p>
+          <div class="command-block" data-copy><div class="command"><code>az network vnet update -n vnet-a --set tags.owner=taki tags.env=lab tags.tier=app-platform</code></div><div class="note">Tags are free-form key/value pairs used for ownership, billing, and policy.</div></div>
         </div></div>
         <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Add a second subnet</strong>
           <p><strong>What:</strong> add the app subnet to vnet-a. <strong>Why:</strong> tiers belong in separate subnets because Network Security Groups and route tables attach to subnets, not to individual VMs. If web and app shared a subnet, you could not write an NSG rule that lets the internet reach web but not app - the segmentation this whole lab is about would be impossible.</p>
@@ -164,6 +169,7 @@ app     10.0.2.0/24      Enabled
 web     10.0.1.0/24      Enabled</div>
           </div>
           <p><strong>Common mistake:</strong> trying to create a subnet whose range overlaps an existing one (say 10.0.1.128/25) fails with <code>NetcfgSubnetRangesOverlap</code>. Azure checks every new subnet against its siblings, which is your safety net - but the error means you have to pick a free range, so keep a written map of what is allocated.</p>
+          <p><strong>Sizing note:</strong> the error you will hit in real life is not overlap but exhaustion. A /24 with 251 usable IPs sounds like a lot until an AKS node pool or a VM scale set lands in it. If you already know a subnet will host autoscaled compute, give it a /22 or /21 now - resizing a subnet means recreating it, which means evicting everything in it.</p>
         </div></div>
         <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Peer two VNets</strong>
           <p><strong>What:</strong> create the second VNet and connect the two with peering. <strong>Why:</strong> peering is how separate VNets exchange private traffic. One critical detail trips up almost everyone the first time: <strong>peering is a pair of one-way links</strong>. Creating a-to-b alone leaves the peering stuck in the <code>Initiated</code> state; traffic only flows once the reverse link b-to-a also exists and both sides report <code>Connected</code>.</p>
@@ -193,6 +199,9 @@ a-to-b  Connected  True</div>
 b-to-a  Connected</div>
           </div>
           <p><strong>Common mistake:</strong> creating only one direction and assuming it worked because the command succeeded. The CLI happily creates a half-pair. <strong>How to verify:</strong> a peering stuck at <code>Initiated</code> always means the reverse link is missing - create it, do not delete and retry the existing one.</p>
+          <p><strong>Cross-subscription peering:</strong> when the remote VNet lives in another subscription or resource group, a bare name is ambiguous, so <code>--remote-vnet</code> takes the full resource ID instead. The pattern below resolves the ID dynamically; both directions are still required, and each command runs in the context of the subscription that owns its local VNet:</p>
+          <div class="command-block" data-copy><div class="command"><code>az network vnet peering create -n a-to-b --vnet-name vnet-a --remote-vnet $(az network vnet show -n vnet-b -g other-rg --query id -o tsv) --allow-vnet-access</code></div><div class="note">Use full resource IDs when names alone are not unique.</div></div>
+          <p><strong>One more state worth knowing:</strong> besides <code>Initiated</code> and <code>Connected</code>, the portal sometimes shows a peering as needing a <em>sync</em> after the remote address space changed. If connectivity silently broke after someone edited a peered VNet's ranges, run <code>az network vnet peering sync -n a-to-b --vnet-name vnet-a</code> on both directions to re-push the address space into the effective routes.</p>
         </div></div>
       </div>
     </section>
@@ -229,6 +238,17 @@ Default   Active   0.0.0.0/0         Internet</div>
 rtt min/avg/max/mdev = 1.242/1.389/1.604/0.151 ms</div>
       </div>
       <p>Sub-2ms latency between VNets in the same region is the signature of peering on the Microsoft backbone - a path through the public internet would show noticeably higher and more variable times. Note that default NSG rules allow VNet-to-VNet traffic, so this works before you lock anything down; once you attach NSGs in the next lab, expect to re-visit this test.</p>
+      <p>If the ping fails, the next diagnostic layer is the <strong>effective security rules</strong> on the destination NIC - the merged result of every NSG attached to its subnet and NIC:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network nic list-effective-nsg --ids $(az vm show -n data-vm-01 --query networkProfile.networkInterfaces[0].id -o tsv) --query "value[].defaultSecurityRules[?direction=='Inbound'].{name:name, access:access, prefix:sourceAddressPrefix}" -o table</span></div>
+        <div class="terminal-output">Name                     access    prefix
+-------------------------  --------  ----------------------
+AllowVnetInBound           Allow     VirtualNetwork
+AllowAzureLoadBalancer...  Allow     AzureLoadBalancer
+DenyAllInBound             Deny      0.0.0.0/0</div>
+      </div>
+      <p><code>AllowVnetInBound</code> is the default rule doing the heavy lifting: its <code>VirtualNetwork</code> service tag automatically includes peered VNet address spaces, which is why no firewall change was needed for this lab. <code>DenyAllInBound</code> at priority 65500 catches everything else - internet traffic to the data VM is already dropped even without any NSG you wrote.</p>
+      <p><strong>Portal cross-check:</strong> open the resource group in the Azure portal and confirm you can see both VNets, three subnets, and two peering resources. CLI-first labs are faster to repeat, but a quick portal glance catches the "I deployed into the wrong subscription" class of mistake that CLI output will not.</p>
       <p><strong>Cleanup</strong> when you are done, so test VMs do not bill overnight:</p>
       <div class="command-block" data-copy><div class="command"><code>az group delete -n tyf-net-rg --yes --no-wait</code></div><div class="note">Deletes the VNets, peerings, subnets, and test VMs in one shot.</div></div>
     </section>
@@ -270,6 +290,23 @@ rtt min/avg/max/mdev = 1.242/1.389/1.604/0.151 ms</div>
         <li>Peering is not transitive: each pair of VNets that must talk needs its own peering (or a hub-and-spoke design).</li>
         <li>Verify the data plane, not just the control plane: <code>Connected</code> state plus an effective-route-table entry plus a real ping is the complete proof.</li>
       </ul>
+    </section>
+
+    <section><h2>Full Command Recap</h2>
+      <p>Every command from this lab in order, assuming the defaults set in Environment Setup. This is the checklist to re-run when reproducing the lab from scratch:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az group create -n tyf-net-rg -l eastus</span></div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet create -n vnet-a --address-prefixes 10.0.0.0/16 --subnet-name web --subnet-prefixes 10.0.1.0/24</span></div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet subnet create --vnet-name vnet-a -n app --address-prefixes 10.0.2.0/24</span></div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet create -n vnet-b --address-prefixes 10.1.0.0/16 --subnet-name data --subnet-prefixes 10.1.1.0/24</span></div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet peering create -n a-to-b --vnet-name vnet-a --remote-vnet vnet-b --allow-vnet-access</span></div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet peering create -n b-to-a --vnet-name vnet-b --remote-vnet vnet-a --allow-vnet-access</span></div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet peering list --vnet-name vnet-a -o table</span></div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet peering list --vnet-name vnet-b -o table</span></div>
+        <div class="terminal-output"># cleanup
+az group delete -n tyf-net-rg --yes --no-wait</div>
+      </div>
+      <p>Notice what is <em>not</em> in the list: no route tables, no NSGs, no gateway resources. The entire routed, segmented, two-VNet topology is nine commands, because Azure's system routes and default NSG rules do the rest. Everything you add from here - NSGs, route tables, DNS zones - is tightening or extending this baseline, and each of those layers is a follow-up lab.</p>
     </section>
 
     <section class="related-labs"><h2>Related Labs</h2>

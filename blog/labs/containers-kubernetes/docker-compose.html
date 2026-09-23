@@ -53,13 +53,17 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">compose</span><span class="tag">services</span><span class="tag">healthcheck</span><span class="tag">depends_on</span></div>
     </div>
 
-    <section><p class="lead">You will describe a web + database + cache stack in a single Compose file and launch it with one command. By the end you will have reproducible, ordered startup with health checks instead of fragile manual docker run sequences.</p></section>
+    <section><p class="lead">You will describe a web + database + cache stack in a single Compose file and launch it with one command. By the end you will have reproducible, ordered startup with health checks instead of fragile manual docker run sequences.</p>
+      <p>Running containers by hand works until the app needs more than one of them. The moment you have a web tier, a database, and a cache, a chain of <code>docker run</code> commands becomes a shell script that is easy to get wrong: networks must exist first, startup order matters, passwords get typed on the command line, and nobody remembers which flags the database container needed. Docker Compose replaces all of that with one declarative YAML file that describes the desired end state - services, networks, volumes, and the order they must come up in - and a single <code>docker compose up</code> that converges reality to that description.</p>
+      <p>This lab builds that file from scratch, validates it before anything runs, brings the stack up, proves the services can actually reach each other, and then walks through the full lifecycle commands you will use daily. Every claim is verified with a command and its expected output, so you can follow it end to end on any machine with Docker installed.</p></section>
 
     <div class="learning-objectives"><h2>Learning Objectives</h2>
       <ul>
         <li>Define services, networks, and volumes declaratively.</li>
         <li>Order startup with depends_on and healthchecks.</li>
         <li>Manage the stack lifecycle with compose commands.</li>
+        <li>Validate a Compose file with <code>docker compose config</code> before deploying it.</li>
+        <li>Verify service-to-service connectivity and DNS-based discovery by name.</li>
         <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> Docker Compose v2.</li>
       </ul>
     </div>
@@ -73,11 +77,30 @@ graph LR
     Web --> Cache[(redis)]
   end
       </div>
+      <p>Four Compose concepts do all the work in this file, and it is worth being precise about what each one creates before writing any YAML:</p>
+      <ul>
+        <li><strong>Services</strong> are container definitions: an image, its environment, ports, and restart policy. Compose names the containers it creates <code>&lt;project&gt;-&lt;service&gt;-1</code>, where the project name defaults to the directory the file lives in.</li>
+        <li><strong>Networks</strong> are isolated bridges Compose creates per stack. Every service on a network can resolve the others by service name via Docker's embedded DNS - that is how <code>web</code> reaches the database simply by connecting to the hostname <code>db</code>. Services not on a shared network cannot see each other at all, which is the segmentation primitive you will use to keep the database off the frontend network.</li>
+        <li><strong>Volumes</strong> are named, managed storage that survives container replacement. Without one, <code>docker compose down</code> followed by <code>up</code> would hand you an empty database every time.</li>
+        <li><strong>depends_on with conditions</strong> controls startup ordering. Plain <code>depends_on</code> only waits for the dependency container to <em>start</em>; <code>condition: service_healthy</code> waits until its healthcheck passes, which is the difference between "Postgres process exists" and "Postgres is accepting connections".</li>
+      </ul>
+      <p>Under the hood, Compose is a reconciler: every time you run <code>docker compose up</code> it compares the file (the desired state) against what is actually running (the observed state) and creates, recreates, or removes only what differs. Nothing changed since the last run? It does nothing. You edited one service's environment? Only that service is recreated. This idempotent, converge-toward-the-file behaviour is the same control-loop idea Kubernetes uses at cluster scale, which is why Compose is such a good stepping stone toward it.</p>
     </section>
 
     <section><h2>Environment Setup</h2>
       <p><strong>You will need:</strong> Docker Compose v2 (<code>docker compose version</code>).</p>
-      <p><strong>Before you begin:</strong> create a project directory for the compose file.</p>
+      <p>Compose v2 ships as a Docker CLI plugin - the command is <code>docker compose</code> (space), not the legacy Python binary <code>docker-compose</code> (hyphen). Confirm it before going further; anything below v2.20 lacks some of the syntax used here:</p>
+      <p class="code-label">Verify the Compose plugin</p>
+      <pre><code>docker compose version</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker compose version</span></div>
+        <div class="terminal-output">Docker Compose version v2.29.2</div>
+      </div>
+      <p><strong>Before you begin:</strong> create a project directory for the compose file. The directory name matters because it becomes the default project name, which prefixes every container, network, and volume the stack creates. Using a dedicated, descriptive directory keeps stacks from colliding:</p>
+      <p class="code-label">Create the project directory</p>
+      <pre><code>mkdir compose-lab &amp;&amp; cd compose-lab</code></pre>
+      <p>Compose looks for its file in this order: <code>compose.yaml</code>, <code>compose.yml</code>, then the legacy <code>docker-compose.yaml</code>. This lab uses <code>compose.yaml</code>, the current canonical name. If your file has a different name, every command below needs <code>-f &lt;filename&gt;</code>.</p>
+      <p>Platform notes: on macOS and Windows, Docker Desktop bundles the Compose plugin already. On a bare Linux server, install the <code>docker-compose-plugin</code> package from Docker's apt/dnf repository rather than the standalone binary. And a habit worth forming early: run Compose commands from the project directory so the project name, <code>.env</code> discovery, and relative build contexts all resolve the way the file expects.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
@@ -97,17 +120,161 @@ services:
     depends_on:
       db: { condition: service_healthy }
     ports: ["8080:80"]</code></pre>
+          <p>That minimal file works, but a stack you would actually keep needs more: a named volume so the data survives teardowns, a dedicated network so the database is not exposed to anything but the services that need it, and the cache tier the architecture diagram promised. Here is the full version, with each addition annotated:</p>
+          <p class="code-label">compose.yaml - full lab stack</p>
+          <pre><code>services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}   # read from .env, not hardcoded
+      POSTGRES_DB: appdb
+    volumes:
+      - db-data:/var/lib/postgresql/data   # survives down/up cycles
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks: [backend]                    # NOT on the frontend network
+    restart: unless-stopped
+
+  cache:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks: [backend]
+
+  web:
+    image: nginx:stable
+    depends_on:
+      db:
+        condition: service_healthy         # wait for pg_isready, not just start
+      cache:
+        condition: service_healthy
+    ports:
+      - "8080:80"                          # host:container
+    networks: [frontend, backend]          # web bridges both tiers
+
+networks:
+  frontend:
+  backend:
+
+volumes:
+  db-data:</code></pre>
+          <p>Two details deserve attention. First, the <code>healthcheck</code> runs <em>inside</em> the container: <code>pg_isready -U postgres</code> asks the local Postgres whether it accepts connections and exits 0 only when it does, and <code>redis-cli ping</code> returns <code>PONG</code>. Without <code>timeout</code> and <code>retries</code>, a single slow probe can leave a service flapping between healthy and unhealthy. Second, <code>web</code> sits on both networks while <code>db</code> and <code>cache</code> sit only on <code>backend</code> - so the only path to the database from outside the stack is through the web tier.</p>
+          <p class="code-label">.env - variables interpolated into compose.yaml</p>
+          <pre><code>DB_PASSWORD=secret</code></pre>
+          <p>Compose reads <code>.env</code> from the project directory automatically and substitutes <code>${DB_PASSWORD}</code>. Never commit this file; add it to <code>.gitignore</code> and ship a <code>.env.example</code> with placeholder values instead.</p>
+          <p><strong>Common mistake:</strong> YAML is whitespace-sensitive. A single tab character or a misaligned <code>depends_on</code> key produces a parse error, or worse, silently nests a key one level too deep where Compose ignores it. Verify indentation is consistent two-space before continuing - the next step catches what your eyes miss.</p>
         </div></div>
-        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Bring the stack up</strong>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Validate the file before anything runs</strong>
+          <p><code>docker compose config</code> parses the file, resolves variable interpolation, merges any override files, and prints the <em>effective</em> configuration - what Compose will actually act on. Running it before <code>up</code> turns cryptic runtime failures into clean syntax errors, and it is the fastest way to confirm a variable from <code>.env</code> actually landed where you expected.</p>
+          <div class="command-block" data-copy><div class="command"><code>docker compose config --quiet &amp;&amp; echo "config OK"</code></div><div class="note">--quiet validates without printing; drop it to see the resolved file.</div></div>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker compose config | head -20</span></div>
+            <div class="terminal-output">name: compose-lab
+services:
+  cache:
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+    image: redis:7-alpine
+    networks:
+      backend: null
+    restart: unless-stopped
+  db:
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_PASSWORD: secret</div>
+          </div>
+          <p>Note what happened in that output: <code>${DB_PASSWORD}</code> became <code>secret</code>, and the project name <code>compose-lab</code> was derived from the directory. If the password line still showed a literal <code>${DB_PASSWORD}</code>, the <code>.env</code> file is missing, misspelled, or in the wrong directory - fix that now, not after the database has initialized itself with an empty password.</p>
+          <p><strong>How to verify:</strong> <code>docker compose config --services</code> should print exactly <code>db</code>, <code>cache</code>, and <code>web</code>, one per line. If one is missing, it failed to parse as a service - usually an indentation problem under <code>services:</code>.</p>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Bring the stack up</strong>
           <div class="command-block" data-copy><div class="command"><code>docker compose up -d</code></div><div class="note">Creates the network, volumes, and starts services in dependency order.</div></div>
+          <p>The <code>-d</code> flag detaches: containers run in the background and your terminal returns. Without it, Compose streams the aggregated logs of every service to your terminal and tears the stack down when you press Ctrl+C - useful for debugging, annoying for a lab.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker compose up -d</span></div>
+            <div class="terminal-output">[+] Running 7/7
+ &#10004; Network compose-lab_frontend   Created
+ &#10004; Network compose-lab_backend    Created
+ &#10004; Volume "compose-lab_db-data"   Created
+ &#10004; Container compose-lab-db-1     Healthy
+ &#10004; Container compose-lab-cache-1  Healthy
+ &#10004; Container compose-lab-web-1    Started</div>
+          </div>
+          <p>Read the output bottom-up and you can see the dependency engine working: networks and the volume are created first, <code>db</code> and <code>cache</code> report <code>Healthy</code> (Compose blocked on their healthchecks), and only then is <code>web</code> started. If you re-run <code>docker compose up -d</code> after editing the file, Compose recreates only the services whose definition changed and leaves the rest untouched.</p>
+          <p><strong>Common mistake:</strong> pulling images on a slow connection makes the first <code>up</code> look hung. It is not - Compose is downloading <code>postgres:16</code> (~240MB). You can pre-pull with <code>docker compose pull</code> to separate download time from startup time.</p>
+          <p>For scripts and CI pipelines, prefer <code>docker compose up -d --wait</code>: instead of returning as soon as containers are started, it blocks until every service with a healthcheck reports healthy (and exits non-zero on timeout). That turns "is the stack ready?" from a race-prone <code>sleep 10</code> into a deterministic gate.</p>
         </div></div>
-        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Check status and logs</strong>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Check status and logs</strong>
           <div class="terminal-session">
             <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker compose ps</span></div>
             <div class="terminal-output">NAME      SERVICE  STATUS                 PORTS
 proj-db   db       Up (healthy)
 proj-web  web      Up                     0.0.0.0:8080-&gt;80/tcp</div>
           </div>
+          <p><code>docker compose ps</code> is scoped to this stack only - unlike <code>docker ps</code>, it will not show unrelated containers on the host. The <code>(healthy)</code> marker next to <code>db</code> and <code>cache</code> comes straight from the healthchecks; if a service shows <code>(unhealthy)</code>, its probe is failing and anything with <code>condition: service_healthy</code> will never start.</p>
+          <p class="code-label">Follow the logs of one service</p>
+          <pre><code>docker compose logs -f db</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker compose logs db | tail -3</span></div>
+            <div class="terminal-output">db-1  | 2026-09-21 14:02:11.203 UTC [1] LOG:  database system is ready to accept connections</div>
+          </div>
+          <p>Omit the service name (<code>docker compose logs -f</code>) to follow all services at once, interleaved and colour-coded by service - this is the single most useful debugging view Compose gives you. Add <code>--tail 50</code> to skip the startup noise, and <code>--since 10m</code> to bound the window when a stack has been running for days.</p>
+          <p><strong>How to verify:</strong> <code>docker compose top</code> shows the actual processes inside each container. The <code>db</code> service should list a <code>postgres</code> process tree; if the container is <code>Up</code> but <code>top</code> shows nothing, the entrypoint crashed and restarted - check <code>docker compose logs db</code> for the reason.</p>
+        </div></div>
+        <div class="step"><div class="step-num">05</div><div class="step-body"><strong>Prove the services can reach each other</strong>
+          <p>"Up" only means the processes are running. The reason Compose exists is service discovery: each service resolves the others by name through Docker's embedded DNS. Prove it by opening a shell inside the web container and resolving <code>db</code> by name, then exercising each backend with its native client.</p>
+          <p class="code-label">Name resolution and port reachability from inside the stack</p>
+          <pre><code>docker compose exec web getent hosts db
+docker compose exec db pg_isready -U postgres
+docker compose exec cache redis-cli ping</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker compose exec web getent hosts db</span></div>
+            <div class="terminal-output">172.20.0.3      db</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker compose exec db pg_isready -U postgres</span></div>
+            <div class="terminal-output">/var/run/postgresql:5432 - accepting connections</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker compose exec cache redis-cli ping</span></div>
+            <div class="terminal-output">PONG</div>
+          </div>
+          <p>The first command is the important one: the bare hostname <code>db</code> resolved to a container IP on the <code>backend</code> network. That IP changes every time the container is recreated, which is exactly why application configs should reference service names and never addresses. The other two confirm each backend answers on its protocol, not just that its container exists.</p>
+          <p>Also confirm the segmentation you declared: <code>db</code> has no published port, so it is unreachable from the host, while <code>web</code> is published on 8080:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080</span></div>
+            <div class="terminal-output">200</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">nc -z -w 2 localhost 5432; echo "exit=$?"</span></div>
+            <div class="terminal-output">exit=1</div>
+          </div>
+          <p><strong>Common mistake:</strong> <code>docker compose exec</code> targets the container by <em>service</em> name (<code>web</code>), not container name (<code>compose-lab-web-1</code>) - and it fails with <code>no container found</code> if the service is stopped. Use <code>docker compose run --rm web sh</code> instead when you need a shell in a service that is not currently running.</p>
+        </div></div>
+        <div class="step"><div class="step-num">06</div><div class="step-body"><strong>Manage the lifecycle and tear down</strong>
+          <p>Compose distinguishes four states you will move between constantly. <code>stop</code> halts containers but keeps them (and the data on their volumes); <code>start</code> resumes them; <code>restart</code> is a stop/start pair; <code>down</code> removes containers and networks but <em>keeps named volumes</em>; and <code>down -v</code> removes the volumes too - the full reset.</p>
+          <p class="code-label">The lifecycle commands</p>
+          <pre><code>docker compose stop          # halt, keep everything
+docker compose start         # resume halted containers
+docker compose restart web   # bounce one service
+docker compose down          # remove containers + networks, keep volumes
+docker compose down -v       # also delete volumes: data is gone</code></pre>
+          <p>Prove the volume did its job: stop the stack, bring it down, start it again, and check that the database still holds data written before the teardown:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker compose exec db psql -U postgres -d appdb -c "CREATE TABLE IF NOT EXISTS lab_check (id int); INSERT INTO lab_check VALUES (1);"</span></div>
+            <div class="terminal-output">INSERT 0 1</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker compose down &amp;&amp; docker compose up -d</span></div>
+            <div class="terminal-output">[+] Running 4/4 ... Container compose-lab-web-1 Started</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker compose exec db psql -U postgres -d appdb -c "SELECT * FROM lab_check;"</span></div>
+            <div class="terminal-output"> id
+----
+  1
+(1 row)</div>
+          </div>
+          <p>The row survived a full container replacement because it lives in the <code>compose-lab_db-data</code> volume, not in the container's writable layer. When you are finished with the lab entirely, <code>docker compose down -v</code> returns the host to a clean state - this is the command to run before resetting the lab for another attempt.</p>
+          <p><strong>How to verify:</strong> after <code>down -v</code>, <code>docker volume ls | grep compose-lab</code> should print nothing, and <code>docker network ls | grep compose-lab</code> should be empty too. Leftovers mean a container from the project is still running somewhere - find it with <code>docker compose ps -a</code>.</p>
         </div></div>
       </div>
     </section>
@@ -115,31 +282,56 @@ proj-web  web      Up                     0.0.0.0:8080-&gt;80/tcp</div>
     <section><h2>Progress So Far</h2>
       <div class="mermaid" role="img" aria-label="Compose progress">
 graph LR
-  A[01 Write compose] -->|done| B[02 up -d]
-  B -->|done| C[03 ps + logs]
+  A["01 Write compose"] -->|done| B["02 Validate config"]
+  B -->|done| C["03 up -d"]
+  C -->|done| D["04 ps + logs"]
+  D -->|done| E["05 Verify connectivity"]
+  E -->|done| F["06 Lifecycle + teardown"]
   style A fill:#1a4a1a,stroke:#00ff00,color:#fff
   style B fill:#1a4a1a,stroke:#00ff00,color:#fff
   style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style E fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style F fill:#1a4a1a,stroke:#00ff00,color:#fff
       </div>
     </section>
 
     <section><h2>Testing &amp; Validation</h2>
       <div class="command-block" data-copy><div class="command"><code>curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080 &amp;&amp; docker compose down</code></div></div>
       <p>You should see <code>200</code>, then a clean teardown. If so, your whole stack is reproducible from one file.</p>
+      <p>That is the minimal acceptance test. For a lab you actually trust, validate three more properties before calling it done:</p>
+      <ul>
+        <li><strong>Healthchecks genuinely gate startup.</strong> Deliberately break the db healthcheck (change the probe to <code>pg_isready -U nosuchuser</code>), run <code>docker compose up -d --force-recreate</code>, and watch <code>web</code> never start: <code>docker compose ps</code> will show <code>db</code> as <code>unhealthy</code> and <code>web</code> absent. Revert the probe and confirm the stack recovers. This proves the ordering is real, not decorative.</li>
+        <li><strong>The stack is deterministic.</strong> <code>docker compose down -v &amp;&amp; docker compose up -d</code> from a clean slate should reach all-healthy with no manual intervention. If it only works because of state left over from previous runs, it is not reproducible - and that is precisely the failure mode Compose exists to eliminate.</li>
+        <li><strong>No credentials in the file.</strong> <code>grep -i password compose.yaml</code> should find only the <code>${DB_PASSWORD}</code> reference, never a literal value. Anyone who clones the repo gets the structure; only people with the <code>.env</code> get the secret.</li>
+      </ul>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker compose ps --format "table {{.Name}}\t{{.Status}}"</span></div>
+        <div class="terminal-output">NAME                 STATUS
+compose-lab-cache-1  Up 5 minutes (healthy)
+compose-lab-db-1     Up 5 minutes (healthy)
+compose-lab-web-1    Up 5 minutes</div>
+      </div>
+      <p>Three services, two healthy backends, one published port, and the entire thing described by a file short enough to read in one screen - that is the deliverable.</p>
     </section>
 
-    <details><summary>Troubleshooting</summary>
+    <section><h2>Troubleshooting</h2>
+      <p>The issues below are the ones that actually bite in this lab, with the cause and the fix:</p>
       <ul>
-        <li><strong>web starts before db is ready:</strong> use a healthcheck with <code>condition: service_healthy</code>.</li>
-        <li><strong>Old containers conflict:</strong> run <code>docker compose down</code> before re-creating.</li>
-        <li><strong>Env not applied:</strong> confirm a <code>.env</code> file or environment keys are present.</li>
+        <li><strong>web starts before db is ready:</strong> use a healthcheck with <code>condition: service_healthy</code>. If you already have both and it still happens, check that the healthcheck is defined on the <em>dependency</em> (<code>db</code>), not on the dependent - putting the probe on <code>web</code> does nothing for ordering. Confirm with <code>docker inspect compose-lab-db-1 | grep -A5 Healthcheck</code>.</li>
+        <li><strong>Old containers conflict:</strong> run <code>docker compose down</code> before re-creating. A harder variant is the error <code>container name "/compose-lab-db-1" is already in use</code> from a container created outside Compose (e.g. a manual <code>docker run --name</code>); Compose will not adopt it, so remove it with <code>docker rm -f compose-lab-db-1</code>.</li>
+        <li><strong>Env not applied:</strong> confirm a <code>.env</code> file or environment keys are present. The file must be named exactly <code>.env</code> and sit in the directory you run the command from - not next to a compose file referenced with <code>-f ../other/compose.yaml</code>. Diagnose with <code>docker compose config</code>: if the output shows an empty value or a literal <code>${VAR}</code>, interpolation never happened.</li>
+        <li><strong>db is (unhealthy) and web never starts:</strong> the probe itself is failing, not the ordering. Run the healthcheck command by hand - <code>docker compose exec db pg_isready -U postgres</code> - and read its error. The classic cause is a changed <code>POSTGRES_USER</code>: <code>pg_isready -U postgres</code> fails if the superuser is not literally <code>postgres</code>. Match the probe's <code>-U</code> flag to whatever user the container initializes.</li>
+        <li><strong>port 8080 already allocated:</strong> something on the host already owns the published port. Find it with <code>lsof -i :8080</code> (or <code>ss -tlnp | grep 8080</code> on Linux), then either stop the offender or change the host side of the mapping to <code>"8081:80"</code> - the container port stays 80, only the host port moves.</li>
       </ul>
-    </details>
+    </section>
 
     <section><h2>Extension Ideas</h2>
       <ul>
-        <li>Split prod/dev with compose override files.</li>
-        <li>Promote the stack to Kubernetes in <a href="multi-container-apps.html">Multi-Container Applications</a>.</li>
+        <li>Split prod/dev with compose override files: keep a base <code>compose.yaml</code> and a <code>compose.dev.yaml</code> with bind-mounted source and debug ports, then run <code>docker compose -f compose.yaml -f compose.dev.yaml up</code> - later files override earlier ones key by key.</li>
+        <li>Replace the nginx placeholder with a real app by adding a <code>build:</code> section pointing at a Dockerfile, so <code>docker compose up --build</code> compiles and runs your code in one step.</li>
+        <li>Add resource limits (<code>mem_limit</code>, <code>cpus</code>) to each service and watch a memory-hungry container get OOM-killed instead of starving its neighbours.</li>
+        <li>Promote the stack to Kubernetes in <a href="multi-container-apps.html">Multi-Container Applications</a> - the service/network/volume vocabulary maps almost one-to-one onto Deployments, Services, and PVCs.</li>
         <li>Add the build + deploy to <a href="../devops/cicd-pipeline.html">CI/CD</a>.</li>
       </ul>
     </section>
@@ -150,6 +342,20 @@ graph LR
         <li>Guaranteed startup order with healthchecks and depends_on.</li>
         <li>Made the environment reproducible from one declarative file.</li>
         <li>Verified the app and a clean teardown.</li>
+        <li>Validated the file with <code>docker compose config</code> before deploying anything.</li>
+        <li>Proved DNS-based service discovery and network segmentation between tiers.</li>
+        <li>Demonstrated data persistence across a full <code>down</code>/<code>up</code> cycle with a named volume.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li><strong>Declare the end state, let Compose converge to it:</strong> the file describes services, networks, and volumes; <code>up</code> creates only what is missing and recreates only what changed.</li>
+        <li><strong>Healthy beats started:</strong> plain <code>depends_on</code> waits for a container to exist; <code>condition: service_healthy</code> waits for it to actually accept work. Ordered startup without healthchecks is ordering in name only.</li>
+        <li><strong>Service names are the API:</strong> Docker's embedded DNS resolves <code>db</code> and <code>cache</code> to whatever IPs the containers have today. Configs that reference names survive recreation; configs that reference IPs do not.</li>
+        <li><strong>Networks are your segmentation boundary:</strong> a service only sees the networks you put it on. Keeping <code>db</code> off the frontend network means the database is unreachable from anywhere except the tiers that need it.</li>
+        <li><strong>Volumes outlive containers by design:</strong> <code>down</code> keeps named volumes, <code>down -v</code> deletes them. Know which one you are running before you run it - one is a restart, the other is data loss.</li>
+        <li><strong>Validate before you deploy:</strong> <code>docker compose config</code> resolves variables and prints the effective file. Thirty seconds of validation beats debugging a misinterpolated password at runtime.</li>
       </ul>
     </section>
 

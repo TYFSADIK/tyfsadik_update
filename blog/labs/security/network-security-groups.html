@@ -94,6 +94,23 @@ Lab-Sub      taki@tyfsadik.org
       <p><strong>Common mistake:</strong> running the lab against the wrong subscription or AWS profile. Both CLIs silently use whatever context is active, so confirm the account IDs above match the lab environment before creating or deleting any rules.</p>
     </section>
 
+    <section><h2>Rule Matrix</h2>
+      <p>Before touching the CLI I write down the intended policy as a matrix. Every cell is either an explicit allow with a named rule, or "deny" by catch-all (Azure) or implicit deny (AWS). Having this on paper first is what keeps the rule set minimal - any rule that does not implement a matrix row does not get created.</p>
+      <table>
+        <thead>
+          <tr><th>Source</th><th>Destination</th><th>Port</th><th>Action</th><th>Rule</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Internet</td><td>Web tier</td><td>TCP 443</td><td>Allow</td><td>allow-https (100)</td></tr>
+          <tr><td>Web tier</td><td>App tier</td><td>TCP 8080</td><td>Allow</td><td>allow-web (100)</td></tr>
+          <tr><td>App tier</td><td>Data tier</td><td>TCP 5432</td><td>Allow</td><td>allow-app (100)</td></tr>
+          <tr><td>Anything else</td><td>Data tier</td><td>Any</td><td>Deny</td><td>deny-all-inbound (4096)</td></tr>
+          <tr><td>Internet</td><td>App/Data tier</td><td>Any</td><td>Deny</td><td>no rule / implicit deny</td></tr>
+        </tbody>
+      </table>
+      <p>Note what the matrix deliberately omits: there is no SSH rule. Administrative access in this design goes through Azure Bastion and AWS Systems Manager Session Manager, so port 22 never appears in any NSG or security group. That single decision removes the most commonly brute-forced rule from the audit surface entirely.</p>
+    </section>
+
     <section><h2>Step-by-Step Execution</h2>
 
       <h3>1. Create an Azure NSG rule allowing only HTTPS inbound</h3>
@@ -171,7 +188,40 @@ Allow     *         VirtualNetwork       *                     65000     Inbound
 <pre><code class="language-bash">nc: connect to 10.0.3.20 port 5432 (tcp) timed out: Operation now in progress</code></pre>
       <p>A timeout - not "connection refused" - is the expected failure mode, because a stateful deny drops the SYN silently rather than answering with a RST. Repeat the matrix in both clouds: web&rarr;app succeeds, app&rarr;db succeeds, web&rarr;db and internet&rarr;db time out. <strong>Common mistake:</strong> testing from a VM whose own guest firewall (ufw, firewalld) is also filtering; if a "should-pass" test fails, temporarily check <code>sudo ufw status</code> before blaming the NSG.</p>
 
-      <h3>7. Audit for residual any-any rules</h3>
+      <h3>7. Associate the NSGs to their subnets</h3>
+      <p>An Azure NSG enforces nothing until it is associated - creating rules on an unattached NSG is the single most common reason a "configured" policy has zero effect. Attach each NSG to its subnet (subnet-level association is preferred over NIC-level here because it automatically covers every VM deployed into the tier, including ones added later):</p>
+      <div class="command-block"><div class="command"><code>az network vnet subnet update --resource-group rg-lab --vnet-name lab-vnet --name web-subnet --network-security-group web-nsg</code></div></div>
+      <div class="command-block"><div class="command"><code>az network vnet subnet update --resource-group rg-lab --vnet-name lab-vnet --name db-subnet --network-security-group db-nsg</code></div></div>
+<pre><code class="language-bash">{
+  "name": "db-subnet",
+  "addressPrefix": "10.0.3.0/24",
+  "networkSecurityGroup": {
+    "id": "/subscriptions/xxxx/resourceGroups/rg-lab/providers/Microsoft.Network/networkSecurityGroups/db-nsg"
+  },
+  "provisioningState": "Succeeded"
+}</code></pre>
+      <p>On AWS there is no association step for security groups: an SG applies as soon as it is attached to an instance's network interface (<code>aws ec2 modify-instance-attribute --groups</code>), which is why the lab attaches <code>sg-web</code>, <code>sg-app</code>, and <code>sg-db</code> at launch time. <strong>How to verify:</strong> the subnet JSON shows the NSG resource ID, and <code>az network vnet subnet show</code> on every tier returns a non-null <code>networkSecurityGroup</code>. <strong>Common mistake:</strong> associating the NSG to the NIC only, then autoscaling or redeploying the tier - the new VM comes up with no NSG at all.</p>
+
+      <h3>8. Restrict egress from the data tier</h3>
+      <p>Inbound rules stop attackers getting in; egress rules slow them getting data out. The data tier has no legitimate reason to initiate internet connections, so its outbound path gets an explicit deny on Azure (placed above the default <code>AllowInternetOutBound</code> at 65001):</p>
+      <div class="command-block"><div class="command"><code>az network nsg rule create --resource-group rg-lab --nsg-name db-nsg --name deny-internet-outbound --priority 200 --direction Outbound --source-address-prefixes '*' --destination-address-prefixes Internet --destination-port-ranges '*' --access Deny --protocol '*'</code></div></div>
+<pre><code class="language-bash">{
+  "access": "Deny",
+  "destinationAddressPrefix": "Internet",
+  "direction": "Outbound",
+  "name": "deny-internet-outbound",
+  "priority": 200,
+  "provisioningState": "Succeeded"
+}</code></pre>
+      <p>AWS security groups ship with a default egress rule allowing 0.0.0.0/0 on all ports - the one default rule that must be actively removed. Revoke it, then add back only what the tier needs (responses are stateful, so no return-traffic rule is required):</p>
+      <div class="command-block"><div class="command"><code>aws ec2 revoke-security-group-egress --group-id sg-db --protocol all --cidr 0.0.0.0/0</code></div></div>
+<pre><code class="language-bash">{
+    "Return": true,
+    "UnknownIpPermissions": []
+}</code></pre>
+      <p><strong>How to verify:</strong> from the data VM, <code>curl -m 5 https://example.com</code> must time out, while <code>apt</code>-style update failures confirm the egress deny is real. If package updates are genuinely needed, proxy them through the app tier rather than re-opening direct internet egress. <strong>Common mistake:</strong> forgetting DNS - on Azure, VNet DNS resolution goes to 168.63.63.10 (a platform address, not the Internet tag), so the deny does not break name resolution; on AWS, add an explicit UDP/TCP 53 egress rule to the VPC resolver CIDR (.2 address) if workloads resolve names.</p>
+
+      <h3>9. Audit for residual any-any rules</h3>
       <p>The final gate is an automated check that no rule exposes all ports to the world. Azure query for inbound allows open to any source:</p>
       <div class="command-block"><div class="command"><code>az network nsg list -g rg-lab --query "[].defaultSecurityRules[?access=='Allow' &amp;&amp; direction=='Inbound' &amp;&amp; sourceAddressPrefix=='*'].{nsg:''}" -o table; az network nsg rule list -g rg-lab --nsg-name web-nsg --query "[?access=='Allow' &amp;&amp; (sourceAddressPrefix=='*' || sourceAddressPrefix=='Internet')].{name:name, port:destinationPortRange}" -o table</code></div></div>
 <pre><code class="language-bash">Name         Port
@@ -194,6 +244,22 @@ allow-https  443</code></pre>
       <p>On AWS, a CloudWatch Logs Insights query returns the equivalent REJECT evidence:</p>
       <div class="command-block"><div class="command"><code>aws logs start-query --log-group-name /vpc/flowlogs --start-time $(date -d '1 hour ago' +%s) --end-time $(date +%s) --query-string 'filter dstPort = 5432 and action = "REJECT" | stats count() by srcAddr'</code></div></div>
       <p>Every timed-out probe from step 6 must appear here as D/REJECT. If the logs show no record at all, the traffic died somewhere else (routing, guest firewall) and the NSG verdict is unproven - rerun the probe while watching the logs.</p>
+      <p>The full validation matrix I ran at the end of the lab, executed once per cloud:</p>
+      <table>
+        <thead>
+          <tr><th>Test</th><th>Initiator</th><th>Target</th><th>Expected</th><th>Result</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Public HTTPS</td><td>External client</td><td>web-tier:443</td><td>200 OK</td><td>Pass</td></tr>
+          <tr><td>Public HTTP</td><td>External client</td><td>web-tier:80</td><td>Timeout</td><td>Pass</td></tr>
+          <tr><td>Tier-to-tier app</td><td>web-vm</td><td>app-vm:8080</td><td>200 OK</td><td>Pass</td></tr>
+          <tr><td>Cross-tier data</td><td>web-vm</td><td>db-vm:5432</td><td>Timeout</td><td>Pass</td></tr>
+          <tr><td>Direct data access</td><td>External client</td><td>db-vm:5432</td><td>Timeout</td><td>Pass</td></tr>
+          <tr><td>Data egress</td><td>db-vm</td><td>example.com:443</td><td>Timeout</td><td>Pass</td></tr>
+          <tr><td>SSH surface</td><td>External client</td><td>any-tier:22</td><td>Timeout</td><td>Pass</td></tr>
+        </tbody>
+      </table>
+      <p>Each "Timeout" row is cross-checked against a DENY/REJECT entry in the flow logs within a few minutes of the probe; each "200 OK" row must show an Allow/ACCEPT for the same 5-tuple. A row where the connection fails but no log verdict appears is treated as a failed test, not a pass, because the deny is then unproven.</p>
     </section>
 
     <section><h2>Troubleshooting</h2>
@@ -226,6 +292,13 @@ allow-https  443</code></pre>
         <li>A deny is only proven by a DENY/REJECT verdict in flow logs; enable logging before testing, not after.</li>
         <li>The only acceptable internet-facing allow in a three-tier design is the web tier's service port.</li>
       </ul>
+    </section>
+
+    <section><h2>Cleanup</h2>
+      <p>Cloud labs keep billing until everything is torn down, and NSG-adjacent resources (public IPs, flow-log storage, CloudWatch log groups) are easy to forget. Tear down in reverse dependency order: disassociate NSGs from subnets first, then delete the NSGs, then the VMs, then logging resources.</p>
+      <div class="command-block"><div class="command"><code>az network vnet subnet update -g rg-lab --vnet-name lab-vnet -n db-subnet --network-security-group null &amp;&amp; az network nsg delete -g rg-lab -n db-nsg</code></div></div>
+      <div class="command-block"><div class="command"><code>aws ec2 delete-security-group --group-id sg-db &amp;&amp; aws ec2 delete-flow-logs --flow-log-ids fl-0123abcd4567efgh8</code></div></div>
+      <p>Because the whole Azure side lives in one resource group, <code>az group delete -n rg-lab</code> is the blunt but reliable fallback. <strong>Common mistake:</strong> deleting a security group that is still referenced as a source by another SG - AWS rejects the delete with a dependency violation; revoke the referencing rule first, which is also a useful confirmation of which groups are actually coupled.</p>
     </section>
 
     <section class="related-labs"><h2>Related Labs</h2>

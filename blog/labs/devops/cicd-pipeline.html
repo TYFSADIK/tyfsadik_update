@@ -223,6 +223,88 @@ Error: Process completed with exit code 1.</code></pre>
       </div>
     </section>
 
+    <section><h2>Complete Workflow File</h2>
+      <p>The three steps above built the pipeline job by job. Here is the entire <code>.github/workflows/cicd.yml</code> assembled, so you can copy it in one piece and then read back through the annotations below. Note that the scan job also gets its own registry login - Trivy pulls the image from ghcr.io, and a private package requires authentication just like a push does.</p>
+      <p class="code-label">FULL PIPELINE - .github/workflows/cicd.yml</p>
+<pre><code class="language-yaml">name: cicd
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11', cache: 'pip' }
+      - run: pip install -r requirements.txt
+      - run: pytest -q
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: docker build -t ghcr.io/tyfsadik/app:${{ github.sha }} .
+      - run: docker push ghcr.io/tyfsadik/app:${{ github.sha }}
+
+  scan:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ghcr.io/tyfsadik/app:${{ github.sha }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+  deploy:
+    needs: scan
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: azure/setup-kubectl@v4
+      - name: Write kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" &gt; $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+      - name: Roll out new image
+        run: |
+          kubectl set image deploy/app app=ghcr.io/tyfsadik/app:${{ github.sha }}
+          kubectl rollout status deploy/app --timeout=120s</code></pre>
+      <p>A few lines deserve a second look before you commit this:</p>
+      <ul>
+        <li><code>on: push: branches: [main]</code> plus <code>pull_request:</code> means PRs run the full test/build/scan chain for review feedback, while only merges to <code>main</code> reach the deploy job.</li>
+        <li>The top-level <code>permissions:</code> block deliberately grants the minimum: read the repo, write packages. Nothing else is allowed - if a step is ever compromised, its token cannot touch issues, releases, or other scopes.</li>
+        <li><code>needs:</code> appears on every job after <code>test</code>, which is what turns four independent jobs into a single gated chain. Remove one and that stage runs in parallel, breaking the gate.</li>
+        <li>The same <code>${{ github.sha }}</code> tag appears in build, scan, and deploy - one immutable artifact flows through the whole pipeline instead of being rebuilt at each stage.</li>
+        <li><code>environment: production</code> attaches the deploy job to a GitHub environment, which is where you later add required reviewers for a manual approval gate.</li>
+      </ul>
+      <p>Validate the YAML before pushing - a syntax error in a workflow file fails silently until the next trigger, which is a frustrating way to discover a typo:</p>
+      <p class="code-label">SANITY-CHECK THE WORKFLOW LOCALLY</p>
+<pre><code class="language-bash">python3 -c "import yaml,sys; yaml.safe_load(open('.github/workflows/cicd.yml')); print('workflow YAML OK')"
+# workflow YAML OK</code></pre>
+    </section>
+
     <section><h2>Progress So Far</h2>
       <div class="mermaid" role="img" aria-label="CI/CD pipeline progress">
 graph LR

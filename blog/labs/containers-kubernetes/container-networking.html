@@ -121,6 +121,7 @@ a1b2c3d4e5f6   bridge    bridge    local
 b2c3d4e5f6a1   host      host      local
 c3d4e5f6a1b2   none      null      local</div>
       </div>
+      <p><strong>Permissions note:</strong> if every command answers with <code>permission denied while trying to connect to the Docker daemon socket</code>, your user is not in the <code>docker</code> group. Either prefix every command here with <code>sudo</code>, or run <code>sudo usermod -aG docker $USER</code> and log out and back in. Docker Desktop on macOS and Windows handles this for you, so no setup is needed there.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
@@ -174,6 +175,7 @@ db      postgres:16   Up 9 seconds   5432/tcp</div>
 options ndots:0</div>
           </div>
           <p><strong>How to verify it is DNS and not luck:</strong> re-create <code>db</code> (<code>docker rm -f db</code> then re-run it) and resolve again. The IP may change, but <code>getent hosts db</code> still answers correctly because Docker updates its records on container start and stop. Anything caching the old IP - a connection pool, for instance - would need to reconnect, which is exactly why apps should connect by name and never pin container IPs.</p>
+          <p><strong>Scoped aliases:</strong> besides its container name, a container can answer to extra names per network via <code>--network-alias</code>. A container started with <code>--name db --network app-net --network-alias postgres-primary</code> resolves under <em>both</em> names on <code>app-net</code> - useful for giving a container a stable service identity while the container name itself stays free to change.</p>
           <p><strong>Common mistake:</strong> testing from a container on the default bridge and concluding "DNS is broken". The default bridge has no embedded DNS names; the lookup only works between containers sharing a user-defined network.</p>
         </div></div>
         <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Inspect the bridge</strong>
@@ -220,6 +222,15 @@ options ndots:0</div>
             <div class="terminal-output">localhost:5432 - accepting connections</div>
           </div>
           <p><strong>Common mistake:</strong> declaring victory after <code>ping db</code> succeeds. ICMP only proves the container is up; the service can still be down or listening on a different port. Always probe the actual port, as above.</p>
+          <p><strong>Optional - a real client handshake:</strong> if you want proof at the application layer rather than the TCP layer, run the postgres client from a throwaway container on the same network. It will authenticate and return a row:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker run --rm --network app-net -e PGPASSWORD=labpass postgres:16 psql -h db -U postgres -c "SELECT version();"</span></div>
+            <div class="terminal-output">                         version
+------------------------------------------------------------
+ PostgreSQL 16.4 (Debian 16.4-1.pgdg120+1) on x86_64-pc-linux-gnu
+(1 row)</div>
+          </div>
+          <p>This is the same pattern every real app follows: a service name (<code>db</code>), a port (<code>5432</code>), and credentials passed by environment variable - the exact triad you will later write into a Compose file or a Kubernetes manifest.</p>
         </div></div>
         <div class="step"><div class="step-num">06</div><div class="step-body"><strong>Create a second, isolated network</strong>
           <p>Isolation means nothing until something is actually on the outside trying to get in. Create a second bridge and attach a long-running Alpine container to it. This container stands in for anything that shares the Docker host but has no business talking to your database - a compromised sidecar, a neighbour tenant, a leftover debug container:</p>
@@ -227,6 +238,19 @@ options ndots:0</div>
           <pre><code>docker network create other-net
 docker run -d --name unrelated --network other-net alpine:3.20 sleep 3600</code></pre>
           <p>The <code>sleep 3600</code> keeps Alpine alive for an hour; without a long-running command the container would exit instantly and have nothing to probe from.</p>
+          <p>Confirm the new topology before attacking it. <code>docker network ls</code> should now show four custom-relevant entries, and each network's inspect output should list exactly the containers you put there:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker network ls</span></div>
+            <div class="terminal-output">NETWORK ID     NAME        DRIVER    SCOPE
+a1b2c3d4e5f6   bridge      bridge    local
+d4e5f6a1b2c3   app-net     bridge    local
+e5f6a1b2c3d4   other-net   bridge    local
+b2c3d4e5f6a1   host        host      local
+c3d4e5f6a1b2   none        null      local</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker inspect -f '{{json .NetworkSettings.Networks}}' unrelated</span></div>
+            <div class="terminal-output">{"other-net":{...,"IPAddress":"172.19.0.2",...}}</div>
+          </div>
+          <p>Note that <code>other-net</code> received its own subnet (<code>172.19.0.0/16</code>) - Docker allocates these sequentially. The <code>unrelated</code> container has an interface on <code>other-net</code> only; it has no route into <code>172.18.0.0/16</code> at all.</p>
         </div></div>
         <div class="step"><div class="step-num">07</div><div class="step-body"><strong>Prove isolation from the outsider</strong>
           <p>Attack it two ways. First, name resolution from <code>unrelated</code> fails outright - <code>db</code> is not a record on <code>other-net</code>, so the embedded DNS answers with nothing:</p>
@@ -248,12 +272,15 @@ docker run -d --name unrelated --network other-net alpine:3.20 sleep 3600</code>
 docker run -d --name web --network app-net -p 8080:80 nginx:stable</code></pre>
           <p>Because <code>web</code> rejoins <code>app-net</code> under the same name, the DNS record is re-registered and nothing else changes. Verify from the host:</p>
           <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker port web</span></div>
+            <div class="terminal-output">80/tcp -&gt; 0.0.0.0:8080</div>
             <div class="terminal-line"><span class="prompt">$</span> <span class="input">curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080</span></div>
             <div class="terminal-output">200</div>
             <div class="terminal-line"><span class="prompt">$</span> <span class="input">nc -zv localhost 5432</span></div>
             <div class="terminal-error">nc: connect to localhost port 5432 (tcp) failed: Connection refused</div>
           </div>
           <p>The pattern to internalize: the web tier is published (<code>-p 8080:80</code>), the database is not. An attacker who reaches the host can talk to nginx and nothing else; the database only exists on <code>app-net</code>. This is the container-era version of putting the DB in a private subnet.</p>
+          <p><strong>Common mistake:</strong> publishing with <code>-p 80:80</code> and colliding with something already on host port 80, or assuming <code>-p</code> can be added to a running container - it cannot. Port bindings are fixed at <code>docker run</code> time; changing them always means recreating the container, as we just did. Also note that <code>EXPOSE</code> in a Dockerfile is documentation only - it publishes nothing by itself.</p>
         </div></div>
         <div class="step"><div class="step-num">09</div><div class="step-body"><strong>Clean up</strong>
           <p>Remove the containers first - a network with attached containers cannot be deleted - then the networks:</p>
@@ -294,9 +321,11 @@ graph LR
         <div class="terminal-error">Connection refused        <span># 4. db unpublished on the host: OK</span></div>
       </div>
       <p>Check 3 is the one people skip, and the one that matters most. A green check 2 with a green check 3 is "isolated but working"; a green check 2 with a red check 3 means your isolation is an illusion and some container is bridged across networks it should not span.</p>
+      <p>Two notes on interpreting failures. If check 1 fails but check 2 works when you substitute the raw IP, DNS is the broken layer and the rest of the network is fine - look at which network the asking container is attached to. If checks 1 and 2 both fail, test <code>docker exec web ping -c 2 172.18.0.2</code>: a working ping with a failing port probe points at the postgres process itself (<code>docker logs db</code>), while a failing ping points at network membership (<code>docker network inspect app-net</code>). And on Docker Desktop, run check 4 from the Mac/Windows host exactly as shown - the port-forwarding VM makes <code>localhost</code> the correct target there too.</p>
     </section>
 
     <section><h2>Troubleshooting</h2>
+      <p>Networking failures in Docker almost always reduce to one of four layers: DNS, network membership, iptables/port publishing, or the application itself. Work the list top-down - resolve the name first, then check which network the container is actually on, then check publishing, and only then blame the app. These are the five failures you will actually meet:</p>
       <ul>
         <li><strong>Name not resolving:</strong> the default bridge lacks DNS; attach to a user-defined network. Verify with <code>docker exec &lt;container&gt; cat /etc/resolv.conf</code> - if you do not see <code>nameserver 127.0.0.11</code>, the container is not on a user-defined bridge. Fix by recreating it with <code>--network app-net</code>.</li>
         <li><strong>Containers can all reach each other:</strong> they share one network; separate concerns into distinct networks. <code>docker network inspect &lt;name&gt;</code> lists every attached container - if <code>unrelated</code> shows up under <code>app-net</code>, disconnect it with <code>docker network disconnect app-net unrelated</code>.</li>

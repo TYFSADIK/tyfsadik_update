@@ -281,6 +281,21 @@ Hit return to start merge resolution tool (vscode):</code></pre>
       <p><strong>Common mistake:</strong> meld and some other tools leave <code>config.js.orig</code> backup files behind. Disable that with <code>git config --global mergetool.keepBackup false</code>, or at least add <code>*.orig</code> to your <code>.gitignore</code> so backups never get committed.</p>
     </section>
 
+    <section><h2>Conflicts During Rebase and Cherry-Pick</h2>
+      <p>Everything above applies verbatim to two other operations that stop on conflicts: <code>git rebase</code> and <code>git cherry-pick</code>. The mechanics are identical &mdash; edit the markers, <code>git add</code> &mdash; but two details differ and regularly trip people up.</p>
+      <p>First, <strong>the sides feel backwards</strong>. During <code>git rebase main</code>, your commits are being replayed on top of <code>main</code>, so <code>HEAD</code> (the "ours" side of the markers) is <em>main's</em> code, and "theirs" is <em>your own commit</em> being applied. If you instinctively keep the "ours" side thinking it is your work, you will throw your own changes away. Read the actual code, not the labels.</p>
+      <p>Second, the conflict can strike <strong>once per commit</strong>. A merge conflicts at most once per run; a rebase of ten overlapping commits can stop ten times. The loop is:</p>
+      <p class="code-label">THE REBASE CONFLICT LOOP</p>
+      <pre><code class="language-bash">git rebase main
+# ... CONFLICT: fix markers in the file ...
+git add config.js
+git rebase --continue        # move on to the next commit; repeat if it stops again
+# or give up on the whole rebase:
+git rebase --abort           # back to exactly where you started</code></pre>
+      <p>If you find yourself resolving the <em>same</em> hunk over and over during a long rebase, that is exactly what <code>rerere</code> (from the Troubleshooting section) exists for &mdash; enable it once and Git replays your previous resolutions automatically.</p>
+      <p>Cherry-pick behaves like a single-step rebase: resolve, <code>git add</code>, then <code>git cherry-pick --continue</code>, or bail out with <code>git cherry-pick --abort</code>. Same markers, same tools, same calm.</p>
+    </section>
+
     <section><h2>Progress So Far</h2>
       <div class="mermaid" role="img" aria-label="Conflict resolution progress">
 graph LR
@@ -313,6 +328,8 @@ npm test                              # 5. behavior is actually correct</code></
         <li><strong>Markers look different, with a third section:</strong> if you see <code>||||||| merged common ancestors</code> between the two sides, someone enabled <code>merge.conflictStyle diff3</code> (or <code>zdiff3</code>). That middle block shows what the ancestor had, which actually makes resolving easier &mdash; enable it yourself with <code>git config --global merge.conflictStyle zdiff3</code>.</li>
         <li><strong>"CONFLICT (modify/delete)":</strong> one branch edited a file the other branch deleted, so there are no markers to edit. Decide explicitly: keep the file with <code>git add &lt;file&gt;</code>, or accept the deletion with <code>git rm &lt;file&gt;</code>, then commit.</li>
         <li><strong>The same conflict keeps coming back on every rebase:</strong> enable <code>git config --global rerere.enabled true</code> ("reuse recorded resolution"). Git will remember how you resolved a conflict and auto-apply that resolution the next time it sees the same one.</li>
+        <li><strong>"error: you have not concluded your merge (MERGE_HEAD exists)":</strong> you tried to start a new merge (or pull) while an old conflicted merge is still open. Git stores the in-progress merge in the <code>MERGE_HEAD</code> file. Either finish the old one (resolve, <code>git add</code>, commit) or discard it with <code>git merge --abort</code> before starting anything new.</li>
+        <li><strong>Conflicted file disappears from the editor after resolving:</strong> you probably ran <code>git checkout --ours</code> or <code>--theirs</code> on it earlier and forgot. Nothing is lost &mdash; the resolved content is whatever you staged; inspect it with <code>git diff --cached</code> before committing.</li>
       </ul>
     </details>
 

@@ -94,6 +94,7 @@ sudo sh get-docker.sh</code></pre>
       <p class="code-label">RUN DOCKER WITHOUT SUDO</p>
       <pre><code>sudo usermod -aG docker $USER
 newgrp docker   # or log out and back in</code></pre>
+      <p><strong>On macOS or Windows?</strong> Install Docker Desktop instead - it runs the same Linux engine inside a lightweight VM, so every command in this lab works unchanged from your terminal. Two lab-specific notes: on macOS/Windows, the container IP from step 07 is <em>not</em> reachable from the host (the VM sits in between), so stick to the published port (<code>localhost:8080</code>); and the group/socket setup above is unnecessary because Docker Desktop handles permissions for you.</p>
       <p>Now verify the install end to end. <code>docker version</code> confirms both the CLI and the daemon are alive (you should see a <em>Client</em> and a <em>Server</em> section). <code>docker run hello-world</code> proves the daemon can pull an image from Docker Hub and start a container from it.</p>
       <div class="terminal-session">
         <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker version --format 'Server: {{.Server.Version}}'</span></div>
@@ -237,11 +238,29 @@ d4e5f6a7b8c9   none      null      local</div>
           <p>Try it: <code>curl http://172.17.0.2</code> from the host reaches nginx on the container's internal IP <em>without</em> any published port, because the host sits on the bridge too. Other machines on your LAN cannot do this - from the outside, only published ports exist. That default-deny posture is a genuine security feature of the bridge model.</p>
           <div class="note"><strong>Common mistake:</strong> publishing <code>-p 80:80</code> and expecting containers to talk to each other through it - containers on a network reach each other directly by name or IP, and publishing is only for host/external access. <strong>Verify:</strong> <code>docker network inspect bridge</code> lists your container under <code>Containers</code> with a <code>172.17.0.x</code> address.</div>
         </div></div>
+        <div class="step"><div class="step-num">08</div><div class="step-body"><strong>Manage images: tags, layers, and cleanup</strong>
+          <p>Containers are disposable; images are what accumulate. Every <code>docker run</code> against a new tag downloads more layers to your disk, so knowing how to list, inspect, and remove images keeps a lab VM healthy. An image reference has three parts: the registry (defaulting to Docker Hub), the repository (<code>library/nginx</code> for official images), and the tag (<code>stable</code>). Tags are mutable labels - <code>latest</code> today may not be <code>latest</code> tomorrow - while the digest (<code>sha256:...</code>) pins an exact, immutable build.</p>
+          <p class="code-label">LIST AND INSPECT LOCAL IMAGES</p>
+          <pre><code>docker images
+docker history nginx:stable          # one line per layer
+docker image inspect nginx:stable --format '{{.RepoTags}} {{.Size}}'</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker images</span></div>
+            <div class="terminal-output">REPOSITORY   TAG       IMAGE ID       CREATED       SIZE
+nginx        stable    6efc10a0510a   2 weeks ago   187MB
+hello-world  latest    d2c94e258dcb   1 year ago    13.3kB</div>
+          </div>
+          <p><code>docker history</code> is worth a look: images are stacks of read-only layers, and layers shared between images (two nginx tags, for example) are stored only once. This is why pulling a second tag of the same image is usually fast - Docker downloads just the layers it does not already have.</p>
+          <p class="code-label">REMOVE WHAT YOU NO LONGER NEED</p>
+          <pre><code>docker rmi hello-world             # remove by name:tag
+docker image prune                 # drop dangling (untagged) layers only</code></pre>
+          <div class="note"><strong>Common mistake:</strong> running <code>docker rmi</code> on an image that still has a container (even a stopped one) and hitting <code>image is being used by stopped container</code> - remove the containers first with <code>docker rm</code>. <strong>Verify:</strong> <code>docker images</code> no longer lists the image, and <code>docker system df</code> shows reclaimed space.</div>
+        </div></div>
       </div>
     </section>
 
     <section><h2>Progress So Far</h2>
-      <p>The four core moves - run, inspect, persist, and read logs - are now done. Steps 05-07 layered on the operational skills (exec, lifecycle, networking) you will use daily.</p>
+      <p>The four core moves - run, inspect, persist, and read logs - are now done. Steps 05-08 layered on the operational skills (exec, lifecycle, networking, image management) you will use daily.</p>
       <div class="mermaid" role="img" aria-label="Docker fundamentals progress">
 graph LR
   A[01 Run] -->|done| B[02 Inspect]
@@ -304,6 +323,17 @@ docker system prune              # optional: reclaim dangling images and stopped
       </ul>
     </section>
 
+    <section><h2>Self-Check</h2>
+      <p>Answer these from memory before moving on. If any answer is fuzzy, rerun the matching step - the muscle memory is the point of the lab.</p>
+      <ul>
+        <li>What is the difference between <code>docker stop</code> and <code>docker rm</code>? <span class="text-dim">(Stop halts the process but keeps the container and its filesystem; rm deletes it permanently.)</span></li>
+        <li>Your container serves port 80 internally but <code>curl localhost:80</code> fails. What flag did you forget, and where do the two port numbers go? <span class="text-dim">(-p, as host:container - e.g. -p 8080:80.)</span></li>
+        <li>You deleted a container and its data vanished. What should you have mounted, and with which flag? <span class="text-dim">(A named volume, with -v name:/path.)</span></li>
+        <li><code>docker ps</code> is empty but the app was running a minute ago. What two commands do you run next? <span class="text-dim">(docker ps -a, then docker logs on the exited container.)</span></li>
+        <li>Which is immutable - the tag <code>nginx:stable</code> or the digest <code>sha256:...</code>? <span class="text-dim">(The digest; tags can be repointed to new builds.)</span></li>
+      </ul>
+    </section>
+
     <section><h2>Key Takeaways</h2>
       <ul>
         <li>An <strong>image</strong> is the read-only blueprint; a <strong>container</strong> is a running instance of it. One image, many containers.</li>
@@ -312,6 +342,24 @@ docker system prune              # optional: reclaim dangling images and stopped
         <li>Your debugging trio is <code>docker ps -a</code> (is it up?), <code>docker logs</code> (what did it say?), and <code>docker inspect</code> (how is it configured?).</li>
         <li>Containers on the default bridge get private <code>172.17.0.x</code> IPs; only published ports are reachable from outside the host.</li>
         <li>Exit codes tell the story: <code>Exited (0)</code> is a clean stop, <code>137</code> is a kill (often OOM), anything else means read the logs.</li>
+        <li>Tags are mutable labels; digests are immutable. Pin by digest when a build must be exactly reproducible.</li>
+      </ul>
+      <p>Everything here was a single container on a single host. The natural next step is defining images yourself with a Dockerfile, then wiring several containers together - both are covered in the related labs below.</p>
+    </section>
+
+    <section><h2>Command Quick Reference</h2>
+      <p>Everything from this lab in one place, for when you come back in three months:</p>
+      <ul>
+        <li><code>docker run -d --name X -p 8080:80 image:tag</code> - create and start a detached container with a published port.</li>
+        <li><code>docker ps</code> / <code>docker ps -a</code> - list running / all containers.</li>
+        <li><code>docker logs [--tail N] [-f] X</code> - read a container's stdout/stderr.</li>
+        <li><code>docker exec -it X sh</code> - open a shell inside a running container.</li>
+        <li><code>docker inspect X</code> - full JSON config; pair with <code>--format</code> for one field.</li>
+        <li><code>docker stop / start / restart / rm -f X</code> - lifecycle control.</li>
+        <li><code>docker volume create / ls / rm</code> and <code>-v name:/path</code> - persistent storage.</li>
+        <li><code>docker network ls / inspect</code> - see which network a container lives on.</li>
+        <li><code>docker images / rmi / system df</code> - image inventory and disk usage.</li>
+        <li><code>docker system prune</code> - reclaim space from stopped containers and dangling layers.</li>
       </ul>
     </section>
 

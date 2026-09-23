@@ -53,18 +53,23 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">GitHub Flow</span><span class="tag">trunk-based</span><span class="tag">rebase</span><span class="tag">merge</span></div>
     </div>
 
-    <section><p class="lead">You will practice short-lived feature branches and compare merge versus rebase to keep history readable. By the end you will choose a branching workflow that keeps main always releasable.</p></section>
+    <section><p class="lead">You will practice short-lived feature branches and compare merge versus rebase to keep history readable. By the end you will choose a branching workflow that keeps main always releasable.</p>
+      <p>Branching strategy sounds abstract until you are the one untangling a three-week-old branch that no longer merges. This lab makes the trade-offs concrete: you will build a small demo repository, run the same change through both a merge-based and a rebase-based integration, read the resulting history graphs side by side, and then write down a workflow policy your team could actually follow. Every command runs locally in a throwaway repo, so you can experiment freely and delete it when you are done.</p>
+    </section>
 
     <div class="learning-objectives"><h2>Learning Objectives</h2>
       <ul>
         <li>Compare GitHub Flow, trunk-based, and GitFlow trade-offs.</li>
         <li>Integrate work with merge and with rebase.</li>
         <li>Keep main releasable with short-lived branches.</li>
+        <li>Sync a feature branch with a moving main without polluting history.</li>
+        <li>Recover safely from a bad rebase or an accidental branch deletion.</li>
         <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> the Git fundamentals lab.</li>
       </ul>
     </div>
 
     <section><h2>Architecture Overview</h2>
+      <p>The core pattern behind every strategy in this lab is the same: main stays green and releasable, and work happens on a short-lived branch that comes back to main through one of two integration paths - a merge commit that preserves the branch in the graph, or a rebase that replays the work as a straight line on top of main.</p>
       <div class="mermaid" role="img" aria-label="Feature branch merging back to main">
 gitGraph
   commit id: "main"
@@ -74,31 +79,223 @@ gitGraph
   checkout main
   merge feature
       </div>
+      <p>The strategy you pick decides how long that feature branch lives, how it gets reviewed, and what the graph looks like afterwards. The mechanics below are identical whether you adopt GitHub Flow, trunk-based development, or GitFlow - only the branch names, lifetimes, and release discipline change.</p>
+    </section>
+
+    <section><h2>Comparing the Three Main Strategies</h2>
+      <p>Before touching the keyboard, understand what you are choosing between. Each strategy is a different answer to the same question: <em>how do we keep main releasable while several people change the code at once?</em></p>
+      <p><strong>GitHub Flow</strong> is the simplest: one long-lived branch (main) plus short-lived feature branches. You branch, open a pull request, get reviewed, and merge. Anything on main is deployable. It works best for web apps and services that deploy continuously, because there is no separate "release" line to maintain.</p>
+      <p><strong>Trunk-based development</strong> pushes the same idea further: branches live for hours, not days, and some teams commit straight to main behind feature flags. The payoff is near-zero merge pain and constant integration; the cost is that you need strong automated tests and discipline, because there is no long review window catching mistakes.</p>
+      <p><strong>GitFlow</strong> adds structure: a develop branch where features collect, release branches for stabilization, and hotfix branches for production emergencies. It suits software with versioned releases (mobile apps, shipped binaries, on-prem products) where "what is in production" and "what is in development" are genuinely different things. For most continuous-deploy web teams it is more ceremony than value.</p>
+      <p><strong>Which one should you pick?</strong> A quick decision guide:</p>
+      <ul>
+        <li>Deploying a web service many times a day? <strong>GitHub Flow</strong> or trunk-based - the fewer long-lived branches, the better.</li>
+        <li>Small team with solid automated tests? <strong>Trunk-based</strong> - integrate daily, hide unfinished work behind feature flags.</li>
+        <li>Versioned releases that customers install and you must patch later? <strong>GitFlow</strong> - you need release and hotfix lines.</li>
+        <li>Unsure? Start with <strong>GitHub Flow</strong>. It is the least process that still keeps main releasable, and you can grow into the others.</li>
+      </ul>
+      <p>In this lab you will practice the shared mechanical core of all three: branch, integrate with merge, integrate with rebase, and keep the integration surface small.</p>
     </section>
 
     <section><h2>Environment Setup</h2>
       <p><strong>You will need:</strong> Git and a repo with a couple of branches.</p>
       <p><strong>Before you begin:</strong> never rebase commits that others have already pulled.</p>
+      <p>That rule deserves emphasis because it is the one that actually hurts people. A rebase rewrites commit hashes; if a teammate has based work on the old hashes, you have just forked their reality. Rebase is for cleaning up <em>your local, un-pushed</em> commits. Once a branch is shared, prefer merge - or coordinate explicitly before rewriting it.</p>
+      <p>Confirm your Git version and scaffold a sandbox repo for the exercises. Git 2.23+ is required for <code>git switch</code>; anything in the 2.4x series is fine.</p>
+      <p class="code-label">CHECK GIT AND CREATE THE SANDBOX</p>
+      <pre><code>git --version
+mkdir -p ~/labs/branching-demo &amp;&amp; cd ~/labs/branching-demo
+git init -b main</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">git --version</span></div>
+        <div class="terminal-output">git version 2.46.0</div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">git init -b main</span></div>
+        <div class="terminal-output">Initialized empty Git repository in /Users/taki/labs/branching-demo/.git/</div>
+      </div>
+      <p>Set a local identity (scoped to this repo only, so it cannot leak into your other projects) and create an initial commit on main so there is something to branch from. The demo project is a tiny fake API - two files are enough to make merges and conflicts realistic.</p>
+      <p class="code-label">SEED THE REPO WITH AN INITIAL COMMIT</p>
+      <pre><code>git config user.name "Taki Sadik"
+git config user.email "taki@tyfsadik.org"
+printf '# branching-demo\n' &gt; README.md
+printf 'def health():\n    return {"status": "ok"}\n' &gt; api.py
+git add README.md api.py
+git commit -m "chore: initial commit"</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">git commit -m "chore: initial commit"</span></div>
+        <div class="terminal-output">[main (root-commit) a1b2c3d] chore: initial commit</div>
+        <div class="terminal-output"> 2 files changed, 3 insertions(+)</div>
+        <div class="terminal-output"> create mode 100644 README.md</div>
+        <div class="terminal-output"> create mode 100644 api.py</div>
+      </div>
+      <p><strong>Verify:</strong> <code>git log --oneline</code> shows exactly one commit, and <code>git status</code> reports a clean tree on branch main. If <code>git switch</code> errors later, your Git is older than 2.23 - use <code>git checkout -b</code> instead.</p>
+      <p>Finally, create a local "remote" so the push, fetch, and force-with-lease commands later in the lab behave exactly as they would against GitHub. A bare repository in a sibling directory is a perfect stand-in - it speaks the real Git protocol and costs nothing.</p>
+      <p class="code-label">CREATE A LOCAL BARE REMOTE AND PUSH MAIN</p>
+      <pre><code>git init --bare ~/labs/branching-demo-remote.git
+git remote add origin ~/labs/branching-demo-remote.git
+git push -u origin main</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">git push -u origin main</span></div>
+        <div class="terminal-output">To /Users/taki/labs/branching-demo-remote.git</div>
+        <div class="terminal-output"> * [new branch]      main -&gt; main</div>
+        <div class="terminal-output">branch 'main' set up to track 'origin/main'.</div>
+      </div>
+      <p><strong>How to verify:</strong> <code>git remote -v</code> lists the bare repo for fetch and push, and <code>git branch -vv</code> shows <code>[origin/main]</code> next to main. To simulate a teammate pushing, clone the bare repo to a third directory, commit, and push from there - your sandbox then has genuinely divergent history to reconcile.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
       <div class="steps">
         <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create a short-lived feature branch</strong>
+          <p><strong>What:</strong> branch off main and commit your feature work there. <strong>Why:</strong> isolating work keeps main releasable at every commit, and keeping the branch <em>short-lived</em> (hours to a couple of days, not weeks) is the single biggest factor in painless integration. The longer a branch lives, the more main moves under it and the worse the eventual merge becomes. Name the branch after the change - <code>feature/api</code> here - so its purpose is obvious in listings and pull requests.</p>
           <div class="command-block" data-copy><div class="command"><code>git switch -c feature/api &amp;&amp; git commit -am "add endpoint"</code></div></div>
+          <p>In the sandbox, make a real change so the commit has content: add a <code>users()</code> function to <code>api.py</code>, then commit. Two or three small commits on the branch will make the graphs in step 04 much more instructive than one giant commit.</p>
+          <p class="code-label">MAKE TWO SMALL COMMITS ON THE BRANCH</p>
+          <pre><code>git switch -c feature/api
+printf '\ndef users():\n    return ["taki", "sam"]\n' &gt;&gt; api.py
+git commit -am "feat: add users endpoint"
+printf '\ndef version():\n    return "0.1.0"\n' &gt;&gt; api.py
+git commit -am "feat: add version endpoint"</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git switch -c feature/api</span></div>
+            <div class="terminal-output">Switched to a new branch 'feature/api'</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git log --oneline</span></div>
+            <div class="terminal-output">c7d8e9f (HEAD -&gt; feature/api) feat: add version endpoint</div>
+            <div class="terminal-output">b4c5d6e feat: add users endpoint</div>
+            <div class="terminal-output">a1b2c3d (main) chore: initial commit</div>
+          </div>
+          <p><strong>Common mistake:</strong> doing the work on main and branching afterwards. If that happens, the fix is easy because branches are just pointers: <code>git branch feature/api</code> to mark the current commit, then <code>git switch main</code> and <code>git reset --hard origin/main</code> (or the earlier hash) to move main back. Verify with <code>git log --oneline --graph --all</code> that the commits sit on the feature branch, not main.</p>
+          <p><strong>Naming note:</strong> pick a convention and stick to it - <code>feature/&lt;topic&gt;</code>, <code>fix/&lt;issue-id&gt;</code>, and <code>chore/&lt;task&gt;</code> cover nearly everything. Consistent prefixes let you filter branches with <code>git branch --list "feature/*"</code> and let CI or automation apply rules per branch type.</p>
         </div></div>
         <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Integrate with merge (preserves history)</strong>
+          <p><strong>What:</strong> switch back to main and merge the feature branch with <code>--no-ff</code> (no fast-forward). <strong>Why:</strong> without that flag, when main has not moved since you branched, Git simply slides the main pointer forward - a "fast-forward" - and the fact that a branch ever existed is erased from the graph. Forcing a merge commit keeps a visible record that this work arrived as one reviewed unit, which is exactly what teams using GitHub Flow want when they look back at history or need to revert a whole feature with a single <code>git revert -m 1</code>.</p>
           <div class="command-block" data-copy><div class="command"><code>git switch main &amp;&amp; git merge -no-ff feature/api</code></div></div>
+          <p>Git opens an editor for the merge commit message; the default <code>Merge branch 'feature/api'</code> is fine, or write something more descriptive like <code>Merge branch 'feature/api': users and version endpoints</code>. Save and close to complete the merge.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git switch main &amp;&amp; git merge --no-ff feature/api</span></div>
+            <div class="terminal-output">Switched to branch 'main'</div>
+            <div class="terminal-output">Merge made by the 'ort' strategy.</div>
+            <div class="terminal-output"> api.py | 6 ++++++</div>
+            <div class="terminal-output"> 1 file changed, 6 insertions(+)</div>
+          </div>
+          <p><strong>How to verify:</strong> <code>git log --oneline --graph</code> shows a branch-and-join shape: the merge commit on main with two parents, and the two feature commits on the side line. <code>git show --no-patch --pretty=%P HEAD</code> prints two parent hashes, confirming it is a true merge commit.</p>
+          <p><strong>Common mistake:</strong> merging the wrong direction. It is always <em>feature into main</em>, done while standing on main. If you accidentally merged main into your feature branch instead, nothing is lost - the feature branch just contains main's commits - but do not confuse that with integration; main still does not have your work until you merge the other way.</p>
         </div></div>
         <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Or rebase for a linear history</strong>
+          <p><strong>What:</strong> instead of merging, replay the feature commits on top of the latest main. <strong>Why:</strong> a rebase rewrites the branch so it looks as if you started from today's main all along - no merge commits, just a straight line. Teams that value a readable, bisect-friendly history (and trunk-based teams especially) prefer this. The trade-off is that the original commits are replaced by new copies with new hashes, which is why rebase is reserved for local, un-pushed work.</p>
+          <p>To see the contrast in the sandbox, reset first so you can replay the same feature from scratch: <code>git reset --hard HEAD~1</code> on main undoes the merge commit from step 02 (safe here because nothing is pushed), then rebase the feature branch onto main and fast-forward main to it.</p>
           <div class="terminal-session">
             <div class="terminal-line"><span class="prompt">$</span> <span class="input">git switch feature/api &amp;&amp; git rebase main</span></div>
             <div class="terminal-output">Successfully rebased and updated refs/heads/feature/api.</div>
           </div>
+          <p class="code-label">FINISH THE INTEGRATION AFTER A REBASE</p>
+          <pre><code>git switch main
+git merge --ff-only feature/api</code></pre>
+          <p>The <code>--ff-only</code> flag is the key detail: after a rebase, main can simply fast-forward to the replayed commits, and the flag makes Git <em>refuse</em> to do anything else - so if the rebase was incomplete, you get an error instead of an accidental merge commit.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git merge --ff-only feature/api</span></div>
+            <div class="terminal-output">Updating a1b2c3d..e8f9a0b</div>
+            <div class="terminal-output">Fast-forward</div>
+            <div class="terminal-output"> api.py | 6 ++++++</div>
+            <div class="terminal-output"> 1 file changed, 6 insertions(+)</div>
+          </div>
+          <p><strong>How to verify:</strong> <code>git log --oneline</code> is a straight line with no merge commit, and the two feature commits have <em>different hashes</em> than before the rebase - proof they were replayed. If you want your old hashes back, <code>git reflog</code> lists every previous position of HEAD, and <code>git reset --hard HEAD@{1}</code> can undo the whole rebase.</p>
+        </div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Read both histories side by side</strong>
+          <p><strong>What:</strong> inspect the graph each strategy produced. <strong>Why:</strong> the difference between merge and rebase is easiest to internalize visually. Run the comparison twice - once after a <code>--no-ff</code> merge, once after a rebase - and the shapes make the trade-off obvious: preserved context versus a clean line.</p>
+          <p class="code-label">AFTER A MERGE: BRANCH-AND-JOIN GRAPH</p>
+          <pre><code>$ git log --oneline --graph --all
+*   d2e3f4a (HEAD -&gt; main) Merge branch 'feature/api'
+|\
+| * c7d8e9f (feature/api) feat: add version endpoint
+| * b4c5d6e feat: add users endpoint
+|/
+* a1b2c3d chore: initial commit</code></pre>
+          <p class="code-label">AFTER A REBASE: STRAIGHT LINE</p>
+          <pre><code>$ git log --oneline --graph --all
+* e8f9a0b (HEAD -&gt; main, feature/api) feat: add version endpoint
+* f0a1b2c feat: add users endpoint
+* a1b2c3d chore: initial commit</code></pre>
+          <p><strong>How to interpret:</strong> in the merge graph you can still see that two commits arrived together as a unit; in the rebase graph you cannot, but every commit sits directly on main, which makes <code>git bisect</code> and blame archaeology simpler. Neither is "correct" - the team picks one and applies it consistently.</p>
+          <p>For a mechanical check that goes beyond reading the graph, inspect the parent count of the tip commit. A merge commit has two parents; a rebased tip has exactly one:</p>
+          <p class="code-label">COUNT PARENTS OF THE TIP COMMIT</p>
+          <pre><code>git show --no-patch --pretty=%P HEAD | wc -w   # 2 = merge commit, 1 = linear</code></pre>
+          <p>This one-liner is handy in scripts and CI - for example, a check that rejects direct commits to main can assert that every commit landing on main is a two-parent merge from a reviewed pull request.</p>
+        </div></div>
+        <div class="step"><div class="step-num">05</div><div class="step-body"><strong>Sync a feature branch with a moving main</strong>
+          <p><strong>What:</strong> practice the routine you will use daily: while your branch is open, main gains commits, and you need to incorporate them <em>before</em> integrating. <strong>Why:</strong> integrating a stale branch is where conflicts and broken builds come from. Syncing early and often keeps the final integration trivial - this is the entire philosophy behind short-lived branches and trunk-based development.</p>
+          <p>Simulate it: switch to main, add a commit (say, a CI config file), then return to your feature branch and rebase onto the updated main.</p>
+          <p class="code-label">MOVE MAIN FORWARD, THEN SYNC THE FEATURE</p>
+          <pre><code>git switch main
+printf 'name: ci\non: [push]\n' &gt; ci.yml
+git add ci.yml &amp;&amp; git commit -m "ci: add workflow stub"
+git switch feature/api
+git rebase main</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git rebase main</span></div>
+            <div class="terminal-output">Successfully rebased and updated refs/heads/feature/api.</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git log --oneline</span></div>
+            <div class="terminal-output">9c0d1e2 (HEAD -&gt; feature/api) feat: add version endpoint</div>
+            <div class="terminal-output">8b9c0d1 feat: add users endpoint</div>
+            <div class="terminal-output">7a8b9c0 (main) ci: add workflow stub</div>
+            <div class="terminal-output">a1b2c3d chore: initial commit</div>
+          </div>
+          <p>Against a real remote the same routine is one command: <code>git pull --rebase origin main</code> while on your feature branch. Set <code>git config --global pull.rebase true</code> if you want that to be the default everywhere.</p>
+          <p><strong>Common mistake:</strong> syncing with <code>git merge main</code> into the feature branch repeatedly. It works, but each sync adds a merge commit, and after a week the branch history is half merge noise. For a branch only you work on, rebase keeps it clean; reserve merge-syncs for shared branches.</p>
+        </div></div>
+        <div class="step"><div class="step-num">06</div><div class="step-body"><strong>Handle a conflict during integration</strong>
+          <p><strong>What:</strong> deliberately create overlapping edits and walk through the resolution. <strong>Why:</strong> the first time you see <code>CONFLICT</code> during a rebase it looks like an error; it is actually Git pausing to ask you a question. Knowing the rhythm - edit, stage, continue - removes the fear. (The <a href="merge-conflicts.html">Merge Conflict Resolution</a> lab goes deeper; here you only need the workflow in context.)</p>
+          <p>Trigger it: on main, change the <code>health()</code> return value to <code>{"status": "healthy"}</code> and commit; on a fresh feature branch off the old point, change the same line to <code>{"status": "up"}</code>. Rebasing the feature onto main now conflicts.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git rebase main</span></div>
+            <div class="terminal-output">Auto-merging api.py</div>
+            <div class="terminal-output">CONFLICT (content): Merge conflict in api.py</div>
+            <div class="terminal-output">error: could not apply 8b9c0d1... feat: add users endpoint</div>
+          </div>
+          <p>Open <code>api.py</code>, find the conflict markers, keep the lines you want, and delete the markers. Then stage and continue:</p>
+          <p class="code-label">THE CONFLICT MARKERS GIT WRITES</p>
+          <pre><code>&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD
+    return {"status": "healthy"}
+=======
+    return {"status": "up"}
+&gt;&gt;&gt;&gt;&gt;&gt;&gt; 8b9c0d1 (feat: add users endpoint)</code></pre>
+          <p class="code-label">RESOLVE, STAGE, CONTINUE</p>
+          <pre><code># edit api.py, then:
+git add api.py
+git rebase --continue</code></pre>
+          <p><strong>How to verify:</strong> <code>git status</code> during the pause says <code>interactive rebase in progress</code> and lists unmerged paths; afterwards it says clean, and <code>git log --oneline</code> shows the replayed commit on top of main. If the rebase goes sideways, <code>git rebase --abort</code> returns the branch to exactly where it was before you started - it is always safe to bail out and retry.</p>
+        </div></div>
+        <div class="step"><div class="step-num">07</div><div class="step-body"><strong>Clean up merged branches</strong>
+          <p><strong>What:</strong> delete feature branches once integrated, locally and on the remote. <strong>Why:</strong> stale branches are clutter that hides the branches that actually matter, and a merged branch has no unique information - its commits are reachable from main, so deleting it loses nothing. Keeping the branch list short is part of keeping main the single source of truth.</p>
+          <p class="code-label">DELETE MERGED BRANCHES LOCALLY AND REMOTELY</p>
+          <pre><code>git switch main
+git branch -d feature/api          # safe delete: refuses if unmerged
+git push origin --delete feature/api
+git fetch --prune                  # drop stale remote-tracking refs</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git branch -d feature/api</span></div>
+            <div class="terminal-output">Deleted branch feature/api (was e8f9a0b).</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git branch --merged main</span></div>
+            <div class="terminal-output">* main</div>
+          </div>
+          <p>Note the lowercase <code>-d</code>: it is the safe delete that refuses when the branch contains unmerged work. The uppercase <code>-D</code> forces deletion - useful, but check first with <code>git log main..feature/api</code>, which lists commits the branch has that main does not. If that output is empty, nothing is lost.</p>
+          <p><strong>Common mistake:</strong> deleting the wrong branch. Recovery is straightforward if you act soon: <code>git reflog</code> (or the hash in the "Deleted branch ... (was e8f9a0b)" message) gives you the tip commit, and <code>git branch feature/api e8f9a0b</code> recreates the branch exactly where it was.</p>
+        </div></div>
+        <div class="step"><div class="step-num">08</div><div class="step-body"><strong>Write down the workflow your team chose</strong>
+          <p><strong>What:</strong> finish the lab by turning the decision into a short, explicit policy. <strong>Why:</strong> branching strategies fail by ambiguity, not by tooling - half the team rebasing and half merging produces the worst of both. A five-line policy in <code>CONTRIBUTING.md</code> (or the repo wiki) settles branch naming, integration method, and branch lifetime so nobody has to guess.</p>
+          <p class="code-label">CONTRIBUTING.md WORKFLOW EXCERPT</p>
+          <pre><code>## Branching workflow
+- main is always releasable; all work happens on short-lived branches.
+- Branch names: feature/&lt;topic&gt;, fix/&lt;issue&gt;. Lifetime: 2 days max.
+- Sync daily with `git pull --rebase origin main`; never rebase pushed commits.
+- Integrate via pull request with --no-ff merge; delete the branch after merge.
+- main is protected: CI must pass and one review is required.</code></pre>
+          <p>This particular policy is GitHub Flow with merge integration - a sensible default for a small web team. A trunk-based team would shorten lifetimes to hours and drop the merge commit; a GitFlow team would add develop and release branch rules. The point of the lab is not which policy you wrote, but that every line of it is something you have now done by hand.</p>
+          <p><strong>How to verify:</strong> the policy is enforceable, not aspirational. GitHub branch protection rules (required reviews, required status checks) make the last line mechanical - the <a href="github-actions.html">GitHub Actions</a> lab covers wiring CI into that gate.</p>
         </div></div>
       </div>
     </section>
 
     <section><h2>Progress So Far</h2>
+      <p>The diagram tracks the core integration skills; steps 04-08 build the daily habits - reading history, syncing, resolving, cleaning up, and documenting - on top of them.</p>
       <div class="mermaid" role="img" aria-label="Branching workflow progress">
 graph LR
   A[01 Feature branch] -->|done| B[02 Merge]
@@ -112,13 +309,25 @@ graph LR
     <section><h2>Testing &amp; Validation</h2>
       <div class="command-block" data-copy><div class="command"><code>git log -oneline -graph -all</code></div></div>
       <p>A merge shows a branch-and-join graph; a rebase shows a straight line. Pick the one your team prefers and keep main green.</p>
+      <p>Validate the whole workflow end to end with four checks:</p>
+      <p class="code-label">FINAL VALIDATION CHECKS</p>
+      <pre><code>git log --oneline --graph --all   # history matches your chosen strategy
+git status                        # clean tree, on main
+git branch -vv                    # only main remains, tracking origin/main
+git diff main@{1}..main --stat    # sanity: what the last integration changed</code></pre>
+      <p>The strongest validation is behavioral: main should build and pass tests at <em>every</em> commit, not just the tip. Spot-check with <code>git checkout &lt;older-hash&gt;</code> and run the project tests - if an old commit on main is broken, your strategy is not keeping main releasable, no matter how pretty the graph looks. Return to the tip afterwards with <code>git switch main</code>.</p>
+      <p><strong>Success criteria:</strong> you can explain, from the graph alone, which commits were merged and which were rebased; your branch list contains only main; and you could hand the <code>CONTRIBUTING.md</code> excerpt to a teammate and have them follow it without asking questions.</p>
+      <p><strong>Teardown:</strong> when you are done experimenting, the sandbox is disposable - <code>rm -rf ~/labs/branching-demo ~/labs/branching-demo-remote.git</code> removes the repo and its local remote. Nothing in this lab touched any real repository.</p>
     </section>
 
     <details><summary>Troubleshooting</summary>
       <ul>
-        <li><strong>Rebase rewrote shared history:</strong> only rebase local, un-pushed work; otherwise merge.</li>
-        <li><strong>Long-lived branches diverge:</strong> keep branches short to avoid painful integrations.</li>
-        <li><strong>Mid-rebase confusion:</strong> abort safely with <code>git rebase -abort</code>.</li>
+        <li><strong>Rebase rewrote shared history:</strong> only rebase local, un-pushed work; otherwise merge. If you already rebased a branch others pulled, tell them to run <code>git pull --rebase</code> so their local commits are replayed onto your new history, and never force-push over a branch mid-review without warning the team.</li>
+        <li><strong>Long-lived branches diverge:</strong> keep branches short to avoid painful integrations. If you inherit a stale branch, do not merge it in one heroic session - rebase it onto main in small pieces (<code>git rebase --onto main &lt;old-base&gt; feature/x</code>) or split the work into several smaller branches.</li>
+        <li><strong>Mid-rebase confusion:</strong> abort safely with <code>git rebase -abort</code>. The branch returns to its pre-rebase state, so experimenting is free. Use <code>git status</code> at any point to see whether a rebase is in progress and which step you are on.</li>
+        <li><strong>Push rejected after a rebase:</strong> the remote still has your old commits, so a normal push is refused with <code>non-fast-forward</code>. Use <code>git push --force-with-lease</code>, which only overwrites the remote if nobody else pushed in the meantime - strictly safer than plain <code>--force</code>.</li>
+        <li><strong>Pull created an unexpected merge commit:</strong> your local main and origin/main diverged and the default pull merged them. Set <code>git config --global pull.rebase true</code> (or <code>pull.ff only</code>) so pulls replay your local commits instead of weaving in merge noise.</li>
+        <li><strong>Deleted a branch by mistake:</strong> find the tip hash in <code>git reflog</code> or in the "Deleted branch ... (was &lt;hash&gt;)" message, then recreate it with <code>git branch &lt;name&gt; &lt;hash&gt;</code>. Commits are not garbage-collected for weeks, so recovery is almost always possible.</li>
       </ul>
     </details>
 
@@ -127,6 +336,8 @@ graph LR
         <li>Gate merges with reviews in <a href="pull-requests.html">Pull Requests</a>.</li>
         <li>Resolve conflicts confidently in <a href="merge-conflicts.html">Merge Conflict Resolution</a>.</li>
         <li>Protect main with required CI in <a href="github-actions.html">GitHub Actions</a>.</li>
+        <li>Try trunk-based development for a week: branches under a day, integrate behind feature flags, and measure how merge pain changes.</li>
+        <li>Practice an interactive rebase (<code>git rebase -i</code>) to squash typo commits before opening a pull request.</li>
       </ul>
     </section>
 
@@ -136,6 +347,17 @@ graph LR
         <li>Produced a readable history matching the chosen strategy.</li>
         <li>Kept main releasable with short-lived branches.</li>
         <li>Understood when rebase is safe versus dangerous.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li>Main is always releasable; all risk lives on short-lived branches.</li>
+        <li>Merge (<code>--no-ff</code>) preserves context; rebase gives a clean line. Pick one per team and be consistent.</li>
+        <li>Never rebase commits others have pulled - rewrite only local, un-pushed work.</li>
+        <li>Sync with main early and often; small integrations rarely conflict badly.</li>
+        <li><code>--force-with-lease</code> after a rebase, <code>--ff-only</code> to finish one, <code>git reflog</code> when anything goes wrong.</li>
+        <li>A written workflow policy plus branch protection beats good intentions.</li>
       </ul>
     </section>
 

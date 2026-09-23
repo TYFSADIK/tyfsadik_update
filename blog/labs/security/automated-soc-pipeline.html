@@ -79,6 +79,8 @@ flowchart LR
   G --> I[Slack/Discord Webhook]
       </div>
       <p>The critical design decision is where the verdict gate sits. Enrichment happens <em>before</em> containment for network IOCs (avoiding self-DoS from spoofed sources), but Active Response fires immediately on authentication brute force, because failed-password correlation has essentially zero false-positive risk — nobody legitimately fails SSH login eight times in two minutes.</p>
+      <p>The T1071 path deserves a note because it works differently from the other two. MISP feeds export network IOCs (C2 IPs and domains) which are converted into a Wazuh CDB list; any outbound connection matching the list fires a rule tagged T1071. Unlike brute force, a single hit is not proof — CDN IP reuse means the same address can host both a C2 panel and legitimate content — which is exactly why this technique routes through the enrichment gate instead of instant containment.</p>
+      <p>For coverage reporting, the ATT&amp;CK dashboard in Wazuh aggregates every fired rule by technique ID, so the coverage map is generated from real detections rather than a manually maintained spreadsheet. That matters: a coverage claim you can't tie to a firing rule is marketing, not detection engineering.</p>
     </section>
 
     <section><h2>Environment &amp; Prerequisites</h2>
@@ -97,6 +99,13 @@ THEHIVE_KEY=h5v1.xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 CORTEX_KEY=ctx.xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 MISP_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ABUSEIPDB_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
+      <p>Before building anything on top, confirm all three platforms answer their health endpoints. A pipeline is only as reliable as its weakest hop, and discovering a dead TheHive backend <em>after</em> writing the integration script wastes an afternoon:</p>
+      <div class="command-block"><div class="command"><code>systemctl is-active wazuh-manager wazuh-indexer &amp;&amp; curl -sk https://thehive:9000/api/status &amp;&amp; curl -sk https://misp.lab.local/servers/getVersion -H "Authorization: $MISP_KEY"</code></div></div>
+<pre><code class="language-bash">active
+active
+{"TheHive":"OK","Cortex":"OK","Elasticsearch":"green","Cassandra":"OK"}
+{"version":"2.4.171"}</code></pre>
+      <p>If TheHive's status shows Elasticsearch as <code>yellow</code> or <code>red</code>, stop here — case creation will intermittently 500 and every downstream symptom will point at the wrong component. Fix the index health first, then proceed.</p>
       <p>The detection-to-coverage mapping is intentionally narrow at first — three techniques done well beats thirty done badly:</p>
       <div class="mermaid" role="img" aria-label="MITRE ATT and CK coverage mapping for the pipeline">
 flowchart TB
@@ -131,6 +140,9 @@ flowchart TB
         description: 'SSH brute force (T1110)'
         mitre.id: 'T1110'
 **Alert to be generated.</code></pre>
+      <p>Confirm the manager actually loaded the rule (restart success alone doesn't prove it) by querying the rules API:</p>
+      <div class="command-block"><div class="command"><code>curl -sk -u wazuh-wui:$WAZUH_API_PASS -X GET "https://localhost:55000/rules?rule_ids=100210" -H "Authorization: Bearer $WAZUH_TOKEN" | jq '.data.affected_items[0].description'</code></div></div>
+<pre><code class="language-bash">"SSH brute force (T1110)"</code></pre>
       <p><strong>Common mistake:</strong> editing <code>/var/ossec/ruleset/rules/</code> instead of <code>local_rules.xml</code>. Files in the ruleset directory are overwritten on every Wazuh upgrade. Verify your rule survived by checking <code>/var/ossec/logs/ossec.log</code> for <code>rule_id: '100210'</code> errors after restart — a malformed XML block fails silently at startup otherwise.</p>
 
       <h3>2. Active Response to block the source</h3>
@@ -151,6 +163,7 @@ flowchart TB
       <p>On the target agent, confirm the DROP rule actually landed:</p>
       <div class="command-block"><div class="command"><code>sudo iptables -L INPUT -n | grep 203.0.113.45</code></div></div>
 <pre><code class="language-bash">DROP       all  --  203.0.113.45    0.0.0.0/0</code></pre>
+      <p>Also verify the block expires. After the 600-second timeout, the agent runs <code>firewall-drop delete</code> and the rule disappears — confirm with the same <code>iptables -L</code> command returning empty. If blocks never expire you will eventually lock out legitimate users behind shared NAT, and the first symptom will be a helpdesk ticket, not an alert.</p>
       <p><strong>How to verify:</strong> watch <code>/var/ossec/logs/active-responses.log</code> on the agent during a test — you should see the JSON command arrive and the script's exit status. A missing entry means the manager-to-agent channel is fine but the AR binding never matched; check the <code>rules_id</code> spelling first.</p>
 
       <h3>3. Forward alerts into TheHive via the integration script</h3>
@@ -188,11 +201,19 @@ r.raise_for_status()</code></pre>
       <div class="command-block"><div class="command"><code>curl -sk -H "Authorization: Bearer $THEHIVE_KEY" https://thehive:9000/api/v1/alert -d @alert.json</code></div></div>
 <pre><code class="language-bash">{"_id":"~8200","status":"New","severity":2,"title":"SSH brute force (T1110)"}</code></pre>
       <p>The <code>sourceRef</code> field is the dedup key: TheHive rejects a second alert with the same reference, which is what stops a 300-attempt Hydra run from spawning 300 cases. Set the script executable and owned by root (<code>chmod 750</code>, <code>chown root:wazuh</code>) — Wazuh silently skips integration scripts with wrong permissions and only logs it at debug level.</p>
+      <p><strong>How to verify:</strong> after the manager restart, fire one test alert (or wait for a real one) and tail the integration log — a healthy run shows the script being invoked with the alert file path and exiting 0:</p>
+      <div class="command-block"><div class="command"><code>sudo tail -f /var/ossec/logs/integrations.log</code></div></div>
+<pre><code class="language-bash">2026/06/14 21:03:12 wazuh-integratord: INFO: Enabling integration for: 'custom-thehive.py'
+2026/06/14 21:04:47 custom-thehive.py /tmp/alerts-1749937487-881402.alert - '' - ''
+2026/06/14 21:04:48 custom-thehive.py: alert posted, TheHive _id=~8200, exit=0</code></pre>
+      <p>A missing third line means the script ran but the POST failed — run it manually against a saved alert JSON (<code>./custom-thehive.py /tmp/test.alert '' ''</code>) to see the real exception, since stderr from the daemon path is swallowed.</p>
 
       <h3>4. Automated enrichment with Cortex and MISP</h3>
       <p>Once a case exists, TheHive's Cortex connector runs analyzers against every observable automatically. In the Cortex UI, enable the <code>MISP_2_1</code> and <code>AbuseIPDB</code> analyzers with the API keys from step 0, then trigger one manually against a test observable to verify the plumbing:</p>
       <div class="command-block"><div class="command"><code>curl -sk -H "Authorization: Bearer $CORTEX_KEY" https://cortex:9001/api/analyzer/MISP_2_1/run -d '{"data":"203.0.113.45","dataType":"ip"}'</code></div></div>
 <pre><code class="language-bash">{"status":"Waiting","analyzerId":"MISP_2_1","data":"203.0.113.45"}</code></pre>
+      <p>Analyzers run asynchronously, so poll the job ID until it leaves <code>Waiting</code>/<code>InProgress</code>:</p>
+      <div class="command-block"><div class="command"><code>curl -sk -H "Authorization: Bearer $CORTEX_KEY" https://cortex:9001/api/job/$JOB_ID/waitreport?atMost=1minute</code></div></div>
       <p>A successful MISP hit returns a verdict report with the matching event ID and threat level. Wire that verdict into TheHive's case template: if <code>taxonomies[].level == "malicious"</code>, the case severity bumps to High and a responder (or a Wazuh API call-back) triggers containment. Illustrative analyzer output:</p>
 <pre><code class="language-bash">taxonomies:
   - namespace: MISP
@@ -212,11 +233,16 @@ r.raise_for_status()</code></pre>
  # vs. TheHive: 312 cases, 7 days  -&gt;  ~98% upstream reduction,
  # 94% after counting analyst-relevant cases only</code></pre>
       <p>If the ratio is worse than about 20:1, the rules are too loose, not the pipeline. Tune the detection side — a SOAR platform cannot fix a noisy SIEM, it can only amplify the noise faster.</p>
+      <p>The corresponding case count comes straight from TheHive's API, which makes the ratio a one-liner you can drop into a cron job for weekly reporting:</p>
+      <div class="command-block"><div class="command"><code>curl -sk -H "Authorization: Bearer $THEHIVE_KEY" "https://thehive:9000/api/v1/query" -d '{"query":[{"_name":"listAlert"},{"_name":"count"}]}'</code></div></div>
+<pre><code class="language-bash">312</code></pre>
 
       <h3>6. Notification webhook and closed loop</h3>
       <p>The last mile is telling a human that containment happened. A small responder posts the case summary to Slack/Discord when TheHive marks a case as contained, closing the loop from detection to notification:</p>
       <div class="command-block"><div class="command"><code>curl -s -H "Content-Type: application/json" -d '{"content":"CONTAINED: SSH brute force (T1110) from 203.0.113.45 - blocked by Active Response, case ~8200"}' $DISCORD_WEBHOOK</code></div></div>
-      <p>Keep the notification content terse — source, technique ID, action taken, case link. Anything longer and the channel becomes its own noise source, and you're back where you started.</p>
+      <p>A healthy webhook returns a minimal acknowledgement — Discord answers with the created message object, Slack with a plain <code>ok</code>:</p>
+<pre><code class="language-bash">{"id":"1135...","type":0,"content":"CONTAINED: SSH brute force (T1110) from 203.0.113.45 ..."}</code></pre>
+      <p>Keep the notification content terse — source, technique ID, action taken, case link. Anything longer and the channel becomes its own noise source, and you're back where you started. Also build in one retry with a short backoff: Discord and Slack both rate-limit bursty webhooks, and a brute-force campaign generates exactly the kind of burst that trips the limiter.</p>
     </section>
 
     <section><h2>Validation &amp; Testing</h2>
@@ -231,7 +257,28 @@ T+3:41  Cortex: MISP_2_1 + AbuseIPDB jobs complete, verdict: malicious
 T+3:42  Discord notification posted</code></pre>
       <p>Verify the block from the attacker's side — Hydra should start reporting connection timeouts after T+2:04, which is the ground-truth proof that containment worked rather than merely being logged:</p>
 <pre><code class="language-bash">[ERROR] could not connect to ssh://192.168.20.15:22 - Connection timed out</code></pre>
+      <p>Confirm the case landed with the right tags and observables by querying TheHive directly — the UI can lag the API by a few seconds, so trust the API:</p>
+      <div class="command-block"><div class="command"><code>curl -sk -H "Authorization: Bearer $THEHIVE_KEY" "https://thehive:9000/api/v1/query" -d '{"query":[{"_name":"listAlert"},{"_name":"filter","_eq":{"_field":"sourceRef","_value":"wazuh-8200"}}]}'</code></div></div>
+<pre><code class="language-bash">[{"_id":"~8200","title":"SSH brute force (T1110)","severity":3,"status":"New",
+  "tags":["T1110"],"observableCount":2}]</code></pre>
+      <p>Run a negative test too: have a second account log in successfully, then fail twice, then succeed — the rule must <em>not</em> fire, no case must appear, and no DROP rule must be added. A pipeline that passes only positive tests might be firing on everything and you'd never know until the first false containment takes a real service offline.</p>
       <p>Run the test at least three times on different days. A pipeline that works once proves connectivity; a pipeline that works consistently under daily alert volume proves the tuning.</p>
+    </section>
+
+    <section><h2>Configuration Reference &amp; Daily Operations</h2>
+      <p>For maintenance and later troubleshooting, these are the files and logs that matter, all on the Wazuh manager unless noted:</p>
+      <ul>
+        <li><code>/var/ossec/etc/rules/local_rules.xml</code> – custom detection rules (rule 100210 and friends).</li>
+        <li><code>/var/ossec/etc/ossec.conf</code> – Active Response bindings and the <code>&lt;integration&gt;</code> block.</li>
+        <li><code>/var/ossec/integrations/custom-thehive.py</code> – the alert-to-case bridge script.</li>
+        <li><code>/var/ossec/logs/integrations.log</code> – integration daemon activity and errors.</li>
+        <li><code>/var/ossec/logs/alerts/alerts.json</code> – full alert stream, the source of truth for noise measurements.</li>
+        <li><code>/var/ossec/logs/active-responses.log</code> (on each agent) – containment actions actually executed.</li>
+      </ul>
+      <p>The daily ops routine is deliberately small. Each morning I check three things: that the integration daemon hasn't logged an error overnight, that the case-to-alert ratio hasn't drifted (a sudden drop means a broken hop; a sudden spike means a new noise source), and that no Active Response block is older than its 10-minute timeout:</p>
+      <div class="command-block"><div class="command"><code>grep -i error /var/ossec/logs/integrations.log | tail -5; sudo iptables -L INPUT -n | grep -c DROP</code></div></div>
+      <p>Weekly, I pull the MITRE coverage dashboard export and diff it against the detection backlog — any technique with lab-relevant threats but no matching rule goes on the list for the next rule-writing session. This is how the pipeline grew from the initial three techniques to eighteen over the course of the project.</p>
+      <p>Finally, treat the integration script like production code: it lives in git, changes get tested against a saved alert JSON on a staging manager before touching the live one, and the API keys rotate quarterly. A SOAR pipeline with a stale key fails at 3 a.m. exactly when you need it.</p>
     </section>
 
     <section><h2>Troubleshooting</h2>
@@ -244,13 +291,26 @@ T+3:42  Discord notification posted</code></pre>
       </ul>
     </section>
 
+    <section><h2>Limitations &amp; Future Work</h2>
+      <p>The pipeline as built has honest limits worth stating. Containment is host-local: <code>firewall-drop</code> blocks the attacker on the targeted agent but not at the network perimeter, so a distributed attack across many sources still saturates the uplink. MISP OSINT feeds lag active campaigns by hours to days, so enrichment verdicts on brand-new infrastructure come back "unknown" and fall through to the manual queue. And the whole chain depends on three separate services staying healthy — I monitor them with simple HTTP probes, but there is no failover.</p>
+      <p>Next steps, in priority order:</p>
+      <ul>
+        <li>Move containment to the edge firewall via its API so blocks apply network-wide, not per-host.</li>
+        <li>Add a feedback loop: cases closed as false positives automatically lower the responsible rule's level.</li>
+        <li>Expand the CDB-list IOC matching from IPs to domains and file hashes for T1071 coverage.</li>
+        <li>Replace the Discord webhook with a TheHive responder so notifications carry full case context.</li>
+      </ul>
+    </section>
+
     <section><h2>Key Results</h2>
+      <p>Measured over the first month of operation against the pre-pipeline baseline (manual triage of the raw Wazuh alert stream):</p>
       <ul>
         <li>Reduced alert noise by 94% through frequency-based rule tuning and dedup.</li>
         <li>Automated IOC enrichment cutting analyst triage time by roughly 80%.</li>
         <li>Achieved sub-5-minute MTTR for SSH/RDP brute-force events end to end.</li>
         <li>Mapped detections to 18 distinct MITRE ATT&amp;CK techniques for coverage reporting.</li>
       </ul>
+      <p>The number I care about most is the MTTR, because it's the one the pipeline was built to move — and the majority of the remaining 3:41 is the deliberate two-minute correlation window, not integration latency. The actual machine-to-machine hops (alert to case to block) take under ten seconds combined.</p>
     </section>
 
     <section><h2>Key Takeaways</h2>

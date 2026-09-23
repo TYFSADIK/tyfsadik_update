@@ -53,13 +53,18 @@
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">AKS</span><span class="tag">az CLI</span><span class="tag">autoscaler</span><span class="tag">HPA</span></div>
     </div>
 
-    <section><p class="lead">You will provision a managed AKS cluster, deploy a workload, and enable both cluster and horizontal pod autoscaling. By the end you will run Kubernetes in the cloud without operating the control plane yourself.</p></section>
+    <section><p class="lead">You will provision a managed AKS cluster, deploy a workload, and enable both cluster and horizontal pod autoscaling. By the end you will run Kubernetes in the cloud without operating the control plane yourself.</p>
+      <p>AKS is Microsoft's managed Kubernetes offering: Azure runs the API server, etcd, scheduler, and controller manager for you, and you only pay for and manage the worker nodes. That division of responsibility is the whole point of this lab — you get real, upstream-compatible Kubernetes (the same <code>kubectl</code>, the same YAML, the same primitives you would use on any cluster) without ever SSHing into a control-plane node, patching etcd, or worrying about API-server certificates.</p>
+      <p>The workload itself is deliberately simple (an nginx deployment behind a public load balancer) so the interesting machinery stays in focus: the <strong>Horizontal Pod Autoscaler</strong> (HPA), which adds pod replicas when CPU rises, and the <strong>cluster autoscaler</strong>, which adds whole VMs to the node pool when pods no longer fit. Watching those two layers react to generated load is where you actually learn how cloud-native capacity management works. Every command below is real and runnable — follow it end to end and you will have a working, self-scaling service.</p>
+    </section>
 
     <div class="learning-objectives"><h2>Learning Objectives</h2>
       <ul>
         <li>Create an AKS cluster with the az CLI.</li>
         <li>Deploy a workload and expose it via a load balancer.</li>
         <li>Enable cluster autoscaler and a Horizontal Pod Autoscaler.</li>
+        <li>Generate load, watch both autoscalers react, and verify scale-down after the load stops.</li>
+        <li>Clean up every resource so the lab leaves no running charges.</li>
         <li><strong>Time:</strong> ~4 hours &middot; <strong>Difficulty:</strong> Advanced &middot; <strong>Prereqs:</strong> an Azure subscription and kubectl.</li>
       </ul>
     </div>
@@ -73,27 +78,151 @@ graph TD
   LB[Azure Load Balancer] --> Pods
   HPA[HPA] -->|scale on CPU| Pods
       </div>
+      <p>Reading the diagram top to bottom: the <strong>az CLI</strong> talks to the Azure Resource Manager API, which stamps out the cluster. The <strong>control plane</strong> (API server, etcd, scheduler, controllers) lives in an Azure-managed subscription you cannot see — you interact with it only through the Kubernetes API. Your <strong>node pool</strong> is a Virtual Machine Scale Set in <em>your</em> subscription; the cluster autoscaler watches for unschedulable pods and grows or shrinks that scale set between the min and max counts you set.</p>
+      <p>Traffic arrives through an <strong>Azure Load Balancer</strong>, which AKS provisions automatically the moment you create a Service of <code>type: LoadBalancer</code> — the Kubernetes cloud-controller-manager translates that Service object into real Azure networking (a public IP, a load-balancer rule, health probes). The <strong>HPA</strong> is pure Kubernetes: it polls the metrics-server every 15 seconds and edits the replica count on your Deployment. Two feedback loops, two different layers — pods first, nodes only when pods run out of room.</p>
     </section>
 
     <section><h2>Environment Setup</h2>
       <p><strong>You will need:</strong> the az CLI authenticated and kubectl.</p>
       <p><strong>Before you begin:</strong> AKS incurs cost; delete the resource group when finished.</p>
+      <p>Everything in this lab is driven from a shell. On macOS the fastest install path is Homebrew; on Windows use <code>winget install Microsoft.AzureCLI</code>, and on Debian/Ubuntu use Microsoft's apt repository. You also need <code>kubectl</code> — the az CLI can install it for you in one shot.</p>
+      <p class="code-label">INSTALL CLI TOOLS (MACOS)</p><pre><code>brew install azure-cli
+az aks install-cli        # installs kubectl (and kubelogin if needed)
+az version | head -3
+kubectl version --client</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az version | head -3</span></div>
+        <div class="terminal-output">{
+  "azure-cli": "2.65.0",
+  "azure-cli-core": "2.65.0",</div>
+      </div>
+      <p>Next, sign in and make sure you are pointed at the subscription you intend to bill. <code>az login</code> opens a browser for device authentication; if you have several subscriptions, always confirm which one is active before creating anything.</p>
+      <div class="command-block" data-copy><div class="command"><code>az login &amp;&amp; az account show --query "{name:name, id:id, state:state}" -o table</code></div><div class="note">Confirms the active subscription so nothing lands in the wrong tenant.</div></div>
+      <p>AKS resources live inside a <strong>resource group</strong> — a lifecycle boundary that also becomes your one-command cleanup at the end. Create it in a region close to you that supports AKS (East US is a safe default):</p>
+      <div class="command-block" data-copy><div class="command"><code>az group create --name rg --location eastus</code></div><div class="note">Short name "rg" keeps the later commands readable; use any unique name you like.</div></div>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az group show -n rg --query properties.provisioningState -o tsv</span></div>
+        <div class="terminal-output">Succeeded</div>
+      </div>
+      <p><strong>Common mistake:</strong> creating the group in one region and the cluster in another, or working in the wrong subscription. Verify with <code>az account show</code> and keep region names consistent (<code>eastus</code>, not <code>east-us</code>). Also confirm your subscription has quota for at least a handful of vCPUs in that region — see the Troubleshooting section if cluster creation fails on quota.</p>
     </section>
 
     <section><h2>Step-by-Step Execution</h2>
       <div class="steps">
         <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create the cluster with autoscaling nodes</strong>
-          <div class="command-block" data-copy><div class="command"><code>az aks create -g rg -n tyf-aks -node-count 2 -enable-cluster-autoscaler -min-count 2 -max-count 5 -generate-ssh-keys</code></div><div class="note">Provisions a managed cluster with an autoscaling node pool.</div></div>
+          <p>This is the only heavy Azure operation in the lab. One <code>az aks create</code> call provisions the managed control plane <em>and</em> a system node pool backed by a Virtual Machine Scale Set. The flags matter: <code>--enable-cluster-autoscaler</code> turns on node-level autoscaling from day one (it is painful to retrofit), <code>--min-count 2</code> keeps two nodes for redundancy, and <code>--max-count 5</code> caps your spend. <code>--generate-ssh-keys</code> creates a keypair so you can still reach nodes directly for debugging. Expect provisioning to take roughly 5–10 minutes.</p>
+          <div class="command-block" data-copy><div class="command"><code>az aks create -g rg -n tyf-aks --node-count 2 --enable-cluster-autoscaler --min-count 2 --max-count 5 --generate-ssh-keys</code></div><div class="note">Provisions a managed cluster with an autoscaling node pool.</div></div>
+          <p>Verify the cluster finished provisioning and note the Kubernetes version Azure picked:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az aks show -g rg -n tyf-aks --query "{state:properties.provisioningState, k8s:properties.kubernetesVersion}" -o table</span></div>
+            <div class="terminal-output">State      K8s
+---------  -------
+Succeeded  1.31.7</div>
+          </div>
+          <p><strong>Common mistake:</strong> re-running <code>az aks create</code> after a failure without reading the error — if the error mentions quota (e.g. <code>Operation could not be completed as it results in exceeding approved Total Regional Cores quota</code>), no retry will fix it; switch VM size or region. Also note kubectl's long flags need two dashes (<code>--node-count</code>, not <code>-node-count</code>) — a single dash is parsed as bundled short flags and fails.</p>
         </div></div>
         <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Get credentials and deploy</strong>
-          <div class="command-block" data-copy><div class="command"><code>az aks get-credentials -g rg -n tyf-aks &amp;&amp; kubectl create deployment web -image=nginx:stable</code></div></div>
+          <p><code>az aks get-credentials</code> fetches the cluster's kubeconfig from Azure and merges it into <code>~/.kube/config</code>, setting AKS as your current context. Without this step kubectl has no idea where your API server is — every command would target <code>localhost:8080</code> and fail with a connection-refused error. The second half of the command creates a Deployment: one declarative object that keeps a replica set of nginx pods alive.</p>
+          <div class="command-block" data-copy><div class="command"><code>az aks get-credentials -g rg -n tyf-aks &amp;&amp; kubectl create deployment web --image=nginx:stable</code></div></div>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az aks get-credentials -g rg -n tyf-aks</span></div>
+            <div class="terminal-output">Merged "tyf-aks" as current context in /Users/taki/.kube/config</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl create deployment web --image=nginx:stable</span></div>
+            <div class="terminal-output">deployment.apps/web created</div>
+          </div>
+          <p>Watch the pod come up — it should pass through <code>ContainerCreating</code> to <code>Running</code> within a minute or two (the first image pull takes the longest):</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get pods -l app=web -w</span></div>
+            <div class="terminal-output">NAME                   READY   STATUS              RESTARTS   AGE
+web-6f8b9d7c4f-x2kqp   0/1     ContainerCreating   0          4s
+web-6f8b9d7c4f-x2kqp   1/1     Running             0          18s</div>
+          </div>
+          <p><strong>Common mistake:</strong> running kubectl against the wrong context after working with other clusters (minikube, Docker Desktop). Check <code>kubectl config current-context</code> — it must say <code>tyf-aks</code>. If you rebuilt the cluster, re-run <code>az aks get-credentials --overwrite-existing</code> so stale certificates do not linger.</p>
         </div></div>
         <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Expose and add an HPA</strong>
+          <p>Two things happen here. <code>kubectl expose ... --type=LoadBalancer</code> creates a Service and — because this is AKS — the cloud-controller-manager immediately provisions a real Azure Load Balancer with a public IP in front of your pods. <code>kubectl autoscale</code> then creates an HPA that targets 60% average CPU utilization across pods, bounded between 2 and 10 replicas.</p>
           <div class="terminal-session">
-            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl expose deploy web -type=LoadBalancer -port=80 &amp;&amp; kubectl autoscale deploy web -cpu-percent=60 -min=2 -max=10</span></div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl expose deploy web --type=LoadBalancer --port=80 &amp;&amp; kubectl autoscale deploy web --cpu-percent=60 --min=2 --max=10</span></div>
             <div class="terminal-output">service/web exposed
 horizontalpodautoscaler.autoscaling/web autoscaled</div>
           </div>
+          <p>One critical detail most quickstarts skip: CPU-based HPA utilization is computed <em>as a percentage of the pod's CPU request</em>, and a Deployment created imperatively has no requests set. Without them the HPA cannot compute a percentage and reports <code>&lt;unknown&gt;</code> forever. Set requests (and a limit for good hygiene) explicitly:</p>
+          <p class="code-label">SET CPU REQUESTS SO THE HPA CAN MEASURE</p><pre><code>kubectl set resources deployment web \
+  --requests=cpu=250m --limits=cpu=500m</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get hpa web</span></div>
+            <div class="terminal-output">NAME   REFERENCE         TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
+web    Deployment/web    3%/60%    2         10        2          2m</div>
+          </div>
+          <p><strong>How to verify:</strong> <code>TARGETS</code> must show <em>current/target</em> as real percentages (e.g. <code>3%/60%</code>). If it shows <code>&lt;unknown&gt;/60%</code> for more than two or three minutes, either the resource requests are missing (fix above) or the metrics-server is not answering — see Troubleshooting. Note the HPA already bumped the Deployment to 2 replicas, its floor.</p>
+        </div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Wait for the public IP and test the app end to end</strong>
+          <p>Azure takes a minute or two to allocate the public IP and program the load-balancer rules. Until then the Service shows <code>&lt;pending&gt;</code>. Watch the Service object until <code>EXTERNAL-IP</code> appears, then curl it.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get svc web -w</span></div>
+            <div class="terminal-output">NAME   TYPE           CLUSTER-IP    EXTERNAL-IP    PORT(S)        AGE
+web    LoadBalancer   10.0.123.45   &lt;pending&gt;      80:31415/TCP   20s
+web    LoadBalancer   10.0.123.45   20.62.140.77   80:31415/TCP   95s</div>
+          </div>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">curl -s http://20.62.140.77 | grep -i '&lt;title&gt;'</span></div>
+            <div class="terminal-output">&lt;title&gt;Welcome to nginx!&lt;/title&gt;</div>
+          </div>
+          <p>That title from the default nginx page, served from a pod on an AKS node through an Azure Load Balancer, is your end-to-end proof: deployment, service, cloud networking, and kube-proxy routing all work. The <code>CLUSTER-IP</code> is internal-only; the <code>EXTERNAL-IP</code> is the one the world can reach.</p>
+          <p><strong>Common mistake:</strong> curling the ClusterIP from your laptop — it is only routable inside the cluster's virtual network. Always use the EXTERNAL-IP. If it stays pending beyond five minutes, run <code>kubectl describe svc web</code> and read the Events section at the bottom.</p>
+        </div></div>
+        <div class="step"><div class="step-num">05</div><div class="step-body"><strong>Generate load and watch the HPA scale out</strong>
+          <p>Now the fun part: make the HPA react. Run a throwaway busybox pod that hammers the Service in a loop — because it resolves the Service name <code>web</code> over cluster DNS, the load spreads across all replicas through the internal ClusterIP. The nginx pods' CPU climbs, the metrics-server reports it, and the HPA starts adding replicas to bring average utilization back under 60%.</p>
+          <p class="code-label">LOAD GENERATOR (LEAVE RUNNING IN THIS TERMINAL)</p><pre><code>kubectl run -i --tty loadgen --rm --restart=Never \
+  --image=busybox:1.36 -- /bin/sh -c \
+  "while true; do wget -q -O- http://web &gt; /dev/null; done"</code></pre>
+          <p>In a second terminal, watch the HPA. Within a couple of minutes you should see current CPU blow past the target and the replica count climb:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get hpa web -w</span></div>
+            <div class="terminal-output">NAME   REFERENCE         TARGETS    MINPODS   MAXPODS   REPLICAS   AGE
+web    Deployment/web    3%/60%     2         10        2          8m
+web    Deployment/web    145%/60%   2         10        2          9m
+web    Deployment/web    145%/60%   2         10        5          10m
+web    Deployment/web    62%/60%    2         10        5          11m
+web    Deployment/web    48%/60%    2         10        5          12m</div>
+          </div>
+          <p>The math is simple: at 145% of the 60% target the HPA computes <code>ceil(2 × 145/60) = 5</code> replicas and patches the Deployment. New pods schedule onto the nodes, pull the image, and start absorbing traffic — average utilization falls back toward the target. The feedback loop is closed.</p>
+          <div class="mermaid" role="img" aria-label="Load flows through the service to pods while HPA and cluster autoscaler scale two layers">
+graph LR
+  U["Load generator"] -->|"HTTP traffic"| S["Service web"]
+  S --> P["web pods"]
+  MS["metrics-server"] -->|"CPU readings"| H["HPA 60% target"]
+  H -->|"patch replicas 2 to 10"| D["Deployment web"]
+  D -->|"pending pods"| CA["Cluster autoscaler"]
+  CA -->|"add VMs up to 5"| NP["Node pool VMSS"]
+      </div>
+          <p><strong>Common mistake:</strong> giving up after 30 seconds. The HPA polls metrics every ~15 seconds and has a stabilization window; allow 2–3 minutes for the first scale-up and 5+ minutes for scale-down after you stop the load (Ctrl+C the loadgen pod to stop it — scale-down is deliberately slower to avoid flapping).</p>
+        </div></div>
+        <div class="step"><div class="step-num">06</div><div class="step-body"><strong>Watch the cluster autoscaler add nodes</strong>
+          <p>Pod-level scaling only works while the nodes have room. Each web pod requests 250m CPU, so as the HPA pushes toward 8–10 replicas the two existing nodes fill up and new pods sit <code>Pending</code> with <code>Insufficient cpu</code>. That is exactly the signal the cluster autoscaler listens for: it grows the VM Scale Set from 2 toward the 5-node ceiling so the pending pods can schedule.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get pods -l app=web | head -4</span></div>
+            <div class="terminal-output">NAME                   READY   STATUS    RESTARTS   AGE
+web-6f8b9d7c4f-x2kqp   1/1     Running   0          25m
+web-6f8b9d7c4f-7hj2m   1/1     Running   0          6m
+web-6f8b9d7c4f-9qzv4   0/1     Pending   0          3m</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get nodes -w</span></div>
+            <div class="terminal-output">NAME                                STATUS   ROLES    AGE   VERSION
+aks-nodepool1-28531641-vmss000000   Ready    &lt;none&gt;   40m   v1.31.7
+aks-nodepool1-28531641-vmss000001   Ready    &lt;none&gt;   40m   v1.31.7
+aks-nodepool1-28531641-vmss000002   Ready    &lt;none&gt;   45s   v1.31.7</div>
+          </div>
+          <p>The third node appearing with a tiny <code>AGE</code> is the autoscaler doing its job — from <code>Pending</code> pod to Ready node typically takes 3–5 minutes (VM provisioning plus kubelet registration). You can corroborate it from the Azure side with <code>az aks show -g rg -n tyf-aks --query properties.agentPoolProfiles[0].count</code>, or watch autoscaler decisions in the cluster events.</p>
+          <p><strong>How to verify:</strong> after the new node is Ready, the Pending pod flips to Running within seconds — <code>kubectl get pods -l app=web -o wide</code> shows which node each pod landed on. If pods stay Pending and no node appears, check whether you already hit <code>--max-count 5</code>; the autoscaler cannot exceed it.</p>
+        </div></div>
+        <div class="step"><div class="step-num">07</div><div class="step-body"><strong>Clean up everything</strong>
+          <p>Cloud labs are only cheap if you tear them down. Because every resource from this lab — cluster, node VMs, disks, load balancer, public IP — lives in the one resource group you created, a single delete removes all of it. The <code>--no-wait</code> flag returns immediately; deletion itself takes several minutes in the background.</p>
+          <div class="command-block" data-copy><div class="command"><code>az group delete -n rg --yes --no-wait</code></div><div class="note">Deletes the cluster, nodes, load balancer, and public IP in one shot.</div></div>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az group exists -n rg</span></div>
+            <div class="terminal-output">false</div>
+          </div>
+          <p><strong>Common mistake:</strong> deleting the AKS cluster resource alone instead of the group. AKS creates a second, auto-generated resource group (named like <code>MC_rg_tyf-aks_eastus</code>) holding the VMs, disks, and load balancer — if you only delete the cluster object you can leave billable networking resources behind. Deleting the parent group and confirming with <code>az group exists</code> (and a glance at the portal's Cost Management blade) is the safe pattern.</p>
         </div></div>
       </div>
     </section>
@@ -110,7 +239,17 @@ graph LR
     </section>
 
     <section><h2>Testing &amp; Validation</h2>
+      <p>Before calling the lab done, run the full verification sweep. You are checking four layers: the app answers on its public IP, the HPA reports real metrics, the node pool is healthy, and the autoscalers are within their configured bounds.</p>
       <div class="command-block" data-copy><div class="command"><code>kubectl get svc web -w &amp;&amp; kubectl get hpa web</code></div></div>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get deploy web &amp;&amp; kubectl get nodes</span></div>
+        <div class="terminal-output">NAME   READY   UP-TO-DATE   AVAILABLE   AGE
+web    2/2     2            2           30m
+NAME                                STATUS   ROLES    AGE   VERSION
+aks-nodepool1-28531641-vmss000000   Ready    &lt;none&gt;   45m   v1.31.7
+aks-nodepool1-28531641-vmss000001   Ready    &lt;none&gt;   45m   v1.31.7</div>
+      </div>
+      <p>Checklist: the Deployment shows <code>2/2</code> ready (the HPA floor), all nodes are <code>Ready</code>, the Service has an EXTERNAL-IP that answers curl, and the HPA shows a real current/target percentage rather than <code>&lt;unknown&gt;</code>. Under the load test you should additionally observe replicas rising toward 10 and nodes rising toward 5 — and after stopping the load, both drifting back down over the following 10–15 minutes.</p>
       <p>You should get an external IP and an HPA reporting current vs target CPU. If reachable and scaling, your AKS deployment works. Remember to <code>az group delete -n rg</code> to stop charges.</p>
     </section>
 
@@ -119,6 +258,11 @@ graph LR
         <li><strong>External IP pending:</strong> the Azure Load Balancer takes a minute to provision; keep watching.</li>
         <li><strong>HPA shows unknown:</strong> install the metrics-server (built in on AKS, may need a moment).</li>
         <li><strong>Quota errors:</strong> the region/subscription may cap node SKUs; pick a smaller VM size.</li>
+        <li><strong>External IP stuck at &lt;pending&gt; beyond ~5 minutes:</strong> run <code>kubectl describe svc web</code> and read the Events block. The usual culprits are a failed public-IP allocation (check the Azure activity log for the auto-created <code>MC_rg_tyf-aks_eastus</code> group) or a standard-SKU LB policy restriction. Recreating the Service (<code>kubectl delete svc web</code> then expose again) forces a fresh allocation.</li>
+        <li><strong>HPA TARGETS shows &lt;unknown&gt;/60% indefinitely:</strong> first confirm the pods have CPU requests — <code>kubectl get deploy web -o jsonpath='{.spec.template.spec.containers[0].resources}'</code> must show a <code>requests.cpu</code> value (set it with <code>kubectl set resources</code> as in step 03). Then confirm the metrics pipeline works at all: <code>kubectl top nodes</code> should return numbers; if it errors, check the metrics-server pods with <code>kubectl get pods -n kube-system -l k8s-app=metrics-server</code>.</li>
+        <li><strong>kubectl fails with "connection refused" to localhost:8080:</strong> no cluster credentials are loaded — either <code>az aks get-credentials</code> was never run, or your current context points elsewhere. Fix with <code>az aks get-credentials -g rg -n tyf-aks --overwrite-existing</code> and confirm via <code>kubectl config current-context</code>.</li>
+        <li><strong>Pods Pending with "Insufficient cpu" that never schedule:</strong> check whether the node pool is already at <code>--max-count</code> (<code>az aks show -g rg -n tyf-aks --query properties.agentPoolProfiles[0].count</code>). If it is below the max, give the autoscaler 3–5 minutes and inspect its decisions: <code>kubectl get events -A --field-selector reason=TriggeredScaleUp</code>. Persistent failures usually trace back to regional vCPU quota — run <code>az vm list-usage --location eastus -o table</code> to see headroom.</li>
+        <li><strong>Cluster creation fails immediately with a quota or SKU error:</strong> free trial and student subscriptions often cap regional cores at 4–10. Either request a quota increase in the portal (takes minutes to hours) or shrink the lab: add <code>--node-vm-size Standard_B2s</code> and drop <code>--max-count</code> to 3.</li>
       </ul>
     </details>
 
@@ -127,6 +271,8 @@ graph LR
         <li>Add Ingress + TLS as in <a href="kubernetes-networking.html">Kubernetes Networking</a>.</li>
         <li>Provision the cluster with Terraform (see <a href="../cloud-azure/infrastructure-as-code.html">IaC</a>).</li>
         <li>Audit posture with <a href="../cloud-azure/cspm-azure-aws.html">CSPM</a>.</li>
+        <li>Replace the imperative commands with declarative manifests (<code>kubectl apply -f</code>) and wire them into a GitHub Actions pipeline for a basic GitOps flow.</li>
+        <li>Swap the CPU-based HPA for KEDA and scale on queue depth or HTTP request rate instead.</li>
       </ul>
     </section>
 
@@ -136,6 +282,17 @@ graph LR
         <li>Enabled cluster autoscaling from 2 to 5 nodes.</li>
         <li>Added an HPA scaling pods from 2 to 10 on CPU.</li>
         <li>Exposed the app via an Azure Load Balancer.</li>
+      </ul>
+    </section>
+
+    <section><h2>Key Takeaways</h2>
+      <ul>
+        <li>AKS splits responsibility: Azure runs the control plane for free; you own — and pay for — the node pool VMs.</li>
+        <li><code>az aks get-credentials</code> is the bridge between Azure and kubectl; without it kubectl has no cluster to talk to.</li>
+        <li>A Service of <code>type: LoadBalancer</code> on AKS is not just a Kubernetes object — it provisions a real Azure Load Balancer and public IP behind the scenes.</li>
+        <li>A CPU-based HPA is useless without resource requests on the pods; utilization is a percentage of <em>requested</em> CPU, so set <code>--requests=cpu</code> before expecting it to scale.</li>
+        <li>Two autoscaling layers cooperate: the HPA adds pods within node capacity, and the cluster autoscaler adds nodes when pods go Pending — pods scale in seconds, nodes in minutes.</li>
+        <li>Cleanup is part of the lab: deleting the resource group removes the cluster, VMs, disks, and load balancer together, which is the only reliable way to stop all charges.</li>
       </ul>
     </section>
 
