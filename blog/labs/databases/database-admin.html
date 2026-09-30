@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Database Administration | Roles, GRANT &amp; Monitoring</title>
+  <meta name="keywords" content="postgresql admin, roles, GRANT, least privilege, pg_stat_statements, connection limits">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Database Administration | Roles, GRANT & Monitoring">
+  <meta property="og:description" content="Administer PostgreSQL with roles, least-privilege GRANTs, connection limits, and pg_stat_statements query monitoring for slow queries like a professional DBA.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/databases/database-admin.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Database Administration | Roles, GRANT & Monitoring">
+  <meta name="twitter:description" content="Administer PostgreSQL with roles, least-privilege GRANTs, connection limits, and pg_stat_statements query monitoring for slow queries like a professional DBA.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="description" content="Administer PostgreSQL with roles, least-privilege GRANTs, connection limits, and pg_stat_statements query monitoring for slow queries like a professional DBA.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/databases/database-admin.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "PostgreSQL Database Administration", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-03-25", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "PostgreSQL 16, pg_stat_statements", "articleSection": "Databases", "learningResourceType": "Hands-on lab", "teaches": "databases and SQL"}</script>
+  <script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "Create roles and grant least privilege",
+      "text": "Create roles and grant least privilege"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Enable query monitoring",
+      "text": "Enable query monitoring"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Limit connections per role",
+      "text": "Limit connections per role"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Prove the readonly role cannot write",
+      "text": "Prove the readonly role cannot write"
+    }
+  ],
+  "url": "https://tyfsadik.org/about.html"
+}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Databases", "item": "https://tyfsadik.org/blog/labs/databases/index.html"}, {"@type": "ListItem", "position": 4, "name": "Database Administration", "item": "https://tyfsadik.org/blog/labs/databases/database-admin.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'permission denied for table'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: GRANT was given on the database but not on the schema or tables. Fix: grant USAGE on the schema and SELECT on tables; use ALTER DEFAULT PRIVILEGES for future tables."}}, {"@type": "Question", "name": "How do I fix 'pg_stat_statements shows no rows'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the extension is not in shared_preload_libraries or not created. Fix: add it to shared_preload_libraries, restart, then CREATE EXTENSION."}}, {"@type": "Question", "name": "How do I fix 'role still connects over the limit'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: superusers bypass connection limits. Fix: limits apply to non-superusers; also check pooler-level limits."}}, {"@type": "Question", "name": "How do I fix 'GRANT on all tables misses new tables'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the grant covered existing tables only. Fix: set ALTER DEFAULT PRIVILEGES so future tables inherit the grants."}}, {"@type": "Question", "name": "How do I fix 'cannot drop a role'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: objects are still owned by it. Fix: REASSIGN OWNED BY the role to a successor, then DROP OWNED BY, then drop the role."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/databases/index.html">Databases</a> &rsaquo; <span>Database Administration</span></nav>
+    <div class="page-header"><h1>PostgreSQL Administration: Roles, Privileges, and Monitoring</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Databases</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">GRANT</span><span class="tag">roles</span><span class="tag">pg_stat_statements</span><span class="tag">monitoring</span></div>
+    </div>
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+      <li><a href="#objective-context">Objective &amp; Context</a></li>
+      <li><a href="#environment-prerequisites">Environment &amp; Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation &amp; Testing</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#takeaways">Key Takeaways</a></li>
+      <li><a href="#challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+    </ol></nav>
+
+    <section><p class="lead">I administered PostgreSQL with role-based access control, least-privilege GRANTs, connection limits, and query monitoring via pg_stat_statements. Separating roles by function and tracking slow queries kept the database both secure and observable.</p></section>
+
+    <section><h2 id="objective-context">Objective &amp; Context</h2>
+      <p>DBA work is access control plus observability. This lab builds a role hierarchy (readonly, readwrite, admin), applies least-privilege GRANTs, and enables statement statistics to surface the slowest queries, aligning to NIST AC-6 least privilege.</p></section>
+    <div class="lab-objectives"><h3>Learning Objectives</h3><ul>
+      <li>Create roles separated by function (readonly, app, admin).</li>
+      <li>Grant least privilege with GRANT on databases, schemas, and tables.</li>
+      <li>Enable pg_stat_statements for query monitoring.</li>
+      <li>Find slow queries by mean execution time.</li>
+      <li>Cap connections per role to protect the server.</li>
+    </ul></div>
+
+    <section><h2 id="environment-prerequisites">Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3><ul>
+      <li><code>PostgreSQL 16</code> with superuser access to configure roles</li>
+      <li><code>pg_stat_statements</code> extension available</li>
+      <li>A workload generating varied queries to monitor</li>
+      <li>Assumed skill: basic SQL and psql usage</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="Role hierarchy">
+flowchart TB
+  Admin[admin role] --> RW[readwrite role]
+  RW --> RO[readonly role]
+  RO --> U[app users]
+      </div>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <h3>1. Create roles and grant least privilege</h3>
+      <div class="command-block"><div class="command"><code>CREATE ROLE readonly; GRANT CONNECT ON DATABASE appdb TO readonly; GRANT USAGE ON SCHEMA public TO readonly; GRANT SELECT ON ALL TABLES IN SCHEMA public TO readonly;</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>CREATE ROLE / GRANT</code></pre>
+      <p class="lab-step-note">What this teaches: Separating readonly from app roles means a reporting query can never accidentally write; least privilege limits the blast radius of every credential.</p></div>
+      <h3>2. Enable query monitoring</h3>
+      <div class="command-block"><div class="command"><code>CREATE EXTENSION pg_stat_statements; SELECT query, mean_exec_time FROM pg_stat_statements ORDER BY mean_exec_time DESC LIMIT 5;</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>query                          mean_exec_time
+SELECT * FROM orders WHERE...  142.6 ms</code></pre>
+      <p class="lab-step-note">What this teaches: pg_stat_statements aggregates real execution stats across all sessions; sorting by mean time surfaces the queries worth optimizing first. On a fresh install, CREATE EXTENSION alone fails: add <code>shared_preload_libraries = 'pg_stat_statements'</code> to postgresql.conf and restart the server (<code>sudo systemctl restart postgresql</code>) before creating the extension.</p></div>
+      <h3>3. Limit connections per role</h3>
+      <div class="command-block"><div class="command"><code>CREATE ROLE app LOGIN; ALTER ROLE app CONNECTION LIMIT 20;</code></div></div>
+<pre><code class="language-bash">query                          mean_exec_time
+SELECT * FROM orders WHERE...  142.6 ms</code></pre>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>CREATE ROLE
+ALTER ROLE</code></pre>
+      <p class="lab-step-note">What this teaches: Connection caps stop one misbehaving service from exhausting max_connections and locking everyone else out. The cap is set per role at the database level; a pooler enforces its own ceiling on top.</p>
+      <h3>4. Prove the readonly role cannot write</h3>
+      <div class="command-block"><div class="command"><code>CREATE ROLE analyst LOGIN PASSWORD 'TempPass123!'; GRANT readonly TO analyst;</code></div>
+      <div class="command"><code>psql -h 127.0.0.1 -d appdb -U analyst -c "INSERT INTO orders (customer_id) VALUES (1);"</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>ERROR:  permission denied for table orders</code></pre>
+      <p class="lab-step-note">What this teaches: The group role carries the privileges and the login role inherits them for testing. If password authentication fails, add an scram-sha-256 pg_hba line for 127.0.0.1 and reload the configuration before testing.</p></div>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+      <div class="lab-explainer"><h3>How It Works</h3>
+      <p>Role-based access control separates identity from permission: roles group privileges, and logins inherit them. GRANT CONNECT plus schema USAGE plus table SELECT composes the minimal set a reader needs; anything more is unnecessary risk.</p>
+      <p>pg_stat_statements is a shared-library extension that normalizes and aggregates query statistics server-wide. Unlike slow-query logs it costs little overhead and answers 'which queries cost the most total time' directly, which is the right question for optimization triage.</p>
+      <p>Connection limits are a bulkhead: each role gets a ceiling so a connection leak or traffic spike in one service degrades that service, not the whole database. Combined with a pooler, caps turn connection storms into queued waits instead of outages.</p>
+    </div>
+      <div class="mermaid" role="img" aria-label="Least-privilege role model">
+flowchart TD
+  SA["superuser"] --> RA["role: readonly<br/>CONNECT + SELECT"]
+  SA --> RB["role: app<br/>+ INSERT/UPDATE"]
+  SA --> RC["role: admin<br/>DDL + maintenance"]
+  RB --> CAP["CONNECTION LIMIT 20"]
+  MON["pg_stat_statements<br/>slow query watch"] --> SA
+      </div>
+    </section>
+
+    <section><h2 id="validation-testing">Validation &amp; Testing</h2>
+      <p>Connect as the readonly role and confirm writes are denied; review pg_stat_statements to identify the slowest query. Pass criteria: roles enforce least privilege, connection limits apply, and the slowest queries are visible for tuning.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>New tables not granted:</strong> set <code>ALTER DEFAULT PRIVILEGES</code> so future tables inherit grants.</li>
+        <li><strong>pg_stat_statements empty:</strong> add it to <code>shared_preload_libraries</code> and restart.</li>
+        <li><strong>Connection exhaustion:</strong> use a pooler (PgBouncer) for many short-lived clients.</li>
+      </ul>
+    </details>
+
+    <section><h2 id="troubleshooting">Troubleshooting</h2>
+      <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+        <tr><td>permission denied for table</td><td>GRANT was given on the database but not on the schema or tables</td><td>grant USAGE on the schema and SELECT on tables; use ALTER DEFAULT PRIVILEGES for future tables</td></tr>
+        <tr><td>pg_stat_statements shows no rows</td><td>the extension is not in shared_preload_libraries or not created</td><td>add it to shared_preload_libraries, restart, then CREATE EXTENSION</td></tr>
+        <tr><td>role still connects over the limit</td><td>superusers bypass connection limits</td><td>limits apply to non-superusers; also check pooler-level limits</td></tr>
+        <tr><td>GRANT on all tables misses new tables</td><td>the grant covered existing tables only</td><td>set ALTER DEFAULT PRIVILEGES so future tables inherit the grants</td></tr>
+        <tr><td>cannot drop a role</td><td>objects are still owned by it</td><td>REASSIGN OWNED BY the role to a successor, then DROP OWNED BY, then drop the role</td></tr>
+      </tbody></table>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Enforced least privilege via a 3-tier role hierarchy.</li>
+        <li>Surfaced the top 5 slowest queries with pg_stat_statements.</li>
+        <li>Capped per-role connections to protect the server.</li>
+        <li>Applied default privileges so new tables stay governed.</li>
+      </ul>
+    </section>
+
+    <section class="lab-takeaways"><h2 id="takeaways">Key Takeaways</h2><ul>
+        <li>Separate roles by function; never share one superuser credential across services.</li>
+        <li>Least privilege composes: CONNECT, USAGE, then only the needed table rights.</li>
+        <li>pg_stat_statements finds the queries worth optimizing by total cost.</li>
+        <li>Connection limits are bulkheads against one service starving the rest.</li>
+        <li>ALTER DEFAULT PRIVILEGES keeps grants applying to future tables.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="challenges">Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Read-only analyst</h4><p><strong>Goal:</strong> Create an analyst role that can SELECT from reporting schema but cannot see the users table at all.</p><p><strong>Hint:</strong> Grant USAGE on the schema, SELECT on specific tables only, and revoke public defaults if present.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: Slow query triage</h4><p><strong>Goal:</strong> From pg_stat_statements, find the query with the highest total time and propose the fix.</p><p><strong>Hint:</strong> Sort by total_exec_time, not just mean; a fast query run millions of times can dominate.</p></div>
+    </section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="backup-recovery.html">Backup &amp; Recovery</a></li>
+        <li><a href="constraints-keys.html">Constraints &amp; Keys</a></li>
+        <li><a href="cloud-database-config.html">Cloud Database Configuration</a></li>
+      
+        <li><a href="backup-recovery.html">Backup & Recovery</a></li>
+        <li><a href="constraints-keys.html">Constraints & Keys</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

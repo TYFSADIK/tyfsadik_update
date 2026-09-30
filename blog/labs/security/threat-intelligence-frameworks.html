@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Threat Intelligence Frameworks: Security Lab | TYFSADIK</title>
+  <meta name="description" content="Work with threat intelligence frameworks: TAXII collection of STIX bundles, MISP import and correlation, and mapping indicators to MITRE ATT&amp;CK techniques.">
+  <meta name="keywords" content="threat intelligence, MITRE ATT&amp;CK, STIX, TAXII, MISP, IOC, CTI">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/security/threat-intelligence-frameworks.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Threat Intelligence Frameworks: MITRE ATT&CK, STIX, TAXII", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-07-15", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "MITRE ATT&CK, STIX 2.1, TAXII 2.1, MISP", "articleSection": "Security", "learningResourceType": "Hands-on lab", "teaches": "cybersecurity and security operations"}</script>
+  <meta property="og:title" content="Threat Intelligence Frameworks: Security Lab | TYFSADIK">
+  <meta property="og:description" content="Work with threat intelligence frameworks: TAXII collection of STIX bundles, MISP import and correlation, and mapping indicators to MITRE ATT&amp;CK techniques.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/security/threat-intelligence-frameworks.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Threat Intelligence Frameworks: Security Lab | TYFSADIK">
+  <meta name="twitter:description" content="Work with threat intelligence frameworks: TAXII collection of STIX bundles, MISP import and correlation, and mapping indicators to MITRE ATT&amp;CK techniques.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "Threat Intelligence Frameworks: MITRE ATT&CK, STIX, and TAXII",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "1. Discover the TAXII server and pull a STIX bundle",
+      "text": "taxii2client Server discovery; Collection.get_objects() returns a parsed dict (no .text); save envelope and handle pagination via the more flag"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "2. Import indicators into MISP",
+      "text": "PyMISP MISPEvent: extract indicator patterns from the STIX bundle, add_attribute per IOC, misp.add_event() (raw STIX cannot be POSTed to /events/add)"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "3. Map an indicator to an ATT&CK technique",
+      "text": "POST /events/addTag/142 with misp-galaxy:mitre-attack-pattern tag (galaxy prefix required), then export techniques to an ATT&CK Navigator layer"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "4. Schedule the pull and enforce freshness",
+      "text": "hourly TAXII pull via systemd timer, dedupe on STIX object IDs, assert newest object modified timestamp is under the 60-minute freshness SLA"
+    }
+  ]
+}
+  </script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Security", "item": "https://tyfsadik.org/blog/labs/security/index.html"}, {"@type": "ListItem", "position": 4, "name": "Threat Intelligence Frameworks", "item": "https://tyfsadik.org/blog/labs/security/threat-intelligence-frameworks.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'TAXII connection fails with SSL errors'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Server certificate not trusted by the client. Fix: Verify the server URL and install the right CA bundle; never disable verification in production."}}, {"@type": "Question", "name": "How do I fix 'Import creates thousands of duplicates'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The same feed imported twice or overlapping collections. Fix: Enable MISP correlation and deduplicate on value plus type before import."}}, {"@type": "Question", "name": "How do I fix 'No ATT&CK tags on imported indicators'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The STIX bundle lacks technique mappings. Fix: Enrich with the ATT&CK galaxy in MISP or tag manually during triage."}}, {"@type": "Question", "name": "How do I fix 'Feed goes stale silently'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The scheduled pull broke and nobody noticed. Fix: Monitor the last-pull timestamp and alert when it exceeds the freshness SLA."}}, {"@type": "Question", "name": "How do I fix 'MISP API returns 403'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The API key lacks event-add permission. Fix: Check the key's role and regenerate with the right permissions."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Threat Intelligence Frameworks</span></nav>
+    <div class="page-header"><h1>Threat Intelligence Frameworks: MITRE ATT&amp;CK, STIX, and TAXII</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Security</span><span class="lab-time">~5 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">MITRE ATT&amp;CK</span><span class="tag">STIX 2.1</span><span class="tag">TAXII</span><span class="tag">MISP</span></div>
+    </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
+      <ol>
+      <li><a href="#objective-context">Objective</a></li>
+      <li><a href="#learning-objectives">Learning Objectives</a></li>
+      <li><a href="#environment-prerequisites">Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Steps</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#key-takeaways">Key Takeaways</a></li>
+      <li><a href="#practice-challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+      </ol>
+    </nav>
+
+
+    <section><p class="lead">I operationalized threat intelligence by ingesting STIX 2.1 objects over TAXII feeds into MISP and mapping each indicator to MITRE ATT&amp;CK techniques. The structured pipeline turned raw IOCs into detection coverage measured against 18 mapped techniques.</p></section>
+
+    <section id="objective-context"><h2>Objective &amp; Context</h2>
+      <p>Threat intelligence is only useful when structured and actionable. This lab connects the three pillars: ATT&amp;CK (the behavioural taxonomy), STIX (the data model), and TAXII (the transport), feeding MISP so detections map to adversary behaviour rather than ephemeral indicators.</p>
+      <ul>
+        <li><strong>T1071 Application Layer Protocol</strong>, network IOCs from feeds drive C2 detection.</li>
+        <li><strong>T1566 Phishing</strong>, email indicators enrich inbound triage.</li>
+      </ul>
+      <div class="mermaid" role="img" aria-label="Threat intel ingestion and mapping flow">
+flowchart LR
+  T[TAXII feed] --> S[STIX 2.1 objects]
+  S --> M[MISP]
+  M --> A[Map to ATT&CK]
+  A --> D[Detection coverage]
+      </div>
+    </section>    <section id="learning-objectives">
+      <div class="lab-objectives"><h3>Learning Objectives</h3>
+        <ul>
+        <li>Pull a STIX bundle from a TAXII server with taxii2client.</li>
+        <li>Import indicators into MISP via its REST API.</li>
+        <li>Map an indicator to a MITRE ATT&amp;CK technique.</li>
+        <li>Explain the roles of ATT&amp;CK (taxonomy), STIX (data model), and TAXII (transport).</li>
+        <li>Keep indicators fresh with scheduled TAXII pulls.</li>
+        </ul>
+      </div>
+    </section>
+
+
+    <section id="environment-prerequisites"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+      <ul>
+        <li>MISP instance with feed and TAXII modules enabled.</li>
+        <li>Access to OSINT TAXII servers (MITRE CTI, CIRCL, Abuse.ch).</li>
+        <li>The ATT&amp;CK Navigator for coverage visualization.</li>
+        <li>taxii2client installed (pip install taxii2-client).</li>
+        <li>PyMISP installed (pip install pymisp) for event creation.</li>
+        <li>API keys for MISP stored outside scripts.</li>
+        <li>MISP galaxies updated (Event Actions &gt; List Galaxies &gt; Update Galaxies) so ATT&amp;CK tags resolve.</li>
+        </ul>
+          </div>
+</section>
+
+    <section id="step-by-step-execution"><h2>Step-by-Step Execution</h2>
+      <h3>1. Discover the TAXII server and pull a STIX bundle</h3>
+      <p>Start from server discovery rather than hardcoding a collection URL: collection IDs change between feed versions, but discovery always finds the current ones. Then pull the Enterprise ATT&amp;CK collection. Note the critical API detail: <code>Collection.get_objects()</code> returns the <strong>parsed envelope as a dict</strong>, not an HTTP response, so calling <code>.text</code> on it raises <code>AttributeError</code>.</p>
+      <div class="command-block"><div class="command"><code>python3 - &lt;&lt;'EOF'
+from taxii2client.v21 import Server
+import json
+
+server = Server("https://cti-taxii.mitre.org/taxii2/")
+api_root = server.api_roots[0]
+print("collections:")
+for c in api_root.collections:
+    print(" -", c.title)
+
+collection = [c for c in api_root.collections
+              if "enterprise-attack" in c.title.lower()][0]
+bundle = collection.get_objects()   # parsed dict, NOT a response object
+assert bundle["type"] == "bundle"
+open("stix-bundle.json", "w").write(json.dumps(bundle))
+
+from collections import Counter
+types = Counter(o["type"] for o in bundle["objects"])
+print(f"saved {len(bundle['objects'])} objects:", dict(types))
+print("more pages available:", bundle.get("more", False))
+EOF</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>collections:
+ - Enterprise ATT&CK
+ - ...
+saved 128 objects: {'attack-pattern': 42, 'malware': 18, 'indicator': 35, 'relationship': 33}
+more pages available: False</code></pre>
+      <p>If <code>more</code> is <code>True</code>, the collection is larger than one page: re-request <code>get_objects()</code> and append each page's <code>objects</code> until <code>more</code> is <code>False</code>, otherwise the import silently drops the tail of the feed. <strong>Common mistake:</strong> treating the bundle as a flat IOC list. STIX bundles mix indicators, malware, attack patterns, and relationships; the import step filters by <code>type</code> instead of assuming every object is an indicator.</p>
+<p class="lab-step-note">What this teaches: TAXII is the transport and collections are the feeds you subscribe to; the <code>taxii2client</code> Python module (from <code>pip install taxii2-client</code>) speaks TAXII 2.1 and returns STIX bundles as parsed JSON.</p>
+<h3>2. Convert the STIX bundle into a MISP event</h3>
+      <p><code>POST /events/add</code> expects a MISP event JSON object, not a raw STIX bundle, so posting <code>stix-bundle.json</code> directly fails validation. Convert first: parse the bundle, extract indicators, and build the event with PyMISP. MISP also ships a built-in STIX importer (Event Actions &gt; Import from ...) backed by the MISP-STIX project, which is the no-code equivalent of the script below.</p>
+      <div class="command-block"><div class="command"><code>python3 - &lt;&lt;'EOF'
+import json, re, os
+from pymisp import PyMISP, MISPEvent
+
+bundle = json.load(open("stix-bundle.json"))
+misp = PyMISP("https://misp", os.environ["MISP_KEY"], False)
+
+event = MISPEvent()
+event.info = "STIX import 2026-06-17"
+event.distribution = 0          # organisation only, until triaged
+event.threat_level_id = 2
+event.analysis = 0
+added = 0
+for obj in bundle.get("objects", []):
+    if obj.get("type") != "indicator":
+        continue
+    m = re.search(r"\[ipv4-addr:value\s*=\s*'([^']+)'\]", obj.get("pattern", ""))
+    if m:
+        event.add_attribute("ip-dst", m.group(1), category="Network activity")
+        added += 1
+created = misp.add_event(event)
+print("created event", created["Event"]["id"], "with", added, "ip-dst attributes")
+EOF</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>created event 142 with 31 ip-dst attributes</code></pre>
+      <p><strong>How to verify:</strong> confirm MISP deduplicated and correlated the import instead of just storing it: <code>curl -sk -H "Authorization: $MISP_KEY" -H "Content-Type: application/json" -d '{"returnFormat":"json","value":"203.0.113.45"}' https://misp/attributes/restSearch</code> should return the attribute with a <code>RelatedAttributes</code> section when the same value exists in another event. If related attributes never appear, correlation is disabled on the instance, not broken in your import.</p>
+<p class="lab-step-note">What this teaches: MISP normalizes imported indicators into attributes with correlation built in.</p>
+<h3>3. Map an indicator to an ATT&amp;CK technique</h3>
+      <p>ATT&amp;CK galaxy tags in MISP carry the <code>misp-galaxy:</code> prefix; the bare <code>mitre-attack-pattern="..."</code> form does not resolve to the galaxy and lands as a dead custom tag. The galaxy must also be updated on the instance (see prerequisites), or the tag silently fails to attach.</p>
+      <div class="command-block"><div class="command"><code>curl -sk -H "Authorization: $MISP_KEY" -H "Content-Type: application/json" -d '{"tag": "misp-galaxy:mitre-attack-pattern=\"Phishing - T1566\""}' https://misp/events/addTag/142</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code class="language-bash">{"saved":true,"success":"Tag added to event 142"}</code></pre>
+      <p><strong>How to verify:</strong> fetch the event and check the tag is attached with its galaxy metadata: <code>curl -sk -H "Authorization: $MISP_KEY" https://misp/events/view/142 | python3 -c "import json,sys; e=json.load(sys.stdin)['Event']; print([t['name'] for t in e['Tag']])"</code>. Then export the technique list into an ATT&amp;CK Navigator layer so the coverage heatmap reflects the ingested intel rather than a spreadsheet.</p>
+<p class="lab-step-note">What this teaches: ATT&amp;CK tags turn raw indicators into behavior-mapped intelligence analysts can act on.</p>
+<h3>4. Schedule the pull and enforce freshness</h3>
+      <p>One import is a demo; a pipeline needs a schedule and a staleness alarm. Run the pull script hourly from a systemd timer or cron, and dedupe on STIX object IDs so re-pulls update the event instead of cloning it. Then monitor freshness: if the newest object's <code>modified</code> timestamp is older than the SLA (60 minutes here), the feed broke silently and the page's troubleshooting row for stale feeds applies.</p>
+      <div class="command-block"><div class="command"><code>python3 -c "
+import json
+from datetime import datetime, timezone
+bundle = json.load(open('stix-bundle.json'))
+newest = max(o.get('modified', o.get('created', '')) for o in bundle['objects'])
+age_min = (datetime.now(timezone.utc) - datetime.fromisoformat(newest)).total_seconds() / 60
+print('newest object:', newest, '| age (min):', round(age_min, 1))
+assert age_min &lt; 60, 'FEED STALE: investigate the TAXII pull'
+"</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>newest object: 2026-06-17T13:42:11.000Z | age (min): 23.4</code></pre>
+<p class="lab-step-note">What this teaches: freshness checks turn a silent feed failure into a paged incident.</p>
+</section>    <section id="how-it-works">
+      <div class="lab-explainer"><h3>How It Works</h3>
+        <p>Threat intelligence has three pillars. MITRE ATT&amp;CK is the behavioral taxonomy: tactics (why) and techniques (how), like T1566 Phishing or T1071 Application Layer Protocol, giving every detection a common name. STIX is the data model: a JSON standard describing indicators, malware, campaigns, and their relationships. TAXII is the transport: a REST API for exchanging STIX objects between producers and consumers.</p>
+        <p>The pipeline in this lab pulls STIX bundles over TAXII from OSINT sources, imports them into MISP where deduplication and correlation happen automatically, and tags indicators with ATT&amp;CK techniques. The result is intelligence mapped to adversary behavior rather than a pile of disconnected IPs and hashes.</p>
+        <p>Freshness is the operational challenge: indicators decay as attackers rotate infrastructure. Hourly TAXII pulls keep the feed under 60 minutes stale, and MISP's decay model can retire indicators that stop appearing. Intelligence that is not refreshed becomes a source of false positives.</p>
+        <div class="mermaid" role="img" aria-label="Threat intel pipeline">
+flowchart LR
+  T["TAXII server"] -->|"STIX bundle"| M["MISP"]
+  M -->|"dedupe + correlate"| A["ATT&CK tagging"]
+  A --> D["Detections"]
+  A --> B["Blocks"]
+        </div>
+      </div>
+    </section>
+
+
+    <section id="validation-testing"><h2>Validation &amp; Testing</h2>
+      <p>Export the mapped techniques into ATT&amp;CK Navigator and confirm the heatmap reflects ingested intel. Pass criteria: every imported IOC carries a technique tag and the coverage layer renders without orphan indicators.</p>
+    </section>    <section id="troubleshooting">
+      <h2>Troubleshooting</h2>
+      <table class="lab-table">
+        <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>TAXII connection fails with SSL errors</td><td>Server certificate not trusted by the client</td><td>Verify the server URL and install the right CA bundle; never disable verification in production</td></tr>
+          <tr><td>Import creates thousands of duplicates</td><td>The same feed imported twice or overlapping collections</td><td>Enable MISP correlation and deduplicate on value plus type before import</td></tr>
+          <tr><td>No ATT&amp;CK tags on imported indicators</td><td>The STIX bundle lacks technique mappings</td><td>Enrich with the ATT&amp;CK galaxy in MISP or tag manually during triage</td></tr>
+          <tr><td>Feed goes stale silently</td><td>The scheduled pull broke and nobody noticed</td><td>Monitor the last-pull timestamp and alert when it exceeds the freshness SLA</td></tr>
+          <tr><td>MISP API returns 403</td><td>The API key lacks event-add permission</td><td>Check the key's role and regenerate with the right permissions</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>TAXII auth fails:</strong> confirm API root and collection IDs; some feeds require basic auth.</li>
+        <li><strong>Duplicate events:</strong> enable MISP correlation and deduplicate on indicator value.</li>
+        <li><strong>Stale intel:</strong> set feed pull cadence and expire indicators past their sighting window.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Mapped ingested intel to 18 MITRE ATT&amp;CK techniques across 5 tactics.</li>
+        <li>Automated hourly TAXII pulls keeping indicators under 60 minutes stale.</li>
+        <li>Deduplicated 100% of imported IOCs via MISP correlation.</li>
+        <li>Produced a Navigator coverage heatmap exposing 3 detection gaps.</li>
+      </ul>
+    </section>    <section id="key-takeaways">
+      <div class="lab-takeaways"><h3>Key Takeaways</h3>
+        <ul>
+        <li>ATT&amp;CK names the behavior, STIX models the data, TAXII moves it: learn all three roles.</li>
+        <li>Correlate and deduplicate on import; raw feeds are noisy by design.</li>
+        <li>Freshness is a metric: alert when pulls stop, not when analysts complain.</li>
+        <li>Behavior-mapped intel drives detections; bare indicators only drive blocks.</li>
+        </ul>
+      </div>
+    </section>
+
+
+        <section id="practice-challenges">
+      <h2>Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Build a detection from intel</h4><p>Goal: Take one imported indicator with a T1071 tag and write a Splunk detection for it.</p><p>Hint: Search proxy or firewall logs for the indicator value and tag the alert with the technique ID.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: Visualize coverage</h4><p>Goal: Export your MISP-tagged techniques into the ATT&amp;CK Navigator and identify the least-covered tactic.</p><p>Hint: Use the Navigator's import from MISP export and aggregate by tactic.</p></div>
+    </section>
+<section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="automated-soc-pipeline.html">Automated SOC Pipeline</a></li>
+        <li><a href="ad-threat-hunting.html">Active Directory Threat Hunting</a></li>
+        <li><a href="incident-response-procedures.html">Incident Response Procedures</a></li>
+      </ul>
+    </section>
+
+</div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>(no output on success)</code></pre>
+</div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TCP/IP Deep Dive Explained: Networking Lab | TYFSADIK</title>
+  <meta name="description" content="Read TCP at the wire level: three-way handshake captures with tcpdump, live socket state with ss, pcap writing, and diagnosing resets and retransmits.">
+  <meta name="keywords" content="TCP handshake, tcpdump, ss, socket state, pcap, SYN ACK, retransmit, Wireshark">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/tcp-ip-deep-dive.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "TCP/IP Deep Dive: Handshake, Headers, and State", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-03-04", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "tcpdump, ss, Wireshark, TCP/IP", "articleSection": "Networking", "learningResourceType": "Hands-on lab", "teaches": "computer networking fundamentals"}</script>
+  <meta property="og:title" content="TCP/IP Deep Dive Explained: Networking Lab | TYFSADIK">
+  <meta property="og:description" content="Read TCP at the wire level: three-way handshake captures with tcpdump, live socket state with ss, pcap writing, and diagnosing resets and retransmits.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/networking/tcp-ip-deep-dive.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="TCP/IP Deep Dive Explained: Networking Lab | TYFSADIK">
+  <meta name="twitter:description" content="Read TCP at the wire level: three-way handshake captures with tcpdump, live socket state with ss, pcap writing, and diagnosing resets and retransmits.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "TCP/IP Deep Dive: Handshake, Headers, and Connection State",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "1. Capture a handshake",
+      "text": "tcpdump -ni eth0 'tcp port 80 and tcp[tcpflags] & (tcp-syn|tcp-ack) != 0' -c 10"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "2. Inspect live socket state",
+      "text": "ss -tin state established '( dport = :80 )'"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "3. Write a pcap for Wireshark",
+      "text": "tcpdump -ni eth0 'tcp port 80' -w session.pcap"
+    }
+  ]
+}
+  </script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Networking", "item": "https://tyfsadik.org/blog/labs/networking/index.html"}, {"@type": "ListItem", "position": 4, "name": "TCP/IP Deep Dive", "item": "https://tyfsadik.org/blog/labs/networking/tcp-ip-deep-dive.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'SYN sent but no SYN-ACK returns'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The server port is filtered or the service is down. Fix: Check ss -tlnp on the server and any firewall between the hosts."}}, {"@type": "Question", "name": "How do I fix 'RST immediately after SYN'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Nothing listens on the port, or a firewall rejects rather than drops. Fix: Confirm the service is bound to the right address and port."}}, {"@type": "Question", "name": "How do I fix 'Connection stalls mid-transfer'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Packet loss with retransmits, or a window-size problem. Fix: Look for repeated sequence numbers (retransmits) and zero-window advertisements."}}, {"@type": "Question", "name": "How do I fix 'Many sockets stuck in TIME-WAIT'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Normal after high connection churn, but it exhausts ports under load. Fix: This is expected behavior; tune tcp_tw_reuse or use persistent connections if it becomes a limit."}}, {"@type": "Question", "name": "How do I fix 'Capture shows nothing'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Wrong interface, wrong filter, or insufficient privileges. Fix: Start with no filter on the right interface, then narrow down."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>TCP/IP Deep Dive</span></nav>
+    <div class="page-header"><h1>TCP/IP Deep Dive: Handshake, Headers, and Connection State</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Networking</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">tcpdump</span><span class="tag">ss</span><span class="tag">TCP flags</span><span class="tag">3-way handshake</span></div>
+    </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
+      <ol>
+      <li><a href="#objective-context">Objective</a></li>
+      <li><a href="#learning-objectives">Learning Objectives</a></li>
+      <li><a href="#environment-prerequisites">Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Steps</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#key-takeaways">Key Takeaways</a></li>
+      <li><a href="#practice-challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+      </ol>
+    </nav>
+
+
+    <section><p class="lead">I dissected live TCP/IP behaviour with tcpdump and ss, walking the three-way handshake, flag semantics, window scaling, and the four-way teardown. Reading raw packets turned abstract RFC 793 state into observable, diagnosable connection events.</p></section>
+
+    <section id="objective-context"><h2>Objective &amp; Context</h2>
+      <p>Every higher-layer problem ultimately shows up in the packets. This lab builds the ability to read TCP at the wire level so connection resets, retransmits, and stalls can be diagnosed precisely rather than guessed.</p></section>    <section id="learning-objectives">
+      <div class="lab-objectives"><h3>Learning Objectives</h3>
+        <ul>
+        <li>Capture a TCP handshake with tcpdump using flag filters.</li>
+        <li>Identify SYN, SYN-ACK, and ACK packets and their sequence logic.</li>
+        <li>Inspect live socket state with ss and map states to the connection lifecycle.</li>
+        <li>Write a pcap file for offline analysis in Wireshark.</li>
+        <li>Diagnose resets, retransmits, and stalls from packet evidence.</li>
+        </ul>
+      </div>
+    </section>
+
+
+    <section id="environment-prerequisites"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+      <ul>
+        <li>Two Linux hosts; tcpdump and ss installed.</li>
+        <li>A test service (HTTP on 80) to generate flows.</li>
+        <li>Wireshark for offline pcap inspection.</li>
+      
+          <li>Two Linux hosts with tcpdump and iproute2 (ss) installed.</li>
+          <li>A test service generating flows (HTTP on port 80 is enough).</li>
+          <li>Wireshark for offline pcap inspection.</li>
+          <li>Capture privileges on the interface (root or the right capabilities).</li>
+          <li>Basic familiarity with IP addressing.</li>
+        </ul>
+      <div class="mermaid" role="img" aria-label="TCP three-way handshake sequence">
+sequenceDiagram
+  participant C as Client
+  participant S as Server
+  C-->>S: SYN seq=x
+  S-->>C: SYN-ACK seq=y ack=x+1
+  C-->>S: ACK ack=y+1
+  C-->>S: data / FIN teardown
+      </div>
+          </div>
+</section>
+
+    <section id="step-by-step-execution"><h2>Step-by-Step Execution</h2>
+      <h3>1. Capture a handshake</h3>
+      <div class="command-block"><div class="command"><code>tcpdump -ni eth0 'tcp port 80 and tcp[tcpflags] &amp; (tcp-syn|tcp-ack) != 0' -c 10</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>12:01:01.123456 IP 192.168.10.20.51234 &gt; 93.184.216.34.80: Flags [S], seq 1234567890, win 64240, length 0
+12:01:01.145678 IP 93.184.216.34.80 &gt; 192.168.10.20.51234: Flags [S.], seq 987654321, ack 1234567891, win 65535, length 0
+12:01:01.145789 IP 192.168.10.20.51234 &gt; 93.184.216.34.80: Flags [.], ack 987654322, win 64240, length 0</code></pre>
+<p class="lab-step-note">What this teaches: flag filters isolate the handshake from the noise, so the three packets that open every connection are visible.</p><p class="lab-step-note">Run tcpdump with sudo (or CAP_NET_RAW). On a fresh install, install tcpdump first: sudo apt install -y tcpdump.</p>
+<h3>2. Inspect live socket state</h3>
+      <div class="command-block"><div class="command"><code>ss -tin state established '( dport = :80 )'</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code class="language-bash">ESTAB 0 0 192.168.10.20:44512 192.168.10.30:80
+       cwnd:10 rtt:0.42/0.1 mss:1460</code></pre>
+<p class="lab-step-note">What this teaches: socket state is the kernel's view of the same lifecycle the packets show on the wire.</p>
+<h3>3. Write a pcap for Wireshark</h3>
+      <div class="command-block"><div class="command"><code>tcpdump -ni eth0 'tcp port 80' -w session.pcap</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>(no output on success)</code></pre>
+<p class="lab-step-note">What this teaches: writing pcaps decouples capture from analysis, which is how real investigations preserve evidence.</p>
+</section>    <section id="how-it-works">
+      <div class="lab-explainer"><h3>How It Works</h3>
+        <p>TCP opens connections with a three-way handshake: SYN (client proposes a sequence number), SYN-ACK (server acknowledges and proposes its own), ACK (client acknowledges). Each side's sequence number tracks its byte stream, and acknowledgments confirm receipt, which is the basis of TCP reliability.</p>
+        <p>After establishment, both sides send data segments with sequence numbers and receive ACKs; lost segments are retransmitted after a timeout or on duplicate ACKs. Teardown is a four-way exchange of FIN and ACK packets, after which sockets linger in TIME-WAIT to catch stray duplicates.</p>
+        <p>tcpdump's flag filters read the TCP header directly: tcp[tcpflags] &amp; (tcp-syn|tcp-ack) != 0 selects packets with SYN or ACK set. ss reads the kernel's socket table, showing states like SYN-SENT, ESTABLISHED, FIN-WAIT, and CLOSE-WAIT, which map exactly onto the handshake and teardown the capture shows.</p><p>The socket states ss reports map directly onto the RFC 793 lifecycle: SYN-SENT means our SYN went out with no SYN-ACK yet, SYN-RECV means we answered a SYN and await the final ACK, ESTABLISHED means both directions agreed, FIN-WAIT-1 and FIN-WAIT-2 cover our side of teardown, CLOSE-WAIT means the peer closed and we have not, LAST-ACK is our final ACK in flight, and TIME-WAIT (2xMSL, usually 60 seconds) holds the socket so stray duplicates from the old connection cannot corrupt a new one on the same port pair. When a capture and ss disagree (for example, packets show ESTABLISHED but ss shows SYN-SENT), suspect asymmetric routing or a middlebox answering on the server's behalf.</p>
+        <div class="mermaid" role="img" aria-label="TCP connection lifecycle">
+sequenceDiagram
+  participant C as Client
+  participant S as Server
+  C-->>S: SYN (seq=x)
+  S-->>C: SYN-ACK (seq=y, ack=x+1)
+  C-->>S: ACK (ack=y+1)
+  C-->>S: data segments
+  C-->>S: FIN
+  S-->>C: ACK
+  S-->>C: FIN
+  C-->>S: ACK
+        </div>
+      </div>
+    </section>
+
+
+    <section id="validation-testing"><h2>Validation &amp; Testing</h2>
+      <p>Confirm the captured handshake shows SYN, SYN-ACK, ACK in order and that teardown completes with FIN/ACK. Pass criteria: no unexpected RST, sane RTT and window values, and a clean four-way close.</p>
+    </section>    <section id="troubleshooting">
+      <h2>Troubleshooting</h2>
+      <table class="lab-table">
+        <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>SYN sent but no SYN-ACK returns</td><td>The server port is filtered or the service is down</td><td>Check ss -tlnp on the server and any firewall between the hosts</td></tr>
+          <tr><td>RST immediately after SYN</td><td>Nothing listens on the port, or a firewall rejects rather than drops</td><td>Confirm the service is bound to the right address and port</td></tr>
+          <tr><td>Connection stalls mid-transfer</td><td>Packet loss with retransmits, or a window-size problem</td><td>Look for repeated sequence numbers (retransmits) and zero-window advertisements</td></tr>
+          <tr><td>Many sockets stuck in TIME-WAIT</td><td>Normal after high connection churn, but it exhausts ports under load</td><td>This is expected behavior; tune tcp_tw_reuse or use persistent connections if it becomes a limit</td></tr>
+          <tr><td>Capture shows nothing</td><td>Wrong interface, wrong filter, or insufficient privileges</td><td>Start with no filter on the right interface, then narrow down</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>RST instead of SYN-ACK:</strong> the port is closed or a firewall is rejecting, not dropping.</li>
+        <li><strong>Retransmissions:</strong> inspect RTT and window; loss or a stalled receiver is likely.</li>
+        <li><strong>No packets:</strong> verify the capture interface and that traffic actually traverses it.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Decoded the full 3-way handshake and 4-way teardown from live captures.</li>
+        <li>Diagnosed connection state across 4 distinct flow scenarios.</li>
+        <li>Cut connection-issue diagnosis time by reading flags rather than guessing.</li>
+        <li>Produced reusable tcpdump filters for SYN, RST, and retransmit isolation.</li>
+      </ul>
+    </section>    <section id="key-takeaways">
+      <div class="lab-takeaways"><h3>Key Takeaways</h3>
+        <ul>
+        <li>Read the flags: SYN/SYN-ACK/ACK tells you exactly where setup failed.</li>
+        <li>Retransmits mean loss; duplicate ACKs mean disorder; RST means refusal.</li>
+        <li>ss shows the kernel's state; tcpdump shows the wire's truth; use both.</li>
+        <li>Capture first with a broad filter, then narrow: you cannot analyze packets you did not record.</li>
+        </ul>
+      </div>
+    </section>
+
+
+        <section id="practice-challenges">
+      <h2>Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Spot the reset</h4><p>Goal: Connect to a closed port while capturing, then find the RST packet and explain which side sent it and why.</p><p>Hint: Filter tcp[tcpflags] &amp; tcp-rst != 0 and check the source address.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: Measure retransmits</h4><p>Goal: Introduce 5% loss (tc qdisc netem) and count retransmitted segments in a 30-second transfer.</p><p>Hint: Use tc qdisc add dev eth0 root netem loss 5%, then count duplicate sequence numbers in the pcap.</p></div>
+    </section>
+<section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="wireshark-packet-analysis.html">Wireshark Packet Analysis</a></li>
+        <li><a href="network-troubleshooting.html">Network Troubleshooting</a></li>
+        <li><a href="dns-server-config.html">DNS Server Configuration</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

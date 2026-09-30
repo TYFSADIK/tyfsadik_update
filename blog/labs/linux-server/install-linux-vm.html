@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Install Linux Server VM: VMware &amp; VirtualBox | TYFSADIK</title>
+  <meta name="description" content="Install a Linux server VM from scratch: create the VM and disk, attach the ISO, verify the OS, enable bridged networking, and snapshot the clean base.">
+  <meta name="keywords" content="install linux server vm, virtualbox ubuntu server, bridged networking vm, vm snapshot tutorial, Linux system administration, server hardening guide">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-server/install-linux-vm.html">
+  <meta property="og:title" content="Install Linux Server VM: VMware &amp; VirtualBox | TYFSADIK">
+  <meta property="og:description" content="Install a Linux server VM from scratch: create the VM and disk, attach the ISO, verify the OS, enable bridged networking, and snapshot the clean base.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-server/install-linux-vm.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Install Linux Server VM: VMware &amp; VirtualBox | TYFSADIK">
+  <meta name="twitter:description" content="Install a Linux server VM from scratch: create the VM and disk, attach the ISO, verify the OS, enable bridged networking, and snapshot the clean base.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Installing a Linux Server Virtual Machine", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-06", "dateModified": "2026-09-29", "proficiencyLevel": "Beginner", "dependencies": "VirtualBox 7.x / VMware Workstation, Ubuntu Server 22.04", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux server administration"}</script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Install a Linux Server VM in VirtualBox or VMware",
+    "description": "Install a Linux server VM from scratch: create the VM and disk, attach the ISO, verify the OS, enable bridged networking, and snapshot the clean base.",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "dateModified": "2026-09-29",
+    "step": [
+      {"@type": "HowToStep", "name": "Create the VM and disk", "url": "https://tyfsadik.org/blog/labs/linux-server/install-linux-vm.html#steps"},
+      {"@type": "HowToStep", "name": "Attach the ISO and boot the installer", "url": "https://tyfsadik.org/blog/labs/linux-server/install-linux-vm.html#steps"},
+      {"@type": "HowToStep", "name": "Verify the OS after first boot", "url": "https://tyfsadik.org/blog/labs/linux-server/install-linux-vm.html#steps"},
+      {"@type": "HowToStep", "name": "Verify bridged networking and find the IP", "url": "https://tyfsadik.org/blog/labs/linux-server/install-linux-vm.html#steps"},
+      {"@type": "HowToStep", "name": "Snapshot the clean base", "url": "https://tyfsadik.org/blog/labs/linux-server/install-linux-vm.html#steps"}
+    ]
+  }</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Linux Server", "item": "https://tyfsadik.org/blog/labs/linux-server/index.html"}, {"@type": "ListItem", "position": 4, "name": "Installing Linux VM", "item": "https://tyfsadik.org/blog/labs/linux-server/install-linux-vm.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Installer reports no bootable medium'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: ISO not attached to the virtual optical drive. Fix: Reattach with storageattach and confirm the boot order puts optical first."}}, {"@type": "Question", "name": "How do I fix 'Guest gets no IP in bridged mode'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Wrong host adapter selected or DHCP blocked. Fix: Pick the active physical NIC in the bridge settings and check DHCP on the LAN."}}, {"@type": "Question", "name": "How do I fix 'VM is sluggish'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Under-provisioned RAM/vCPU or missing Guest Additions. Fix: Raise the allocation; the virtio network adapter set in step 01 is already paravirtualized. Guest Additions add little on a headless server (no shared folders or clipboard needed)."}}, {"@type": "Question", "name": "How do I fix 'Cannot SSH into the guest'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: OpenSSH not installed or host firewall blocks it. Fix: Install openssh-server in the guest and allow port 22."}}, {"@type": "Question", "name": "How do I fix 'Snapshot chain consumes host disk'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Each snapshot's differencing file grows with writes. Fix: Delete stale snapshots to merge, keeping only the clean base."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Installing Linux VM</span></nav>
+    <div class="page-header"><h1>Install a Linux Server VM in VirtualBox or VMware</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Linux</span><span class="lab-time">~1 hour</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">VirtualBox</span><span class="tag">VMware</span><span class="tag">Ubuntu Server</span><span class="tag">snapshot</span></div>
+    </div>
+
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#learning-objectives">Learning Objectives</a></li>
+<li><a href="#architecture">Architecture Overview</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#steps">Step-by-Step Execution</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#validation">Testing &amp; Validation</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#extensions">Extension Ideas</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#key-takeaways">Key Takeaways</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    <section><p class="lead">You will install a headless Ubuntu Server virtual machine you can break and rebuild freely, the safe foundation for every other server lab. By the end you will have a reachable VM with a clean snapshot to roll back to.</p></section>
+
+    <div class="learning-objectives lab-objectives" id="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Create and boot a Linux server VM from an ISO.</li>
+        <li>Configure bridged networking so the VM is reachable over SSH.</li>
+        <li>Capture a clean snapshot you can restore in seconds.</li>
+        <li><strong>Time:</strong> ~1 hour &middot; <strong>Difficulty:</strong> Beginner &middot; <strong>Prereqs:</strong> a host with 4GB+ free RAM and virtualization enabled in BIOS.</li>
+      </ul>
+    </div>
+
+    <section id="architecture"><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Host hypervisor running a bridged Linux server VM">
+graph LR
+  Host[Your Host OS] -->|VirtualBox/VMware| HV[Hypervisor]
+  HV -->|virtual disk| VM[Ubuntu Server VM]
+  VM -->|bridged NIC| LAN[Home LAN]
+  You[You] -->|SSH 22| VM
+      </div>
+    </section>
+
+    <section id="environment"><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong></p>
+      <ul>
+        <li>VirtualBox 7.x (<a href="https://www.virtualbox.org" target="_blank" rel="noopener">virtualbox.org</a>) or VMware Workstation.</li>
+        <li>The Ubuntu Server 22.04 ISO.</li>
+        <li>Virtualization (VT-x/AMD-V) enabled in your host BIOS.</li>
+      </ul>
+      <p><strong>Before you begin:</strong> confirm you have 4GB+ free RAM and 20GB free disk.</p>
+    </section>
+
+    <div class="lab-prereqs" id="prerequisites"><h3>Prerequisites</h3>
+    <ul>
+      <li>VirtualBox or VMware installed on a host with virtualization extensions enabled.</li>
+      <li>An Ubuntu Server 22.04 (or similar) ISO image downloaded.</li>
+      <li>At least 2 vCPU, 4 GB RAM, and 20 GB disk to allocate to the guest.</li>
+      <li>A LAN with DHCP if you want bridged networking in step 4.</li>
+    </ul></div>
+
+    <section id="steps"><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create the VM and disk</strong>
+          <p><code>createvm</code> alone only registers an empty VM definition: no RAM, no CPUs, no NIC, no storage controller, no disk, and no boot order. Each of those must be provisioned explicitly, which is what the commands below do.</p>
+          <p class="code-label">REGISTER THE VM DEFINITION</p>
+          <div class="command-block" data-copy><div class="command"><code>VBoxManage createvm --name ubuntu-srv --ostype Ubuntu_64 --register</code></div><div class="note">Registers a new VM definition with VirtualBox.
+          <p class="lab-output-label">Expected output:</p><pre><code>Virtual machine 'ubuntu-srv' is created and registered.
+UUID: 7d2e9a41-...</code></pre></div></div>
+          <p>Give the VM its hardware: 2 vCPUs, 4 GB RAM, a bridged NIC using the paravirtualized virtio adapter, and a boot order that tries the DVD before the disk. List the host adapters first and substitute your active physical NIC for the placeholder.</p>
+          <p class="code-label">ASSIGN CPU, RAM, NETWORK, AND BOOT ORDER</p>
+          <div class="command-block" data-copy><div class="command"><code>VBoxManage list bridgedifs | grep -i "^Name:"
+VBoxManage modifyvm ubuntu-srv --memory 4096 --cpus 2 \
+  --nic1 bridged --bridgeadapter1 "Intel(R) Ethernet Connection" \
+  --nictype1 virtio --boot1 dvd --boot2 disk --boot3 none --boot4 none</code></div><div class="note">Replace the adapter name with one from the list output; the VM must be powered off when modifyvm runs.</div></div>
+          <p>Create the SATA storage controller and the 20 GB virtual disk, then attach the disk to it. Dynamically allocated is the default variant, so the .vdi starts small and grows to at most 20 GB (--size is in megabytes).</p>
+          <p class="code-label">CREATE THE SATA CONTROLLER AND 20 GB DISK</p>
+          <div class="command-block" data-copy><div class="command"><code>VBoxManage storagectl ubuntu-srv --name SATA --add sata --controller IntelAhci
+VBoxManage createmedium disk --filename "$HOME/VirtualBox VMs/ubuntu-srv/ubuntu-srv.vdi" --size 20480 --format VDI
+VBoxManage storageattach ubuntu-srv --storagectl SATA --port 0 --device 0 --type hdd --medium "$HOME/VirtualBox VMs/ubuntu-srv/ubuntu-srv.vdi"</code></div><div class="note">Creates the controller the later storageattach commands target.
+          <p class="lab-step-note">What this teaches: createvm registers the definition; modifyvm, storagectl, createmedium, and storageattach provision the actual hardware. Skipping the controller is why a bare createvm followed by storageattach fails.</p></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Attach the ISO and boot the installer</strong>
+          <p>Attach the ISO as a virtual DVD on the SATA controller created in step 01 (there is no IDE controller, so the old <code>--storagectl IDE</code> form fails). Then start the VM headless and run the guided Ubuntu installer, where you set hostname, user, and OpenSSH.</p>
+          <div class="command-block" data-copy><div class="command"><code>VBoxManage storageattach ubuntu-srv --storagectl SATA --port 1 --device 0 --type dvddrive --medium /path/to/ubuntu-22.04-live-server.iso
+VBoxManage startvm ubuntu-srv --type gui</code>
+          <p class="lab-step-note">What this teaches: the guided installer needs a console, so start the VM with the GUI frontend (<code>--type gui</code>, the default). Headless mode (<code>--type headless</code>) shows no window and is only useful <em>after</em> installation, once you reach the guest over SSH; starting headless here would leave you with no way to see the installer.</p>
+          <p class="lab-output-label">Expected output:</p><pre><code>(no output on success; confirm with: VBoxManage showvminfo ubuntu-srv | grep -i "SATA")</code></pre>
+          <p class="lab-step-note">What this teaches: Attaching the ISO as a virtual DVD makes the firmware boot the installer (boot1 dvd was set in step 01); the guided flow sets hostname, user, and OpenSSH in one pass.</p></div></div>
+          <p>After the installer finishes and the VM powers off, detach the ISO so the next boot uses the virtual disk instead of returning to the installer:</p>
+          <p class="code-label">DETACH THE ISO AFTER INSTALL</p>
+          <div class="command-block" data-copy><div class="command"><code>VBoxManage storageattach ubuntu-srv --storagectl SATA --port 1 --device 0 --type dvddrive --medium none</code></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Verify the OS after first boot</strong>
+          <p>Confirm the release so later commands match your <span class="glossary-term" data-definition="A family of Linux distributions; Ubuntu and Debian share the apt package manager.">Debian-family</span> tooling.</p>
+          <div class="command-block" data-copy><div class="command"><code>cat /etc/os-release | head -2</code>
+          <p class="lab-output-label">Expected output:</p><pre><code>PRETTY_NAME="Ubuntu 22.04.4 LTS"
+NAME="Ubuntu"</code></pre>
+          <p class="lab-step-note">What this teaches: /etc/os-release is the canonical distro identifier; confirming the family now prevents apt/dnf confusion in every later lab.</p></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Verify bridged networking and find the IP</strong>
+          <p>The NIC was attached to bridged mode in step 01. Here you confirm the guest picked up its own LAN address from DHCP, so you can SSH in from your host.</p>
+          <p class="lab-output-label">Expected output:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">ip -br addr show</span></div>
+            <div class="terminal-output">lo     UNKNOWN  127.0.0.1/8
+enp0s3 UP       192.168.1.42/24</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input"># your VM is reachable at 192.168.1.42</span></div>
+          </div>
+          <p class="lab-step-note">What this teaches: Bridged mode puts the VM on the physical LAN with its own DHCP address, so SSH from the host works exactly like a real server.</p></div></div>
+        <div class="step"><div class="step-num">05</div><div class="step-body"><strong>Snapshot the clean base</strong>
+          <p>A snapshot lets you undo any future mistake instantly, which is what makes a VM a safe learning sandbox.</p>
+          <div class="command-block" data-copy><div class="command"><code>VBoxManage snapshot ubuntu-srv take clean-base --description "fresh install"</code>
+          <p class="lab-output-label">Expected output:</p><pre><code>0%...10%...100%
+Snapshot taken.</code></pre>
+          <p class="lab-step-note">What this teaches: A named snapshot of the fresh install is the undo button for the whole series; every later lab can break things safely.</p></div></div>
+        </div></div>
+      </div>
+    </section>
+
+    <section id="vmware-notes"><h2>VMware Workstation Equivalents</h2>
+      <p>The steps above use VirtualBox CLI commands. The same lab on VMware Workstation uses the GUI; the concepts map one to one:</p>
+      <table class="lab-table"><thead><tr><th>VirtualBox step</th><th>VMware Workstation GUI equivalent</th></tr></thead>
+      <tbody>
+        <tr><td>Step 01: createvm + modifyvm (2 vCPU, 4 GB RAM, bridged virtio NIC)</td><td>File &gt; New Virtual Machine &gt; Typical &gt; Installer disc image file; then Customize Hardware: Memory 4096 MB, Processors 2, Network Adapter set to Bridged</td></tr>
+        <tr><td>Step 01: 20 GB dynamically allocated disk</td><td>In Customize Hardware: Hard Disk 20 GB, "Split virtual disk into multiple files" for the grow-as-needed equivalent</td></tr>
+        <tr><td>Step 02: attach ISO and boot</td><td>CD/DVD set to the Ubuntu Server ISO with "Connect at power on"; Power On This Virtual Machine</td></tr>
+        <tr><td>Step 04: bridged IP via DHCP</td><td>Same bridged adapter from the hardware step; the guest gets a LAN address automatically</td></tr>
+        <tr><td>Step 05: snapshot the clean base</td><td>VM &gt; Snapshot &gt; Take Snapshot, named clean-base</td></tr>
+      </tbody></table>
+      <p>VMware names its paravirtual network adapter VMXNET3; pick it in the adapter type dropdown for the same performance role virtio plays above. VMware Tools is the Guest Additions equivalent and is likewise optional for a headless server.</p>
+    </section>
+
+    <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>
+      <p>A type-2 hypervisor like VirtualBox runs on your host OS and uses CPU virtualization extensions to execute guest instructions nearly natively. The guest's disk is a file on the host, its NIC is a virtual adapter bridged or NATed onto your network, and its console is a window. This faithful-enough emulation is why a VM is the standard lab substrate.</p>
+      <p>Bridged networking deserves attention because it changes the VM's identity: instead of hiding behind NAT, the VM gets its own LAN address from your DHCP server and is reachable by every host on the segment. That reachability is what makes SSH practice realistic, and it is also why bridged VMs inherit your LAN's security posture.</p>
+      <p>Snapshots implement copy-on-write checkpoints over the virtual disk. The base image freezes, new writes go to a differencing file, and restore simply discards the differences. Understanding this mechanism explains both the instant rollback and the disk growth you will see as labs accumulate changes.</p>
+    </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Install progress from create to snapshot">
+graph LR
+  A[01 Create VM] -->|done| B[02 Install OS]
+  B -->|done| C[03 Verify OS]
+  C -->|done| D[04 Network + SSH]
+  D -->|done| E[05 Snapshot]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style E fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section id="validation"><h2>Testing &amp; Validation</h2>
+      <p>Run this final check from your host:</p>
+      <div class="command-block" data-copy><div class="command"><code>ssh youruser@192.168.1.42 'uname -a &amp;&amp; uptime'</code></div></div>
+      <p>You should see the VM's kernel string and uptime. If all checks pass, you have a working, reachable, restorable Linux server.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+    <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>Installer reports no bootable medium</td><td>ISO not attached to the virtual optical drive</td><td>Reattach with storageattach and confirm the boot order puts optical first</td></tr>
+      <tr><td>Guest gets no IP in bridged mode</td><td>Wrong host adapter selected or DHCP blocked</td><td>Pick the active physical NIC in the bridge settings and check DHCP on the LAN</td></tr>
+      <tr><td>VM is sluggish</td><td>Under-provisioned RAM/vCPU</td><td>Raise the allocation; keep the virtio NIC from step 01. Guest Additions are optional on a headless server</td></tr>
+      <tr><td>Cannot SSH into the guest</td><td>OpenSSH not installed or host firewall blocks it</td><td>Install openssh-server in the guest and allow port 22</td></tr>
+      <tr><td>Snapshot chain consumes host disk</td><td>Each snapshot's differencing file grows with writes</td><td>Delete stale snapshots to merge, keeping only the clean base</td></tr>
+      <tr><td>VT-x unavailable error</td><td>Hyper-V or another hypervisor holds the extensions</td><td>Disable competing hypervisors or enable nested support in firmware</td></tr>
+    </tbody></table>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>No 64-bit OS option:</strong> enable VT-x/AMD-V in host BIOS, then restart VirtualBox.</li>
+        <li><strong>SSH connection refused:</strong> confirm OpenSSH was selected during install (<code>sudo systemctl status ssh</code>).</li>
+        <li><strong>No LAN IP:</strong> switch the adapter from NAT to Bridged and re-run the installer's network step.</li>
+      </ul>
+    </details>
+
+    <section id="extensions"><h2>Extension Ideas</h2>
+      <ul>
+        <li>Try the <a href="post-install-config.html">Post-Installation Configuration</a> lab to harden this base.</li>
+        <li>Convert the VM to a KVM guest in <a href="nested-vms-kvm.html">Creating Nested VMs with KVM</a>.</li>
+        <li>Read the Ubuntu Server install docs for autoinstall (cloud-init) automation.</li>
+      </ul>
+    </section>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Stood up a reachable Linux server VM in under 1 hour.</li>
+        <li>Confirmed SSH access over a bridged LAN IP.</li>
+        <li>Captured a snapshot enabling sub-minute rollback.</li>
+        <li>Created a disposable base reused across 11 server labs.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways" id="key-takeaways"><h3>Key Takeaways</h3>
+    <ul>
+      <li>Script VM creation with VBoxManage for repeatability.</li>
+      <li>Bridged networking gives the VM a real LAN identity for SSH practice.</li>
+      <li>/etc/os-release confirms the distro family before you run package commands.</li>
+      <li>Snapshot the clean base before any experiment.</li>
+      <li>Snapshots are copy-on-write; they grow with changes and merge on delete.</li>
+    </ul></div>
+
+    <section id="practice-challenges"><h2>Practice Challenges</h2>
+    <div class="lab-challenge"><h4>Challenge 1: Unattended install</h4><p>Goal: perform the whole install with zero GUI interaction using an autoinstall seed, then snapshot.</p><p><strong>Hint:</strong> VBoxManage unattended install consumes a user-data file.</p></div>
+    <div class="lab-challenge"><h4>Challenge 2: Two-VM network</h4><p>Goal: boot two guests on bridged networking and get them pinging and SSHing to each other by hostname.</p><p><strong>Hint:</strong> avahi or /etc/hosts entries solve name resolution.</p></div>
+    </section>
+
+    <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="post-install-config.html">Post-Installation Configuration</a></li>
+        <li><a href="../linux-fundamentals/installing-debian-centos-vm.html">Installing Debian &amp; CentOS VMs</a></li>
+        <li><a href="package-management.html">Package Management</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

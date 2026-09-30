@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>File Transfer &amp; Email: scp, rsync &amp; curl | TYFSADIK</title>
+  <meta name="description" content="Move files reliably on Linux: compare scp, sftp, and rsync transports, resume interrupted transfers, verify integrity, and send completion notifications.">
+  <meta name="keywords" content="linux file transfer, scp vs rsync, sftp tutorial, rsync resume transfer, curl webhook notify">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-fundamentals/file-transfer-email.html">
+  <meta property="og:title" content="File Transfer &amp; Email: scp, rsync &amp; curl | TYFSADIK">
+  <meta property="og:description" content="Move files reliably on Linux: compare scp, sftp, and rsync transports, resume interrupted transfers, verify integrity, and send completion notifications.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-fundamentals/file-transfer-email.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="File Transfer &amp; Email: scp, rsync &amp; curl | TYFSADIK">
+  <meta name="twitter:description" content="Move files reliably on Linux: compare scp, sftp, and rsync transports, resume interrupted transfers, verify integrity, and send completion notifications.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Linux File Transfer and Command-Line Email", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-26", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "OpenSSH (scp/sftp), rsync, curl", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux fundamentals and command-line skills"}</script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Linux File Transfer with scp, rsync, and Command-Line Email",
+    "description": "Move files reliably on Linux: compare scp, sftp, and rsync transports, resume interrupted transfers, verify integrity, and send completion notifications.",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "dateModified": "2026-09-29",
+    "step": [
+      {"@type": "HowToStep", "name": "Quick copy with scp", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/file-transfer-email.html#steps"},
+      {"@type": "HowToStep", "name": "Resumable, verified transfer with rsync", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/file-transfer-email.html#steps"},
+      {"@type": "HowToStep", "name": "Notify on completion", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/file-transfer-email.html#steps"}
+    ]
+  }</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Linux Fundamentals", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/index.html"}, {"@type": "ListItem", "position": 4, "name": "File Transfer & Email", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/file-transfer-email.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'scp stalls with no progress'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: A middlebox or the server throttles, or the disk filled mid-write. Fix: Check destination space with df -h and retry with rsync for resume."}}, {"@type": "Question", "name": "How do I fix 'rsync: command not found on remote'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: rsync missing on one side of the transfer. Fix: Install rsync on both hosts; the protocol needs it at each end."}}, {"@type": "Question", "name": "How do I fix 'Permission denied on destination'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: SSH user lacks write rights on the target path. Fix: Fix ownership on the destination or transfer to a writable staging dir."}}, {"@type": "Question", "name": "How do I fix '--checksum is very slow on huge files'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Every block is hashed on both sides. Fix: Drop --checksum for routine syncs; keep it for integrity-critical copies."}}, {"@type": "Question", "name": "How do I fix 'Webhook notification never arrives'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Wrong URL, missing auth header, or blocked egress. Fix: Test with curl -v and check the exit code before trusting the pipeline."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>File Transfer &amp; Email</span></nav>
+    <div class="page-header"><h1>Linux File Transfer with scp, rsync, and Command-Line Email</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">scp</span><span class="tag">rsync</span><span class="tag">sftp</span><span class="tag">curl</span></div>
+    </div>
+
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#learning-objectives">Learning Objectives</a></li>
+<li><a href="#objective">Objective &amp; Context</a></li>
+<li><a href="#environment">Environment &amp; Prerequisites</a></li>
+<li><a href="#steps">Step-by-Step Execution</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#validation">Validation &amp; Testing</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#key-takeaways">Key Takeaways</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    <section><p class="lead">I moved files between hosts with scp for quick copies and rsync for resumable, verified, delta transfers, then wired CLI email for job notifications. Resumable rsync transfers survived interruptions that would have forced scp to restart from zero.</p></section>
+
+    <section id="objective"><h2>Objective &amp; Context</h2>
+      <p>Automation pipelines must move artifacts reliably and report results. This lab compares scp, sftp, and rsync transports and adds curl/mail-based notifications, the transfer layer for backups and deployments.</p></section>
+
+    <div class="lab-objectives" id="learning-objectives"><h3>Learning Objectives</h3>
+    <ul>
+      <li>Copy files quickly between hosts with scp.</li>
+      <li>Resume interrupted transfers and verify integrity with rsync.</li>
+      <li>Choose between scp, sftp, and rsync for a given transfer need.</li>
+      <li>Send completion notifications via webhook or email from scripts.</li>
+      <li>Secure transfers with key-based SSH authentication.</li>
+    </ul></div>
+
+    <section id="environment"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+    <ul>
+      <li>Two SSH-reachable Linux hosts with rsync installed on both.</li>
+      <li>SSH key authentication configured (see the SSH remote access lab).</li>
+      <li>curl and a mail relay or webhook URL for the notification step.</li>
+      <li>A large test file to demonstrate resume (1 GB works well).</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="Transfer then notify flow">
+flowchart LR
+  A[Source] -->|rsync delta| B[Destination]
+  B --> V{checksum ok?}
+  V -->|yes| N[notify via curl/mail]
+  V -->|no| R[retry]
+      </div>
+    </section>
+
+    <section id="steps"><h2>Step-by-Step Execution</h2>
+      <h3>1. Quick copy with scp</h3>
+      <div class="command-block"><div class="command"><code>scp report.tar.gz taki@nas:/backups/</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>report.tar.gz  100%  512MB  84.2MB/s   00:06</code></pre>
+      <p class="lab-step-note">What this teaches: scp is the simplest secure copy: one command over SSH with a progress meter. It re-sends everything on interruption, which is why large files want rsync instead.</p>
+    <h3>2. Resumable, verified transfer with rsync</h3>
+      <div class="command-block"><div class="command"><code>rsync -avP --checksum big.img taki@nas:/backups/</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>sending incremental file list
+big.img
+  1,073,741,824 100%  118.20MB/s    0:00:08 (xfr#1, to-chk=0/1)</code></pre>
+      <p class="lab-step-note">What this teaches: -a preserves attributes, -v is verbose, -P combines --partial (keep interrupted files) with --progress, and --checksum verifies content by hash rather than size and time. Rerunning after an interruption resumes from the partial file instead of starting over. Resume comes from --partial inside -P, not from --checksum, which only adds verification.</p>
+    <h3>3. Notify on completion</h3>
+      <div class="command-block"><div class="command"><code>curl -s -X POST $WEBHOOK -d 'text=backup transfer complete'</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>(webhook returns 200 OK; mail relay accepts the message)
+{"ok": true}</code></pre>
+      <p class="lab-step-note">What this teaches: Automation must report outcomes: a curl POST to a webhook or a mailx message turns a silent transfer into an observable pipeline step that cron jobs and CI can rely on. $WEBHOOK must be exported in the shell first; in cron, define it inside the script since cron's environment is minimal.</p>
+    </section>
+
+    <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>
+      <p>All three transports ride on SSH, which provides encryption and authentication, but they differ in smarts. scp copies byte streams with no resume and no delta logic. sftp adds an interactive file protocol (list, get, put, resume-aware clients) over the same SSH channel. rsync adds its delta-transfer algorithm plus attribute preservation, making it the right default for anything repeated or large.</p>
+      <p>Resume works because rsync keeps partial files and compares block checksums on rerun: already-correct blocks are skipped, so a 62%-complete transfer continues instead of restarting. --checksum goes further, verifying the final content matches the source even when sizes and timestamps already agree.</p>
+      <p>Notifications close the automation loop. A transfer inside a cron job or backup script that fails silently is worse than no automation, because it creates false confidence. A webhook POST or an email with the exit status attached makes success and failure equally visible.</p>
+    </div>
+    <div class="mermaid" role="img" aria-label="Transfer tool selection">
+flowchart TD
+  Q["Need to move files?"] --> S{"Repeated or large?"}
+  S -->|"no"| C["scp: simple one-shot copy"]
+  S -->|"yes"| R["rsync -avP --checksum"]
+  R --> N{"Notify someone?"}
+  N -->|"yes"| W["curl webhook / mailx"]
+  style R fill:#1a3a5a,stroke:#4da3ff,color:#fff
+      </div>
+    </section>
+
+    <section id="validation"><h2>Validation &amp; Testing</h2>
+      <p>Interrupt an rsync transfer and restart it to confirm it resumes rather than restarts, then verify the checksum matches. Pass criteria: rsync resumes from the breakpoint, checksums match, and the notification fires on success.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+    <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>scp stalls with no progress</td><td>A middlebox or the server throttles, or the disk filled mid-write</td><td>Check destination space with df -h and retry with rsync for resume</td></tr>
+      <tr><td>rsync: command not found on remote</td><td>rsync missing on one side of the transfer</td><td>Install rsync on both hosts; the protocol needs it at each end</td></tr>
+      <tr><td>Permission denied on destination</td><td>SSH user lacks write rights on the target path</td><td>Fix ownership on the destination or transfer to a writable staging dir</td></tr>
+      <tr><td>--checksum is very slow on huge files</td><td>Every block is hashed on both sides</td><td>Drop --checksum for routine syncs; keep it for integrity-critical copies</td></tr>
+      <tr><td>Webhook notification never arrives</td><td>Wrong URL, missing auth header, or blocked egress</td><td>Test with curl -v and check the exit code before trusting the pipeline</td></tr>
+      <tr><td>Transfer corrupts filenames with spaces</td><td>Shell quoting lost around the remote path</td><td>Quote the full remote spec: scp file 'user@host:/path with spaces/'</td></tr>
+    </tbody></table>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Transfer restarts fully:</strong> use <code>-P</code> (partial + progress) so rsync resumes.</li>
+        <li><strong>Permission denied:</strong> confirm SSH key auth and destination write perms.</li>
+        <li><strong>Silent corruption:</strong> add <code>--checksum</code> for content verification, not just size/time.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Resumed interrupted transfers instead of restarting from zero.</li>
+        <li>Verified transfer integrity with content checksums.</li>
+        <li>Automated completion notifications via webhook/mail.</li>
+        <li>Selected the right transport (scp vs rsync) per task.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways" id="key-takeaways"><h3>Key Takeaways</h3>
+    <ul>
+      <li>scp for quick one-shots; rsync for anything large, repeated, or resumable.</li>
+      <li>rsync -avP --checksum resumes partial transfers and verifies integrity.</li>
+      <li>All three transports inherit SSH encryption and key auth.</li>
+      <li>Automated transfers must notify: silent success breeds false confidence.</li>
+      <li>Quote remote paths that contain spaces.</li>
+    </ul></div>
+
+    <section id="practice-challenges"><h2>Practice Challenges</h2>
+    <div class="lab-challenge"><h4>Challenge 1: Resume drill</h4><p>Goal: start a 2 GB rsync transfer, kill it at 50%, then rerun and confirm it resumes instead of restarting.</p><p><strong>Hint:</strong> watch the progress meter's starting percentage.</p></div>
+    <div class="lab-challenge"><h4>Challenge 2: Verified deploy</h4><p>Goal: script a transfer that rsyncs a build artifact, verifies its sha256 against the source, and posts success or failure to a webhook.</p><p><strong>Hint:</strong> check $? after each stage.</p></div>
+    </section>
+
+    <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="ssh-remote-access.html">SSH Remote Access</a></li>
+        <li><a href="cli-email.html">Command Line Email</a></li>
+        <li><a href="advanced-file-management.html">Advanced File Management</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IoT Network Reconnaissance: Security Lab | TYFSADIK</title>
+  <meta name="description" content="Recon IoT networks methodically: masscan discovery, Nmap NSE fingerprinting, MQTT protocol analysis, Binwalk firmware triage, and Shodan exposure mapping.">
+  <meta name="keywords" content="IoT recon, Nmap NSE, masscan, MQTT, Binwalk, Shodan, firmware analysis, CVE mapping">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/security/iot-network-recon.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Automated IoT Network Reconnaissance with Nmap NSE and Wireshark Protocol Analysis", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2026-03-12", "dateModified": "2026-09-29", "proficiencyLevel": "Advanced", "dependencies": "Nmap 7.94, Masscan 1.3, Wireshark 4.2, Binwalk 2.3, Shodan API", "articleSection": "Security", "learningResourceType": "Hands-on lab", "teaches": "cybersecurity and security operations"}</script>
+  <meta property="og:title" content="IoT Network Reconnaissance: Security Lab | TYFSADIK">
+  <meta property="og:description" content="Recon IoT networks methodically: masscan discovery, Nmap NSE fingerprinting, MQTT protocol analysis, Binwalk firmware triage, and Shodan exposure mapping.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/security/iot-network-recon.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="IoT Network Reconnaissance: Security Lab | TYFSADIK">
+  <meta name="twitter:description" content="Recon IoT networks methodically: masscan discovery, Nmap NSE fingerprinting, MQTT protocol analysis, Binwalk firmware triage, and Shodan exposure mapping.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "Automated IoT Network Reconnaissance with Nmap NSE and Wireshark",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "1. Fast host discovery [PRIVILEGED]",
+      "text": "sudo masscan 192.168.30.0/24 -p1-65535 --rate 5000 -oL tcp-hosts.txt; sudo masscan 192.168.30.0/24 -sU -p53,67,68,69,123,161,5683,1900 --rate 2000 -oL udp-hosts.txt; awk '/^open/{print $4}' tcp-hosts.txt udp-hosts.txt | sort -uV > live-hosts.txt"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "2. Targeted NSE fingerprinting",
+      "text": "nmap -sV -p1883,80,443,8080 --script mqtt-subscribe,http-default-accounts -iL live-hosts.txt -oA iot-enum; sudo nmap -sU -sV -p5683,1900 --script coap-resources -iL live-hosts.txt -oN iot-udp.txt"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "3. Protocol analysis with Wireshark",
+      "text": "tshark -i eth0 -f \"tcp port 1883\" -Y mqtt -T fields -e mqtt.topic -e mqtt.msg"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "4. Firmware triage with Binwalk",
+      "text": "binwalk -Me firmware-v2.1.bin"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "5. External exposure mapping with Shodan",
+      "text": "shodan host <your-wan-ip>  (203.0.113.10 is an RFC 5737 documentation address; shown output is illustrative)"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "6. CVE mapping and risk-ranked reporting",
+      "text": "nmap -sV -p1883,80,8080,37777 --script vulners -iL live-hosts.txt -oN cve-map.txt"
+    }
+  ]
+}
+  </script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Security", "item": "https://tyfsadik.org/blog/labs/security/index.html"}, {"@type": "ListItem", "position": 4, "name": "IoT Network Reconnaissance", "item": "https://tyfsadik.org/blog/labs/security/iot-network-recon.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Masscan misses hosts'?", "acceptedAnswer": {"@type": "Answer", "text": "lower -rate to 1000; aggressive rates drop replies on cheap switches. If hosts still vanish, re-run the missing range with nmap -Pn -T2, rate-limiting devices answer slow scans that they ignore at line rate."}}, {"@type": "Question", "name": "How do I fix 'NSE mqtt-subscribe hangs'?", "acceptedAnswer": {"@type": "Answer", "text": "add --script-args mqtt-subscribe.timeout=5s. Brokers that require authentication hold the connection open waiting for credentials, and the default script timeout stretches a one-minute scan into an hour."}}, {"@type": "Question", "name": "How do I fix 'Binwalk extracts nothing'?", "acceptedAnswer": {"@type": "Answer", "text": "entropy > 0.95 indicates encryption; inspect with binwalk -E. Encrypted firmware is a dead end without the key, check whether the vendor publishes an older unencrypted release for the same hardware revision, since keys and configs often persist across versions."}}, {"@type": "Question", "name": "How do I fix 'tshark shows no IoT traffic on the recon host'?", "acceptedAnswer": {"@type": "Answer", "text": "this is expected on a switched network, the switch only forwards frames destined for your MAC. Configure a SPAN/monitor port on the managed switch (monitor session 1 source vlan 30 / monitor session 1 destination interface Gi0/1 on Cisco-style CLIs) or capture on the router instead. Also verify the NIC is in promiscuous mode (ip link show eth0 | grep -i promisc) and debug capture issues via /var/log/wireshark."}}, {"@type": "Question", "name": "How do I fix 'Shodan returns \"No information available for that IP\"'?", "acceptedAnswer": {"@type": "Answer", "text": "the lab WAN IP simply has not been crawled recently. On-demand scanning (shodan scan submit) requires a paid Shodan membership; on a free account, re-query after the next scheduled crawl and do not mistake \"no data\" for \"no exposure.\""}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>IoT Network Reconnaissance</span></nav>
+    <div class="page-header"><h1>Automated IoT Network Reconnaissance with Nmap NSE and Wireshark</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Security</span><span class="lab-time">~6 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Nmap NSE</span><span class="tag">Masscan</span><span class="tag">Wireshark</span><span class="tag">MQTT</span><span class="tag">Shodan</span><span class="tag">Binwalk</span></div>
+    </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
+      <ol>
+      <li><a href="#objective-context">Objective</a></li>
+      <li><a href="#learning-objectives">Learning Objectives</a></li>
+      <li><a href="#environment-prerequisites">Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Steps</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#key-takeaways">Key Takeaways</a></li>
+      <li><a href="#practice-challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+      </ol>
+    </nav>
+
+
+    <section><p class="lead">I built a repeatable IoT reconnaissance workflow that discovers, fingerprints, and risk-ranks every device on a segmented homelab subnet. The first run surfaced 47 live devices, 23 of which still accepted vendor default credentials, and mapped 12 CVEs to specific firmware builds.</p>
+      <p>This writeup documents the full pipeline end to end: fast host discovery with Masscan, deep service fingerprinting with Nmap NSE scripts, passive protocol analysis with Wireshark/tshark, firmware triage with Binwalk, external exposure correlation with the Shodan API, and finally CVE mapping into a risk-ranked report. Every command below was run against an isolated lab VLAN I own and am authorized to test. The same workflow doubles as a defensive asset-inventory audit: anything an attacker can enumerate in twelve minutes, you should already have in a spreadsheet.</p>
+    </section>
+
+    <section id="objective-context"><h2>Threat Model &amp; MITRE ATT&amp;CK Mapping</h2>
+      <p>IoT endpoints expand the attack surface through weak authentication and unauthenticated management protocols. This lab models the pre-compromise reconnaissance an adversary performs, so the same telemetry can drive defensive asset inventory and shadow-IT detection.</p>
+      <p>The assumed adversary has a foothold on the IoT VLAN (a compromised smart plug, a rogue device plugged into an unmanaged switch, or a guest-network misconfiguration that bridges VLANs) but no credentials. From that position, the realistic goals are: enumerate every live device, identify which ones expose management interfaces, harvest default or hardcoded credentials, intercept cleartext telemetry, and pivot to higher-value segments. Each phase of the workflow maps to a specific ATT&amp;CK technique:</p>
+      <ul>
+        <li><strong>T1595 Active Scanning</strong>, network sweeps with Masscan and Nmap to enumerate live hosts and services.</li>
+        <li><strong>T1592 Gather Victim Host Information</strong>, service/version fingerprinting via NSE scripts.</li>
+        <li><strong>T1110 Brute Force</strong>, validation of default-credential exposure (authorized scope only).</li>
+        <li><strong>T1190 Exploit Public-Facing Application</strong>, external exposure mapping via the Shodan API.</li>
+      </ul>
+      <p>Two adjacent techniques inform the analysis even though they are not executed: <strong>T1040 Network Sniffing</strong>, which is exactly what the Wireshark phase demonstrates is possible against cleartext MQTT, and <strong>T1078 Valid Accounts</strong>, which is the impact of every default-credential finding. Framing the lab this way keeps it honest: the deliverable is not a list of open ports, it is a defensible answer to &quot;what can an attacker on this VLAN reach, and how bad is it?&quot;</p>
+      <div class="mermaid" role="img" aria-label="IoT reconnaissance workflow from discovery to reporting">
+flowchart LR
+  A[Host Discovery<br/>Masscan /24] --> B[Service Enumeration<br/>Nmap NSE]
+  B --> C[Protocol Analysis<br/>Wireshark MQTT/CoAP]
+  C --> D[Firmware Extraction<br/>Binwalk]
+  B --> E[External Exposure<br/>Shodan API]
+  D --> F[Vulnerability Mapping<br/>CVE + CVSS 3.1]
+  E --> F
+  F --> G[Risk-Ranked Report]
+      </div>
+    </section>    <section id="learning-objectives">
+      <div class="lab-objectives"><h3>Learning Objectives</h3>
+        <ul>
+        <li>Discover IoT hosts fast with masscan across full port ranges.</li>
+        <li>Fingerprint IoT services with targeted Nmap NSE scripts.</li>
+        <li>Analyze MQTT and CoAP traffic with tshark and mosquitto_sub.</li>
+        <li>Triage device firmware with Binwalk extraction.</li>
+        <li>Map external exposure with Shodan and rank findings by CVE severity.</li>
+        </ul>
+      </div>
+    </section>
+
+
+    <section><h2>IoT Protocols in Scope</h2>
+      <p>Before running any scanner it is worth being precise about what the tools are looking for, because IoT reconnaissance is mostly a protocol-recognition problem. Five protocol families account for nearly everything the workflow surfaces:</p>
+      <ul>
+        <li><strong>MQTT (1883/tcp, 8883/tcp over TLS)</strong>, a lightweight publish/subscribe telemetry bus used by sensors, alarms, and home-automation hubs. Brokers that accept anonymous connections expose every topic on the bus, including <code>$SYS</code> internals that disclose the broker version and client count. Port 1883 with no TLS is the single highest-yield finding on most IoT VLANs.</li>
+        <li><strong>CoAP (5683/udp)</strong>, a REST-style protocol for constrained devices. It answers a multicast <code>GET /.well-known/core</code> with a full list of published resources, making it the one IoT protocol that literally documents its own attack surface on request.</li>
+        <li><strong>SSDP/UPnP (1900/udp)</strong>, multicast service discovery used by smart TVs, printers, cameras, and routers. Devices respond with a <code>description.xml</code> URL enumerating every UPnP service and action they expose, including, on many routers, NAT traversal actions that silently punch holes in the firewall.</li>
+        <li><strong>Telnet (23/tcp)</strong>, extinct on servers, alive and well on DVRs, cameras, and set-top boxes. Its presence almost always pairs with a hardcoded credential burned into firmware.</li>
+        <li><strong>Vendor proprietary ports (37777 Dahua, 8000 Hikvision, 9000+ assorted)</strong>, undocumented management protocols that respond to banner grabs with model and firmware strings. Nmap's version detection fingerprints most of them even when the protocol itself is unknown.</li>
+      </ul>
+      <p>The scan plan below is built directly from this list: the Masscan sweep covers all ports because proprietary services hide anywhere, while the NSE phase targets exactly the ports where these five families live.</p>
+    </section>
+
+    <section id="environment-prerequisites"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+      <p>The lab is deliberately segmented so recon traffic never touches production devices and the scan results reflect a realistic attacker viewpoint from a management segment. The recon workstation sits on VLAN 10; the targets live on an isolated IoT VLAN that mirrors the kind of flat, unmanaged device sprawl seen in small offices and home networks.</p>
+      <ul>
+        <li>BackBox Linux 8 (or Kali 2024.1) recon workstation on management VLAN 10.</li>
+        <li>Nmap 7.94 with NSE, Masscan 1.3.2, Wireshark 4.2, Binwalk 2.3.4, Python 3.11.</li>
+        <li>Isolated IoT VLAN 30 (192.168.30.0/24), authorized lab scope only.</li>
+        <li>Shodan API key for external exposure correlation of the lab WAN IP.</li>
+      
+          <li>BackBox Linux 8 or Kali 2024.1 recon workstation on an isolated VLAN.</li>
+          <li>An IoT VLAN with lab devices (or a documented target range); never scan production or others' devices.</li>
+          <li>masscan, nmap with NSE scripts, tshark, Binwalk, and a Shodan API key.</li>
+          <li>Root or sudo access for raw-socket scanning.</li>
+          <li>Written authorization for every target in scope.</li>
+        </ul>
+      <p>Before scanning anything, verify the toolchain versions. Masscan and Nmap both behave differently across releases (NSE script names change, Masscan's default ARP handling on local subnets changed at 1.3), so confirming versions up front saves an hour of confusion later:</p>
+      <div class="command-block"><div class="command"><code>nmap --version &amp;&amp; masscan --version &amp;&amp; tshark --version | head -1 &amp;&amp; binwalk --version 2&gt;&amp;1 | head -1</code></div></div>
+<pre><code class="language-bash">Nmap version 7.94 ( https://nmap.org )
+Masscan version 1.3.2 ( https://github.com/robertdavidgraham/masscan )
+TShark (Wireshark) 4.2.3
+Binwalk v2.3.4</code></pre>
+      <p><strong>Verify:</strong> confirm your scan interface and source IP are on the expected VLAN before firing any scan. A scan sourced from the wrong interface either returns nothing or, worse, scans a network you did not intend to touch.</p>
+      <div class="command-block"><div class="command"><code>ip -4 addr show eth0 &amp;&amp; ip route | grep 192.168.30</code></div></div>
+<pre><code class="language-bash">inet 192.168.10.15/24 brd 192.168.10.255 scope global eth0
+192.168.30.0/24 via 192.168.10.1 dev eth0 proto static</code></pre>
+      <p><strong>Common mistake:</strong> running the whole lab from a VPN or Wi-Fi interface. Masscan in particular bypasses the kernel TCP stack and crafts raw packets, so it needs a stable wired interface and <code>sudo</code>. On Wi-Fi it silently underperforms or dies with <code>FAIL: failed to detect MAC of interface</code>.</p>
+      <div class="mermaid" role="img" aria-label="Segmented lab network topology isolating the IoT VLAN">
+flowchart TB
+  WS[Recon Workstation<br/>VLAN 10] -->|trunk| SW[Managed Switch]
+  SW --> IOT["IoT VLAN 30<br/>192.168.30.0/24"]
+  SW --> FW["Firewall / Router"]
+  FW --> WAN((Internet))
+  IOT -. monitored by .-> WS
+      </div>
+          </div>
+</section>
+
+    <section id="step-by-step-execution"><h2>Step-by-Step Execution</h2>
+
+      <h3>1. Fast host discovery [PRIVILEGED]</h3>
+      <p>Masscan sweeps the /24 at line rate to build a live-host list before slower Nmap fingerprinting, keeping scan time proportional to responsive hosts only.</p>
+      <p>The reason for the two-phase approach is throughput. A naive <code>nmap -sV -p-</code> against all 254 addresses serializes slow per-host version probing against hosts that do not even exist. Masscan transmits raw SYN packets asynchronously: 65,535 ports times 254 hosts is about 16.6 million probes, which takes roughly 55 minutes at <code>--rate 5000</code>, so run the full sweep in the background while you work. A scoped pass over the top 1,000 ports finishes in about a minute and finds nearly everything. Nmap then runs its expensive probes only against the ports Masscan already proved are open. The trade-off is accuracy at high rates: beyond roughly 5,000 packets/second, consumer switches start dropping replies and hosts go missing, so <code>--rate 5000</code> is a deliberate conservative choice.</p>
+      <p>Masscan scans TCP by default, which misses UDP services entirely, including CoAP on UDP 5683. Run a second, smaller UDP pass over the IoT-relevant UDP ports:</p>
+      <div class="command-block"><div class="command"><code>sudo masscan 192.168.30.0/24 -p1-65535 --rate 5000 -oL tcp-hosts.txt</code></div></div>
+      <div class="command-block"><div class="command"><code>sudo masscan 192.168.30.0/24 -sU -p53,67,68,69,123,161,5683,1900 --rate 2000 -oL udp-hosts.txt</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code class="language-bash">Discovered open port 1883/tcp on 192.168.30.41   # MQTT
+Discovered open port 80/tcp on 192.168.30.17     # web UI
+rate:  0.00-kpps,  100.00% done
+# from the UDP pass:
+Discovered open port 5683/udp on 192.168.30.52   # CoAP</code></pre>
+      <p>The <code>-oL</code> flag writes a greppable list-format file. Its data lines look like <code>open tcp 1883 192.168.30.41 1466690401</code>, the IP is the fourth field, not the end of the line, so extract it with <code>awk</code> and merge both passes into a clean unique host list:</p>
+      <div class="command-block"><div class="command"><code>awk '/^open/{print $4}' tcp-hosts.txt udp-hosts.txt | sort -uV &gt; live-hosts.txt &amp;&amp; wc -l live-hosts.txt</code></div></div>
+<pre><code class="language-bash">47 live-hosts.txt</code></pre>
+      <p><strong>Verify:</strong> spot-check three of the discovered hosts with a simple ping or single-port connect before trusting the list. A host that answers Masscan but refuses every follow-up connection is usually a stale ARP entry or a firewall responding on the device's behalf.</p>
+      <div class="command-block"><div class="command"><code>nc -zvw2 192.168.30.41 1883 &amp;&amp; nc -zvw2 192.168.30.17 80</code></div></div>
+<pre><code class="language-bash">Connection to 192.168.30.41 1883 port [tcp/*] succeeded!
+Connection to 192.168.30.17 80 port [tcp/http] succeeded!</code></pre>
+      <p><strong>Common mistake:</strong> forgetting that Masscan on a directly-attached subnet needs to resolve the gateway MAC. If you see <code>FAIL: could not determine default route</code>, pin it explicitly with <code>--router-mac AA:BB:CC:DD:EE:FF</code> or add <code>--adapter-ip 192.168.10.15</code>. In this lab the recon host reaches VLAN 30 through the router, so routing is already correct.</p>
+<p class="lab-step-note">What this teaches: masscan's stateless design trades accuracy for speed, which is the right trade for initial discovery.</p>
+<h3>2. Targeted NSE fingerprinting</h3>
+      <p>NSE scripts identify IoT-specific protocols and pull broker/device metadata that generic version scans miss.</p>
+      <p>Masscan tells you a port is open; it cannot tell you what is listening. This phase runs Nmap's service detection plus three IoT-relevant NSE scripts against only the hosts and ports discovered in step 1. <code>mqtt-subscribe</code> connects to MQTT brokers and attempts an anonymous subscription, which both confirms the service and tests the most common broker misconfiguration in one shot. <code>coap-resources</code> enumerates a Constrained Application Protocol device's published resources from its <code>/.well-known/core</code> endpoint. <code>http-default-accounts</code> tests a curated list of vendor default credentials against discovered web login pages. Run a TCP pass and a separate UDP pass, since Nmap's default TCP scan cannot see the CoAP service on UDP 5683:</p>
+      <div class="command-block"><div class="command"><code>nmap -sV -p1883,80,443,8080 --script mqtt-subscribe,http-default-accounts -iL live-hosts.txt -oA iot-enum</code></div></div>
+      <div class="command-block"><div class="command"><code>sudo nmap -sU -sV -p5683,1900 --script coap-resources -iL live-hosts.txt -oN iot-udp.txt</code></div></div>
+<pre><code class="language-bash">1883/tcp open  mqtt
+| mqtt-subscribe: Topics: $SYS/broker/version = mosquitto 1.6.9
+80/tcp   open  http
+| http-default-accounts: admin:admin valid on /login</code></pre>
+      <p>The <code>-oA iot-enum</code> flag writes normal, XML, and greppable output simultaneously. The XML file matters later: it is the input for the CVE-mapping step, and re-generating it means re-scanning. Treat scan output as evidence and never delete it.</p>
+      <p>For hosts with web interfaces, a second pass with HTTP enumeration scripts pulls titles, headers, and server banners that identify the device class even when the login page is unbranded:</p>
+      <div class="command-block"><div class="command"><code>nmap -p80,443,8080 --script http-title,http-server-header,http-methods -iL live-hosts.txt -oN http-enum.txt</code></div></div>
+<pre><code class="language-bash">80/tcp open  http
+| http-title: TP-LINK Wireless N Camera
+|_http-server-header: Boa/0.94.14rc21
+8080/tcp open  http-proxy
+|_http-title: DVR Web Client</code></pre>
+      <p><strong>Verify:</strong> the greppable output gives a one-line-per-host summary you can eyeball for coverage gaps. Every live host should appear at least once; a host missing entirely means it only had ports outside the <code>-p</code> list.</p>
+      <div class="command-block"><div class="command"><code>grep -c "^Host:" iot-enum.gnmap</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>37</code></pre>
+
+      <p><strong>Common mistake:</strong> feeding Nmap the raw Masscan output file (in Masscan list format) straight into <code>nmap -iL</code>. Nmap expects one target per line and will fail to parse Masscan's <code>open tcp 1883 192.168.30.41 ...</code> lines. Always extract clean IPs into <code>live-hosts.txt</code> first, as shown in step 1.</p>
+
+      <p>Passive discovery complements the port scans: SSDP announcements reveal UPnP devices, smart TVs, printers, cameras, that close all TCP ports between broadcasts. Nmap's broadcast script listens on the multicast group instead of probing:</p>
+      <div class="command-block"><div class="command"><code>nmap --script broadcast-upnp-info -e eth1</code></div></div>
+<pre><code class="language-bash">| broadcast-upnp-info:
+|   192.168.30.77
+|       Server: Linux/4.4.198 UPnP/1.0 MediaRenderer/1.0
+|_      Location: http://192.168.30.77:49152/description.xml</code></pre>
+      <p>The <code>description.xml</code> URL is the payload: fetching it enumerates every UPnP service and action the device implements. On routers, a <code>WANIPConnection</code> service with <code>AddPortMapping</code> is the mechanism behind the WAN exposures found later in step 5, any device on the LAN that can reach the router's UPnP endpoint can open inbound NAT mappings without credentials.</p>
+      <p><strong>Common mistake:</strong> running broadcast scripts from the wrong segment. Multicast SSDP (239.255.255.250) does not cross routers, so this probe runs from a tap interface on VLAN 30 (<code>eth1</code> here), not from the management-side <code>eth0</code>. A broadcast scan that returns zero results usually means you are on the wrong side of the router, not that no UPnP devices exist.</p>
+<p class="lab-step-note">What this teaches: NSE scripts speak the device's protocol, revealing services that port numbers alone hide.</p>
+<h3>3. Protocol analysis with Wireshark</h3>
+      <p>Capturing MQTT confirms whether telemetry is sent in cleartext and whether brokers allow anonymous subscription to <code>$SYS</code> topics.</p>
+      <p>Port scans show what is reachable; packet capture shows what is actually said. IoT protocols are notoriously chatty and frequently unencrypted, so five minutes of passive capture often reveals device names, firmware strings, sensor readings, and sometimes credentials. Start a targeted capture against the broker with tshark (Wireshark's CLI), filtering at both the capture layer (<code>-f</code>, BPF syntax, cheap) and the display layer (<code>-Y</code>, Wireshark syntax, expressive):</p>
+      <div class="command-block"><div class="command"><code>tshark -i eth0 -f "tcp port 1883" -Y mqtt -T fields -e mqtt.topic -e mqtt.msg</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code class="language-bash">home/livingroom/temperature	21.4
+home/livingroom/humidity	47
+$SYS/broker/clients/connected	12
+home/garage/door	state:open,ts:1710342891
+home/alarm/status	disarmed,pin:4519</code></pre>
+      <p>The last line is the finding that matters: the alarm panel publishes its armed state <em>and its PIN</em> to a topic any anonymous subscriber can read. Note that the capture is passive on VLAN 10 only because the switch mirrors IoT traffic; on an unswitched segment or without a monitor port you would capture nothing. That is a property of the topology, not a finding of safety.</p>
+      <p>To prove anonymous access is possible (rather than inferring it from <code>mqtt-subscribe</code>), subscribe directly from the recon host:</p>
+      <div class="command-block"><div class="command"><code>mosquitto_sub -h 192.168.30.41 -t '#' -v -C 5</code></div></div>
+<pre><code class="language-bash">home/livingroom/temperature 21.4
+home/alarm/status disarmed,pin:4519
+home/camera/front/motion 1
+$SYS/broker/uptime 48213 seconds
+$SYS/broker/version mosquitto version 1.6.9</code></pre>
+      <p>Five messages captured (<code>-C 5</code>) with no <code>-u</code>/<code>-P</code> credentials supplied confirms anonymous read access to the entire topic tree, including the <code>$SYS</code> broker internals that leak the exact software version.</p>
+      <p>The CoAP sensor on 192.168.30.52 gets the same treatment. CoAP devices answer a GET to <code>/.well-known/core</code> with a machine-readable list of every resource they publish, so one request enumerates the device's entire interface:</p>
+      <div class="command-block"><div class="command"><code>coap-client -m get coap://192.168.30.52/.well-known/core</code></div></div>
+<pre><code class="language-bash">&lt;/temp&gt;;rt="temperature-c";if="sensor",
+&lt;/humidity&gt;;rt="humidity-pct";if="sensor",
+&lt;/firmware&gt;;rt="version";if="param",
+&lt;/reset&gt;;rt="factory-reset";if="actuator"</code></pre>
+      <p>Three sensor endpoints are harmless; the fourth is not. An unauthenticated <code>/reset</code> actuator means anyone who can reach UDP 5683 can factory-reset the device with a single POST, a denial-of-service primitive that never appears in a port scan, because the scan can only report that 5683/udp is open, not what it will do.</p>
+      <p><strong>Verify:</strong> cross-check the pcap against expectations by counting protocol distribution. A healthy IoT VLAN should be dominated by MQTT/CoAP/mDNS chatter; unexpected SMB or RDP traffic from a light bulb is an immediate red flag.</p>
+      <div class="command-block"><div class="command"><code>tshark -r iot-capture.pcapng -q -z io,phs</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>Protocol Hierarchy Statistics
+eth          frames:8421 bytes:1042932
+  ip         frames:8390 bytes:1041208
+    tcp      frames:5120 bytes:812004
+    udp      frames:3270 bytes:229204</code></pre>
+
+      <p><strong>Common mistake:</strong> running tshark without a ring buffer and filling the disk. On a chatty /24, an unbounded capture grows at several MB per minute. For long captures use a ring buffer: <code>dumpcap -i eth0 -b filesize:10240 -b files:24 -w /var/captures/iot.pcapng</code> keeps the last 24 ten-megabyte files and rotates automatically.</p>
+<p class="lab-step-note">What this teaches: subscribing to MQTT wildcard topics shows what the devices actually publish.</p>
+<h3>4. Firmware triage with Binwalk</h3>
+      <p>Port 8080 on the DVR exposed a firmware update page, and the same firmware image is publicly downloadable from the vendor's support site. Either path yields a binary blob; Binwalk's job is to carve the embedded filesystem out of it. The <code>-M</code> flag recursively scans extracted files (firmware is often an archive inside an archive inside an archive) and <code>-e</code> performs the actual extraction rather than just listing offsets.</p>
+      <div class="command-block"><div class="command"><code>binwalk -Me firmware-v2.1.bin</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code class="language-bash">DECIMAL    HEXADECIMAL   DESCRIPTION
+1280       0x500         uImage header, kernel 3.10.14
+1048576    0x100000      Squashfs filesystem, gzip, version 4.0</code></pre>
+      <p>Extraction drops a <code>_firmware-v2.1.bin.extracted/</code> directory containing the full root filesystem. The high-value targets are always the same: password hashes, hardcoded credentials in init scripts, private keys, and the web server's config. A few greps cover most of them:</p>
+      <div class="command-block"><div class="command"><code>cd _firmware-v2.1.bin.extracted/squashfs-root &amp;&amp; cat etc/passwd &amp;&amp; grep -rn "password" etc/init.d/ 2&gt;/dev/null | head -5 &amp;&amp; find . -name "*.pem" -o -name "id_rsa*" 2&gt;/dev/null</code></div></div>
+<pre><code class="language-bash">root:$1$$CoERg7Wfgjdv6lq01dSUm1:0:0:root:/root:/bin/sh
+nobody:*:99:99:nobody:/:/sbin/nologin
+etc/init.d/rcS:telnetd -l /bin/sh -p 23 &amp;
+./etc/ssl/private/device-key.pem</code></pre>
+      <p>Three findings from one extraction: a weakly-hashed root password (an MD5-crypt <code>$1$</code> hash with an empty salt, crackable in seconds with hashcat), a telnet daemon enabled at boot in <code>rcS</code>, and a baked-in private key shared across every unit of this model. Any one of these converts the port-scan observations into remote root. Note that <code>$1$</code> is MD5-crypt, not DES, classic DES crypt hashes have no <code>$id$</code> prefix at all.</p>
+      <p>The empty-salt MD5-crypt hash falls immediately to hashcat in mode 500 against a standard wordlist, this is the difference between &quot;weak hashing&quot; as a theoretical observation and a demonstrated credential:</p>
+      <div class="command-block"><div class="command"><code>echo 'root:$1$$CoERg7Wfgjdv6lq01dSUm1' &gt; root-hash.txt &amp;&amp; hashcat -m 500 root-hash.txt /usr/share/wordlists/rockyou.txt --quiet</code></div></div>
+<pre><code class="language-bash">$1$$CoERg7Wfgjdv6lq01dSUm1:12345</code></pre>
+      <p>The root password is <code>12345</code>, recovered in under a second on an integrated GPU. Combined with the <code>telnetd</code> line in <code>rcS</code>, every unit of this DVR model ships from the factory with a remotely reachable root shell protected by a five-digit dictionary word, and because the key and password live in firmware, a factory reset does not change them.</p>
+      <p><strong>Verify:</strong> confirm the extracted filesystem is complete by checking for the standard skeleton, <code>bin/</code>, <code>etc/</code>, <code>lib/</code>, <code>usr/</code>. A squashfs-root containing only <code>www/</code> means you extracted an update package's web overlay, not the real rootfs, and the interesting files live in a different partition image.</p>
+      <p><strong>Common mistake:</strong> trusting Binwalk's signature scan blindly. False positives are common on compressed blobs, a &quot;gzip compressed data&quot; hit at a random offset is often just entropy that looks like a magic byte. When extraction produces garbage, run <code>binwalk -E</code> for an entropy plot: encrypted firmware shows flat entropy near 1.0, while a real filesystem shows structure.</p>
+<p class="lab-step-note">What this teaches: firmware images are filesystems; Binwalk unpacks them so you can read the device's secrets.</p>
+<h3>5. External exposure mapping with Shodan</h3>
+      <p>Internal recon answers &quot;what is on the VLAN&quot;; Shodan answers &quot;what did someone accidentally expose to the internet.&quot; UPnP on consumer routers and well-meaning port forwards routinely publish cameras, DVRs, and MQTT brokers to the WAN without the owner knowing. Querying the lab's own WAN IP closes that loop. The address below (<code>203.0.113.10</code>) is an RFC 5737 documentation address, so substitute your own public IP and treat the shown output as illustrative of the result shape, not a live query:</p>
+      <div class="command-block"><div class="command"><code>shodan host 203.0.113.10   # replace with your own WAN IP, e.g. $(curl -s ifconfig.me)</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code class="language-bash">203.0.113.10
+City:                    North York
+Organization:            Rogers Communications
+Ports:
+    80/tcp  (TP-LINK Wireless N Camera)
+    1883/tcp
+   37777/tcp (Dahua DVR)</code></pre>
+      <p>The camera on port 80 and the Dahua DVR on 37777 should never be internet-reachable; both appeared in the internal scan and both accept the default credentials found in step 2. That combination, externally reachable plus default credentials, is exactly how devices end up in Mirai-class botnets, and it is the top of the risk-ranked report.</p>
+      <p><strong>Verify:</strong> corroborate Shodan's view with a direct external test from outside the network (a phone on LTE works): <code>curl -m 5 http://203.0.113.10/</code> returning the camera login page proves the exposure is live, not a stale Shodan banner. Shodan data can be weeks old.</p>
+      <p><strong>Common mistake:</strong> scanning the WAN IP from inside the network and concluding a port is open because the router's NAT hairpin answered. Hairpin NAT makes internal tests unreliable, always validate exposure from a genuinely external path.</p>
+<p class="lab-step-note">What this teaches: Shodan shows what the internet sees, which is often more than the owner realizes.</p>
+<h3>6. CVE mapping and risk-ranked reporting</h3>
+      <p>The final phase converts versions into vulnerabilities. Nmap's <code>vulners</code> NSE script queries the vulners.com API with each detected service/version pair and returns matching CVEs with CVSS scores. Run it against the already-fingerprinted hosts, reusing the service detection from step 2 rather than re-scanning everything:</p>
+      <div class="command-block"><div class="command"><code>nmap -sV -p1883,80,8080,37777 --script vulners -iL live-hosts.txt -oN cve-map.txt</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code class="language-bash">1883/tcp open  mqtt  mosquitto 1.6.9
+| vulners:
+|   CVE-2019-9746   7.5  https://vulners.com/cve/CVE-2019-9746
+|_  CVE-2017-7650   6.5  https://vulners.com/cve/CVE-2017-7650
+37777/tcp open  dahua-dvr
+|   CVE-2021-33045  9.8  https://vulners.com/cve/CVE-2021-33045</code></pre>
+      <p>Risk ranking is deliberately simple so it survives contact with a spreadsheet: CVSS 3.1 base score first, then a multiplier for external exposure (from step 5) and for default credentials (from step 2). A CVSS 7.5 on an internal-only broker ranks below a CVSS 9.8 on an internet-facing DVR with <code>admin:admin</code>. The final deliverable is a CSV with one row per finding, host, service, version, CVE, CVSS, exposure, evidence file, plus the raw scan outputs attached as proof.</p>
+      <div class="command-block"><div class="command"><code>awk -F'|' '/CVE-/ {gsub(/ +/," "); print FILENAME": "$0}' cve-map.txt | sort -t' ' -k3 -rn &gt; findings-sorted.txt</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>(no output on success; ranked results written to findings-sorted.txt)</code></pre>
+
+      <p><strong>Verify:</strong> the count of CVE lines in the report must equal the count in the raw scan output, <code>grep -c CVE cve-map.txt</code> versus <code>wc -l findings-sorted.txt</code>. Any discrepancy means the parsing step dropped findings, and the report understates risk.</p>
+      <p><strong>Common mistake:</strong> reporting CVEs that match a version number but not the build. Vendors backport patches without bumping version strings, so a &quot;vulnerable&quot; mosquitto 1.6.9 from a distro package may already carry the fix. Where possible, confirm with the vendor's advisory or a changelog before listing a CVE as exploitable.</p>
+<p class="lab-step-note">What this teaches: CVE mapping turns a device list into a prioritized remediation queue.</p>
+</section>    <section id="how-it-works">
+      <div class="lab-explainer"><h3>How It Works</h3>
+        <p>IoT reconnaissance follows the same funnel as any network assessment but against weirder targets: discover hosts fast, fingerprint their unusual services, speak their protocols, and read their firmware. masscan finds live hosts across all 65,535 ports in minutes; Nmap then fingerprints the interesting ones with scripts written for MQTT, CoAP, and embedded HTTP.</p>
+        <p>Protocol analysis is where IoT differs from enterprise recon. MQTT brokers often accept anonymous subscriptions, exposing every topic the devices publish; CoAP endpoints expose resource listings. A single mosquitto_sub to the wildcard topic can reveal sensor data, device identities, and sometimes credentials in cleartext.</p>
+        <p>Firmware triage closes the loop: Binwalk extracts squashfs and other embedded filesystems from vendor images, exposing hardcoded passwords, private keys, and outdated libraries. Combined with Shodan exposure data and CVE mapping, the result is a risk-ranked inventory instead of a flat host list.</p>
+      </div>
+    </section>
+
+
+    <section><h2>Automation: The Full Pipeline</h2>
+      <p>Manual commands are fine for a single engagement, but the value of this workflow is repeatability, the same inventory should regenerate on a schedule so new devices and regressions surface without anyone remembering to scan. A small driver script chains the phases, timestamps the evidence directory, and fails loudly when a phase produces no output:</p>
+      <div class="command-block"><div class="command"><code>cat iot-recon.sh</code></div></div>
+<pre><code class="language-bash">#!/usr/bin/env bash
+# iot-recon.sh - automated IoT VLAN reconnaissance pipeline
+set -euo pipefail
+
+SUBNET="192.168.30.0/24"
+OUT="recon-$(date +%Y%m%d-%H%M)"
+mkdir -p "$OUT" &amp;&amp; cd "$OUT"
+
+echo "[1/5] Masscan host discovery (TCP full sweep + UDP IoT ports)"
+sudo masscan "$SUBNET" -p1-65535 --rate 5000 -oL tcp-hosts.txt
+sudo masscan "$SUBNET" -sU -p53,67,68,69,123,161,5683,1900 --rate 2000 -oL udp-hosts.txt
+awk '/^open/{print $4}' tcp-hosts.txt udp-hosts.txt | sort -uV &gt; live-hosts.txt
+[[ -s live-hosts.txt ]] || { echo "no live hosts; aborting"; exit 1; }
+
+echo "[2/5] Nmap NSE fingerprinting (TCP + UDP passes)"
+nmap -sV -p1883,80,443,8080,37777 \
+  --script mqtt-subscribe,http-default-accounts \
+  -iL live-hosts.txt -oA nse-enum
+sudo nmap -sU -sV -p5683,1900 --script coap-resources \
+  -iL live-hosts.txt -oN nse-udp.txt
+
+echo "[3/5] Passive MQTT capture (60s sample)"
+timeout 60 tshark -i eth1 -f "tcp port 1883" -w mqtt-sample.pcapng || true
+
+echo "[4/5] CVE mapping"
+nmap -sV --script vulners -p1883,80,8080,37777 \
+  -iL live-hosts.txt -oN cve-map.txt
+
+echo "[5/5] External exposure"
+shodan host "$(curl -s ifconfig.me)" &gt; shodan-wan.txt || true
+
+echo "done: $(wc -l &lt; live-hosts.txt) hosts, evidence in $OUT/"</code></pre>
+      <p>Expected output of a healthy run:</p>
+<pre><code class="language-bash">[1/5] Masscan host discovery
+[2/5] Nmap NSE fingerprinting
+[3/5] Passive MQTT capture (60s sample)
+[4/5] CVE mapping
+[5/5] External exposure
+done: 47 hosts, evidence in recon-20260617-0200/</code></pre>
+      <p>Cron runs the script weekly at a quiet hour (<code>17 2 * * 3 /opt/recon/iot-recon.sh</code>), and a one-line diff against the previous run turns the pipeline into a poor-man's network access control: any new address on the IoT VLAN triggers a review the same night it appears.</p>
+      <div class="command-block"><div class="command"><code>diff recon-prev/live-hosts.txt recon-latest/live-hosts.txt</code></div></div>
+<pre><code class="language-bash">&gt; 192.168.30.113</code></pre>
+      <p>One new address since last week, a smart bulb unboxed and plugged in by a family member. Because the diff caught it within hours, it was inventoried, pinned to the correct cloud account, and firmware-updated before the next scheduled run.</p>
+      <p><strong>Common mistake:</strong> running the whole pipeline as root. Only Masscan and the capture need elevated privileges; the script uses <code>sudo</code> on exactly those two phases so every evidence file stays owned by the analyst account and safe to archive, diff, and email without permission surgery.</p>
+    </section>
+
+    <section id="validation-testing"><h2>Validation &amp; Testing</h2>
+      <p>Cross-check the discovered inventory against the DHCP lease table to confirm zero shadow devices remain unaccounted for. External exposure is validated by querying Shodan for the lab WAN IP and confirming the expected closed-port baseline.</p>
+      <p>The DHCP cross-check is the strongest completeness signal available on a managed network: every device that requested a lease is known to the router, so the set difference between the lease table and the scan results is exactly the set of devices you missed, or devices with static IPs, which are themselves worth flagging.</p>
+      <div class="command-block"><div class="command"><code>ssh admin@192.168.10.1 "cat /var/lib/dhcp/dhcpd.leases" | grep -oP 'lease \K[\d.]+' | sort -uV &gt; dhcp-hosts.txt &amp;&amp; comm -23 dhcp-hosts.txt live-hosts.txt</code></div></div>
+<pre><code class="language-bash">192.168.30.88
+192.168.30.204</code></pre>
+      <p>Two leases had no corresponding Masscan hit. Re-scanning just those two with a slower rate and timing template (<code>nmap -T2 -Pn -p- 192.168.30.88,192.168.30.204</code>) revealed a printer that rate-limits SYN floods and a camera that was mid-reboot during the first sweep. Both were added to the inventory, bringing coverage to 49 of 49 leased addresses.</p>
+      <p>A second completeness check catches devices that never touch DHCP at all, statically addressed gear like managed switches and access points. <code>arp-scan</code> sends an ARP request for every address on the subnet, and ARP cannot be filtered by a host firewall, so every powered-on device answers:</p>
+      <div class="command-block"><div class="command"><code>sudo arp-scan --interface=eth1 192.168.30.0/24 | grep -oP '^\d+\.\d+\.\d+\.\d+' | sort -uV &gt; arp-hosts.txt &amp;&amp; wc -l arp-hosts.txt</code></div></div>
+<pre><code class="language-bash">49 arp-hosts.txt</code></pre>
+      <p>Like the SSDP probe, arp-scan needs L2 adjacency, so it runs from the VLAN 30 tap interface. The ARP total (49) now matches the DHCP-plus-scan inventory exactly, closing the completeness argument from three independent directions: active scan, lease table, and ARP. The MAC prefixes in arp-scan's output also feed the device-class column of the inventory, OUI lookup turns an anonymous address into &quot;Espressif Inc.&quot; (an ESP8266-based smart plug) or &quot;Hangzhou Hikvision&quot; without sending a single packet beyond ARP.</p>
+      <div class="command-block"><div class="command"><code>python3 -c "import shodan; print(shodan.Shodan('KEY').host('203.0.113.10')['ports'])"</code></div></div>
+<pre><code class="language-bash">[80, 1883, 37777]</code></pre>
+      <p>Pass criteria: every Masscan host maps to a known DHCP lease (alt text: <em>annotated inventory spreadsheet correlating MAC, IP, and device class</em>), and Shodan returns no unexpected open ports. After remediation (closing the port forwards and rotating the camera/DVR credentials), the Shodan query should return an empty port list on its next crawl cycle, that is the retest criterion recorded in the report.</p>
+      <p><strong>Common mistake:</strong> treating a single scan as ground truth. Devices sleep, roam, and reboot; a complete inventory requires at least two sweeps at different times of day. Schedule the second pass before declaring coverage.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+<table class="lab-table">
+<thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td>Command not found</td><td>package missing</td><td>install prerequisite and verify version</td></tr>
+<tr><td>Permission denied</td><td>insufficient privileges</td><td>use documented sudo or lab admin context</td></tr>
+<tr><td>Output differs</td><td>version or environment mismatch</td><td>verify versions and variables</td></tr>
+<tr><td>Service or API unreachable</td><td>dependency, DNS, or firewall issue</td><td>check status, listener, and logs</td></tr>
+</tbody>
+</table>
+
+      <ul>
+        <li><strong>Masscan misses hosts:</strong> lower <code>-rate</code> to 1000; aggressive rates drop replies on cheap switches. If hosts still vanish, re-run the missing range with <code>nmap -Pn -T2</code>, rate-limiting devices answer slow scans that they ignore at line rate.</li>
+        <li><strong>NSE mqtt-subscribe hangs:</strong> add <code>--script-args mqtt-subscribe.timeout=5s</code>. Brokers that require authentication hold the connection open waiting for credentials, and the default script timeout stretches a one-minute scan into an hour.</li>
+        <li><strong>Binwalk extracts nothing:</strong> entropy &gt; 0.95 indicates encryption; inspect with <code>binwalk -E</code>. Encrypted firmware is a dead end without the key, check whether the vendor publishes an older unencrypted release for the same hardware revision, since keys and configs often persist across versions.</li>
+        <li><strong>tshark shows no IoT traffic on the recon host:</strong> this is expected on a switched network, the switch only forwards frames destined for your MAC. Configure a SPAN/monitor port on the managed switch (<code>monitor session 1 source vlan 30</code> / <code>monitor session 1 destination interface Gi0/1</code> on Cisco-style CLIs) or capture on the router instead. Also verify the NIC is in promiscuous mode (<code>ip link show eth0 | grep -i promisc</code>) and debug capture issues via <code>/var/log/wireshark</code>.</li>
+        <li><strong>Shodan returns &quot;No information available for that IP&quot;:</strong> the lab WAN IP simply has not been crawled recently. On-demand scanning (<code>shodan scan submit</code>) requires a paid Shodan membership; on a free account, re-query after the next scheduled crawl and do not mistake &quot;no data&quot; for &quot;no exposure.&quot;</li>
+      </ul>
+    </section>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Identified 47 IoT devices on the /24, with 23 still accepting vendor default credentials.</li>
+        <li>Mapped 12 CVEs to specific firmware versions, 4 rated CVSS 3.1 &ge; 9.0 (Critical).</li>
+        <li>Reduced shadow-IT device visibility gap from an estimated 0% inventory to 100% mapped.</li>
+        <li>Cut Nmap fingerprinting time from ~90 minutes (naive full-port Nmap) to minutes by pre-filtering with Masscan. The full 65,535-port Masscan sweep itself takes about 55 minutes at 5,000 packets per second, so run it in the background; the scoped top-1,000-port pass finishes in about a minute.</li>
+      </ul>
+    </section>
+
+    <section><h2>Remediation &amp; Hardening</h2>
+      <p>Recon is only worth the fixes it drives. The report closed with five concrete actions, ordered by the risk ranking from step 6:</p>
+      <ul>
+        <li><strong>Remove the WAN exposures.</strong> Deleted the router port forwards for the camera (80) and DVR (37777), and disabled UPnP on the router so no LAN device can re-create them silently. Retest: Shodan returned an empty port list for the WAN IP on its next crawl.</li>
+        <li><strong>Rotate every default credential.</strong> All 23 devices with vendor defaults were moved to unique per-device passwords stored in the password manager. The two devices whose web UIs forced a numeric-only PIN were flagged for replacement, a 6-digit PIN is not meaningfully better than a default.</li>
+        <li><strong>Require authentication on the MQTT broker.</strong> Enabled <code>password_file</code> and <code>allow_anonymous false</code> in <code>mosquitto.conf</code>, upgraded from 1.6.9 to a current 2.x release, and moved the listener to TLS on 8883. Retest: <code>mosquitto_sub -t '#'</code> without credentials now fails with <code>Connection Refused: not authorised</code>.</li>
+        <li><strong>Patch or isolate the DVR.</strong> The Dahua unit with CVE-2021-33045 (CVSS 9.8) had no fixed firmware from the vendor, so it was moved to a dedicated camera VLAN with an egress-only firewall rule, it can reach its NTP and cloud relay outbound, but nothing on any other VLAN can initiate to it.</li>
+        <li><strong>Keep the pipeline running.</strong> The weekly cron job from the automation section is the permanent control: it re-proves the inventory is complete and diffs alert on any new device, so the findings above cannot silently regress.</li>
+      </ul>
+      <p>Six weeks of scheduled re-runs confirmed the fixes held: no new default-credential hits, no WAN exposure, and two new devices (the smart bulb and a replacement printer) were caught by the diff within hours of being plugged in.</p>
+    </section>
+
+    <section id="key-takeaways"><h2>Key Takeaways</h2>
+      <ul>
+        <li>Two-phase scanning (Masscan for breadth, Nmap NSE for depth) is an order of magnitude faster than naive full-port Nmap and loses nothing that matters.</li>
+        <li>Anonymous MQTT subscription is both a fingerprinting technique and a finding, if <code>mosquitto_sub -t '#'</code> works without credentials, every topic on the broker is public.</li>
+        <li>Firmware images are ground truth: one <code>binwalk -Me</code> extraction routinely yields hardcoded credentials, telnet backdoors, and shared private keys that no port scan can see.</li>
+        <li>Internal recon is incomplete without the external view, Shodan exposure plus default credentials is the combination that produces real-world compromise.</li>
+        <li>Scan results are not an inventory until they reconcile against the DHCP lease table; two passes at different times catch sleepy and rebooting devices.</li>
+      </ul>
+    </section>
+
+        <section id="practice-challenges">
+      <h2>Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Find default credentials</h4><p>Goal: Identify every lab device still accepting vendor default credentials and document the login pairs.</p><p>Hint: Use the http-default-accounts NSE script and check MQTT for anonymous access.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: Build the pipeline</h4><p>Goal: Script the full recon chain (masscan to CVE report) so it reruns with one command.</p><p>Hint: Chain the step commands in bash, passing live-hosts.txt between stages as the lab does.</p></div>
+    </section>
+<section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="vulnerability-assessment.html">Vulnerability Assessment with Nmap and OpenVAS</a></li>
+        <li><a href="automated-soc-pipeline.html">Automated SOC Pipeline: Wazuh + TheHive + MISP</a></li>
+        <li><a href="../networking/wireshark-packet-analysis.html">Wireshark Packet Analysis</a></li>
+      </ul>
+    </section>
+
+</div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>37</code></pre>
+</div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

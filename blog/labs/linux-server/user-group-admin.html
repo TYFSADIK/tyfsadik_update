@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Server User &amp; Group Administration | sudo &amp; Policy</title>
+  <meta name="description" content="Run server identity management: role groups, scoped sudoers.d rules validated by visudo, password aging with chage, and the faillock account lockout policy.">
+  <meta name="keywords" content="linux server user management, sudoers.d best practice, chage faillock, role based access linux, Linux system administration, server hardening guide">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-server/user-group-admin.html">
+  <meta property="og:title" content="Server User &amp; Group Administration | sudo &amp; Policy">
+  <meta property="og:description" content="Run server identity management: role groups, scoped sudoers.d rules validated by visudo, password aging with chage, and the faillock account lockout policy.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-server/user-group-admin.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Server User &amp; Group Administration | sudo &amp; Policy">
+  <meta name="twitter:description" content="Run server identity management: role groups, scoped sudoers.d rules validated by visudo, password aging with chage, and the faillock account lockout policy.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Server User and Group Administration", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-18", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "shadow-utils, sudo, PAM faillock", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux server administration"}</script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Server User and Group Administration with Least-Privilege Sudo",
+    "description": "Run server identity management: role groups, scoped sudoers.d rules validated by visudo, password aging with chage, and the faillock account lockout policy.",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "dateModified": "2026-09-29",
+    "step": [
+      {"@type": "HowToStep", "name": "Create a role group and user", "url": "https://tyfsadik.org/blog/labs/linux-server/user-group-admin.html#steps"},
+      {"@type": "HowToStep", "name": "Grant a scoped sudo rule with visudo", "url": "https://tyfsadik.org/blog/labs/linux-server/user-group-admin.html#steps"},
+      {"@type": "HowToStep", "name": "Apply password aging and lockout", "url": "https://tyfsadik.org/blog/labs/linux-server/user-group-admin.html#steps"}
+    ]
+  }</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Linux Server", "item": "https://tyfsadik.org/blog/labs/linux-server/index.html"}, {"@type": "ListItem", "position": 4, "name": "User & Group Administration", "item": "https://tyfsadik.org/blog/labs/linux-server/user-group-admin.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'sudoers.d file ignored'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Wrong permissions or missing #includedir directive. Fix: Files must be 0440 and not end in ~; confirm #includedir /etc/sudoers.d in sudoers."}}, {"@type": "Question", "name": "How do I fix 'Rule order gives wider access than intended'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Later entries can override earlier ones; last match wins. Fix: Name drop-ins so specific rules sort after general ones."}}, {"@type": "Question", "name": "How do I fix 'faillock not triggering'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: pam_faillock missing from the auth stack. Fix: Check /etc/pam.d/common-auth (Debian) or system-auth (RHEL) includes it."}}, {"@type": "Question", "name": "How do I fix 'Locked-out admin with no console'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: faillock applied to the only sudoer. Fix: Recover via console/single-user and faillock --user admin --reset."}}, {"@type": "Question", "name": "How do I fix 'Group sudo rule not applying'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: User added to group but session predates it. Fix: Log out and back in; verify with id."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>User &amp; Group Administration</span></nav>
+    <div class="page-header"><h1>Server User and Group Administration with Least-Privilege Sudo</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">useradd</span><span class="tag">sudoers</span><span class="tag">faillock</span><span class="tag">chage</span></div>
+    </div>
+
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#learning-objectives">Learning Objectives</a></li>
+<li><a href="#architecture">Architecture Overview</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#steps">Step-by-Step Execution</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#validation">Testing &amp; Validation</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#extensions">Extension Ideas</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#key-takeaways">Key Takeaways</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    <section><p class="lead">You will provision server accounts with role-based groups, scoped sudo rules, password aging, and lockout on failed logins. By the end, access is least-privilege and every privileged action is auditable.</p></section>
+
+    <div class="learning-objectives lab-objectives" id="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Create role groups and assign users to them.</li>
+        <li>Write a least-privilege sudoers drop-in safely.</li>
+        <li>Apply password aging and account lockout.</li>
+        <li><strong>Time:</strong> ~2 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> a server with root/sudo.</li>
+      </ul>
+    </div>
+
+    <section id="architecture"><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Role-based access flow on a server">
+graph TD
+  U[User] -->|member of| G[Role group: ops]
+  G -->|sudoers drop-in| S{Allowed command?}
+  S -->|yes| Run[Run as root + logged]
+  S -->|no| Deny[Denied + audited]
+      </div>
+    </section>
+
+    <section id="environment"><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> shadow-utils, sudo, and PAM faillock (default on RHEL via the authselect with-faillock profile; on Ubuntu/Debian add the pam_faillock lines to /etc/pam.d/common-auth yourself, since it is not enabled by default there).</p>
+      <p><strong>Before you begin:</strong> keep a second root session open while editing sudoers.</p>
+    </section>
+
+    <div class="lab-prereqs" id="prerequisites"><h3>Prerequisites</h3>
+    <ul>
+      <li>Linux with shadow-utils, sudo, and faillock installed (libpam-modules on Debian/Ubuntu, pam_faillock on RHEL); confirm pam_faillock is wired into the auth stack before relying on lockout.</li>
+      <li>Root or sudo access for identity changes.</li>
+      <li>A service account name for the lab (deploy used here).</li>
+      <li>The fundamentals user admin lab for passwd/shadow/group basics.</li>
+    </ul></div>
+
+    <section id="steps"><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create a role group and user</strong>
+          <p>Groups let you grant access by role rather than per user, which scales cleanly.</p>
+          <div class="command-block" data-copy><div class="command"><code>sudo groupadd ops &amp;&amp; sudo useradd -m -s /bin/bash -G ops deploy &amp;&amp; sudo passwd deploy &amp;&amp; id deploy</code></div><div class="note">[ROOT REQUIRED] Creates the ops group and a member user.
+          <p class="lab-output-label">Expected output:</p><pre><code>(passwd prompts twice for the new password)
+uid=1002(deploy) gid=1002(deploy) groups=1002(deploy),1003(ops)</code></pre>
+          <p class="lab-step-note">What this teaches: Role groups (ops) decouple who from what: users join the group, and permissions attach to the group, so onboarding is one usermod.</p></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Grant a scoped sudo rule with visudo</strong>
+          <p>Editing through visudo validates syntax so a typo cannot lock everyone out of sudo.</p>
+          <div class="command-block" data-copy><div class="command"><code>echo '%ops ALL=(root) /usr/bin/systemctl restart nginx, /usr/bin/journalctl' | sudo EDITOR='tee' visudo -f /etc/sudoers.d/ops &amp;&amp; sudo chmod 0440 /etc/sudoers.d/ops &amp;&amp; sudo visudo -cf /etc/sudoers.d/ops</code>
+          <p class="lab-output-label">Expected output:</p><pre><code>/etc/sudoers.d/ops: parsed OK</code></pre>
+          <p class="lab-step-note">What this teaches: sudoers.d drop-ins keep custom rules out of the main sudoers file; EDITOR='tee' with visudo -f validates syntax before the file goes live. The explicit chmod 0440 matters because sudo silently ignores drop-ins with wrong permissions; visudo -cf then confirms with parsed OK. Test the grant with sudo -l -U deploy before relying on it.</p></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Apply password aging and lockout</strong>
+          <p class="lab-output-label">Expected output:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">#</span> <span class="input">chage -M 90 -W 7 deploy &amp;&amp; faillock --user deploy</span></div>
+            <div class="terminal-output">deploy:
+When                Type  Source           Valid
+(no failed logins)</div>
+          </div>
+          <p class="lab-step-note">What this teaches: chage sets rotation policy while faillock tracks failures; together they implement aging plus brute-force lockout at the PAM layer. Tune the deny, unlock_time, and fail_interval thresholds in /etc/security/faillock.conf to match your policy, and confirm lockout actually triggers before depending on it.</p></div></div>
+      </div>
+    </section>
+
+    <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>
+      <p>Server identity management scales through indirection: users belong to role groups, sudo rules reference the groups, and policy (aging, lockout) attaches to accounts. Adding a team member becomes group membership plus a key, and removing one is a single deletion. Per-user bespoke rules are the anti-pattern this replaces.</p>
+      <p>/etc/sudoers.d/ exists so packages and admins stop editing one shared file: each drop-in is validated by visudo independently, and naming them numerically (10-ops) controls evaluation order. The %group syntax grants to every member, which is why the role-group plus sudoers.d combination is the standard server pattern.</p>
+      <p>faillock closes the brute-force loop that password aging leaves open. PAM's faillock module counts failures per user and temporarily denies authentication after the threshold, with automatic unlock after the configured interval. chage -l and faillock --user each audit one half of the policy.</p>
+    </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Account provisioning progress">
+graph LR
+  A[01 Group + user] -->|done| B[02 Scoped sudo]
+  B -->|done| C[03 Aging + lockout]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section id="validation"><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>sudo -l -U deploy &amp;&amp; chage -l deploy</code></div></div>
+      <p>You should see only the two allowed sudo commands and the 90-day aging policy. If so, least-privilege access is enforced.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+    <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>sudoers.d file ignored</td><td>Wrong permissions or missing #includedir directive</td><td>Files must be 0440 and not end in ~; confirm #includedir /etc/sudoers.d in sudoers</td></tr>
+      <tr><td>Rule order gives wider access than intended</td><td>Later entries can override earlier ones; last match wins</td><td>Name drop-ins so specific rules sort after general ones</td></tr>
+      <tr><td>faillock not triggering</td><td>pam_faillock missing from the auth stack</td><td>Check /etc/pam.d/common-auth (Debian) or system-auth (RHEL) includes it</td></tr>
+      <tr><td>Locked-out admin with no console</td><td>faillock applied to the only sudoer</td><td>Recover via console/single-user and faillock --user admin --reset</td></tr>
+      <tr><td>Group sudo rule not applying</td><td>User added to group but session predates it</td><td>Log out and back in; verify with id</td></tr>
+      <tr><td>NOPASSWD scope creep</td><td>Broad NOPASSWD lines defeat password re-auth</td><td>Scope NOPASSWD to specific binaries, keep the rest passworded</td></tr>
+    </tbody></table>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Broken sudoers locks out sudo:</strong> use the open root session and run <code>visudo -c</code> to find the error.</li>
+        <li><strong>Group change not effective:</strong> the user must log out and back in.</li>
+        <li><strong>Account locked:</strong> reset with <code>faillock --user deploy --reset</code>.</li>
+      </ul>
+    </details>
+
+    <section id="extensions"><h2>Extension Ideas</h2>
+      <ul>
+        <li>Centralize accounts with LDAP or FreeIPA for many servers.</li>
+        <li>Pair with <a href="../security/ssh-hardening.html">SSH Hardening</a> for key-only access.</li>
+        <li>Ship sudo logs to your SIEM from <a href="log-management.html">Log Management</a>.</li>
+      </ul>
+    </section>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Granted access by role group rather than per-user edits.</li>
+        <li>Limited sudo to 2 explicit commands, fully audited.</li>
+        <li>Enforced 90-day password aging with lockout on failures.</li>
+        <li>Confirmed effective privileges with <code>sudo -l</code>.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways" id="key-takeaways"><h3>Key Takeaways</h3>
+    <ul>
+      <li>Role groups plus sudoers.d drop-ins scale; bespoke per-user rules do not.</li>
+      <li>Validate every sudo change with visudo; syntax errors lock out elevation.</li>
+      <li>chage handles aging; faillock handles brute-force lockout.</li>
+      <li>Last match wins in sudoers: order drop-ins deliberately.</li>
+      <li>Group membership applies at next login.</li>
+    </ul></div>
+
+    <section id="practice-challenges"><h2>Practice Challenges</h2>
+    <div class="lab-challenge"><h4>Challenge 1: Onboarding script</h4><p>Goal: write a script that creates a user, adds them to ops, sets 90-day aging, and prints a verification summary with id and chage -l.</p><p><strong>Hint:</strong> make it idempotent with id checks.</p></div>
+    <div class="lab-challenge"><h4>Challenge 2: Lockout drill</h4><p>Goal: configure faillock for 3 attempts / 10-minute unlock on a test account, trigger it, verify denial, then reset.</p><p><strong>Hint:</strong> faillock --user test --reset clears it.</p></div>
+    </section>
+
+    <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="../linux-fundamentals/user-group-admin.html">Linux Fundamentals: User &amp; Group Administration</a></li>
+        <li><a href="../security/ssh-hardening.html">SSH Hardening</a></li>
+        <li><a href="log-management.html">Log Management &amp; Analysis</a></li>
+        <li><a href="post-install-config.html">Post-Installation Configuration</a></li>
+        <li><a href="service-management.html">Service Management (systemd)</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

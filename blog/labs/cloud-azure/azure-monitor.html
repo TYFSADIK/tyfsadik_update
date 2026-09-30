@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure Monitor: Logs, KQL Alerts &amp; Dashboards | TYFSADIK</title>
+  <meta name="description" content="Monitor Azure with Log Analytics and alerts: connect a VM, query telemetry with KQL, build alert rules with action groups, and control ingestion costs.">
+  <meta name="keywords" content="Azure Monitor, Log Analytics, KQL queries, Azure alerts, action groups, telemetry">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Azure Monitor: Logs, KQL Alerts &amp; Dashboards | TYFSADIK">
+  <meta property="og:description" content="Monitor Azure with Log Analytics and alerts: connect a VM, query telemetry with KQL, build alert rules with action groups, and control ingestion costs.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/cloud-azure/azure-monitor.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Azure Monitor: Logs, KQL Alerts &amp; Dashboards | TYFSADIK">
+  <meta name="twitter:description" content="Monitor Azure with Log Analytics and alerts: connect a VM, query telemetry with KQL, build alert rules with action groups, and control ingestion costs.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/cloud-azure/azure-monitor.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Azure Monitor, Log Analytics, and Alerting", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-03-15", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "Azure Monitor, Log Analytics, KQL", "articleSection": "Cloud", "learningResourceType": "Hands-on lab", "teaches": "Microsoft Azure cloud services"}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "HowTo", "name": "Azure Monitor & Alerting | Logs, KQL & Alerts", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"}, "step": [{"@type": "HowToStep", "name": "Create a workspace and connect the VM", "url": "https://tyfsadik.org/blog/labs/cloud-azure/azure-monitor.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Query telemetry with KQL", "url": "https://tyfsadik.org/blog/labs/cloud-azure/azure-monitor.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Create an alert with an action group", "url": "https://tyfsadik.org/blog/labs/cloud-azure/azure-monitor.html#step-by-step-execution"}]}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Cloud & Azure", "item": "https://tyfsadik.org/blog/labs/cloud-azure/index.html"}, {"@type": "ListItem", "position": 4, "name": "Azure Monitor & Alerting", "item": "https://tyfsadik.org/blog/labs/cloud-azure/azure-monitor.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'No data in workspace'?", "acceptedAnswer": {"@type": "Answer", "text": "enable diagnostic settings / install the Azure Monitor Agent. Check the chain in order: agent extension provisioning state (az vm extension show -g $RG --vm-name $VM -n AzureMonitorLinuxAgent --query provisioningState -o tsv must be Succeeded), then the DCR association (az monitor data-collection rule association list --resource $VMID must be non-empty), then the DCR's destination workspace ID. A missing or misassociated DCR produces total silence with no error anywhere."}}, {"@type": "Question", "name": "How do I fix 'KQL returns nothing'?", "acceptedAnswer": {"@type": "Answer", "text": "widen the time range; data ingestion has a short delay. First-time ingestion after installing the agent can take 5-15 minutes. Also remember the CLI query defaults to the last 24 hours, if you are testing against older data, pass --timespan explicitly, and check you are not filtering on a counter name your DCR never collected (Perf | distinct CounterName tells the truth)."}}, {"@type": "Question", "name": "How do I fix 'Alert never fires'?", "acceptedAnswer": {"@type": "Answer", "text": "verify the condition aggregation window and the action group target. The classic trap is load that spikes to 95% for 30 seconds: a 5-minute average over 80 never trips on that. Either sustain the load or lower the window with --window-size PT1M. Also confirm the alert's scope is the VM resource ID, not the workspace, a metric alert scoped to the wrong resource type evaluates against a metric that does not exist and silently stays healthy."}}, {"@type": "Question", "name": "How do I fix 'Alert fires but no email arrives'?", "acceptedAnswer": {"@type": "Answer", "text": "the rule and the notification are separate links. Run az monitor action-group show -g $RG -n tyf-admins and check the emailReceivers array, a typo in the address still deploys cleanly. Check spam, then check Monitor › Alerts in the portal: if the alert is listed as Fired there, the rule is fine and the action group delivery is the broken hop. Test the action group in isolation with az monitor action-group test-notifications create --action-group tyf-admins -g $RG --alert-type metricstaticthreshold."}}, {"@type": "Question", "name": "How do I fix 'az monitor log-analytics query fails with \"BadRequest\" or a path error'?", "acceptedAnswer": {"@type": "Answer", "text": "you almost certainly passed the workspace's customer GUID or a workspace name where the -w flag expects the full resource ID (/subscriptions/.../workspaces/tyf-law). Re-capture it with the --query id command from step 01. If the error is a 403 instead, your account is missing the Log Analytics Reader role on the workspace."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/cloud-azure/index.html">Cloud &amp; Azure</a> &rsaquo; <span>Azure Monitor &amp; Alerting</span></nav>
+    <div class="page-header"><h1>Azure Monitor: Log Analytics, KQL, and Alerts</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Cloud</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Azure Monitor</span><span class="tag">Log Analytics</span><span class="tag">KQL</span><span class="tag">alerts</span></div>
+    </div>
+<nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#architecture-overview">Architecture Overview</a></li>
+<li><a href="#metrics-vs-logs-choosing-the-right-signal">Metrics vs Logs: Choosing the Right Signal</a></li>
+<li><a href="#environment-setup">Environment Setup</a></li>
+<li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+<li><a href="#step-flow-map">Step Flow Map</a></li>
+<li><a href="#progress-so-far">Progress So Far</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#testing-validation">Testing & Validation</a></li>
+<li><a href="#visualizing-your-telemetry">Visualizing Your Telemetry</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#cost-guardrails">Cost Guardrails</a></li>
+<li><a href="#extension-ideas">Extension Ideas</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#cleanup">Cleanup</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    
+
+    <section><p class="lead">You will route VM metrics and logs into a Log Analytics workspace, query them with KQL, and create an alert that notifies you on a threshold. By the end you will detect problems before users do.</p>
+      <p>This lab builds the observability backbone every production environment needs: a central place where telemetry lands, a query language to interrogate it, and a rule that wakes a human up when something drifts out of spec. Nothing here is abstract, every command below ran against a real VM, and every output block shows what you should expect to see. Follow it end to end and you will have a working detect-and-notify pipeline you can reuse for any Azure resource.</p>
+      <p>We work with three building blocks. <strong>Azure Monitor</strong> is the platform-level service that collects metrics and logs from every resource. <strong>Log Analytics</strong> is the workspace where log data is stored in tables (Heartbeat, Perf, Event, Syslog) and queried. <strong>KQL</strong> (Kusto Query Language) is the read-only language you use to search, filter, and aggregate those tables, the same language Microsoft Sentinel is built on, so the skills transfer directly to SOC work.</p>
+    </section>
+
+    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+      <ul>
+        <li>Connect resources to a Log Analytics workspace.</li>
+        <li>Query telemetry with <span class="glossary-term" data-definition="Kusto Query Language: the read-only query language used by Azure Monitor and Sentinel.">KQL</span>.</li>
+        <li>Create a metric/log alert with an action group.</li>
+        <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> a running Azure VM.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="architecture-overview">Architecture Overview</h2>
+      <p>The data path has four hops. The <strong>Azure Monitor Agent (AMA)</strong> on the VM reads performance counters and event logs locally, then ships them over HTTPS to the ingestion endpoint. A <strong>Data Collection Rule (DCR)</strong> tells the agent exactly which counters and logs to collect and which workspace to send them to, no DCR, no data. The <strong>Log Analytics workspace</strong> stores everything in typed tables with a retention window (30 days by default). Finally, an <strong>alert rule</strong> evaluates either a metric (near-real-time, pre-aggregated numbers like CPU percentage) or a scheduled KQL query against the workspace, and when the condition trips it invokes an <strong>action group</strong>, email, SMS, webhook, Logic App, whatever you wire up.</p>
+      <p>Understanding which hop is broken is 90% of troubleshooting in this lab: agent installed but no DCR means silence; DCR pointing at the wrong workspace means you are querying an empty room; a valid rule with a broken action group means alerts fire into the void.</p>
+      <div class="mermaid" role="img" aria-label="Telemetry flow from resources to alerts">
+graph LR
+  VM[Azure VM] -->|agent/diagnostics| LA[Log Analytics workspace]
+  LA -->|KQL query| Rule[Alert rule]
+  Rule -->|fires| AG[Action group: email/webhook]
+      </div>
+    </section>
+
+    <section><h2 id="metrics-vs-logs-choosing-the-right-signal">Metrics vs Logs: Choosing the Right Signal</h2>
+      <p>Azure Monitor gives you two fundamentally different data types, and picking the wrong one is the most common design error beginners make. <strong>Metrics</strong> are lightweight, pre-aggregated numbers (CPU %, disk bytes, network in/out) stored for 93 days at no ingestion cost for platform metrics. They are near-real-time, typically under a minute old, which makes them the right choice for threshold alerting: "CPU over 80% for 5 minutes." <strong>Logs</strong> are rich, structured records (perf counter samples, syslog lines, Windows events) stored in Log Analytics tables. They cost money to ingest and retain, arrive with a few minutes of latency, but can answer questions metrics never could: "which process spiked," "what did sshd log right before the outage."</p>
+      <p>The rule of thumb this lab follows: <em>alert on metrics, investigate with logs.</em> The metric alert in step 03 wakes you up fast and cheap; the KQL queries in step 02 are what you run at 2 a.m. to figure out why. A log alert (the scheduled query also shown in step 03) is the middle ground, use it only when the condition you care about cannot be expressed as a simple numeric threshold, like "zero heartbeat rows in the last 10 minutes."</p>
+    </section>
+
+    <section><h2 id="environment-setup">Environment Setup</h2>
+<div class="lab-prereqs"><h3>Prerequisites</h3>
+<ul>
+<li>An Azure subscription with Contributor access on a resource group, and a running VM (Linux or Windows) to monitor.</li>
+<li>Azure CLI 2.5x; no KQL experience needed, though basic familiarity with tables and filters helps.</li>
+<li>Assumed skills: deploying a VM (see the Azure VM Configuration lab) and running <code>az</code> commands.</li>
+</ul></div>
+      <p><strong>You will need:</strong> a VM, a Log Analytics workspace, and the Azure CLI.</p>
+      <p><strong>Before you begin:</strong> enable diagnostic settings so data actually flows to the workspace.</p>
+      <p>Concretely, the prerequisites are: an Azure subscription where you hold at least <em>Contributor</em> on the resource group, one running Linux or Windows VM (this walkthrough uses an Ubuntu VM named <code>web01</code> in resource group <code>tyf-rg</code>), and Azure CLI 2.50+ logged in with <code>az login</code>. If you need a VM first, follow the <a href="azure-vm-config.html">Azure VM Configuration</a> lab and come back.</p>
+      <p>Set shell variables up front so the rest of the lab is copy-paste friendly. We will resolve the VM's resource ID now because the alert step needs it:</p>
+      <p class="code-label">Confirm CLI version and login context first</p>
+      <pre><code>az version --query '"azure-cli"' -o tsv
+az account show --query '{sub:name, user:user.name}' -o table</code></pre>
+      <p class="code-label">Expected output</p>
+      <pre><code>2.67.0
+Sub                 User
+------------------  -------------------------
+Pay-As-You-Go       taki@tyfsadik.org</code></pre>
+      <p>If <code>az account show</code> errors, run <code>az login</code> and, with multiple subscriptions, <code>az account set --subscription &lt;name&gt;</code>, every command after this point acts on whatever subscription is currently selected, and creating a workspace in the wrong sub is a frustrating way to spend an hour.</p>
+      <p class="code-label">Set lab variables (bash)</p>
+      <pre><code>RG=tyf-rg
+LAW=tyf-law
+VM=web01
+VMID=$(az vm show -g $RG -n $VM --query id -o tsv)
+echo $VMID</code></pre>
+      <p class="code-label">Expected output</p>
+      <pre><code>/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/tyf-rg/providers/Microsoft.Compute/virtualMachines/web01</code></pre>
+      <p><strong>Verify before moving on:</strong> the VMID must be a full resource ID starting with <code>/subscriptions/</code>. If it prints empty, the VM name or resource group is wrong, run <code>az vm list -o table</code> to see what actually exists.</p>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create a workspace and connect the VM</strong>
+          <p>The workspace is the container all telemetry lands in. Create it in the same region as the VM to keep ingestion latency low and avoid cross-region data residency surprises. Workspace names are globally unique, so if <code>tyf-law</code> is taken, append a suffix.</p>
+          <div class="command-block" data-copy><div class="command"><code>az monitor log-analytics workspace create -g tyf-rg -n tyf-law</code></div></div>
+          <p>Next, capture the workspace resource ID, the query and DCR steps both need it. Note this is the <em>resource</em> ID (<code>/subscriptions/.../workspaces/tyf-law</code>), not the workspace's customer GUID; mixing those two up is the single most common mistake in this lab.</p>
+          <p class="code-label">Capture the workspace ID</p>
+          <pre><code>WID=$(az monitor log-analytics workspace show -g $RG -n $LAW --query id -o tsv)
+echo $WID</code></pre>
+          <p>Now install the Azure Monitor Agent on the VM. On Linux this is the <code>AzureMonitorLinuxAgent</code> extension; on Windows it is <code>AzureMonitorWindowsAgent</code>. The agent alone collects nothing, it just sits there waiting for a rule to tell it what to do.</p>
+          <p class="code-label">Install the Azure Monitor Agent extension</p>
+          <pre><code>az vm extension set -g $RG --vm-name $VM \
+  --name AzureMonitorLinuxAgent \
+  --publisher Microsoft.Azure.Monitor \
+  --enable-auto-upgrade true</code></pre>
+          <p>The missing piece is the Data Collection Rule. The snippet below creates a minimal DCR with an explicit performance-counter source (streams, sampling frequency, counter specifiers, and a source name are all required fields), a Log Analytics destination, and a data flow binding them. Heartbeat rows are emitted by the agent automatically to the DCR's destinations once the association exists, so the DCR only needs to define the Perf counters. Then we associate the DCR with the VM. In the portal you would point-and-click through "Monitor &rsaquo; Data Collection Rules"; the CLI equivalent (the <code>data-collection rule</code> commands live in the <code>monitor-control-service</code> extension, which the CLI installs automatically the first time you run one):</p>
+          <p class="code-label">Create a DCR and associate it with the VM</p>
+          <pre><code>az monitor data-collection rule create -g $RG -n tyf-dcr \
+  --location eastus \
+  --log-analytics resource-id=$WID name=law-dest \
+  --performance-counters streams=Microsoft-Perf sampling-frequency=60 \
+    counter-specifiers='\Processor Information(_Total)\% Processor Time' \
+    counter-specifiers='\LogicalDisk(_Total)\% Free Space' name=perf-counters \
+  --data-flows streams=Microsoft-Perf destinations=law-dest
+
+DCRID=$(az monitor data-collection rule show -g $RG -n tyf-dcr --query id -o tsv)
+
+az monitor data-collection rule association create \
+  -n tyf-dcr-assoc --resource $VMID --data-collection-rule-id $DCRID</code></pre>
+          <p><strong>How to verify:</strong> wait 5-10 minutes (first-time ingestion is not instant), then confirm the agent is reporting in, the Heartbeat table should contain a row for <code>web01</code>. The verification query is in step 02. If the Heartbeat table is empty after 15 minutes, jump to the Troubleshooting section: it is almost always the DCR association.</p>
+          <p>Two workspace settings worth deciding now rather than later. <strong>Retention</strong> defaults to 30 days of interactive retention; bump it to 90 for a homelab you want to trend over a quarter. <strong>Pricing</strong>: the first 5 GB per month of ingestion is free, and a single VM's Heartbeat plus a modest Perf set is well under 1 GB/month, but a chatty Syslog DCR on a busy server is not. Check actual ingestion any time with the query below.</p>
+          <p class="code-label">Set 90-day retention and check ingestion volume</p>
+          <pre><code>az monitor log-analytics workspace update -g $RG -n $LAW --retention-time 90
+
+az monitor log-analytics query -w $WID --analytics-query "
+Usage
+| where TimeGenerated &gt; ago(1d)
+| summarize GB = sum(Quantity) / 1024 by DataType
+| order by GB desc"</code></pre>
+          <p><strong>Common mistake:</strong> creating the DCR in a different region than the workspace, or forgetting <code>--location</code> entirely. DCRs are regional resources and the association silently fails to deliver data when the region pairing is wrong, keep workspace, DCR, and VM in one region for this lab.</p>
+        
+<p class="lab-step-note">What this teaches: The agent and the data collection rule are the plumbing; without data flowing in, every query and alert downstream is empty.</p></div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Query telemetry with KQL</strong>
+          <p>KQL reads like a pipeline: start with a table name, then pipe (<code>|</code>) through operators that filter, shape, and aggregate. The query runs against the whole workspace over the time range you specify, and it is read-only, you cannot damage anything by experimenting. Start with the simplest possible health check: who is heartbeating?</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az monitor log-analytics query -w $WID --analytics-query "Heartbeat | summarize count() by Computer"</span></div>
+            <div class="terminal-output">Computer   count_
+web01      120</div>
+          </div>
+          <p>Read the query left to right: take the <code>Heartbeat</code> table, then <code>summarize</code> (aggregate) the rows into a count grouped <code>by Computer</code>. One heartbeat row arrives per minute per machine, so 120 rows means roughly two hours of a healthy agent. If your VM name appears here, the entire ingestion chain from step 01 works.</p>
+          <p>Now a query with real operational value, average CPU per 5-minute bucket over the last hour. This introduces three operators you will use constantly: <code>where</code> filters rows, <code>bin()</code> rounds timestamps into buckets, and <code>render</code> draws a chart in the portal (the CLI ignores it harmlessly).</p>
+          <p class="code-label">CPU trend over the last hour</p>
+          <pre><code>az monitor log-analytics query -w $WID --analytics-query "
+Perf
+| where TimeGenerated &gt; ago(1h)
+| where ObjectName == 'Processor' and CounterName == '% Processor Time'
+| summarize AvgCPU = avg(CounterValue) by Computer, bin(TimeGenerated, 5m)
+| order by TimeGenerated asc"</code></pre>
+          <p class="code-label">Expected output (truncated)</p>
+          <pre><code>Computer  TimeGenerated                 AvgCPU
+web01     2026-09-19T14:00:00Z          12.4
+web01     2026-09-19T14:05:00Z          18.7
+web01     2026-09-19T14:10:00Z          61.2</code></pre>
+          <p>Two useful variations to try once the basics work: <code>Heartbeat | summarize arg_max(TimeGenerated, *) by Computer</code> shows the last heartbeat per machine (a classic "is it down?" query), and <code>Perf | distinct CounterName</code> lists exactly which counters your DCR is collecting, which tells you what you are even allowed to alert on.</p>
+          <p>If your DCR also collects Syslog (add the <code>Microsoft-Syslog</code> stream the same way as Perf), this is the query you reach for during an incident, every error-or-worse syslog line in the last day, counted by facility so noise from one chatty daemon does not drown the signal:</p>
+          <p class="code-label">Hunt syslog errors by severity</p>
+          <pre><code>az monitor log-analytics query -w $WID --analytics-query "
+Syslog
+| where TimeGenerated &gt; ago(1d)
+| where SeverityLevel in ('err', 'crit', 'alert', 'emerg')
+| summarize Events = count(), LastSeen = max(TimeGenerated) by Computer, Facility, SeverityLevel
+| order by Events desc"</code></pre>
+          <p class="code-label">Expected output (illustrative)</p>
+          <pre><code>Computer  Facility  SeverityLevel  Events  LastSeen
+web01     auth      err            14      2026-09-21T03:12:44Z
+web01     daemon    err            3       2026-09-21T02:58:01Z</code></pre>
+          <p>Fourteen <code>auth/err</code> rows on a VM that should see no failed logins is exactly the kind of thing worth a follow-up: drill in by replacing the <code>summarize</code> line with <code>| project TimeGenerated, HostName, ProcessName, SyslogMessage</code> to read the raw messages. This query-to-drilldown loop, aggregate to find the anomaly, then <code>project</code> to read the raw rows, is the core workflow in both Azure Monitor and Sentinel.</p>
+          <p>One more query you will reuse forever: disk space. A full disk is the most common cause of "the server is up but the app is dead," and the <code>% Free Space</code> counter (LogicalDisk object) catches it early. This version shows the worst disk per machine over the last day:</p>
+          <p class="code-label">Lowest disk free space per machine, last 24 hours</p>
+          <pre><code>az monitor log-analytics query -w $WID --analytics-query "
+Perf
+| where TimeGenerated &gt; ago(1d)
+| where ObjectName == 'LogicalDisk' and CounterName == '% Free Space'
+| where InstanceName != '_Total'
+| summarize MinFree = min(CounterValue) by Computer, InstanceName
+| order by MinFree asc"</code></pre>
+          <p class="code-label">Expected output (illustrative)</p>
+          <pre><code>Computer  InstanceName  MinFree
+web01     /             71.3
+web01     /mnt          98.9</code></pre>
+          <p>If <code>MinFree</code> for a real workload ever trends down week over week, that trend line is your capacity plan, and it is exactly the kind of condition you would later turn into a scheduled-query alert at 15% free.</p>
+          <p><strong>Common mistakes:</strong> (1) the CLI defaults to a 24-hour lookback and a 10-minute query timeout, for big workspaces pass <code>--timespan PT1H</code> explicitly; (2) table and column names are case-sensitive in some operators, so <code>heartbeat</code> may not match <code>Heartbeat</code>; (3) the AMA-supported specifier is <code>\Processor Information(_Total)\% Processor Time</code> on both OSes, verify the ObjectName with <code>distinct</code> before hardcoding; (4) quoting: the query lives inside double quotes in bash, so use single quotes for KQL string literals and escape any embedded double quotes or the shell eats them.</p>
+        
+<p class="lab-step-note">What this teaches: KQL reads as a pipeline of transformations; start broad with <code>take 10</code>, then add filters one at a time.</p></div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Create an alert with an action group</strong>
+          <p>An alert rule without an action group fires silently, the portal shows it, but nobody gets paged. So we build the action group first. An action group is just a named list of notification targets (email, SMS, webhook, Azure Function) that any number of alert rules can share.</p>
+          <p class="code-label">Create an action group that emails you</p>
+          <pre><code>az monitor action-group create -g $RG -n tyf-admins \
+  --short-name tyfadmins \
+  --action email ops taki@tyfsadik.org
+
+AG_ID=$(az monitor action-group show -g $RG -n tyf-admins --query id -o tsv)</code></pre>
+          <p>Now the alert rule itself. This is a <em>metric</em> alert: it watches the host-level <code>Percentage CPU</code> metric that the Azure platform emits for every VM (no agent needed), averaged over 5 minutes, evaluated every minute. If the average exceeds 80%, it fires and calls the action group.</p>
+          <div class="command-block" data-copy><div class="command"><code>az monitor metrics alert create -g tyf-rg -n cpu-high --scopes $VMID --condition "avg Percentage CPU &gt; 80" --action $AG_ID</code></div></div>
+          <p>Unpack the <code>--condition</code> string, because its grammar trips people up: <code>avg</code> is the time aggregation over the window, <code>Percentage CPU</code> is the metric name exactly as the platform spells it, and <code>&gt; 80</code> is the threshold. Two flags worth knowing even though we accept the defaults: <code>--window-size</code> (default PT5M, how far back each evaluation looks) and <code>--evaluation-frequency</code> (default PT1M, how often the rule runs). A 5-minute average over 80% smooths out brief spikes while still catching sustained saturation.</p>
+          <p>For completeness, the log-alert equivalent, this one fires when the VM stops heartbeating, i.e. the machine or agent is down. It runs the KQL from step 02 on a schedule:</p>
+          <p class="code-label">Log alert: fire when heartbeat goes missing</p>
+          <pre><code>az monitor scheduled-query create -g $RG -n heartbeat-missing \
+  --scopes $WID \
+  --condition "count 'hb' &lt; 1" \
+  --condition-query 'hb=Heartbeat | where Computer == "web01"' \
+  --evaluation-frequency 5m --window-size 10m \
+  --action-groups $AG_ID \
+  --severity 2</code></pre>
+          <p>The two condition flags work as a pair: <code>--condition-query</code> names the KQL (<code>hb=...</code>) and <code>--condition</code> applies the count operator to that name. Embedding the whole query inside the condition string is a common syntax error that fails validation.</p>
+          <p>Severity is worth a deliberate decision: Azure uses 0 (critical) through 4 (verbose), and the number is what downstream tooling filters on. A sane homelab scheme is Sev 2 for "page me now" (heartbeat missing, disk full) and Sev 3 for "email me in the morning" (CPU warning at 70%). If everything is Sev 0, nothing is, alert fatigue is a real failure mode, and it starts with undifferentiated severity.</p>
+          <p>One more production habit: an <strong>alert processing rule</strong> suppresses notifications during planned maintenance so a reboot you scheduled does not page you at 3 a.m. This one mutes the action group every Saturday night:</p>
+          <p class="code-label">Suppress alerts during a maintenance window</p>
+          <pre><code>az monitor alert-processing-rule create -g $RG -n weekend-maintenance \
+  --rule-type RemoveAllActionGroups \
+  --scopes $VMID \
+  --schedule-time-zone "Eastern Standard Time" \
+  --schedule-recurrence-type Weekly \
+  --schedule-recurrence-start-time "22:00:00" \
+  --schedule-recurrence-end-time "06:00:00" \
+  --schedule-recurrence Saturday Sunday \
+  --description "Planned patch window - do not page"</code></pre>
+          <p>Three details the CLI is strict about: the rule type is <code>RemoveAllActionGroups</code> (only <code>AddActionGroups</code> and <code>RemoveAllActionGroups</code> exist, <code>RemoveAlerts</code> is rejected), the weekly days go in <code>--schedule-recurrence</code> as space-delimited day names, and the start/end times and time zone are separate flags. Set <code>--schedule-time-zone</code> explicitly or the window is evaluated in UTC and your "Saturday night" lands somewhere else.</p>
+          <p><strong>How to verify:</strong> <code>az monitor metrics alert show -g $RG -n cpu-high</code> should return JSON with <code>"enabled": true</code> and your action group ID under <code>actions</code>. If <code>actions</code> is an empty array, the <code>--action</code> flag did not resolve, echo <code>$AG_ID</code> and re-run. Also confirm the email address in the action group actually received the "you have been added to an action group" confirmation message Azure sends on creation.</p>
+          <p>Finish with an inventory of everything watching this resource group, so you know exactly what exists before you test it:</p>
+          <p class="code-label">List all alert rules in the resource group</p>
+          <pre><code>az monitor metrics alert list -g $RG -o table
+az monitor scheduled-query list -g $RG -o table</code></pre>
+          <p class="code-label">Expected output (first command)</p>
+          <pre><code>Name     Enabled    Severity    Condition
+-------  ---------  ----------  -------------------------
+cpu-high True                   avg Percentage CPU &gt; 80.0</code></pre>
+        
+<p class="lab-step-note">What this teaches: Rules detect, action groups notify; keeping the two separate lets one signal reach email, SMS, and a webhook without duplication.</p></div></div>
+      </div>
+    </section>
+<section><h2 id="step-flow-map">Step Flow Map</h2>
+<div class="mermaid" role="img" aria-label="Flow of the lab steps from first to last">
+graph TD
+  S1["Create a workspace and connect the VM"]
+  S2["Query telemetry with KQL"]
+  S3["Create an alert with an action group"]
+  S1 --> S2
+  S2 --> S3
+</div>
+<p>Each box is one step in the lab; work them in order, since later steps build on earlier state.</p>
+</section>
+
+    
+
+    <section><h2 id="progress-so-far">Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Monitoring progress">
+graph LR
+  A[01 Workspace] -->|done| B[02 KQL query]
+  B -->|done| C[03 Alert rule]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+<div class="lab-explainer">
+<p>Azure Monitor collects two fundamentally different kinds of signal. Metrics are numeric time series sampled on a fixed cadence: CPU percent, disk queue depth, request counts. They are cheap to store, fast to query, and ideal for threshold alerts. Logs are semi-structured records shipped to a Log Analytics workspace: syslog lines, application events, audit entries. They are richer and more expensive, and you query them with KQL. Choosing the right signal for the question is half the skill.</p>
+<p>Data gets into the workspace through data collection rules (DCRs), which bind a set of sources to a set of destinations and say exactly which tables to populate. The Azure Monitor agent on the VM reads the DCR and ships matching data. If a query returns nothing, the problem is almost always upstream of the query: the agent is not installed, the DCR is not associated, or you are looking at the wrong time range.</p>
+<p>Alert rules separate detection from notification. The rule defines the signal, the threshold, and how often to evaluate; the action group defines who gets told and how (email, SMS, webhook, logic app). One rule can fan out to many action groups, and one action group can serve many rules, which keeps notification policy in one place instead of scattered across rules.</p>
+</div>
+</section>
+
+    <section><h2 id="testing-validation">Testing &amp; Validation</h2>
+      <p>An alert you have never seen fire is a hypothesis, not a control. Prove the whole pipeline by deliberately tripping it: generate sustained CPU load on the VM, wait out the 5-minute evaluation window, and watch the notification arrive.</p>
+      <div class="command-block" data-copy><div class="command"><code>az monitor metrics alert show -g tyf-rg -n cpu-high --query "enabled" -o tsv</code></div></div>
+      <p>The alert should report <code>true</code>. Generate load on the VM and confirm the action group notifies you, proving end-to-end observability.</p>
+      <p>On the Ubuntu VM, install <code>stress</code> and pin all cores for ten minutes, long enough to push the 5-minute average over 80%:</p>
+      <p class="code-label">Run on the VM, saturate the CPU</p>
+      <pre><code>sudo apt update &amp;&amp; sudo apt install -y stress
+nproc                       # how many cores to load
+stress --cpu $(nproc) --timeout 600 &amp;</code></pre>
+      <p>While the load runs, watch the metric from your workstation so you can see the average climb in near-real-time (platform metrics are roughly a minute behind):</p>
+      <p class="code-label">Watch CPU climb from the CLI</p>
+      <pre><code>watch -n 30 "az monitor metrics list --resource $VMID \
+  --metric 'Percentage CPU' --interval PT1M \
+  --query 'value[0].timeseries[0].data[-3:].[timeStamp,average]' -o tsv"</code></pre>
+      <p class="code-label">Expected output near the end of the stress window</p>
+      <pre><code>2026-09-19T15:02:00Z  96.41
+2026-09-19T15:03:00Z  97.02
+2026-09-19T15:04:00Z  96.87</code></pre>
+      <p>Within a few minutes of the average crossing 80, three things should happen: the alert's state in the portal flips to <em>Fired</em>, the action group sends the email, and the alert appears under Monitor &rsaquo; Alerts. When <code>stress</code> exits, the rule resolves itself back to healthy and (if the action group includes resolution notifications) you get a second "resolved" message. Keep that stress email, a screenshot of it is your proof the lab worked.</p>
+      <p>Do not forget the second alert. The <code>heartbeat-missing</code> scheduled query will never fire during a CPU stress test, it fires when telemetry stops. The clean way to trip it is to stop the agent service on the VM for longer than the 10-minute window, then start it again:</p>
+      <p class="code-label">Run on the VM, simulate an agent outage</p>
+      <pre><code>sudo systemctl stop azuremonitoragent
+# wait 12-15 minutes - past the 10-minute evaluation window
+sudo systemctl start azuremonitoragent
+systemctl is-active azuremonitoragent</code></pre>
+      <p class="code-label">Expected output</p>
+      <pre><code>active</code></pre>
+      <p>While the agent is stopped, the Heartbeat table goes quiet, the scheduled query's count drops below 1, and the log alert fires its own email. This validates the two failure modes independently: <em>bad state</em> (CPU saturated) and <em>no signal at all</em> (agent or machine down). Real outages are usually the second kind.</p>
+      <p>Final portal checklist before calling the lab done:</p>
+      <ul>
+        <li>Monitor &rsaquo; Alerts shows both <code>cpu-high</code> and <code>heartbeat-missing</code> with a Fired-then-Resolved history.</li>
+        <li>Your inbox holds four messages: CPU fired, CPU resolved, heartbeat fired, heartbeat resolved.</li>
+        <li>The Log Analytics workspace's Heartbeat table shows a gap matching your agent stop window, visual proof of what the alert detected.</li>
+        <li><code>az monitor metrics alert list -g $RG -o table</code> lists both rules with <code>Enabled: True</code>.</li>
+      </ul>
+      <p>One detail worth a look while the emails are fresh: open the "Fired" notification and read the payload. Azure alert notifications follow the common alert schema, and every field you will ever route on in a webhook or Logic App is in there:</p>
+      <p class="code-label">What the notification payload contains (abridged)</p>
+      <pre><code>{
+  "schemaId": "azureMonitorCommonAlertSchema",
+  "data": {
+    "essentials": {
+      "alertRule": "cpu-high",
+      "severity": "Sev3",
+      "monitorCondition": "Fired",
+      "firedDateTime": "2026-09-21T15:06:12Z",
+      "targetResource": "/subscriptions/.../virtualMachines/web01"
+    }
+  }
+}</code></pre>
+      <p>The three fields that matter operationally are <code>severity</code> (should this page anyone?), <code>monitorCondition</code> (Fired vs Resolved, a webhook handler must branch on it or you will treat recovery emails as new outages), and <code>targetResource</code> (which machine, when one rule watches fifty VMs).</p>
+    </section>
+
+    <section><h2 id="visualizing-your-telemetry">Visualizing Your Telemetry</h2>
+      <p>Alerts tell you when something broke; a dashboard tells you how the system breathes when it is healthy. The fastest win is pinning an existing query: run the CPU-trend KQL from step 02 in the portal's Log Analytics blade, click <em>Pin to dashboard</em>, and you have a living chart with zero new code. To do it from the CLI, save the query and share it:</p>
+      <p class="code-label">Save a query pack entry for reuse</p>
+      <pre><code>cat &gt; cpu-trend.kql &lt;&lt;'EOF'
+Perf
+| where TimeGenerated &gt; ago(6h)
+| where ObjectName == 'Processor' and CounterName == '% Processor Time'
+| summarize AvgCPU = avg(CounterValue) by bin(TimeGenerated, 5m)
+| render timechart
+EOF</code></pre>
+      <p>Notice the <code>render timechart</code> operator at the end: in the portal it turns the result table into a line chart automatically. Keep a folder of these <code>.kql</code> files in version control, the queries are the real deliverable of this lab, and they port directly into workbooks, dashboards, and Sentinel analytics rules later.</p>
+      <p>For a proper multi-panel view, open Monitor &rsaquo; Workbooks, start from the "VM Performance" template, and point it at your workspace. Templates are editable, so replace any default query with your own KQL and the workbook becomes a custom operations dashboard in about ten minutes.</p>
+    </section>
+
+    <section><h2 id="troubleshooting">Troubleshooting</h2>
+      <ul>
+        <li><strong>No data in workspace:</strong> enable diagnostic settings / install the Azure Monitor Agent. Check the chain in order: agent extension provisioning state (<code>az vm extension show -g $RG --vm-name $VM -n AzureMonitorLinuxAgent --query provisioningState -o tsv</code> must be <code>Succeeded</code>), then the DCR association (<code>az monitor data-collection rule association list --resource $VMID</code> must be non-empty), then the DCR's destination workspace ID. A missing or misassociated DCR produces total silence with no error anywhere.</li>
+        <li><strong>KQL returns nothing:</strong> widen the time range; data ingestion has a short delay. First-time ingestion after installing the agent can take 5-15 minutes. Also remember the CLI query defaults to the last 24 hours, if you are testing against older data, pass <code>--timespan</code> explicitly, and check you are not filtering on a counter name your DCR never collected (<code>Perf | distinct CounterName</code> tells the truth).</li>
+        <li><strong>Alert never fires:</strong> verify the condition aggregation window and the action group target. The classic trap is load that spikes to 95% for 30 seconds: a 5-minute <em>average</em> over 80 never trips on that. Either sustain the load or lower the window with <code>--window-size PT1M</code>. Also confirm the alert's scope is the VM resource ID, not the workspace, a metric alert scoped to the wrong resource type evaluates against a metric that does not exist and silently stays healthy.</li>
+        <li><strong>Alert fires but no email arrives:</strong> the rule and the notification are separate links. Run <code>az monitor action-group show -g $RG -n tyf-admins</code> and check the <code>emailReceivers</code> array, a typo in the address still deploys cleanly. Check spam, then check Monitor &rsaquo; Alerts in the portal: if the alert is listed as Fired there, the rule is fine and the action group delivery is the broken hop. Test the action group in isolation with <code>az monitor action-group test-notifications create --action-group tyf-admins -g $RG --alert-type metricstaticthreshold</code>, which needs the action group name, the resource group, and a supported alert type like <code>metricstaticthreshold</code> or <code>logalertv2</code>.</li>
+        <li><strong><code>az monitor log-analytics query</code> fails with "BadRequest" or a path error:</strong> you almost certainly passed the workspace's customer GUID or a workspace <em>name</em> where the <code>-w</code> flag expects the full resource ID (<code>/subscriptions/.../workspaces/tyf-law</code>). Re-capture it with the <code>--query id</code> command from step 01. If the error is a 403 instead, your account is missing the <em>Log Analytics Reader</em> role on the workspace.</li>
+      </ul>
+    
+<p>Quick-reference for the failures you are most likely to hit in this lab.</p>
+<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<tr><td>Queries return no rows</td><td>Agent not connected, DCR not associated, or the wrong time range</td><td>Run <code>Heartbeat | take 10</code> in Logs; if the VM is absent, fix the agent and DCR before touching the query.</td></tr>
+<tr><td>Alert rule never fires</td><td>Evaluation frequency longer than the spike, or the threshold never crossed for the full window</td><td>Temporarily lower the threshold to force a fire and confirm the pipeline works end to end.</td></tr>
+<tr><td>Alert fires but nobody is notified</td><td>Action group misconfigured, or the email landed in spam</td><td>Use the action group's built-in test, and confirm the receiver address.</td></tr>
+<tr><td>Ingestion costs spike</td><td>Verbose tables collected with long retention</td><td>Set a daily ingestion cap on the workspace and trim the DCR to the tables you actually query.</td></tr>
+<tr><td>KQL syntax errors on simple queries</td><td>Table or column name typo; KQL is case-sensitive</td><td>Start from a known-good query and change one clause at a time.</td></tr>
+</tbody></table>
+</section>
+
+    <section><h2 id="cost-guardrails">Cost Guardrails</h2>
+      <p>Log Analytics bills per GB ingested beyond the monthly free allowance, and a misconfigured DCR (debug-level syslog from a busy host is the classic offender) can turn a learning exercise into an invoice. Two cheap defenses: a daily ingestion cap on the workspace, and an alert on the <code>Usage</code> table itself so you hear about a data flood the same day it starts.</p>
+      <p class="code-label">Set a daily ingestion cap of 0.5 GB</p>
+      <pre><code>az monitor log-analytics workspace update -g $RG -n $LAW --quota 0.5</code></pre>
+      <p>Understand the trade-off before using a cap in production: when the cap hits, collection <em>stops</em> for the rest of the day, which means your log alerts go blind exactly when something unusual is happening. For a homelab the cap is the right choice; for production, alert on volume instead of capping it:</p>
+      <p class="code-label">Alert when daily ingestion exceeds 1 GB</p>
+      <pre><code>az monitor scheduled-query create -g $RG -n ingestion-spike \
+  --scopes $WID \
+  --condition "count 'ing' &gt; 0" \
+  --condition-query 'ing=Usage | where TimeGenerated &gt; ago(1d) | summarize GB = sum(Quantity) / 1024 | where GB &gt; 1' \
+  --evaluation-frequency 1h --window-size 1h \
+  --action-groups $AG_ID --severity 3</code></pre>
+      <p>Check the <a href="cost-management.html">Azure Cost Management</a> lab for the budget-alert half of this story, workspace caps watch gigabytes, budgets watch dollars, and you want both.</p>
+    </section>
+
+    <section><h2 id="extension-ideas">Extension Ideas</h2>
+      <ul>
+        <li>Build dashboards or workbooks over the same KQL, a workbook turns the CPU-trend query from step 02 into a living report your team can open without touching the CLI.</li>
+        <li>Forward security signals into Microsoft Sentinel: enable the Sentinel solution on this same workspace and your Heartbeat and Syslog tables immediately become hunting material.</li>
+        <li>Add a second severity tier: a warning alert at 70% CPU that only emails, and a critical alert at 90% that also fires a webhook into a chat channel or paging tool.</li>
+        <li>Compare with self-hosted logging in <a href="../linux-server/log-management.html">Log Management</a>, rsyslog and logrotate solve the same problem with zero cloud dependency, and knowing both trade-offs is the real skill.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Centralized VM telemetry in a Log Analytics workspace.</li>
+        <li>Queried metrics and heartbeats with KQL.</li>
+        <li>Created a CPU alert wired to a notification action group.</li>
+        <li>Achieved proactive detection ahead of user impact.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways"><h3 id="key-takeaways">Key Takeaways</h3>
+      <ul>
+        <li><strong>Ingestion is a chain:</strong> agent &rarr; DCR &rarr; workspace. Data only flows when every link exists, and the Heartbeat table is your end-to-end health check.</li>
+        <li><strong>KQL is a pipeline:</strong> table, then <code>where</code>, <code>summarize</code>, <code>bin()</code>, <code>order by</code>. Master those five operators and you can answer most operational questions.</li>
+        <li><strong>Metric alerts are cheap and fast, log alerts are flexible:</strong> use platform metrics for thresholds like CPU, and scheduled KQL queries for conditions metrics cannot express, like "no heartbeat in 10 minutes."</li>
+        <li><strong>An alert without a tested action group is decoration:</strong> always generate real load and watch the notification arrive before you call monitoring done.</li>
+        <li><strong>Capture resource IDs into variables early:</strong> half the failures in this lab come from passing a name or GUID where a full resource ID was expected.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="cleanup">Cleanup</h2>
+      <p>Monitoring resources are cheap but not free, alert rules bill a small monthly fee each, and workspace ingestion costs grow with retention. When you are done experimenting, tear down in dependency order: alerts first, then the DCR association, then the DCR, then the workspace.</p>
+      <p class="code-label">Remove everything this lab created</p>
+      <pre><code>az monitor metrics alert delete -g $RG -n cpu-high
+az monitor scheduled-query delete -g $RG -n heartbeat-missing --yes
+az monitor alert-processing-rule delete -g $RG -n weekend-maintenance --yes
+az monitor data-collection rule association delete -n tyf-dcr-assoc --resource $VMID
+az monitor data-collection rule delete -g $RG -n tyf-dcr --yes
+az monitor action-group delete -g $RG -n tyf-admins
+az monitor log-analytics workspace delete -g $RG -n $LAW --force true --yes</code></pre>
+      <p>The agent extension can stay on the VM harmlessly once its DCR association is gone, but remove it too if you want a truly clean slate: <code>az vm extension delete -g $RG --vm-name $VM -n AzureMonitorLinuxAgent</code>. Note that workspace deletion has a soft-delete window, if you plan to reuse the name <code>tyf-law</code> soon, either wait out the soft-delete period or permanently purge it from the portal.</p>
+      <p><strong>Verify cleanup:</strong> <code>az resource list -g $RG -o table</code> should no longer show any <code>Microsoft.Insights</code> or <code>Microsoft.OperationalInsights</code> resources from this lab. If a delete fails with a dependency error, you skipped the dependency order, delete the association or alert it names, then retry.</p>
+    </section>
+
+    <section><h2 id="practice-challenges">Practice Challenges</h2>
+<div class="lab-challenge"><h4>Challenge 1: Join two tables</h4><p>Goal: Write a KQL query that joins <code>Perf</code> CPU data with <code>Heartbeat</code> to show only reporting VMs.</p><p>Hint: Use <code>| join kind=inner (Heartbeat | distinct Computer) on Computer</code>; that is the pattern.</p></div>
+<div class="lab-challenge"><h4>Challenge 2: Alert on sustained CPU</h4><p>Goal: Create a metric alert that fires when CPU exceeds 80 percent for five consecutive minutes, not on a single spike.</p><p>Hint: The aggregation window and the evaluation frequency together define what sustained means.</p></div>
+<div class="lab-challenge"><h4>Challenge 3: Build a workbook</h4><p>Goal: Assemble a workbook with three tiles: CPU trend, memory trend, and the latest heartbeat per VM.</p><p>Hint: Parameterize the time range once at the top so every tile follows it.</p></div>
+</section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="cost-management.html">Azure Cost Management</a></li>
+        <li><a href="../linux-server/log-management.html">Log Management &amp; Analysis</a></li>
+        <li><a href="../security/automated-soc-pipeline.html">Automated SOC Pipeline</a></li>
+      
+        <li><a href="azure-vm-config.html">Azure VM Configuration</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

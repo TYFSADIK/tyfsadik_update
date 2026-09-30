@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mounting &amp; Filesystem Management | fstab &amp; systemd</title>
+  <meta name="description" content="Manage mounts on servers: UUID-based local mounts, NFS network mounts with _netdev ordering, persistent fstab entries, and validation without rebooting.">
+  <meta name="keywords" content="linux fstab nfs mount, _netdev systemd mount, mount -a validate, persistent mounts server, Linux system administration, server hardening guide">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-server/mounting-filesystems.html">
+  <meta property="og:title" content="Mounting &amp; Filesystem Management | fstab &amp; systemd">
+  <meta property="og:description" content="Manage mounts on servers: UUID-based local mounts, NFS network mounts with _netdev ordering, persistent fstab entries, and validation without rebooting.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-server/mounting-filesystems.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Mounting &amp; Filesystem Management | fstab &amp; systemd">
+  <meta name="twitter:description" content="Manage mounts on servers: UUID-based local mounts, NFS network mounts with _netdev ordering, persistent fstab entries, and validation without rebooting.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Mounting and Filesystem Management on Linux Servers", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-16", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "util-linux, fstab, systemd, nfs-common", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux server administration"}</script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Mounting and Filesystem Management with fstab and NFS",
+    "description": "Manage mounts on servers: UUID-based local mounts, NFS network mounts with _netdev ordering, persistent fstab entries, and validation without rebooting.",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "dateModified": "2026-09-29",
+    "step": [
+      {"@type": "HowToStep", "name": "Add a local mount by UUID", "url": "https://tyfsadik.org/blog/labs/linux-server/mounting-filesystems.html#steps"},
+      {"@type": "HowToStep", "name": "Add an NFS mount", "url": "https://tyfsadik.org/blog/labs/linux-server/mounting-filesystems.html#steps"},
+      {"@type": "HowToStep", "name": "Validate without rebooting", "url": "https://tyfsadik.org/blog/labs/linux-server/mounting-filesystems.html#steps"}
+    ]
+  }</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Linux Server", "item": "https://tyfsadik.org/blog/labs/linux-server/index.html"}, {"@type": "ListItem", "position": 4, "name": "Mounting & Filesystem Management", "item": "https://tyfsadik.org/blog/labs/linux-server/mounting-filesystems.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'NFS mount hangs at boot'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: _netdev missing so mount raced the network. Fix: Add _netdev and consider x-systemd.automount for on-demand mounting."}}, {"@type": "Question", "name": "How do I fix 'Permission denied on NFS files'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Squash mapping or UID mismatch between client and server. Fix: Align UIDs or configure no_root_squash / all_squash deliberately on the export."}}, {"@type": "Question", "name": "How do I fix 'Stale file handle errors'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Server-side export changed underneath the client. Fix: Remount the share; for persistent issues check exportfs -v on the server."}}, {"@type": "Question", "name": "How do I fix 'mount -a reports bad option'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Typo in the options field. Fix: Validate against mount(8); options are comma-separated with no spaces."}}, {"@type": "Question", "name": "How do I fix 'Local mount missing after reboot'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Entry used /dev/sdX which got reordered. Fix: Switch to UUID= form via blkid."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Mounting &amp; Filesystem Management</span></nav>
+    <div class="page-header"><h1>Mounting and Filesystem Management with fstab and NFS</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">fstab</span><span class="tag">UUID</span><span class="tag">NFS</span><span class="tag">systemd mount</span></div>
+    </div>
+
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#learning-objectives">Learning Objectives</a></li>
+<li><a href="#architecture">Architecture Overview</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#steps">Step-by-Step Execution</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#validation">Testing &amp; Validation</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#extensions">Extension Ideas</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#key-takeaways">Key Takeaways</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    <section><p class="lead">You will configure resilient boot-time mounts for local and network filesystems on a server. By the end you will mount a local disk by UUID and an <span class="glossary-term" data-definition="Network File System: a protocol for accessing files over a network as if they were local.">NFS</span> share, both surviving reboot.</p></section>
+
+    <div class="learning-objectives lab-objectives" id="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Write safe UUID-based fstab entries with the nofail option.</li>
+        <li>Mount an NFS share at boot.</li>
+        <li>Validate every entry without risking a boot hang.</li>
+        <li><strong>Time:</strong> ~2 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> a server plus a local disk and (optionally) an NFS export.</li>
+      </ul>
+    </div>
+
+    <section id="architecture"><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Local and network mounts via fstab">
+graph LR
+  Disk[(Local disk UUID)] -->|fstab| L["/mnt/local"]
+  NFS[NFS server export] -->|TCP/2049 fstab| N["/mnt/share"]
+  L --> Boot[Persistent at boot]
+  N --> Boot
+      </div>
+    </section>
+
+    <section id="environment"><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> util-linux, and nfs-common for the NFS portion.</p>
+      <p><strong>Before you begin:</strong> know your disk UUID (<code>blkid</code>) and the NFS server export path.</p>
+    </section>
+
+    <div class="lab-prereqs" id="prerequisites"><h3>Prerequisites</h3>
+    <ul>
+      <li>Linux with util-linux and, for step 2, nfs-common installed and an NFS export available.</li>
+      <li>Root or sudo access to edit /etc/fstab and mount.</li>
+      <li>A spare formatted device for the local mount step.</li>
+      <li>Backup of /etc/fstab before editing.</li>
+    </ul></div>
+
+    <section id="steps"><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Add a local mount by UUID</strong>
+          <p>UUIDs are stable across reboots; <code>nofail</code> avoids a boot hang if the disk is absent.</p>
+          <div class="command-block" data-copy><div class="command"><code>echo "UUID=$(blkid -s UUID -o value /dev/sdb1) /mnt/local ext4 defaults,nofail 0 2" | sudo tee -a /etc/fstab</code></div><div class="note">[ROOT REQUIRED] Appends a persistent local mount entry.
+          <p class="lab-output-label">Expected output:</p><pre><code>UUID=a1b2c3d4-5678-90ab-cdef-1234567890ab /mnt/local ext4 defaults,nofail 0 2
+(entry appended to /etc/fstab)</code></pre>
+          <p class="lab-step-note">What this teaches: Command substitution embeds the live UUID so the entry is correct by construction; nofail lets boot continue if the disk is ever absent.</p></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Add an NFS mount</strong>
+          <p>NFS lets multiple servers share centralized storage over the network.</p>
+          <div class="command-block" data-copy><div class="command"><code>echo "192.168.1.50:/export/share /mnt/share nfs defaults,_netdev,nofail 0 0" | sudo tee -a /etc/fstab</code></div><div class="note">_netdev waits for the network before mounting.
+          <p class="lab-output-label">Expected output:</p><pre><code>192.168.1.50:/export/share /mnt/share nfs defaults,_netdev,nofail 0 0
+(entry appended to /etc/fstab)</code></pre>
+          <p class="lab-step-note">What this teaches: NFS entries name server:/export plus the nfs type; _netdev tells systemd to order the mount after the network is up.</p></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Validate without rebooting</strong>
+          <p class="lab-output-label">Expected output:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">#</span> <span class="input">mkdir -p /mnt/local /mnt/share &amp;&amp; mount -a &amp;&amp; findmnt /mnt/share</span></div>
+            <div class="terminal-output">TARGET     SOURCE                        FSTYPE OPTIONS
+/mnt/share 192.168.1.50:/export/share    nfs4   rw,_netdev</div>
+          </div>
+          <p class="lab-step-note">What this teaches: mount -a replays fstab now, catching errors before a reboot does; findmnt verifies each target resolved to the intended source. Note: mount -a needs root, which is why the session above uses the # prompt; prefix with sudo as a non-root user. For an even safer check that never touches a mount, run sudo findmnt --verify, which parses fstab and reports errors without mounting anything.</p></div></div>
+      </div>
+    </section>
+
+    <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>
+      <p>Server mounts split into two kinds: local devices identified by UUID, and network filesystems identified by server and export path. fstab handles both with the same six fields, but network mounts add ordering constraints: the network must be up before the mount is attempted, which is what _netdev communicates to systemd.</p>
+      <p>systemd translates fstab into mount units at boot, which is why _netdev and nofail actually work: they become unit dependencies and failure policies rather than comments. Understanding this translation explains boot ordering bugs that look mysterious from a pure fstab perspective.</p>
+      <p>NFS itself is stateless from the client's view: the server exports a subtree, the client mounts it, and file handles survive server reboots better than stateful protocols. The trade-off is that a hung server hangs client processes in uninterruptible sleep, so soft/timeo tuning and nofail belong in any production NFS entry.</p>
+      <p>The last two fstab fields deserve attention because the examples use them deliberately: the dump field (5th) is 0 everywhere since the dump backup utility is obsolete, and the fsck pass field (6th) is 2 for the local ext4 filesystem but 0 for NFS, because fsck cannot check a network filesystem. The root filesystem alone uses pass 1; everything local and non-root uses 2.</p>
+    </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Mount configuration progress">
+graph LR
+  A[01 Local mount] -->|done| B[02 NFS mount]
+  B -->|done| C[03 Validate mount -a]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section id="validation"><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>mount -a &amp;&amp; df -hT /mnt/local /mnt/share</code></div></div>
+      <div class="command-block" data-copy><div class="command"><code>sudo findmnt --verify</code></div></div>
+      <p>You should see both mounts with their filesystem types and no errors from <code>mount -a</code>. findmnt --verify should report success, confirming fstab parses cleanly without changing any mount state. If clean, your mounts are boot-safe.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+    <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>NFS mount hangs at boot</td><td>_netdev missing so mount raced the network</td><td>Add _netdev and consider x-systemd.automount for on-demand mounting</td></tr>
+      <tr><td>Permission denied on NFS files</td><td>Squash mapping or UID mismatch between client and server</td><td>Align UIDs or configure no_root_squash / all_squash deliberately on the export</td></tr>
+      <tr><td>Stale file handle errors</td><td>Server-side export changed underneath the client</td><td>Remount the share; for persistent issues check exportfs -v on the server</td></tr>
+      <tr><td>mount -a reports bad option</td><td>Typo in the options field</td><td>Validate against mount(8); options are comma-separated with no spaces</td></tr>
+      <tr><td>Local mount missing after reboot</td><td>Entry used /dev/sdX which got reordered</td><td>Switch to UUID= form via blkid</td></tr>
+      <tr><td>Automount storms on login</td><td>Many on-demand mounts trigger at once</td><td>Tune x-systemd.idle-timeout so unused mounts release</td></tr>
+    </tbody></table>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Boot hangs waiting for a mount:</strong> add <code>nofail</code> (and <code>_netdev</code> for network mounts).</li>
+        <li><strong>NFS mount times out:</strong> confirm the export with <code>showmount -e 192.168.1.50</code> and firewall on TCP/2049.</li>
+        <li><strong>Permission denied on NFS:</strong> check the export's allowed clients and squash settings.</li>
+      </ul>
+    </details>
+
+    <section id="extensions"><h2>Extension Ideas</h2>
+      <ul>
+        <li>Replace fstab with a systemd <code>.mount</code> unit for dependency control.</li>
+        <li>Combine with <a href="lvm.html">LVM</a> for flexible local capacity.</li>
+        <li>Secure NFS with Kerberos (sec=krb5p).</li>
+      </ul>
+    </section>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Configured local and NFS mounts that persist across reboot.</li>
+        <li>Prevented boot hangs with nofail and _netdev options.</li>
+        <li>Validated entries safely with <code>mount -a</code> before reboot.</li>
+        <li>Centralized shared storage over NFS for multiple servers.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways" id="key-takeaways"><h3>Key Takeaways</h3>
+    <ul>
+      <li>Local mounts: UUID plus nofail for reboot safety.</li>
+      <li>NFS mounts need _netdev so systemd orders them after networking.</li>
+      <li>fstab becomes systemd mount units; options are real dependencies.</li>
+      <li>mount -a plus findmnt validates without a reboot.</li>
+      <li>Tune NFS timeouts; hung servers hang clients.</li>
+    </ul></div>
+
+    <section id="practice-challenges"><h2>Practice Challenges</h2>
+    <div class="lab-challenge"><h4>Challenge 1: Automount share</h4><p>Goal: convert the NFS entry to x-systemd.automount with a 60-second idle timeout, then prove it mounts on first access and unmounts when idle.</p><p><strong>Hint:</strong> watch findmnt before and after ls.</p></div>
+    <div class="lab-challenge"><h4>Challenge 2: Boot-order proof</h4><p>Goal: on a test VM, remove _netdev from the NFS line, reboot, and document what happens; then restore it.</p><p><strong>Hint:</strong> snapshot before breaking the boot.</p></div>
+    </section>
+
+    <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="disk-management.html">Disk Management &amp; Partitioning</a></li>
+        <li><a href="lvm.html">Logical Volume Management</a></li>
+        <li><a href="../linux-fundamentals/mounting-filesystems.html">Linux Fundamentals: Mounting Filesystems</a></li>
+        <li><a href="service-management.html">Service Management (systemd)</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

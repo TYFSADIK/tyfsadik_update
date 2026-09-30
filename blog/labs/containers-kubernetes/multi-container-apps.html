@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multi-Container Apps | Compose to Production Patterns</title>
+  <meta name="description" content="Run production-shaped multi-container stacks: reverse proxy routing, environment-driven config, runtime secrets, scaling stateless services, and clean teardown.">
+  <meta name="keywords" content="multi-container, reverse proxy, Docker secrets, environment config, scaling services, compose production">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Multi-Container Apps | Compose to Production Patterns">
+  <meta property="og:description" content="Run production-shaped multi-container stacks: reverse proxy routing, environment-driven config, runtime secrets, scaling stateless services, and clean teardown.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/containers-kubernetes/multi-container-apps.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Multi-Container Apps | Compose to Production Patterns">
+  <meta name="twitter:description" content="Run production-shaped multi-container stacks: reverse proxy routing, environment-driven config, runtime secrets, scaling stateless services, and clean teardown.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/containers-kubernetes/multi-container-apps.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Building Multi-Container Applications", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-02-11", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "Docker Compose v2, Nginx, Redis, PostgreSQL", "articleSection": "Containers", "learningResourceType": "Hands-on lab", "teaches": "containers and Kubernetes"}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "HowTo", "name": "Multi-Container Apps | Compose to Production Patterns", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"}, "step": [{"@type": "HowToStep", "name": "Define the multi-service stack", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/multi-container-apps.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Write the reverse proxy configuration", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/multi-container-apps.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Configure the app through the environment", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/multi-container-apps.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Provide secrets at runtime", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/multi-container-apps.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Bring it up and scale the API", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/multi-container-apps.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Watch the wiring: logs and the job queue", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/multi-container-apps.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Prove persistence across a recreate", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/multi-container-apps.html#step-by-step-execution"}]}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Containers & Kubernetes", "item": "https://tyfsadik.org/blog/labs/containers-kubernetes/index.html"}, {"@type": "ListItem", "position": 4, "name": "Multi-Container Applications", "item": "https://tyfsadik.org/blog/labs/containers-kubernetes/multi-container-apps.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Only one replica answers'?", "acceptedAnswer": {"@type": "Answer", "text": "ensure the proxy load-balances across the service name, not a fixed container."}}, {"@type": "Question", "name": "How do I fix 'Secret not found'?", "acceptedAnswer": {"@type": "Answer", "text": "Compose uses secrets: with files; Swarm uses docker secret."}}, {"@type": "Question", "name": "How do I fix 'API crashes with \"connection refused\" on first boot'?", "acceptedAnswer": {"@type": "Answer", "text": "PostgreSQL was still initializing. Add a healthcheck to the db service and use depends_on: { db: { condition: service_healthy } } so the API waits for a database that actually accepts connections, not just a started container."}}, {"@type": "Question", "name": "How do I fix '502 Bad Gateway from the proxy after scaling or restart'?", "acceptedAnswer": {"@type": "Answer", "text": "Nginx resolved api once at startup and the container IPs changed. Restart the proxy (docker compose restart proxy) or use a resolver directive with a variable-based proxy_pass so names are re-resolved per request."}}, {"@type": "Question", "name": "How do I fix 'Authentication failures despite the correct password'?", "acceptedAnswer": {"@type": "Answer", "text": "check for a trailing newline in secrets/db_password (od -c secrets/db_password | tail -2 should end without \\n). Rewrite it with printf instead of echo."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Multi-Container Applications</span></nav>
+    <div class="page-header"><h1>Build a Realistic Multi-Container Application</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Containers</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">reverse proxy</span><span class="tag">API</span><span class="tag">worker</span><span class="tag">secrets</span></div>
+    </div>
+<nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#architecture-overview">Architecture Overview</a></li>
+<li><a href="#environment-setup">Environment Setup</a></li>
+<li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+<li><a href="#step-flow-map">Step Flow Map</a></li>
+<li><a href="#progress-so-far">Progress So Far</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#testing-validation">Testing & Validation</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#extension-ideas">Extension Ideas</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    
+
+    <section><p class="lead">You will assemble a production-shaped app: a reverse proxy in front of an API, a background worker, and a database with persistent storage. By the end you will run a realistic topology with config via environment and secrets.</p>
+      <p>This is the topology you see in almost every real deployment: one public entry point that terminates client connections, a stateless application tier that can be scaled horizontally, an asynchronous worker tier that drains a queue, and a stateful data tier that must never be exposed directly. Building it by hand forces you to confront the questions tutorials skip: which service may talk to which, where do credentials live, and what happens to your data when a container dies.</p>
+    </section>
+
+    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+      <ul>
+        <li>Compose a 4-tier app (proxy, API, worker, DB).</li>
+        <li>Inject configuration with environment and secrets.</li>
+        <li>Scale a stateless service horizontally.</li>
+        <li>Segment traffic with internal networks so only the proxy is reachable.</li>
+        <li>Persist database state across container restarts with a named volume.</li>
+        <li><strong>Time:</strong> ~4 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> the Compose lab completed.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="architecture-overview">Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Reverse proxy in front of API, worker, and database">
+graph LR
+  U[User] -->|443| Px[Nginx proxy]
+  Px -->|HTTP| API[API service]
+  API --> DB[(PostgreSQL)]
+  API -->|enqueue| Q[(Redis)]
+  Q --> W[Worker]
+  W --> DB
+      </div>
+      <p>Read the diagram as a set of trust boundaries. The <strong>Nginx proxy</strong> is the only container that publishes a port to the host; everything else lives on internal networks. The <strong>API</strong> is stateless, which is what makes horizontal scaling safe: any replica can answer any request because all state is pushed out to PostgreSQL and Redis. The <strong>worker</strong> never receives HTTP traffic at all, it blocks on a Redis queue, picks up jobs the API enqueues, and writes results back to the database. That decoupling means a slow job (report generation, image processing, email delivery) never holds an API connection open.</p>
+      <p>Two design rules drive everything below:</p>
+      <ul>
+        <li><strong>Least exposure:</strong> if a service does not need to be reached from the host, it gets no <code>ports:</code> mapping. The database and Redis are reachable only by name on the internal network.</li>
+        <li><strong>State lives outside containers:</strong> PostgreSQL data goes on a named volume, and the API holds no session state. You should be able to <code>docker compose up -d --scale api=5</code> or destroy an API container at any moment without losing anything.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="environment-setup">Environment Setup</h2>
+<div class="lab-prereqs"><h3>Prerequisites</h3>
+<ul>
+<li>Docker Engine 24+ with Compose v2.</li>
+<li>The lab's sample API, worker, database, and proxy configs (or equivalents you write).</li>
+<li>Assumed skills: Docker Compose basics and how HTTP reverse proxies route.</li>
+</ul></div>
+      <p><strong>You will need:</strong> Docker Compose v2 and the proxy/API/worker images (or simple placeholders).</p>
+      <p><strong>Before you begin:</strong> never bake secrets into images; pass them at runtime.</p>
+      <p>Verify your toolchain first. Compose v2 ships as a Docker CLI plugin, so the command is <code>docker compose</code> (space, not hyphen). The legacy Python-based <code>docker-compose</code> v1 reached end-of-life and behaves differently around networking and secrets, so confirm what you have:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker compose version</span></div>
+        <div class="terminal-output">Docker Compose version v2.29.2</div>
+      </div>
+      <p>Create a clean project directory. Every command below assumes you run it from this directory, because Compose derives the project name (and therefore container and network names) from the folder name unless you override it with <code>-p</code> or <code>COMPOSE_PROJECT_NAME</code>.</p>
+      <div class="command-block" data-copy><div class="command"><code>mkdir -p multiapp/api multiapp/worker multiapp/proxy multiapp/secrets &amp;&amp; cd multiapp</code></div><div class="note">The api/ and worker/ folders hold each service's Dockerfile and code; proxy/ holds the Nginx config; secrets/ holds runtime secret files.</div></div>
+      <p>By the end of the lab the directory will look like this. Keep it small and boring, every file here is something you could recreate by hand, which is exactly the point of infrastructure-as-configuration:</p>
+<pre><code class="language-text">multiapp/
+├── compose.yaml          # the whole topology, declaratively
+├── .env                  # non-secret config (gitignored)
+├── .env.example          # committed template with dummy values
+├── api/
+│   ├── Dockerfile          # builds the API image locally
+│   └── app.py              # stdlib HTTP API (Redis + PostgreSQL)
+├── worker/
+│   ├── Dockerfile          # builds the worker image locally
+│   └── worker.py           # pops Redis jobs, writes results to PostgreSQL
+├── proxy/
+│   └── nginx.conf        # reverse proxy config, mounted read-only
+└── secrets/
+    └── db_password       # runtime secret file, chmod 600, gitignored</code></pre>
+      <p>Two hygiene rules before you write anything else: add <code>.env</code> and <code>secrets/</code> to <code>.gitignore</code> <em>before</em> the first commit, and confirm the Docker daemon has at least 2 GB of memory available, PostgreSQL plus three API replicas and Redis will not start comfortably on a starved VM.</p>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Define the multi-service stack</strong>
+          <p>Each tier is a service; the proxy is the only one exposed to the host.</p>
+          <p>The compose file below encodes the whole architecture. Notice what is <em>not</em> there: the API, worker, database, and Redis have no <code>ports:</code> section at all. Two user-defined networks split the topology, <code>frontend</code> carries proxy-to-API traffic and <code>backend</code> carries API/worker-to-data traffic. Nginx is attached only to <code>frontend</code>, so even if the proxy were compromised, an attacker could not reach PostgreSQL directly from it.</p>
+<pre><code class="language-yaml"># compose.yaml
+services:
+  proxy:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./proxy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_started
+    networks: [frontend]
+
+  api:
+    build: ./api
+    env_file: .env
+    secrets:
+      - db_password
+    depends_on:
+      db:
+        condition: service_healthy
+      queue:
+        condition: service_started
+    networks: [frontend, backend]
+
+  worker:
+    build: ./worker
+    env_file: .env
+    secrets:
+      - db_password
+    depends_on:
+      db:
+        condition: service_healthy
+      queue:
+        condition: service_started
+    networks: [backend]
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: appuser
+      POSTGRES_DB: appdb
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d appdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [backend]
+
+  queue:
+    image: redis:7-alpine
+    networks: [backend]
+
+networks:
+  frontend:
+  backend:
+
+volumes:
+  pgdata:
+
+secrets:
+  db_password:
+    file: ./secrets/db_password</code></pre>
+          <p>The API and worker are real code you build locally. Placeholder image names would leave the stack unrunnable, so each custom service gets a small Python application and a Dockerfile. Compose builds both images on first <code>up</code>.</p>
+<pre><code class="language-dockerfile"># api/Dockerfile
+FROM python:3.12-alpine
+RUN pip install --no-cache-dir "redis" "psycopg[binary]"
+COPY app.py /srv/app.py
+EXPOSE 8000
+CMD ["python", "/srv/app.py"]</code></pre>
+<pre><code class="language-python"># api/app.py - stdlib HTTP API backed by Redis and PostgreSQL
+import json, os, socket, time
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlparse
+
+import redis, psycopg
+
+def read_secret(name):
+    with open(f"/run/secrets/{name}") as f:
+        return f.read().strip()
+
+DB = {
+    "host": os.environ.get("APP_DB_HOST", "db"),
+    "user": os.environ.get("APP_DB_USER", "appuser"),
+    "dbname": os.environ.get("APP_DB_NAME", "appdb"),
+    "password": read_secret("db_password"),
+}
+_redis_url = urlparse(os.environ.get("REDIS_URL", "redis://queue:6379/0"))
+QUEUE = os.environ.get("QUEUE_NAME", "jobs")
+rq = redis.Redis(host=_redis_url.hostname, port=_redis_url.port or 6379, decode_responses=True)
+
+def init_db():
+    for _ in range(30):
+        try:
+            with psycopg.connect(**DB) as conn:
+                conn.execute(
+                    "CREATE TABLE IF NOT EXISTS results ("
+                    "job_id BIGINT PRIMARY KEY, task TEXT NOT NULL, "
+                    "duration_ms INTEGER NOT NULL, created_at TIMESTAMPTZ DEFAULT now())"
+                )
+            return
+        except Exception:
+            time.sleep(2)
+    raise SystemExit("database never became ready")
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, fmt, *args):
+        fwd = self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        print(f"{fwd or self.client_address[0]} - {fmt % args}", flush=True)
+
+    def _json(self, code, obj):
+        body = json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path == "/api/whoami":
+            self._json(200, {"served_by": socket.gethostname()})
+        elif self.path == "/api/health":
+            self._json(200, {"status": "ok"})
+        else:
+            self._json(404, {"error": "not found"})
+
+    def do_POST(self):
+        if self.path != "/api/jobs":
+            return self._json(404, {"error": "not found"})
+        length = int(self.headers.get("Content-Length", 0))
+        payload = json.loads(self.rfile.read(length) or b"{}")
+        job = {"id": int(payload.get("id", 0)), "task": payload.get("task", "")}
+        rq.rpush(QUEUE, json.dumps(job))
+        self._json(200, {"queued": True, "job_id": job["id"]})
+
+if __name__ == "__main__":
+    init_db()
+    HTTPServer(("0.0.0.0", 8000), Handler).serve_forever()</code></pre>
+<pre><code class="language-dockerfile"># worker/Dockerfile
+FROM python:3.12-alpine
+RUN pip install --no-cache-dir "redis" "psycopg[binary]"
+COPY worker.py /srv/worker.py
+CMD ["python", "/srv/worker.py"]</code></pre>
+<pre><code class="language-python"># worker/worker.py - pops jobs from Redis, writes results to PostgreSQL
+import json, os, time
+from urllib.parse import urlparse
+
+import redis, psycopg
+
+def read_secret(name):
+    with open(f"/run/secrets/{name}") as f:
+        return f.read().strip()
+
+DB = {
+    "host": os.environ.get("APP_DB_HOST", "db"),
+    "user": os.environ.get("APP_DB_USER", "appuser"),
+    "dbname": os.environ.get("APP_DB_NAME", "appdb"),
+    "password": read_secret("db_password"),
+}
+_redis_url = urlparse(os.environ.get("REDIS_URL", "redis://queue:6379/0"))
+QUEUE = os.environ.get("QUEUE_NAME", "jobs")
+rq = redis.Redis(host=_redis_url.hostname, port=_redis_url.port or 6379, decode_responses=True)
+
+print(f"worker up, watching queue {QUEUE!r}", flush=True)
+while True:
+    item = rq.blpop(QUEUE, timeout=5)
+    if not item:
+        continue
+    job = json.loads(item[1])
+    started = time.time()
+    time.sleep(0.3)  # stand-in for real work
+    duration_ms = int((time.time() - started) * 1000)
+    with psycopg.connect(**DB) as conn:
+        conn.execute(
+            "INSERT INTO results (job_id, task, duration_ms) VALUES (%s, %s, %s) "
+            "ON CONFLICT (job_id) DO UPDATE SET task = EXCLUDED.task, duration_ms = EXCLUDED.duration_ms",
+            (job["id"], job["task"], duration_ms),
+        )
+    print(f'job {job["id"]} dequeued from "{QUEUE}", processed in {duration_ms}ms, result written to {DB["dbname"]}', flush=True)</code></pre>
+          <div class="note"><strong>Secret handling, for real:</strong> both applications read the database password from <code>/run/secrets/db_password</code> at startup and never from the environment. Compose file-backed secrets are mounted files, not Swarm or Kubernetes secrets: anyone who can read the project directory can read them. That is fine for a lab, but production needs a real secret manager.</div>
+
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker compose config --quiet &amp;&amp; echo "stack definition is valid"
+stack definition is valid</code></pre>
+          <p>Three details deserve attention. First, <code>depends_on</code> with <code>condition: service_healthy</code> makes the API and worker wait until PostgreSQL actually accepts connections, plain <code>depends_on</code> only waits for the container to start, which is a classic source of &ldquo;connection refused&rdquo; crashes on first boot. Second, the database reads its password from <code>POSTGRES_PASSWORD_FILE</code> rather than a plain environment variable, so the secret never appears in <code>docker inspect</code> output. Third, <code>pgdata</code> is a named volume: the database files survive <code>docker compose down</code> and container replacement.</p>
+          <div class="command-block" data-copy><div class="command"><code>docker compose -f compose.yaml config</code></div><div class="note">Validates and renders the merged configuration.</div></div>
+          <p>Always run <code>config</code> before <code>up</code>. It parses the YAML, resolves variable interpolation and <code>env_file</code> references, and prints the final merged model. A typo like a missing network or a malformed healthcheck fails here with a line number instead of halfway through a deployment. Skim the rendered output to confirm each service landed on the networks you intended.</p>
+          <p><strong>Common mistake:</strong> editing the file and running <code>docker compose up</code> without re-checking <code>config</code>. Compose caches nothing dangerous, but a YAML indentation error only surfaces at parse time, validate after every edit.</p>
+        
+<p class="lab-step-note">What this teaches: The stack definition is the architecture as data; every service, network, and secret declared in one place.</p></div></div>
+
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Write the reverse proxy configuration</strong>
+          <p>Nginx is the single public entry point. Its job is to accept client connections and forward them to the API tier by service name. Docker's embedded DNS resolves <code>api</code> to the IPs of all healthy API containers, and Nginx re-resolves it per request when you proxy to a variable, but for this lab the simple form below is enough, because step 05 scales the API in the same command that starts the proxy, so Nginx normally resolves all three replicas at startup. There is a startup race: if the proxy resolves before every replica registers with Docker DNS, some replicas get no traffic until you run <code>docker compose restart proxy</code>. Know the limitation: Nginx resolves upstream hostnames once at startup and does not track later topology changes. If you scale the API after the proxy is already up, new replicas receive no traffic until you run <code>docker compose restart proxy</code>.</p>
+<pre><code class="language-nginx"># proxy/nginx.conf
+upstream api_backend {
+    server api:8000;
+}
+
+server {
+    listen 80;
+    server_name _;
+
+    location /api/ {
+        proxy_pass http://api_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location /healthz {
+        return 200 "proxy ok\n";
+    }
+}</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker compose exec proxy nginx -t
+nginx: configuration file /etc/nginx/nginx.conf test is successful</code></pre>
+          <p>The <code>X-Forwarded-For</code> header matters more than it looks: without it, every request arriving at the API appears to come from the proxy's IP, which breaks rate limiting, audit logging, and any IP-based access control downstream. The <code>/healthz</code> endpoint gives you a way to tell &ldquo;proxy is up&rdquo; apart from &ldquo;API is up&rdquo; when debugging.</p>
+          <p><strong>How to verify:</strong> after the stack is up, <code>curl http://localhost:8080/healthz</code> should return <code>proxy ok</code> even if the API containers are stopped. If it does not, the problem is in the proxy layer, not the app.</p>
+        
+<p class="lab-step-note">What this teaches: The reverse proxy is the only public face; routing rules decide which internal service answers which path.</p></div></div>
+
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Configure the app through the environment</strong>
+          <p>Anything that varies between your laptop, CI, and production belongs in the environment, not in the image. Create a <code>.env</code> file (Compose reads it automatically) with the non-sensitive configuration:</p>
+<pre><code class="language-bash"># .env - non-secret config only; never commit real secrets
+APP_ENV=production
+APP_DB_HOST=db
+APP_DB_USER=appuser
+APP_DB_NAME=appdb
+REDIS_URL=redis://queue:6379/0
+QUEUE_NAME=jobs
+LOG_LEVEL=info</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker compose exec api env | grep APP_
+APP_ENV=production
+APP_DB_HOST=db</code></pre>
+          <p>Notice the hostnames: <code>db</code> and <code>queue</code> are Compose service names, resolved by Docker's internal DNS on the <code>backend</code> network. You never hardcode container IPs, they change on every restart.</p>
+          <p>Add <code>.env</code> to your <code>.gitignore</code>. A common pattern is to commit a <code>.env.example</code> with dummy values so teammates (and CI) can see which variables are required without seeing real values.</p>
+          <p><strong>How to verify:</strong> run <code>docker compose config</code> again and confirm the values from <code>.env</code> appear in the rendered <code>environment:</code> section of the API and worker services. If they do not, the file is misnamed, in the wrong directory, or the service is missing the <code>env_file:</code> key.</p>
+        
+<p class="lab-step-note">What this teaches: Environment-driven config keeps the image portable; the same image behaves differently per environment.</p></div></div>
+
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Provide secrets at runtime</strong>
+          <p>Environment variables are convenient but leaky: they show up in <code>docker inspect</code>, in crash dumps, and sometimes in logs. For the database password, use Compose's file-based secrets instead. Compose mounts each secret as a read-only file under <code>/run/secrets/</code> inside the container, and nothing about it appears in the container's environment or metadata.</p>
+          <p>On plain Compose (this lab), the secret is a local file that the <code>secrets:</code> block in <code>compose.yaml</code> points at. Do not use <code>docker secret create</code> here: it only works on a Swarm manager, and on one it would create a real Swarm secret as a side effect.</p>
+          <p>Create the secret file directly:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">printf 'S3cure-Lab-Passw0rd!' &gt; secrets/db_password</span></div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">chmod 600 secrets/db_password</span></div>
+            <div class="terminal-output"># no output; the file is now readable only by you</div>
+          </div>
+          <div class="note"><strong>Passwords do not rotate this way on existing data.</strong> <code>POSTGRES_USER</code>, <code>POSTGRES_DB</code>, and <code>POSTGRES_PASSWORD_FILE</code> only take effect when PostgreSQL initializes an empty data directory. Once <code>pgdata</code> exists, editing <code>secrets/db_password</code> changes nothing inside the running cluster. To rotate on existing data, connect and run <code>ALTER USER appuser WITH PASSWORD 'newvalue'</code>, then update the secret file to match.</div>
+          <p>Because <code>compose.yaml</code> declares <code>db_password: { file: ./secrets/db_password }</code>, the API, worker, and db containers each get <code>/run/secrets/db_password</code> mounted at startup. The API reads that file at boot and builds its connection string; PostgreSQL does the same via <code>POSTGRES_PASSWORD_FILE</code>.</p>
+          <p><strong>How to verify:</strong> once the stack is running, <code>docker compose exec api ls -l /run/secrets/</code> should list <code>db_password</code>, and <code>docker compose exec api env | grep -i pass</code> should return nothing. If the password shows up in <code>env</code>, you accidentally passed it as a variable, remove it and use the file.</p>
+          <p><strong>Common mistake:</strong> a trailing newline in the secret file. <code>echo "pw" &gt; secrets/db_password</code> appends <code>\n</code>, and PostgreSQL will then reject the password the API reads. Use <code>printf</code> (no newline) or <code>echo -n</code>.</p>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker compose exec api ls -l /run/secrets/
+-r-------- 1 root root 32 Sep 29 10:31 db_password</code></pre>
+<p class="lab-step-note">What this teaches: Runtime secrets arrive as files, not env vars; the application reads them from the mount path.</p></div></div>
+
+        <div class="step"><div class="step-num">05</div><div class="step-body"><strong>Bring it up and scale the API</strong>
+          <p>Start the whole stack detached, and scale the stateless API to three replicas in the same command. Compose creates the networks and volume first, waits for the database healthcheck to pass, then starts the API replicas, worker, and proxy.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker compose up -d --scale api=3</span></div>
+            <div class="terminal-output">[+] Running 7/7
+multiapp-api-1 Started  multiapp-api-2 Started  multiapp-api-3 Started</div>
+          </div>
+          <p>Confirm the full picture with <code>ps</code>. You should see one proxy with a published port, three API containers, one worker, one database reporting <code>healthy</code>, and one Redis container:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker compose ps</span></div>
+            <div class="terminal-output">NAME           SERVICE  STATUS                   PORTS
+multiapp-proxy-1   proxy    Up                       0.0.0.0:8080-&gt;80/tcp
+multiapp-api-1     api      Up
+multiapp-api-2     api      Up
+multiapp-api-3     api      Up
+multiapp-worker-1  worker   Up
+multiapp-db-1      db       Up (healthy)
+multiapp-queue-1   queue    Up</div>
+          </div>
+          <p>Scaling works here because the API is stateless and the scale happens in the same command that starts the proxy, so Nginx resolves all three container IPs at startup. The worker and database are deliberately <em>not</em> scaled: two workers would race on the same queue (fine for some workloads, but requires idempotent job handling), and scaling PostgreSQL is a replication problem, not a Compose flag.</p>
+          <p><strong>Common mistake:</strong> trying to scale a service that publishes a fixed host port. <code>--scale proxy=3</code> fails with &ldquo;port already allocated&rdquo; because all three would claim 8080. Only services without host port mappings scale freely.</p>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker compose up -d --scale api=3
+[+] Running 7/7
+ Container multiapp-api-1  Started
+ Container multiapp-api-2  Started
+ Container multiapp-api-3  Started</code></pre>
+<p class="lab-step-note">What this teaches: Scaling stateless services is safe because replicas share nothing; the proxy balances across them.</p></div></div>
+
+        <div class="step"><div class="step-num">06</div><div class="step-body"><strong>Watch the wiring: logs and the job queue</strong>
+          <p>Before trusting the stack, watch each tier do its job. Stream logs across all services (or filter to one):</p>
+          <div class="command-block" data-copy><div class="command"><code>docker compose logs -f --tail=20 api worker</code></div><div class="note">Follow API and worker logs; Ctrl+C stops following but leaves the stack running.</div></div>
+          <p>Enqueue a test job through the API and watch the worker pick it up. The API pushes onto the Redis queue; the worker blocks on <code>BLPOP</code>, processes the job, and writes the result row to PostgreSQL:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">curl -s -X POST http://localhost:8080/api/jobs -d '{"task":"resize","id":42}'</span></div>
+            <div class="terminal-output">{"queued": true, "job_id": 42}</div>
+          </div>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker compose logs --tail=5 worker</span></div>
+            <div class="terminal-output">multiapp-worker-1  | job 42 dequeued from "jobs", processed in 301ms, result written to appdb</div>
+          </div>
+          <p><strong>How to verify:</strong> if the API says <code>queued: true</code> but the worker log stays silent, the two sides are pointed at different queues or different Redis instances, compare <code>QUEUE_NAME</code> and <code>REDIS_URL</code> in the rendered config for both services.</p>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker compose logs worker --tail=1
+multiapp-worker-1  | job 42 dequeued from "jobs", processed in 301ms, result written to appdb</code></pre>
+<p class="lab-step-note">What this teaches: Logs plus the queue depth are the observability pair; they show what happened and what is waiting.</p></div></div>
+
+        <div class="step"><div class="step-num">07</div><div class="step-body"><strong>Prove persistence across a recreate</strong>
+          <p>The whole point of the named volume is that data outlives containers. Prove it: write a row, stop the stack, bring it back, and read the row again.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker compose exec db psql -U appuser -d appdb -c "SELECT count(*) FROM results;"</span></div>
+            <div class="terminal-output"> count
+-------
+     1
+(1 row)</div>
+          </div>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker compose down &amp;&amp; docker compose up -d --scale api=3</span></div>
+            <div class="terminal-output">[+] Running 7/7 ... (networks, volume, containers recreated)</div>
+          </div>
+          <p>Re-run the <code>SELECT count(*)</code>, the row is still there because <code>pgdata</code> survived. Only <code>docker compose down -v</code> deletes named volumes, and that flag is how you reset the lab to a blank slate. Treat <code>-v</code> like <code>rm -rf</code> for your data tier: never run it against anything you care about.</p>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker compose exec db psql -U appuser -d appdb -c "SELECT count(*) FROM results;"
+ count 
+-------
+     1
+(1 row)</code></pre>
+<p class="lab-step-note">What this teaches: Proving persistence before teardown is the discipline; the volume surviving <code>down</code> is the test.</p></div></div>
+      </div>
+    </section>
+<section><h2 id="step-flow-map">Step Flow Map</h2>
+<div class="mermaid" role="img" aria-label="Flow of the lab steps from first to last">
+graph TD
+  S1["Define the multi-service stack"]
+  S2["Write the reverse proxy configuration"]
+  S3["Configure the app through the environment"]
+  S4["Provide secrets at runtime"]
+  S5["Bring it up and scale the API"]
+  S6["Watch the wiring: logs and the job queue"]
+  S7["Prove persistence across a recreate"]
+  S1 --> S2
+  S2 --> S3
+  S3 --> S4
+  S4 --> S5
+  S5 --> S6
+  S6 --> S7
+</div>
+<p>Each box is one step in the lab; work them in order, since later steps build on earlier state.</p>
+</section>
+
+    
+
+    <section><h2 id="progress-so-far">Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Multi-container app progress">
+graph LR
+  A[01 Define stack] -->|done| B[02 Secrets]
+  B -->|done| C[03 Up + scale]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+      <p>The milestones map to the three skills this lab is really about: describing a topology declaratively, keeping secrets out of images, and scaling the tier that is safe to scale.</p>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+<div class="lab-explainer">
+<p>Twelve-factor config says configuration travels in the environment, not in the image: the same image runs in dev and prod with different variables. The reverse proxy is the single public face; it terminates client connections and routes by path or host to the internal services, which never publish ports themselves. This is the shape of nearly every production web deployment, from a compose stack to Kubernetes ingress.</p>
+<p>Secrets are not environment variables. Env vars leak into logs, process tables, and child processes; Docker secrets are mounted as files with restricted permissions and exist only where mounted. The application reads the secret from the file path, which keeps the value out of the places env vars inevitably wander.</p>
+<p>Stateless services scale horizontally; stateful ones do not. The API replicas share nothing, so scaling the API to three just works behind the proxy's load balancing, while the database stays at one replica with its data on a volume. The job queue decouples the API from the worker: requests enqueue fast, workers drain at their own pace, and adding a second worker visibly shortens the queue.</p>
+</div>
+</section>
+
+    <section><h2 id="testing-validation">Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>for i in 1 2 3; do curl -s http://localhost:8080/api/whoami; done</code></div></div>
+      <p>You should see responses from different API replicas, confirming load distribution behind the proxy.</p>
+      <p>On the port this lab publishes, the loop looks like this, note the rotating container hostname in each reply:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">for i in 1 2 3 4 5 6; do curl -s http://localhost:8080/api/whoami; echo; done</span></div>
+        <div class="terminal-output">{"served_by": "multiapp-api-2"}
+{"served_by": "multiapp-api-1"}
+{"served_by": "multiapp-api-3"}
+{"served_by": "multiapp-api-2"}
+{"served_by": "multiapp-api-1"}
+{"served_by": "multiapp-api-3"}</div>
+      </div>
+      <p>Run the remaining checks as a quick acceptance pass:</p>
+      <ul>
+        <li><strong>Proxy health independent of the app:</strong> <code>curl -s http://localhost:8080/healthz</code> returns <code>proxy ok</code>. Stop the API with <code>docker compose stop api</code> and confirm the proxy still answers while <code>/api/whoami</code> returns <code>502</code>, now you know which layer a failure lives in. Then bring it back with <code>docker compose start api</code> before the remaining checks, they need a live API.</li>
+        <li><strong>Internal services are not exposed:</strong> <code>curl --max-time 2 http://localhost:5432</code> and <code>http://localhost:6379</code> should fail to connect. If either responds, you published a port on a data-tier service by mistake.</li>
+        <li><strong>End-to-end job flow:</strong> POST a job, see it in the worker logs, and confirm the result row with <code>docker compose exec db psql -U appuser -d appdb -c "SELECT * FROM results;"</code>.</li>
+        <li><strong>Headers survive the proxy:</strong> <code>curl -si http://localhost:8080/api/whoami | head -5</code>, the API should log your real client IP (via <code>X-Forwarded-For</code>), not the proxy's container IP.</li>
+        <li><strong>Persistence:</strong> <code>docker compose down &amp;&amp; docker compose up -d --scale api=3</code>, then wait for the database to accept connections (<code>until docker compose exec db pg_isready -U appuser -d appdb; do sleep 2; done</code>) before re-checking the row count. Data present = volume wired correctly. Do not query immediately after <code>up</code>: the new database container needs a few seconds before it answers, and an instant check races that startup.</li>
+      </ul>
+      <p><strong>Final teardown, only after every check above is green:</strong> nothing in the validation needs the stack anymore, so remove it completely, including the named volume:</p>
+      <div class="command-block" data-copy><div class="command"><code>docker compose down -v</code></div></div>
+    </section>
+<section><h2 id="troubleshooting">Troubleshooting</h2>
+<p>Quick-reference for the failures you are most likely to hit in this lab.</p>
+<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<tr><td>Worker never picks up jobs</td><td>The queue URL or credentials in the worker's environment are wrong</td><td>Exec into the worker and print its effective config; compare against the compose file.</td></tr>
+<tr><td>Secret file is empty in the container</td><td>The secret was not attached to the service, or file permissions block reads</td><td>Check the service definition mounts the secret and the app reads the file path, not an env var.</td></tr>
+<tr><td>Proxy returns 502 for the API</td><td>Upstream hostname wrong, or the API not yet healthy</td><td>Curl the API by its service name from inside the proxy container to isolate DNS from proxy config.</td></tr>
+<tr><td>Data lost after teardown</td><td>The database volume was not a named volume, or <code>--volumes</code> was used</td><td>Inspect the volume before teardown; anonymous volumes are the usual culprit.</td></tr>
+<tr><td>Scaling the API breaks routing</td><td>Only the proxy publishes ports; scaled replicas share the internal network fine</td><td>Verify with <code>docker compose ps</code>; port conflicts only happen if each replica publishes.</td></tr>
+</tbody></table>
+</section>
+
+    
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Only one replica answers:</strong> ensure the proxy load-balances across the service name, not a fixed container.</li>
+        <li><strong>Worker idle:</strong> confirm it consumes the same Redis queue the API publishes to.</li>
+        <li><strong>Secret not found:</strong> Compose uses <code>secrets:</code> with files; Swarm uses <code>docker secret</code>.</li>
+        <li><strong>API crashes with "connection refused" on first boot:</strong> PostgreSQL was still initializing. Add a <code>healthcheck</code> to the db service and use <code>depends_on: { db: { condition: service_healthy } }</code> so the API waits for a database that actually accepts connections, not just a started container.</li>
+        <li><strong>502 Bad Gateway from the proxy after scaling or restart:</strong> Nginx resolved <code>api</code> once at startup and the container IPs changed. Restart the proxy (<code>docker compose restart proxy</code>) or use a resolver directive with a variable-based <code>proxy_pass</code> so names are re-resolved per request.</li>
+        <li><strong>Authentication failures despite the correct password:</strong> check for a trailing newline in <code>secrets/db_password</code> (<code>od -c secrets/db_password | tail -2</code> should end without <code>\n</code>). Rewrite it with <code>printf</code> instead of <code>echo</code>.</li>
+        <li><strong>Data vanished after <code>docker compose down</code>:</strong> you ran <code>down -v</code>, which deletes named volumes, or the volume was never declared under <code>volumes:</code>. Recreate the volume mapping and treat <code>-v</code> as the lab-reset switch only.</li>
+      </ul>
+    </details>
+
+    <section><h2 id="extension-ideas">Extension Ideas</h2>
+      <ul>
+        <li>Translate this topology to Kubernetes Deployments and Services.</li>
+        <li>Add autoscaling and resource limits.</li>
+        <li>Front it with the <a href="../../../work/infrastructure/proxmox-zero-trust.html">Cloudflare Tunnel</a> pattern.</li>
+        <li>Add a second internal network boundary: move Redis onto its own network so the database and queue cannot see each other at all.</li>
+        <li>Swap the placeholder API for a real framework (FastAPI, Express) and add a <code>/metrics</code> endpoint scraped by Prometheus.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Ran a 4-tier app with only the proxy exposed.</li>
+        <li>Injected configuration and secrets at runtime, not in images.</li>
+        <li>Scaled the stateless API to 3 replicas behind the proxy.</li>
+        <li>Verified load distribution across replicas.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways"><h3 id="key-takeaways">Key Takeaways</h3>
+      <ul>
+        <li>Publish ports only on the entry-point service; everything else communicates over internal Compose networks by service name.</li>
+        <li>Stateless tiers scale with one flag; stateful tiers scale with replication design. Know which of your services is which before you reach for <code>--scale</code>.</li>
+        <li>Configuration goes in the environment, secrets go in files mounted at runtime, and neither goes into an image.</li>
+        <li><code>depends_on</code> plus a real healthcheck is the difference between a stack that starts cleanly and one that crashes on first boot.</li>
+        <li>Named volumes are the contract that data survives containers; <code>down</code> is safe, <code>down -v</code> is the reset button.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="practice-challenges">Practice Challenges</h2>
+<div class="lab-challenge"><h4>Challenge 1: Drain the queue faster</h4><p>Goal: Scale to two workers and measure the queue drain time before and after.</p><p>Hint: The numbers are the deliverable; twice the workers should roughly halve the drain time.</p></div>
+<div class="lab-challenge"><h4>Challenge 2: Rotate the secret</h4><p>Goal: Update the database password secret and roll it through the stack without downtime.</p><p>Hint: Update the secret, recreate the database first, then the dependents; order matters.</p></div>
+<div class="lab-challenge"><h4>Challenge 3: Terminate TLS at the proxy</h4><p>Goal: Add a self-signed certificate to the proxy and serve the app over HTTPS.</p><p>Hint: Generate the cert once, mount it read-only, and redirect HTTP to HTTPS.</p></div>
+</section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="docker-compose.html">Docker Compose</a></li>
+        <li><a href="kubernetes-pods-services.html">Pods &amp; Deployments</a></li>
+        <li><a href="kubernetes-networking.html">Kubernetes Services &amp; Networking</a></li>
+      
+        <li><a href="docker-images.html">Docker Images and Dockerfile</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

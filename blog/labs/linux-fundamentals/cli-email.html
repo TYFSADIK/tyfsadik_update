@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Command Line Email: mailx, mutt &amp; msmtp | TYFSADIK</title>
+  <meta name="description" content="Send email from the Linux command line: route outbound mail through an authenticated SMTP relay with msmtp, script alerts with mailx, attach files with mutt.">
+  <meta name="keywords" content="linux command line email, mailx tutorial, msmtp smtp relay, mutt attachments, cron email alerts">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-fundamentals/cli-email.html">
+  <meta property="og:title" content="Command Line Email: mailx, mutt &amp; msmtp | TYFSADIK">
+  <meta property="og:description" content="Send email from the Linux command line: route outbound mail through an authenticated SMTP relay with msmtp, script alerts with mailx, attach files with mutt.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-fundamentals/cli-email.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Command Line Email: mailx, mutt &amp; msmtp | TYFSADIK">
+  <meta name="twitter:description" content="Send email from the Linux command line: route outbound mail through an authenticated SMTP relay with msmtp, script alerts with mailx, attach files with mutt.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Command-Line Email with mailx, msmtp, and mutt", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-28", "dateModified": "2026-09-29", "proficiencyLevel": "Beginner", "dependencies": "mailutils, msmtp, mutt", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux fundamentals and command-line skills"}</script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Command-Line Email with mailx, msmtp, and mutt",
+    "description": "Send email from the Linux command line: route outbound mail through an authenticated SMTP relay with msmtp, script alerts with mailx, attach files with mutt.",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "dateModified": "2026-09-29",
+    "step": [
+      {"@type": "HowToStep", "name": "Configure msmtp relay", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/cli-email.html#steps"},
+      {"@type": "HowToStep", "name": "Send from a script", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/cli-email.html#steps"},
+      {"@type": "HowToStep", "name": "Send with an attachment", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/cli-email.html#steps"}
+    ]
+  }</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Linux Fundamentals", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/index.html"}, {"@type": "ListItem", "position": 4, "name": "Command Line Email", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/cli-email.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'msmtp: authentication failed'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Wrong password, or the provider requires an app password. Fix: Generate an app-specific password and verify auth on is set with TLS."}}, {"@type": "Question", "name": "How do I fix 'TLS certificate verification failed'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Missing CA bundle or wrong tls_trust_file. Fix: Install ca-certificates and point tls_trust_file at the system bundle."}}, {"@type": "Question", "name": "How do I fix 'mailx: cannot send, sendmail not found'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: No MTA configured as the sendmail interface. Fix: Point mailx at msmtp via /etc/mail.rc: set sendmail=/usr/bin/msmtp."}}, {"@type": "Question", "name": "How do I fix 'Messages land in spam'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Missing SPF/DKIM on the sending domain. Fix: Send through your provider's relay with auth rather than direct-to-MX."}}, {"@type": "Question", "name": "How do I fix 'Attachment arrives corrupted'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Wrong MIME encoding from manual construction. Fix: Let mutt build the MIME structure with -a instead of hand-rolling."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>Command Line Email</span></nav>
+    <div class="page-header"><h1>Command-Line Email with mailx, msmtp, and mutt</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Linux</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">mailx</span><span class="tag">msmtp</span><span class="tag">mutt</span><span class="tag">SMTP</span></div>
+    </div>
+
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#learning-objectives">Learning Objectives</a></li>
+<li><a href="#objective">Objective &amp; Context</a></li>
+<li><a href="#environment">Environment &amp; Prerequisites</a></li>
+<li><a href="#steps">Step-by-Step Execution</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#validation">Validation &amp; Testing</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#key-takeaways">Key Takeaways</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    <section><p class="lead">I configured command-line email so scripts and cron jobs can send notifications over authenticated SMTP using msmtp as the relay and mailx/mutt as front ends. Reliable script-driven email closed the loop on backups and monitoring without a heavyweight mail server.</p></section>
+
+    <section id="objective"><h2>Objective &amp; Context</h2>
+      <p>Automation needs a notification channel. This lab routes outbound mail through an authenticated SMTP relay with msmtp, then sends from scripts with mailx and attachments with mutt, complementing the cron and sysadmin labs.</p></section>
+
+    <div class="lab-objectives" id="learning-objectives"><h3>Learning Objectives</h3>
+    <ul>
+      <li>Configure msmtp as an authenticated SMTP relay client.</li>
+      <li>Send plain-text alerts from shell scripts with mailx.</li>
+      <li>Attach files to messages with mutt.</li>
+      <li>Store credentials securely with restricted permissions.</li>
+      <li>Wire email notifications into cron jobs and backup scripts.</li>
+    </ul></div>
+
+    <section id="environment"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+    <ul>
+      <li>Linux with mailutils (mailx), msmtp, and mutt: <code>sudo apt install -y mailutils msmtp mutt</code>.</li>
+      <li>SMTP relay credentials: host, port, username, and an app password with TLS.</li>
+      <li>A test recipient mailbox you control.</li>
+      <li>Basic shell scripting comfort from the scripting labs.</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="Script to SMTP relay email flow">
+flowchart LR
+  S[Script/cron] --> M[mailx/mutt]
+  M --> R[msmtp relay TLS auth]
+  R --> SMTP[(SMTP server)]
+  SMTP --> Inbox[Recipient]
+      </div>
+    </section>
+
+    <section id="steps"><h2>Step-by-Step Execution</h2>
+      <h3>1. Configure msmtp relay</h3>
+<pre><code class="language-bash"># ~/.msmtprc
+account default
+host smtp.tyfsadik.org
+port 587
+tls on
+tls_starttls on
+tls_trust_file /etc/ssl/certs/ca-certificates.crt
+auth on
+user taki@tyfsadik.org
+from taki@tyfsadik.org
+passwordeval "secret-tool lookup service smtp user taki@tyfsadik.org"</code></pre>
+      <div class="command-block"><div class="command"><code>chmod 600 ~/.msmtprc &amp;&amp; msmtp --pretend -a default ops@tyfsadik.org &lt; /dev/null</code></div></div>
+      <p class="lab-output-label">Expected output (config validation):</p><pre><code>ignoring system configuration file /etc/msmtprc: No such file or directory
+loaded user configuration file /home/taki/.msmtprc
+using account default : host = smtp.tyfsadik.org, port = 587, ...
+(envelope and SMTP dialog are printed; --pretend sends nothing)</code></pre>
+      <p class="lab-step-note">What this teaches: msmtp is a sendmail-compatible SMTP client: the config declares host, port, TLS, and auth once, and every tool (mailx, cron, scripts) routes through it. Port 587 uses STARTTLS (tls_starttls on), which upgrades a plaintext connection; tls on without tls_starttls is for implicit TLS on port 465. 600 permissions are mandatory: msmtp refuses to run when the config is group or world readable. passwordeval fetches the app password from the login keyring so no secret sits in the file itself.</p>
+    <h3>2. Send from a script</h3>
+      <div class="command-block"><div class="command"><code>echo "backup completed" | mailx -s "Backup OK" ops@tyfsadik.org</code></div></div>
+      <p class="lab-step-note">What this teaches: Piping message bodies into mailx with -s for the subject is the scriptable pattern; exit status 0 means the relay accepted it. This is how cron jobs and backups announce results.</p>
+    <h3>3. Send with an attachment</h3>
+      <div class="command-block"><div class="command"><code>echo "report attached" | mutt -s "Daily Report" -a report.pdf -- ops@tyfsadik.org; echo "exit=$?"</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>(no output from mutt on success)
+exit=0</code></pre>
+      <p class="lab-step-note">What this teaches: mutt's -a attaches files and the double hyphen separates attachment paths from recipient addresses; batch mode is silent on success, so check the exit status. A 0 means msmtp handed the message to the relay successfully, and the relay logs will show the SMTP 250 OK acceptance.</p>
+    </section>
+
+    <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>
+      <p>Unix mail follows the sendmail interface: programs hand a message to a Mail Transfer Agent, which routes it via SMTP. msmtp implements just the client side: it speaks SMTP with authentication and TLS to a relay (your provider or company server) and exits with a clear status. Because it honors the sendmail command interface, mailx, mutt, and cron can all use it without knowing SMTP details.</p>
+      <p>Separating the relay config from the sending tools is the key design win. Credentials live once in ~/.msmtprc with 600 permissions; scripts only say 'send this'. Rotating an app password then touches one file instead of every script, and msmtp --pretend lets you validate the handshake without delivering mail.</p>
+      <p>mutt is a full Mail User Agent for interactive and scripted use: it composes MIME messages, attaches files with correct encoding, and can also read mailboxes. For automation, its -s/-a batch flags turn report generation plus delivery into a single pipeline stage.</p>
+    </div>
+    <div class="mermaid" role="img" aria-label="Mail flow from script to inbox">
+flowchart LR
+  S["backup.sh"] --> M["mailx / mutt"]
+  M --> R["msmtp: TLS + auth"]
+  R --> V["SMTP relay"]
+  V --> I["Recipient inbox"]
+  style R fill:#1a3a5a,stroke:#4da3ff,color:#fff
+      </div>
+    </section>
+
+    <section id="validation"><h2>Validation &amp; Testing</h2>
+      <p>Trigger an email from a cron job and confirm delivery, headers, and attachment integrity. Pass criteria: mail is accepted by the relay (250 OK), arrives in the inbox, and attachments open correctly.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+    <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>msmtp: authentication failed</td><td>Wrong password, or the provider requires an app password</td><td>Generate an app-specific password and verify auth on is set with TLS</td></tr>
+      <tr><td>TLS certificate verification failed</td><td>Missing CA bundle or wrong tls_trust_file</td><td>Install ca-certificates and point tls_trust_file at the system bundle</td></tr>
+      <tr><td>mailx: cannot send, sendmail not found</td><td>No MTA configured as the sendmail interface</td><td>Point mailx at msmtp via /etc/mail.rc: set sendmail=/usr/bin/msmtp</td></tr>
+      <tr><td>Messages land in spam</td><td>Missing SPF/DKIM on the sending domain</td><td>Send through your provider's relay with auth rather than direct-to-MX</td></tr>
+      <tr><td>Attachment arrives corrupted</td><td>Wrong MIME encoding from manual construction</td><td>Let mutt build the MIME structure with -a instead of hand-rolling</td></tr>
+      <tr><td>Credential file readable by others</td><td>~/.msmtprc created with default umask</td><td>Run chmod 600 ~/.msmtprc; msmtp warns when permissions are too open</td></tr>
+    </tbody></table>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Auth failure:</strong> use an app-specific password and confirm TLS on port 587.</li>
+        <li><strong>Marked as spam:</strong> ensure SPF/DKIM align with the sending domain.</li>
+        <li><strong>No mail from cron:</strong> cron's minimal PATH may miss msmtp; use absolute paths.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Enabled reliable script-driven email over authenticated SMTP.</li>
+        <li>Delivered job notifications and reports with attachments.</li>
+        <li>Avoided running a full local MTA by relaying through msmtp.</li>
+        <li>Verified deliverability with SPF/DKIM-aligned sending.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways" id="key-takeaways"><h3>Key Takeaways</h3>
+    <ul>
+      <li>msmtp is the SMTP relay client; mailx and mutt are the sending interfaces.</li>
+      <li>One relay config serves every script; rotate credentials in one place.</li>
+      <li>250 OK from the relay is the delivery acceptance signal.</li>
+      <li>Keep ~/.msmtprc at 600 permissions.</li>
+      <li>Use app passwords, never main account passwords, for automation.</li>
+    </ul></div>
+
+    <section id="practice-challenges"><h2>Practice Challenges</h2>
+    <div class="lab-challenge"><h4>Challenge 1: Backup notifier</h4><p>Goal: extend a backup script to email success with the archive size, or failure with the last 20 log lines, choosing the subject accordingly.</p><p><strong>Hint:</strong> branch on $? after the backup step.</p></div>
+    <div class="lab-challenge"><h4>Challenge 2: Daily report mailer</h4><p>Goal: cron a job that generates a CSV report and mutt-mails it as an attachment every morning at 07:00.</p><p><strong>Hint:</strong> combine the cron lab's logged pattern with mutt -a.</p></div>
+    </section>
+
+    <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="cron-jobs.html">Cron Jobs &amp; Scheduling</a></li>
+        <li><a href="file-transfer-email.html">File Transfer &amp; Email</a></li>
+        <li><a href="../../../work/infrastructure/email-server.html">Private Email Server</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

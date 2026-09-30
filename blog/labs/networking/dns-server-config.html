@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DNS Server Configuration: Networking Lab | TYFSADIK</title>
+  <meta name="description" content="Build authoritative DNS with BIND9: forward and reverse zones, named-checkzone validation, safe rndc reloads, and direct dig queries with realistic output.">
+  <meta name="keywords" content="BIND9, DNS server, authoritative DNS, zone file, named-checkzone, dig, PTR">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/dns-server-config.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "DNS Server Configuration with BIND9", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-03-18", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "BIND9, dig, zone files", "articleSection": "Networking", "learningResourceType": "Hands-on lab", "teaches": "computer networking fundamentals"}</script>
+  <meta property="og:title" content="DNS Server Configuration: Networking Lab | TYFSADIK">
+  <meta property="og:description" content="Build authoritative DNS with BIND9: forward and reverse zones, named-checkzone validation, safe rndc reloads, and direct dig queries with realistic output.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/networking/dns-server-config.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="DNS Server Configuration: Networking Lab | TYFSADIK">
+  <meta name="twitter:description" content="Build authoritative DNS with BIND9: forward and reverse zones, named-checkzone validation, safe rndc reloads, and direct dig queries with realistic output.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "Authoritative DNS Configuration with BIND9",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "1. Define a forward zone record set",
+      "text": "1. Define a forward zone record set"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "2. Validate zones before reload [ROOT REQUIRED]",
+      "text": "named-checkzone lab.tyfsadik.org /etc/bind/db.lab && rndc reload"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "3. Query the server directly",
+      "text": "dig @192.168.20.2 nas.lab.tyfsadik.org +short"
+    }
+  ]
+}
+  </script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Networking", "item": "https://tyfsadik.org/blog/labs/networking/index.html"}, {"@type": "ListItem", "position": 4, "name": "DNS Server Configuration", "item": "https://tyfsadik.org/blog/labs/networking/dns-server-config.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'named fails to start after an edit'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Syntax error in named.conf or a zone file. Fix: Run named-checkconf and named-checkzone on every edited file before reloading."}}, {"@type": "Question", "name": "How do I fix 'dig returns SERVFAIL'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Zone failed to load (check the serial or a missing trailing dot). Fix: Inspect journalctl -u named for the load error; FQDNs in zone files need trailing dots."}}, {"@type": "Question", "name": "How do I fix 'dig returns NXDOMAIN for a known name'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Querying the wrong server or the record is in the wrong zone. Fix: Query with @server explicitly and confirm the name falls inside a configured zone."}}, {"@type": "Question", "name": "How do I fix 'Reverse lookup returns nothing'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Missing or misnamed reverse zone (wrong in-addr.arpa octet order). Fix: Build the reverse zone name by reversing the network octets."}}, {"@type": "Question", "name": "How do I fix 'Changes do not appear'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The zone was not reloaded, or a cached answer is being served. Fix: Run rndc reload, then query with +norecurse and check the TTL."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>DNS Server Configuration</span></nav>
+    <div class="page-header"><h1>Authoritative DNS Configuration with BIND9</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Networking</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">BIND9</span><span class="tag">zones</span><span class="tag">PTR</span><span class="tag">dig</span></div>
+    </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
+      <ol>
+      <li><a href="#objective-context">Objective</a></li>
+      <li><a href="#learning-objectives">Learning Objectives</a></li>
+      <li><a href="#environment-prerequisites">Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Steps</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#key-takeaways">Key Takeaways</a></li>
+      <li><a href="#practice-challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+      </ol>
+    </nav>
+
+
+    <section><p class="lead">I configured BIND9 as an authoritative server with forward and reverse zones for a local domain, including A, PTR, MX, and CNAME records. The deployment delivered internal name resolution validated end-to-end with dig against the server directly.</p></section>
+
+    <section id="objective-context"><h2>Objective &amp; Context</h2>
+      <p>DNS underpins almost every service interaction. This lab builds authoritative forward and reverse zones so internal hosts resolve by name and reverse lookups support logging and mail, complementing the DHCP and static-config labs.</p></section>    <section id="learning-objectives">
+      <div class="lab-objectives"><h3>Learning Objectives</h3>
+        <ul>
+        <li>Author forward and reverse zone files with SOA, NS, A, PTR, MX, and CNAME records.</li>
+        <li>Validate every zone with named-checkzone before reloading.</li>
+        <li>Reload zones safely with rndc without restarting the daemon.</li>
+        <li>Query the server directly with dig and interpret the answer section.</li>
+        <li>Explain when reverse (PTR) lookups matter: logging, mail, and access control.</li>
+        </ul>
+      </div>
+    </section>
+
+
+    <section id="environment-prerequisites"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+      <ul>
+        <li>Linux server with BIND9 (named) installed.</li>
+        <li>A local domain (lab.tyfsadik.org) and subnet for the reverse zone.</li>
+        <li>dig and named-checkzone for validation.</li>
+      
+          <li>Linux server with BIND9 installed: sudo apt install -y bind9 bind9utils.</li>
+          <li>A local domain to serve authoritatively (this lab uses lab.tyfsadik.org) and a subnet for the reverse zone.</li>
+          <li>dig and named-checkzone for validation (both ship with bind9utils).</li>
+          <li>Root or sudo access to edit zone files and reload named.</li>
+          <li>Basic understanding of record types (A, PTR, MX, CNAME, NS, SOA).</li>
+        </ul>
+      <div class="mermaid" role="img" aria-label="Forward and reverse zone resolution">
+flowchart LR
+  Q[dig host.lab] --> N[BIND9 named]
+  N --> F[(Forward zone A/MX/CNAME)]
+  N --> R[(Reverse zone PTR)]
+  F --> A[Answer]
+  R --> A
+      </div>
+          </div>
+</section>
+
+    <section id="step-by-step-execution"><h2>Step-by-Step Execution</h2>
+      <h3>1. Define a forward zone record set</h3>
+<p class="lab-output-label">File content (place at /etc/bind/db.lab):</p>
+<pre><code class="language-bash">$TTL 3600
+@   IN SOA ns1.lab.tyfsadik.org. admin.lab.tyfsadik.org. (2026092901 3600 600 86400 3600)
+@   IN NS  ns1
+ns1 IN A   192.168.20.2
+nas IN A   192.168.20.10</code></pre>
+<p class="lab-step-note">What this teaches: a zone file is the authoritative source of truth for a domain, and the SOA serial tracks its revisions.</p>
+<p class="lab-output-label">File content (add to /etc/bind/named.conf.local so named loads the zones):</p>
+<pre><code class="language-bash">zone "lab.tyfsadik.org" {
+    type primary;
+    file "/etc/bind/db.lab";
+};
+zone "20.168.192.in-addr.arpa" {
+    type primary;
+    file "/etc/bind/db.192.168.20";
+};</code></pre>
+<p class="lab-step-note">Without the zone declaration in named.conf.local, named never loads the file: validation passes but queries still return SERVFAIL. The reverse zone name is the network octets reversed with .in-addr.arpa appended (192.168.20.0/24 becomes 20.168.192.in-addr.arpa).</p>
+<h3>2. Validate zones before reload [ROOT REQUIRED]</h3>
+      <div class="command-block"><div class="command"><code>named-checkzone lab.tyfsadik.org /etc/bind/db.lab &amp;&amp; rndc reload</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>zone lab.tyfsadik.org/IN: loaded serial 2026092901
+OK
+(nothing on success from rndc reload; confirm with: rndc status)</code></pre>
+<p class="lab-step-note">What this teaches: checking syntax before reload keeps one typo from taking down all resolution.</p>
+<p class="lab-output-label">File content (place at /etc/bind/db.192.168.20):</p>
+<pre><code class="language-bash">$TTL 3600
+@   IN SOA ns1.lab.tyfsadik.org. admin.lab.tyfsadik.org. (2026092901 3600 600 86400 3600)
+@   IN NS  ns1.lab.tyfsadik.org.
+2   IN PTR ns1.lab.tyfsadik.org.
+10  IN PTR nas.lab.tyfsadik.org.</code></pre>
+<p class="lab-step-note">PTR records map the last octet back to a hostname. Validate with: named-checkzone 20.168.192.in-addr.arpa /etc/bind/db.192.168.20, then test with dig @192.168.20.2 -x 192.168.20.10.</p>
+<h3>3. Query the server directly</h3>
+      <div class="command-block"><div class="command"><code>dig @192.168.20.2 nas.lab.tyfsadik.org +short</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code class="language-bash">192.168.20.10</code></pre>
+<p class="lab-step-note">What this teaches: querying the server directly with @ bypasses the resolver chain and tests exactly what you configured.</p>
+</section>    <section id="how-it-works">
+      <div class="lab-explainer"><h3>How It Works</h3>
+        <p>Authoritative DNS means this server is the final authority for its zones: when asked for a name in lab.tyfsadik.org, it answers from its own zone files instead of recursing. Forward zones map names to addresses (A records); reverse zones map addresses back to names (PTR records) under in-addr.arpa. Both directions are needed for complete service behavior.</p>
+        <p>Zone transfers and caching revolve around the SOA record. The serial number tells secondaries whether the zone changed, and the refresh/retry/expire timers control how they stay in sync. TTL values on individual records control how long resolvers cache answers, which is why lowering TTLs before a migration matters.</p>
+        <p>Validation tools exist because zone files are unforgiving. named-checkzone parses the file exactly as named would and reports the first error with a line number. rndc reload asks the running daemon to re-read zone files without dropping in-flight queries, which is the safe way to publish changes.</p>
+        <div class="mermaid" role="img" aria-label="DNS query path to the authoritative server">
+flowchart LR
+  C["Client"] -->|"dig @server"| R["Resolver"]
+  R -->|"authoritative query"| A["BIND9 named"]
+  A --> Z["Zone files"]
+  Z --> AN["Answer"]
+  AN --> C
+        </div>
+      </div>
+    </section>
+
+
+    <section id="validation-testing"><h2>Validation &amp; Testing</h2>
+      <p>Resolve forward and reverse records and confirm the SOA serial incremented on each change. Pass criteria: correct A and PTR answers, authoritative AA flag set, and clean <code>named-checkzone</code> output.</p>
+    </section>    <section id="troubleshooting">
+      <h2>Troubleshooting</h2>
+      <table class="lab-table">
+        <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>named fails to start after an edit</td><td>Syntax error in named.conf or a zone file</td><td>Run named-checkconf and named-checkzone on every edited file before reloading</td></tr>
+          <tr><td>dig returns SERVFAIL</td><td>Zone failed to load (check the serial or a missing trailing dot)</td><td>Inspect journalctl -u named for the load error; FQDNs in zone files need trailing dots</td></tr>
+          <tr><td>dig returns NXDOMAIN for a known name</td><td>Querying the wrong server or the record is in the wrong zone</td><td>Query with @server explicitly and confirm the name falls inside a configured zone</td></tr>
+          <tr><td>Reverse lookup returns nothing</td><td>Missing or misnamed reverse zone (wrong in-addr.arpa octet order)</td><td>Build the reverse zone name by reversing the network octets</td></tr>
+          <tr><td>Changes do not appear</td><td>The zone was not reloaded, or a cached answer is being served</td><td>Run rndc reload, then query with +norecurse and check the TTL</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>SERVFAIL:</strong> a zone file syntax error; run named-checkzone and inspect <code>/var/log/syslog</code>.</li>
+        <li><strong>Stale answers:</strong> bump the SOA serial; secondaries cache by serial.</li>
+        <li><strong>Reverse lookup fails:</strong> confirm the in-addr.arpa zone and PTR records exist.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Served authoritative forward and reverse resolution for the local domain.</li>
+        <li>Validated 100% of zones with named-checkzone before every reload.</li>
+        <li>Resolved A, PTR, MX, and CNAME records end-to-end via dig.</li>
+        <li>Standardized SOA serial discipline (date-based) for change tracking.</li>
+      </ul>
+    </section>    <section id="key-takeaways">
+      <div class="lab-takeaways"><h3>Key Takeaways</h3>
+        <ul>
+        <li>Validate with named-checkzone before every reload, without exception.</li>
+        <li>Trailing dots in zone files are load-bearing: omit one and the name gets the origin appended.</li>
+        <li>Query the authoritative server directly with dig @server to isolate problems.</li>
+        <li>Keep SOA serials monotonic so secondaries and tooling detect changes.</li>
+        </ul>
+      </div>
+    </section>
+
+
+        <section id="practice-challenges">
+      <h2>Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Add an MX and SPF record</h4><p>Goal: Publish a mail exchanger and an SPF TXT record for the lab domain, then verify both with dig.</p><p>Hint: MX points at a hostname, never a bare IP; the TXT record holds the v=spf1 policy.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: Slave the zone</h4><p>Goal: Configure a second BIND9 server as a slave that transfers the zone via AXFR and answers queries identically.</p><p>Hint: Allow transfers with allow-transfer on the master and declare type slave on the second server.</p></div>
+    </section>
+<section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="dhcp-server-setup.html">DHCP Server Configuration</a></li>
+        <li><a href="static-network-config.html">Static Network Configuration</a></li>
+        <li><a href="../../../work/infrastructure/self-hosted-dns.html">Self-Hosted DNS (Pi-hole + Unbound)</a></li>
+      
+        <li><a href="network-troubleshooting.html">Network Troubleshooting</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

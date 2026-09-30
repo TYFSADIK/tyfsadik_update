@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linux Log Management | journald, rsyslog &amp; logrotate</title>
+  <meta name="description" content="Manage Linux logs: query precisely with journalctl filters, forward to a central rsyslog server, and rotate logs with logrotate to bound disk usage growth.">
+  <meta name="keywords" content="linux log management, journalctl tutorial, rsyslog forwarding, logrotate config, Linux system administration, server hardening guide">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-server/log-management.html">
+  <meta property="og:title" content="Linux Log Management | journald, rsyslog &amp; logrotate">
+  <meta property="og:description" content="Manage Linux logs: query precisely with journalctl filters, forward to a central rsyslog server, and rotate logs with logrotate to bound disk usage growth.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-server/log-management.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Linux Log Management | journald, rsyslog &amp; logrotate">
+  <meta name="twitter:description" content="Manage Linux logs: query precisely with journalctl filters, forward to a central rsyslog server, and rotate logs with logrotate to bound disk usage growth.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Linux Log Management and Centralization", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-26", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "systemd-journald, rsyslog, logrotate", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux server administration"}</script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Linux Log Management with journald, rsyslog, and logrotate",
+    "description": "Manage Linux logs: query precisely with journalctl filters, forward to a central rsyslog server, and rotate logs with logrotate to bound disk usage growth.",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "dateModified": "2026-09-29",
+    "step": [
+      {"@type": "HowToStep", "name": "Query logs precisely with journalctl", "url": "https://tyfsadik.org/blog/labs/linux-server/log-management.html#steps"},
+      {"@type": "HowToStep", "name": "Forward logs to a central server", "url": "https://tyfsadik.org/blog/labs/linux-server/log-management.html#steps"},
+      {"@type": "HowToStep", "name": "Rotate logs with logrotate", "url": "https://tyfsadik.org/blog/labs/linux-server/log-management.html#steps"}
+    ]
+  }</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Linux Server", "item": "https://tyfsadik.org/blog/labs/linux-server/index.html"}, {"@type": "ListItem", "position": 4, "name": "Log Management", "item": "https://tyfsadik.org/blog/labs/linux-server/log-management.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'journalctl shows no logs for a unit'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Service logs to a file instead of stdout, or Storage=none. Fix: Check journald.conf Storage setting and the unit's StandardOutput."}}, {"@type": "Question", "name": "How do I fix 'Forwarded logs never arrive'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Firewall, wrong port, or TCP vs UDP mismatch. Fix: Test with logger and tcpdump; @@ is TCP, @ is UDP."}}, {"@type": "Question", "name": "How do I fix 'logrotate: error: state file'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Concurrent runs or corrupt status file. Fix: Check /var/lib/logrotate/status and ensure one daily cron run."}}, {"@type": "Question", "name": "How do I fix 'Logs stop after rotation'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Daemon still writes to the renamed file handle. Fix: Add postrotate with systemctl reload/kill -HUP so it reopens logs."}}, {"@type": "Question", "name": "How do I fix 'Journal consumes too much disk'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: SystemMaxUse unset on a busy host. Fix: Write SystemMaxUse=500M under [Journal] in /etc/systemd/journald.conf.d/10-limits.conf, run sudo systemctl restart systemd-journald, then trim with sudo journalctl --vacuum-size=500M."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Log Management</span></nav>
+    <div class="page-header"><h1>Linux Log Management with journald, rsyslog, and logrotate</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">journald</span><span class="tag">rsyslog</span><span class="tag">logrotate</span><span class="tag">forwarding</span></div>
+    </div>
+
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#learning-objectives">Learning Objectives</a></li>
+<li><a href="#architecture">Architecture Overview</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#steps">Step-by-Step Execution</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#validation">Testing &amp; Validation</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#extensions">Extension Ideas</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#key-takeaways">Key Takeaways</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    <section><p class="lead">You will query journald, forward logs to a central rsyslog server, and rotate files so disks never fill. By the end you will have searchable, retained, centralized logs, the foundation for monitoring and the SOC labs.</p></section>
+
+    <div class="learning-objectives lab-objectives" id="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Filter and follow logs with journalctl.</li>
+        <li>Forward logs to a central server over rsyslog.</li>
+        <li>Rotate and retain logs with logrotate.</li>
+        <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> a server (and optionally a second host as collector).</li>
+      </ul>
+    </div>
+
+    <section id="architecture"><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Log flow from sources to central collector">
+graph LR
+  App[Apps + kernel] -->|journald| J[systemd-journald]
+  J -->|syslog socket or imjournal| R[rsyslog]
+  R -->|TCP/514| C[(Central log host)]
+  R -->|/var/log text files| LR[logrotate retention]
+  J -->|SystemMaxUse| JR[journald own retention]
+      </div>
+    </section>
+
+    <section id="environment"><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> systemd-journald (default), rsyslog, and logrotate.</p>
+      <p><strong>Before you begin:</strong> if forwarding, have a reachable collector listening on TCP/514.</p>
+    </section>
+
+    <div class="lab-prereqs" id="prerequisites"><h3>Prerequisites</h3>
+    <ul>
+      <li>A systemd-based Linux host with journald and rsyslog installed.</li>
+      <li>Root or sudo access for rsyslog config and logrotate.</li>
+      <li>A central log server address for the forwarding step (or a second VM).</li>
+      <li>A service generating logs (ssh used in the examples).</li>
+    </ul></div>
+
+    <section id="steps"><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Query logs precisely with journalctl</strong>
+          <p>Targeted filters turn a flood of entries into the few that matter for triage.</p>
+          <div class="command-block" data-copy><div class="command"><code>journalctl -p info -S "2026-06-17 00:00:00" -u ssh --no-pager</code></div><div class="note">Shows SSH messages at info priority or higher since midnight. Failed SSH logins are recorded at info priority, so <code>-p err</code> would hide exactly the lines you are hunting.
+          <p class="lab-output-label">Expected output:</p><pre><code>Jun 17 09:02:11 srv01 sshd[2101]: Failed password for invalid user admin from 203.0.113.45
+Jun 17 09:02:14 srv01 sshd[2101]: Failed password for invalid user admin from 203.0.113.45</code></pre>
+          <p class="lab-step-note">What this teaches: -p filters by priority (err and higher would miss these auth lines, which are info), -S sets the start time, -u scopes to one unit: three filters turn a flood into the exact lines triage needs. Match the priority to what the service actually logs.</p></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Forward logs to a central server</strong>
+          <p>Centralized logs survive a compromised host and enable cross-host correlation.</p>
+          <div class="command-block" data-copy><div class="command"><code>echo '*.* @@192.168.1.60:514' | sudo tee /etc/rsyslog.d/90-forward.conf &amp;&amp; sudo systemctl restart rsyslog</code>
+          <p class="lab-output-label">Expected output:</p><pre><code>*.* @@192.168.1.60:514
+(rsyslog restarted; verify with: systemctl is-active rsyslog)</code></pre>
+          <p class="lab-step-note">What this teaches: A one-line rsyslog rule forwards everything over TCP (@@) to the collector; centralized logs survive a compromised or dead host.</p></div></div>
+          <p>The collector (192.168.1.60) must actually be listening, or the forwarded logs go nowhere. Enable TCP reception <strong>on the collector</strong>:</p>
+          <p class="code-label">ON THE COLLECTOR: LISTEN ON TCP 514</p>
+          <div class="command-block" data-copy><div class="command"><code>printf 'module(load="imtcp")\ninput(type="imtcp" port="514")\n' | sudo tee /etc/rsyslog.d/10-listen.conf &amp;&amp; sudo systemctl restart rsyslog &amp;&amp; sudo ss -tlnp | grep ':514'</code></div><div class="note">[ROOT REQUIRED] Run on 192.168.1.60; also open TCP 514 in the collector firewall.</div></div>
+          <p>Verify end to end: run <code>logger -t labtest "forward check"</code> on the client, then search for <code>labtest</code> in the collector logs.</p>
+          <p><strong>Security note:</strong> bare TCP syslog is unencrypted and unauthenticated. On any untrusted network, use TLS (imtcp with certificates) or RELP with TLS instead of plain <code>@@host:514</code>.</p>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Rotate logs with logrotate</strong>
+          <p class="lab-output-label">Expected output:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">#</span> <span class="input">logrotate -d /etc/logrotate.d/rsyslog</span></div>
+            <div class="terminal-output">rotating pattern: /var/log/syslog  weekly (4 rotations)
+considering log /var/log/syslog
+  log does not need rotating</div>
+          </div>
+          <p class="lab-step-note">What this teaches: logrotate -d dry-runs the config, showing which pattern matches and whether rotation is due, without touching any files.</p></div></div>
+      </div>
+    </section>
+
+    <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>
+      <p>Modern Linux logging has two layers. journald captures stdout/stderr of every systemd service into a structured, indexed binary journal with fields like _SYSTEMD_UNIT and PRIORITY; journalctl queries that index, which is why filtering by unit, time, and priority is instant. rsyslog handles the traditional text-file side (/var/log/syslog) and simple network forwarding. how journal entries reach rsyslog depends on the distribution and local configuration: either journald forwards them to the local syslog socket (<code>ForwardToSyslog=yes</code> in <code>journald.conf</code>), or rsyslog pulls them from the journal directly with its <code>imjournal</code> input module. Upstream systemd defaults <code>ForwardToSyslog</code> to <code>no</code>, precisely because rsyslog and syslog-ng normally read the journal themselves, so check <code>/etc/systemd/journald.conf</code> and whether rsyslog loads <code>imjournal</code> to know which path your host uses. journald also ships its own network transport via systemd-journal-remote and systemd-journal-upload; rsyslog forwarding remains the simplest cross-platform path.</p>
+      <p>Centralized logging is a security control, not just convenience: an attacker who roots a host can tamper with local logs, but already-forwarded entries on the collector are out of reach. Forwarding over TCP (or TLS with certificates) plus local buffering covers the gap between event and delivery.</p>
+      <p>logrotate bounds disk usage with declarative policy: rotate weekly, keep 4, compress the old ones, and notify the daemon (postrotate reload) so it reopens files. Without rotation, one chatty service eventually fills the disk and takes the host down with it.</p>
+      <p>journald retention is separate from logrotate: write <code>SystemMaxUse=500M</code> under <code>[Journal]</code> in <code>/etc/systemd/journald.conf.d/10-limits.conf</code>, apply it with <code>sudo systemctl restart systemd-journald</code>, and trim on demand with <code>sudo journalctl --vacuum-size=500M</code> (vacuum needs root). logrotate never touches the binary journal.</p>
+    </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Log management progress">
+graph LR
+  A[01 Query journald] -->|done| B[02 Forward rsyslog]
+  B -->|done| C[03 Rotate logrotate]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section id="validation"><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>logger "test-event-tyf" &amp;&amp; journalctl -n 1 | grep test-event-tyf</code></div></div>
+      <p>You should see the test event in the local journal (and on the collector if forwarding). If so, your logging pipeline is working.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+    <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>journalctl shows no logs for a unit</td><td>Service logs to a file instead of stdout, or Storage=none</td><td>Check journald.conf Storage setting and the unit's StandardOutput</td></tr>
+      <tr><td>Forwarded logs never arrive</td><td>Firewall, wrong port, or TCP vs UDP mismatch</td><td>Test with logger and tcpdump; @@ is TCP, @ is UDP</td></tr>
+      <tr><td>logrotate: error: state file</td><td>Concurrent runs or corrupt status file</td><td>Check /var/lib/logrotate/status and ensure one daily cron run</td></tr>
+      <tr><td>Logs stop after rotation</td><td>Daemon still writes to the renamed file handle</td><td>Add postrotate with systemctl reload/kill -HUP so it reopens logs</td></tr>
+      <tr><td>Journal consumes too much disk</td><td>SystemMaxUse unset on a busy host</td><td>Write SystemMaxUse=500M under [Journal] in /etc/systemd/journald.conf.d/10-limits.conf, run sudo systemctl restart systemd-journald, then trim with sudo journalctl --vacuum-size=500M</td></tr>
+      <tr><td>Timestamps confusing across hosts</td><td>Mixed timezones in text logs</td><td>Standardize on UTC via timedatectl and let the viewer localize</td></tr>
+    </tbody></table>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>No logs on collector:</strong> confirm the collector listens on 514 and firewall allows it.</li>
+        <li><strong>Journal too large:</strong> cap with <code>SystemMaxUse=</code> in journald.conf.</li>
+        <li><strong>logrotate not running:</strong> it is triggered by a daily timer; test with <code>logrotate -f</code>.</li>
+      </ul>
+    </details>
+
+    <section id="extensions"><h2>Extension Ideas</h2>
+      <ul>
+        <li>Feed centralized logs into the <a href="../security/automated-soc-pipeline.html">Automated SOC Pipeline</a>.</li>
+        <li>Add structured logging (JSON) for easier parsing.</li>
+        <li>Forward over TLS (RELP) for confidentiality and reliability.</li>
+      </ul>
+    </section>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Queried logs precisely by priority, time, and unit.</li>
+        <li>Centralized logs to a collector for cross-host correlation.</li>
+        <li>Bounded disk usage with rotation and retention.</li>
+        <li>Verified the pipeline end to end with a test event.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways" id="key-takeaways"><h3>Key Takeaways</h3>
+    <ul>
+      <li>journalctl filters (unit, priority, since) make triage instant.</li>
+      <li>Forward logs centrally; local logs are tamperable evidence.</li>
+      <li>logrotate policy bounds disk: frequency, count, compression, postrotate.</li>
+      <li>Dry-run with -d before trusting a new rotation config.</li>
+      <li>UTC everywhere; localize at display time.</li>
+    
+      <li>Structured JSON logs query far better than free text once you scale.</li>
+      <li>Rate limits such as RateLimitIntervalSec stop a noisy service from filling the disk.</li>
+    </ul></div>
+
+    <section id="practice-challenges"><h2>Practice Challenges</h2>
+    <div class="lab-challenge"><h4>Challenge 1: Breach timeline</h4><p>Goal: using journalctl only, build a minute-by-minute timeline of SSH logins and failures for one day, exported to a file.</p><p><strong>Hint:</strong> -o short-iso plus grep and sort.</p></div>
+    <div class="lab-challenge"><h4>Challenge 2: Forward and verify</h4><p>Goal: forward a test host's auth logs to a collector, generate login events, and prove they arrived within seconds.</p><p><strong>Hint:</strong> logger -p authpriv.info creates test events.</p></div>
+    </section>
+
+    <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="service-management.html">Service Management (systemd)</a></li>
+        <li><a href="../security/incident-response-procedures.html">Incident Response Procedures</a></li>
+        <li><a href="../security/automated-soc-pipeline.html">Automated SOC Pipeline</a></li>
+        <li><a href="cron-scheduling.html">Cron Jobs &amp; Task Scheduling</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

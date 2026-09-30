@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linux Redirection &amp; Pipelines: stdin, stdout, tee | TYFSADIK</title>
+  <meta name="description" content="Master Linux streams: stdin, stdout, stderr, file descriptors, pipes, and tee. Learn the redirection and composition glue behind every filter and scripting lab.">
+  <meta name="keywords" content="linux redirection, stdin stdout stderr, pipe tutorial, tee command, file descriptors">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-fundamentals/redirection-pipelines.html">
+  <meta property="og:title" content="Linux Redirection &amp; Pipelines: stdin, stdout, tee | TYFSADIK">
+  <meta property="og:description" content="Master Linux streams: stdin, stdout, stderr, file descriptors, pipes, and tee. Learn the redirection and composition glue behind every filter and scripting lab.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-fundamentals/redirection-pipelines.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Linux Redirection &amp; Pipelines: stdin, stdout, tee | TYFSADIK">
+  <meta name="twitter:description" content="Master Linux streams: stdin, stdout, stderr, file descriptors, pipes, and tee. Learn the redirection and composition glue behind every filter and scripting lab.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Linux Redirection and Pipelines", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-22", "dateModified": "2026-09-29", "proficiencyLevel": "Beginner", "dependencies": "Bash, coreutils, tee", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux fundamentals and command-line skills"}</script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Linux Redirection and Pipelines: stdin, stdout, stderr, and tee",
+    "description": "Master Linux streams: stdin, stdout, stderr, file descriptors, pipes, and tee. Learn the redirection and composition glue behind every filter and scripting lab.",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "dateModified": "2026-09-29",
+    "step": [
+      {"@type": "HowToStep", "name": "Separate stdout and stderr", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/redirection-pipelines.html#steps"},
+      {"@type": "HowToStep", "name": "Filter through a pipe", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/redirection-pipelines.html#steps"},
+      {"@type": "HowToStep", "name": "Split output with tee", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/redirection-pipelines.html#steps"}
+    ]
+  }</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Linux Fundamentals", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/index.html"}, {"@type": "ListItem", "position": 4, "name": "Redirection & Pipelines", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/redirection-pipelines.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix '2>&1 produced an empty file'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The merge was placed before the stdout redirect. Fix: Write cmd >file 2>&1 so stderr duplicates the already-redirected stdout."}}, {"@type": "Question", "name": "How do I fix 'Pipeline shows output but the file is empty'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Buffering: the writer holds data until its buffer fills or it exits. Fix: Use stdbuf -o0 or the tool's --line-buffered flag for live streams."}}, {"@type": "Question", "name": "How do I fix 'tee overwrote yesterday's log'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: tee truncates by default like >. Fix: Add -a to append instead of overwriting."}}, {"@type": "Question", "name": "How do I fix 'sudo cmd > /root/file gives permission denied'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Redirection runs as your user, before sudo elevates. Fix: Use sudo tee: cmd | sudo tee /root/file >/dev/null."}}, {"@type": "Question", "name": "How do I fix 'Pipe to head kills the producer with SIGPIPE'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: head exits early and the writer gets a broken pipe signal. Fix: Usually harmless; add 2>/dev/null if the noise bothers you."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>Redirection &amp; Pipelines</span></nav>
+    <div class="page-header"><h1>Linux Redirection and Pipelines: stdin, stdout, stderr, and tee</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Linux</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">stdin/stdout</span><span class="tag">stderr</span><span class="tag">pipe</span><span class="tag">tee</span></div>
+    </div>
+
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#learning-objectives">Learning Objectives</a></li>
+<li><a href="#objective">Objective &amp; Context</a></li>
+<li><a href="#environment">Environment &amp; Prerequisites</a></li>
+<li><a href="#steps">Step-by-Step Execution</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#validation">Validation &amp; Testing</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#key-takeaways">Key Takeaways</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    <section><p class="lead">I composed single-line data pipelines using redirection, pipes, and tee to filter, transform, and log output in one pass. Understanding the three standard streams let me capture stderr separately and split a pipeline to both a file and the screen.</p></section>
+
+    <section id="objective"><h2>Objective &amp; Context</h2>
+      <p>The Unix philosophy is small tools composed via streams. This lab masters file descriptors 0/1/2, pipe composition, and tee for branching, the glue behind every filter and scripting lab.</p></section>
+
+    <div class="lab-objectives" id="learning-objectives"><h3>Learning Objectives</h3>
+    <ul>
+      <li>Distinguish file descriptors 0 (stdin), 1 (stdout), and 2 (stderr).</li>
+      <li>Redirect stdout and stderr to separate files or merge them.</li>
+      <li>Compose multi-tool pipelines where each stage transforms the stream.</li>
+      <li>Branch a stream to both a file and the next pipe stage with tee.</li>
+      <li>Use process substitution and here-strings where pipes fall short.</li>
+    </ul></div>
+
+    <section id="environment"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+    <ul>
+      <li>Any Bash shell with GNU coreutils (standard on all Linux distributions).</li>
+      <li>A command that writes to both stdout and stderr (make, gcc, or curl -v).</li>
+      <li>A log destination file for tee practice.</li>
+      <li>No extra packages needed.</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="Pipeline with tee branching to file and screen">
+flowchart LR
+  C[command] -->|stdout| F[filter]
+  C -->|stderr 2&gt;| E[error log]
+  F --> T[tee]
+  T --> Scr[screen]
+  T --> Log[file]
+      </div>
+    </section>
+
+    <section id="steps"><h2>Step-by-Step Execution</h2>
+      <h3>1. Separate stdout and stderr</h3>
+      <div class="command-block"><div class="command"><code>make 2&gt; build-errors.log 1&gt; build-out.log</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>(no terminal output; both files created)
+$ wc -l build-out.log build-errors.log
+  42 build-out.log
+   3 build-errors.log</code></pre>
+      <p class="lab-step-note">What this teaches: 2&gt; captures only the error stream while 1&gt; captures normal output; separating them keeps error triage clean. Order matters: 2&gt;&amp;1 must come after the stdout redirect to merge correctly.</p>
+    <h3>2. Filter through a pipe</h3>
+      <div class="command-block"><div class="command"><code>journalctl -u nginx | grep -i error | tail -20</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>Jun 17 09:31:02 srv01 nginx[812]: [error] 1042#0: upstream timed out
+(only the last 20 error lines shown)</code></pre>
+      <p class="lab-step-note">What this teaches: Each pipe stage filters the stream further: journalctl emits, grep keeps error lines, tail windows the last 20. Data flows left to right with no temporary files.</p>
+    <h3>3. Split output with tee</h3>
+      <div class="command-block"><div class="command"><code>dmesg | tee dmesg.log | grep -i fail</code></div></div>
+<p class="lab-output-label">Expected output:</p><pre><code class="language-bash">[  3.21] usb 1-2: device descriptor read/64, error -71</code></pre>
+      <p class="lab-step-note">What this teaches: tee duplicates stdin to a file and stdout simultaneously, so you archive the raw dmesg output while grep shows only failures live. Add -a to append instead of overwriting.</p>
+    <h3>4. Feed two live streams to one command with process substitution</h3>
+      <div class="command-block"><div class="command"><code>diff &lt;(sort hosts-a.txt) &lt;(sort hosts-b.txt)</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>2d1
+&lt; web02</code></pre>
+      <p class="lab-step-note">What this teaches: &lt;(...) runs a command and presents its output as a readable file path (a /dev/fd entry), so tools like diff that demand two named file arguments can consume live command output. This covers the case pipes cannot: a command that needs two inputs at once. The &gt;(...) form does the reverse, presenting a writable path.</p>
+    </section>
+
+    <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>
+      <p>Every Linux process starts with three open streams: stdin (0) for input, stdout (1) for normal output, and stderr (2) for diagnostics. Redirection operators rebind these numbers to files before the command runs, which is why 2&gt;file captures errors while leaving normal output on the terminal. The shell performs redirection itself; the command never knows its output went to a file.</p>
+      <p>A pipeline connects stdout of one process directly to stdin of the next through a kernel pipe buffer, so data streams through without touching disk. This is what makes long chains fast: each stage processes lines as they arrive. Merging with 2&gt;&amp;1 duplicates descriptor 2 onto wherever descriptor 1 currently points, which is why the ordering of redirections changes the result.</p>
+      <p>tee exists for the cases where you want both persistence and live processing: it reads stdin once and writes it to every named file plus stdout. Combined with process substitution, &gt;(cmd), you can even fan one stream out to several processing commands at once, turning a linear pipeline into a small dataflow graph.</p>
+    </div>
+    <div class="mermaid" role="img" aria-label="Stream splitting with tee">
+flowchart LR
+  D["dmesg stdout"] --> T["tee dmesg.log"]
+  T --> F["file: dmesg.log"]
+  T --> G["grep -i fail"]
+  G --> S["screen: failures only"]
+  style T fill:#1a3a5a,stroke:#4da3ff,color:#fff
+      </div>
+    </section>
+
+    <section id="validation"><h2>Validation &amp; Testing</h2>
+      <p>Run a command that emits both streams and confirm errors land in their own file while stdout is filtered. Pass criteria: stderr captured separately, the pipeline filters correctly, and tee writes the full stream to a file while passing it onward.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+    <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>2&gt;&amp;1 produced an empty file</td><td>The merge was placed before the stdout redirect</td><td>Write cmd &gt;file 2&gt;&amp;1 so stderr duplicates the already-redirected stdout</td></tr>
+      <tr><td>Pipeline shows output but the file is empty</td><td>Buffering: the writer holds data until its buffer fills or it exits</td><td>Use stdbuf -o0 or the tool's --line-buffered flag for live streams</td></tr>
+      <tr><td>tee overwrote yesterday's log</td><td>tee truncates by default like &gt;</td><td>Add -a to append instead of overwriting</td></tr>
+      <tr><td>sudo cmd &gt; /root/file gives permission denied</td><td>Redirection runs as your user, before sudo elevates</td><td>Use sudo tee: cmd | sudo tee /root/file &gt;/dev/null</td></tr>
+      <tr><td>Pipe to head kills the producer with SIGPIPE</td><td>head exits early and the writer gets a broken pipe signal</td><td>Usually harmless; add 2&gt;/dev/null if the noise bothers you</td></tr>
+      <tr><td>Here-string adds an unwanted trailing newline</td><td>&lt;&lt;&lt; always appends a newline to the word</td><td>Use printf without \n piped in, or strip it downstream</td></tr>
+    </tbody></table>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Errors not captured:</strong> redirect <code>2&gt;</code> explicitly; pipes only carry stdout by default.</li>
+        <li><strong>Both streams merged:</strong> use <code>2&gt;&amp;1</code> after the stdout redirect, order matters.</li>
+        <li><strong>tee not writing:</strong> add <code>-a</code> to append rather than overwrite.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Captured stdout and stderr to separate files in one command.</li>
+        <li>Built filter pipelines that reduce noisy logs to relevant lines.</li>
+        <li>Branched output to file and screen simultaneously with tee.</li>
+        <li>Internalized the three standard streams for reliable scripting.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways" id="key-takeaways"><h3>Key Takeaways</h3>
+    <ul>
+      <li>Descriptors 0, 1, 2 are stdin, stdout, stderr; redirection rebinds them before the command runs.</li>
+      <li>Separate streams for triage; merge with &gt;file 2&gt;&amp;1 in that order when you want everything.</li>
+      <li>Pipelines stream through kernel buffers with no temporary files.</li>
+      <li>tee archives and displays simultaneously; -a appends.</li>
+      <li>Redirection happens as your user, so sudo needs tee for privileged files.</li>
+    </ul></div>
+
+    <section id="practice-challenges"><h2>Practice Challenges</h2>
+    <div class="lab-challenge"><h4>Challenge 1: Silent build log</h4><p>Goal: run a build so normal output goes to build-out.log, errors go to build-errors.log, and your terminal shows only a one-line summary.</p><p><strong>Hint:</strong> redirect both streams, then echo based on the exit code.</p></div>
+    <div class="lab-challenge"><h4>Challenge 2: Fan-out monitoring</h4><p>Goal: send one journalctl stream to three places at once: a full archive file, a live error-only view, and a count of critical lines.</p><p><strong>Hint:</strong> combine tee with process substitution &gt;( ).</p></div>
+    </section>
+
+    <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="file-filters.html">File Filters &amp; Text Processing</a></li>
+        <li><a href="regex-grep.html">Regular Expressions &amp; grep</a></li>
+        <li><a href="shell-scripting-basics.html">Shell Scripting Basics</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

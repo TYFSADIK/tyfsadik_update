@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cron Jobs &amp; Scheduling: crontab, at, systemd | TYFSADIK</title>
+  <meta name="description" content="Schedule Linux tasks with crontab syntax, one-shot at jobs, and systemd timers featuring logging, dependencies, and catch-up handling for missed runs.">
+  <meta name="keywords" content="linux cron tutorial, crontab syntax, systemd timer, at command, task scheduling linux">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-fundamentals/cron-jobs.html">
+  <meta property="og:title" content="Cron Jobs &amp; Scheduling: crontab, at, systemd | TYFSADIK">
+  <meta property="og:description" content="Schedule Linux tasks with crontab syntax, one-shot at jobs, and systemd timers featuring logging, dependencies, and catch-up handling for missed runs.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-fundamentals/cron-jobs.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Cron Jobs &amp; Scheduling: crontab, at, systemd | TYFSADIK">
+  <meta name="twitter:description" content="Schedule Linux tasks with crontab syntax, one-shot at jobs, and systemd timers featuring logging, dependencies, and catch-up handling for missed runs.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Cron Jobs and Task Scheduling with systemd Timers", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-16", "dateModified": "2026-09-29", "proficiencyLevel": "Beginner", "dependencies": "cron, at, systemd timers", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux fundamentals and command-line skills"}</script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Cron Jobs and Task Scheduling with systemd Timers",
+    "description": "Schedule Linux tasks with crontab syntax, one-shot at jobs, and systemd timers featuring logging, dependencies, and catch-up handling for missed runs.",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "dateModified": "2026-09-29",
+    "step": [
+      {"@type": "HowToStep", "name": "Add a logged cron job", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/cron-jobs.html#steps"},
+      {"@type": "HowToStep", "name": "Equivalent systemd timer", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/cron-jobs.html#steps"},
+      {"@type": "HowToStep", "name": "One-shot job with at", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/cron-jobs.html#steps"}
+    ]
+  }</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Linux Fundamentals", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/index.html"}, {"@type": "ListItem", "position": 4, "name": "Cron Jobs & Scheduling", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/cron-jobs.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Cron job never runs'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Wrong field count, or the daemon is not running. Fix: Validate with crontab -l and check systemctl status cron/crond."}}, {"@type": "Question", "name": "How do I fix 'Works by hand, fails in cron'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Minimal cron environment: missing PATH or variables. Fix: Use absolute paths and set needed variables inside the script or crontab."}}, {"@type": "Question", "name": "How do I fix 'No output and no log'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Output went to mail or nowhere. Fix: Always redirect >> /var/log/job.log 2>&1 so failures are captured."}}, {"@type": "Question", "name": "How do I fix 'Timer runs at the wrong time'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Timezone mismatch or OnCalendar misread. Fix: Check timedatectl and verify with systemd-analyze calendar '*-*-* 02:30:00'."}}, {"@type": "Question", "name": "How do I fix 'Missed run never caught up'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Persistent=true missing on the timer. Fix: Add Persistent=true under [Timer] for catch-up after downtime."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>Cron Jobs &amp; Scheduling</span></nav>
+    <div class="page-header"><h1>Cron Jobs and Task Scheduling with systemd Timers</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Linux</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">cron</span><span class="tag">crontab</span><span class="tag">at</span><span class="tag">systemd timer</span></div>
+    </div>
+
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#learning-objectives">Learning Objectives</a></li>
+<li><a href="#objective">Objective &amp; Context</a></li>
+<li><a href="#environment">Environment &amp; Prerequisites</a></li>
+<li><a href="#steps">Step-by-Step Execution</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#validation">Validation &amp; Testing</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#key-takeaways">Key Takeaways</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    <section><p class="lead">I scheduled recurring tasks with cron and systemd timers, handling cron's minimal environment, logging, and failure notification. Capturing output and using absolute paths eliminated the classic "works in my shell but not in cron" failures.</p></section>
+
+    <section id="objective"><h2>Objective &amp; Context</h2>
+      <p>Scheduling is how routine work becomes hands-off. This lab covers crontab syntax, one-shot <code>at</code> jobs, and systemd timers (with logging and dependency control), the scheduling layer behind backups, health checks, and the vulnerability-scan automation.</p></section>
+
+    <div class="lab-objectives" id="learning-objectives"><h3>Learning Objectives</h3>
+    <ul>
+      <li>Write correct crontab entries using the five time fields.</li>
+      <li>Log cron output so failures are visible instead of silent.</li>
+      <li>Schedule one-shot jobs with at.</li>
+      <li>Create systemd timer units with calendar expressions and Persistent=true.</li>
+      <li>Choose between cron and systemd timers for a given workload.</li>
+    </ul></div>
+
+    <section id="environment"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+    <ul>
+      <li>Linux with cron and systemd (cronie on RHEL/Fedora, cron on Debian/Ubuntu).</li>
+      <li>A script to schedule, such as a backup or health check from earlier labs.</li>
+      <li>A mail or webhook channel for failure alerts (see the CLI email lab).</li>
+      <li>Root or sudo for system-wide timers; user crontabs need no elevation.</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="Scheduled job execution and logging">
+flowchart LR
+  T[cron/timer fires] --> J[run script abs path]
+  J --> L[log stdout/stderr]
+  L --> S{exit 0?}
+  S -->|no| A[alert]
+  S -->|yes| Done[ok]
+      </div>
+    </section>
+
+    <section id="steps"><h2>Step-by-Step Execution</h2>
+      <h3>1. Add a logged cron job</h3>
+      <div class="command-block"><div class="command"><code>(crontab -l; echo "0 2 * * * /usr/local/bin/backup.sh >> /var/log/backup.log 2>&amp;1") | crontab -</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>(crontab installed; verify with: crontab -l)
+0 2 * * * /usr/local/bin/backup.sh &gt;&gt; /var/log/backup.log 2&gt;&amp;1</code></pre>
+      <p class="lab-step-note">What this teaches: The five fields are minute hour day-of-month month day-of-week; appending the old crontab before adding preserves existing entries. Redirecting both streams to a log is what makes 2 AM failures diagnosable. On a fresh account crontab -l prints "no crontab for user" to stderr, which the pipe harmlessly ignores; add 2>/dev/null to silence it. One cron gotcha: a literal % in the command is converted to a newline, so escape it as \% or keep date formats inside a script file.</p>
+    <h3>2. Equivalent systemd timer</h3>
+      <p>A timer needs a service unit to trigger and a timer unit for the schedule. Create both as root, then reload and enable:</p>
+<pre><code class="language-bash"># /etc/systemd/system/backup.service
+[Unit]
+Description=Nightly backup job
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/backup.sh
+
+# /etc/systemd/system/backup.timer
+[Unit]
+Description=Run backup daily at 02:00
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target</code></pre>
+      <div class="command-block"><div class="command"><code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now backup.timer &amp;&amp; systemctl list-timers backup.timer</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>NEXT                         LEFT        LAST     PASSED     UNIT          ACTIVATES
+Tue 2026-06-18 02:00:00 UTC  10h left    -        -          backup.timer  backup.service</code></pre>
+      <p class="lab-step-note">What this teaches: The timer unit pairs with a same-named .service; OnCalendar sets the schedule; Persistent=true runs missed jobs after downtime, which plain cron never does. daemon-reload is required after adding or editing unit files, or systemd keeps using the old definitions. systemctl list-timers shows the next trigger. Note the service runs the same absolute script path and should log like the cron version.</p>
+    <h3>3. One-shot job with at</h3>
+      <div class="command-block"><div class="command"><code>echo '/usr/local/bin/report.sh' | at 17:00</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>job 14 at Tue Jun 17 17:00:00 2026</code></pre>
+      <p class="lab-step-note">What this teaches: at queues a one-shot job for a future time, ideal for delayed one-time actions like a maintenance window reminder. atq lists the queue; atrm cancels. The at daemon must be running (systemctl status atd, package name at), or the job sits queued forever.</p>
+    </section>
+
+    <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>
+      <p>cron is the classic scheduler: the daemon wakes every minute, matches the five time fields against the current time, and runs the command in a minimal environment. That minimal environment is the source of most cron bugs: PATH is tiny, no login profile runs, and the working directory is the user's home. Absolute paths and explicit environment are not style choices under cron; they are requirements.</p>
+      <p>at handles the one-shot case cron cannot express: run this once at 17:00, then forget it. The atd daemon holds the queue and executes jobs with the environment captured at submission time, which makes at handy for delayed actions during maintenance windows.</p>
+      <p>systemd timers are the modern alternative with real advantages: they log to the journal automatically, express dependencies (run after network is up), support monotonic triggers (10 minutes after boot), and Persistent=true catches up missed runs after downtime. For anything beyond trivial schedules, timers are the better tool.</p>
+    </div>
+    <div class="mermaid" role="img" aria-label="Choosing a scheduler">
+flowchart TD
+  Q["Need to schedule?"] --> O{"One-shot or recurring?"}
+  O -->|"one-shot"| A["at 17:00"]
+  O -->|"recurring"| D{"Need logging, deps, catch-up?"}
+  D -->|"no"| C["cron"]
+  D -->|"yes"| T["systemd timer"]
+  style T fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section id="validation"><h2>Validation &amp; Testing</h2>
+      <p>Schedule a job a minute out, confirm it runs and logs, and force a failure to confirm the alert fires. Pass criteria: the job runs on schedule with full output captured, and non-zero exits trigger notification.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+    <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>Cron job never runs</td><td>Wrong field count, or the daemon is not running</td><td>Validate with crontab -l and check systemctl status cron/crond</td></tr>
+      <tr><td>Works by hand, fails in cron</td><td>Minimal cron environment: missing PATH or variables</td><td>Use absolute paths and set needed variables inside the script or crontab</td></tr>
+      <tr><td>No output and no log</td><td>Output went to mail or nowhere</td><td>Always redirect &gt;&gt; /var/log/job.log 2&gt;&amp;1 so failures are captured</td></tr>
+      <tr><td>Timer runs at the wrong time</td><td>Timezone mismatch or OnCalendar misread</td><td>Check timedatectl and verify with systemd-analyze calendar '*-*-* 02:30:00'</td></tr>
+      <tr><td>Missed run never caught up</td><td>Persistent=true missing on the timer</td><td>Add Persistent=true under [Timer] for catch-up after downtime</td></tr>
+      <tr><td>Duplicate runs overlap</td><td>Job takes longer than its interval</td><td>Add locking with flock in the ExecStart line</td></tr>
+    </tbody></table>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Job runs in shell, not cron:</strong> cron has a minimal PATH/env; use absolute paths and set variables.</li>
+        <li><strong>No output:</strong> redirect both streams (<code>&gt;&gt; log 2&gt;&amp;1</code>) to capture errors.</li>
+        <li><strong>Timer vs cron:</strong> prefer systemd timers for logging, dependencies, and missed-run catch-up.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Automated recurring tasks with logged cron and systemd timers.</li>
+        <li>Eliminated cron-environment failures via absolute paths.</li>
+        <li>Captured full job output for auditing and debugging.</li>
+        <li>Alerted on non-zero exits rather than failing silently.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways" id="key-takeaways"><h3>Key Takeaways</h3>
+    <ul>
+      <li>Five cron fields: minute hour day-of-month month day-of-week.</li>
+      <li>cron runs with a minimal environment; use absolute paths.</li>
+      <li>Log every scheduled job; silent cron is undebuggable cron.</li>
+      <li>at is for one-shot future jobs; cron and timers are for recurrence.</li>
+      <li>systemd timers add logging, dependencies, and catch-up.</li>
+    </ul></div>
+
+    <section id="practice-challenges"><h2>Practice Challenges</h2>
+    <div class="lab-challenge"><h4>Challenge 1: Logged health check</h4><p>Goal: schedule a disk-space check every 15 minutes that logs to a file and emails only when usage exceeds 85%.</p><p><strong>Hint:</strong> the script branches on the threshold; cron just runs it.</p></div>
+    <div class="lab-challenge"><h4>Challenge 2: Timer conversion</h4><p>Goal: convert an existing cron backup job to a systemd timer pair with Persistent=true, then prove a missed run catches up after a reboot.</p><p><strong>Hint:</strong> set the timer in the past briefly during testing.</p></div>
+    </section>
+
+    <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="../linux-server/cron-scheduling.html">Server Cron &amp; Task Scheduling</a></li>
+        <li><a href="../python/system-admin-scripts.html">Python System Administration Scripts</a></li>
+        <li><a href="cli-email.html">Command Line Email</a></li>
+        <li><a href="shell-scripting-basics.html">Shell Scripting Basics</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

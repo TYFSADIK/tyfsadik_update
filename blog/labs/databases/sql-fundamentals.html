@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SQL Fundamentals: SELECT, WHERE &amp; Aggregates | TYFSADIK</title>
+  <meta name="keywords" content="sql fundamentals, SELECT, WHERE, GROUP BY, indexes, EXPLAIN, query performance">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="SQL Fundamentals: SELECT, WHERE &amp; Aggregates | TYFSADIK">
+  <meta property="og:description" content="Learn core SQL retrieval with SELECT, WHERE, GROUP BY, and indexes, then use EXPLAIN to turn full-table scans into fast index range scans in this hands-on lab.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/databases/sql-fundamentals.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="SQL Fundamentals: SELECT, WHERE &amp; Aggregates | TYFSADIK">
+  <meta name="twitter:description" content="Learn core SQL retrieval with SELECT, WHERE, GROUP BY, and indexes, then use EXPLAIN to turn full-table scans into fast index range scans in this hands-on lab.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="description" content="Learn core SQL retrieval with SELECT, WHERE, GROUP BY, and indexes, then use EXPLAIN to turn full-table scans into fast index range scans in this hands-on lab.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/databases/sql-fundamentals.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "SQL Fundamentals: SELECT, Filtering, and Aggregates", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-14", "dateModified": "2026-09-29", "proficiencyLevel": "Beginner", "dependencies": "MySQL 8 / PostgreSQL 16, SQL", "articleSection": "Databases", "learningResourceType": "Hands-on lab", "teaches": "databases and SQL"}</script>
+  <script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "Filter and aggregate",
+      "text": "Filter and aggregate"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Add a supporting index",
+      "text": "Add a supporting index"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Confirm the plan uses the index",
+      "text": "Confirm the plan uses the index"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Sort and limit deterministically",
+      "text": "Sort and limit deterministically"
+    }
+  ],
+  "url": "https://tyfsadik.org/about.html"
+}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Databases", "item": "https://tyfsadik.org/blog/labs/databases/index.html"}, {"@type": "ListItem", "position": 4, "name": "SQL Fundamentals", "item": "https://tyfsadik.org/blog/labs/databases/sql-fundamentals.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'index exists but plan still shows Seq Scan'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the table is tiny or the filter matches most rows, so scanning is genuinely cheaper. Fix: test on realistic data volumes; the planner is usually right."}}, {"@type": "Question", "name": "How do I fix 'function on the column defeats the index'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: WHERE DATE(created) = ... cannot use a plain index on created. Fix: filter on the raw column, or create an expression index matching the function."}}, {"@type": "Question", "name": "How do I fix 'GROUP BY returns wrong counts'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: NULL handling or confusing WHERE with HAVING. Fix: remember: WHERE filters rows before grouping, HAVING filters groups after."}}, {"@type": "Question", "name": "How do I fix 'query fast in the client, slow in the app'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: different parameters, prepared-statement plans, or network overhead. Fix: run EXPLAIN with the app's actual parameter values."}}, {"@type": "Question", "name": "How do I fix 'CREATE INDEX locks the table'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: a plain CREATE INDEX takes a write lock on some engines. Fix: use CREATE INDEX CONCURRENTLY on PostgreSQL for production tables."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/databases/index.html">Databases</a> &rsaquo; <span>SQL Fundamentals</span></nav>
+    <div class="page-header"><h1>SQL Fundamentals: SELECT, Filtering, Grouping, and Aggregates</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Databases</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">SELECT</span><span class="tag">WHERE</span><span class="tag">GROUP BY</span><span class="tag">indexes</span></div>
+    </div>
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+      <li><a href="#objective-context">Objective &amp; Context</a></li>
+      <li><a href="#environment-prerequisites">Environment &amp; Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation &amp; Testing</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#takeaways">Key Takeaways</a></li>
+      <li><a href="#challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+    </ol></nav>
+
+    <section><p class="lead">I worked through core SQL retrieval, SELECT projection, WHERE filtering, GROUP BY aggregation, and ORDER BY, then added indexes to keep queries fast. Indexing the filtered columns turned full-table scans into millisecond index lookups.</p></section>
+
+    <section><h2 id="objective-context">Objective &amp; Context</h2>
+      <p>SQL is the lingua franca of data access. This lab builds query fluency and the habit of checking execution plans, the base for the joins, design, and administration labs.</p></section>
+    <div class="lab-objectives"><h3>Learning Objectives</h3><ul>
+      <li>Project and filter rows with SELECT and WHERE.</li>
+      <li>Aggregate with GROUP BY and COUNT.</li>
+      <li>Sort and limit result sets deterministically.</li>
+      <li>Create indexes on filtered columns.</li>
+      <li>Read EXPLAIN output to confirm index usage.</li>
+    </ul></div>
+
+    <section><h2 id="environment-prerequisites">Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3><ul>
+      <li><code>MySQL 8</code> or <code>PostgreSQL 16</code> with a sample schema</li>
+      <li>A table with enough rows to show index impact (thousands or more)</li>
+      <li>Access to <code>EXPLAIN</code> for plan inspection</li>
+      <li>Assumed skill: basic command-line or client usage</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="Query processing order">
+flowchart LR
+  F[FROM] --> W[WHERE]
+  W --> G[GROUP BY]
+  G --> H[HAVING]
+  H --> S[SELECT]
+  S --> O[ORDER BY]
+      </div>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <h3>1. Filter and aggregate</h3>
+      <div class="command-block"><div class="command"><code>SELECT status, COUNT(*) FROM orders WHERE created &gt; '2026-01-01' GROUP BY status;</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>(rows of status/count pairs)</code></pre>
+      <p class="lab-step-note">What this teaches: WHERE filters before GROUP BY aggregates: the database reduces the working set first, which is why selective filters pair so well with indexes.</p></div>
+      <h3>2. Add a supporting index</h3>
+      <div class="command-block"><div class="command"><code>CREATE INDEX idx_orders_created ON orders(created);</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>CREATE INDEX</code></pre>
+      <p class="lab-step-note">What this teaches: The index is a sorted copy of the column with row pointers; the planner can now seek to matching rows instead of scanning the table. Client feedback differs by engine: PostgreSQL prints <code>CREATE INDEX</code>, while MySQL prints <code>Query OK, 0 rows affected</code>; both mean the index was built.</p></div>
+      <h3>3. Confirm the plan uses the index</h3>
+      <div class="command-block"><div class="command"><code>EXPLAIN SELECT * FROM orders WHERE created &gt; '2026-01-01';</code></div></div>
+<pre><code class="language-bash">Index Scan using idx_orders_created  rows=812  (was Seq Scan rows=2.1M)</code></pre>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>Index Scan using idx_orders_created  rows=812  (was Seq Scan rows=2.1M)</code></pre>
+      <p class="lab-step-note">What this teaches: EXPLAIN shows the plan changed from scanning 2.1M rows to seeking 812; this before/after comparison is the proof the index worked.</p>
+      <h3>4. Sort and limit deterministically</h3>
+      <div class="command-block"><div class="command"><code>SELECT status, COUNT(*) AS n FROM orders WHERE created &gt; '2026-01-01' GROUP BY status HAVING COUNT(*) &gt; 10 ORDER BY n DESC, status LIMIT 5;</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>  status   |   n
+-----------+-------
+ shipped   | 40211
+ pending   | 18903
+ cancelled |   921
+(3 rows)</code></pre>
+      <p class="lab-step-note">What this teaches: ORDER BY runs after grouping, so you can sort by the aggregate itself. Adding the unique tiebreaker (status) makes LIMIT deterministic: without it, tied counts can return different rows on each run.</p></div>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+      <div class="lab-explainer"><h3>How It Works</h3>
+      <p>A B-tree index stores column values in sorted order with pointers to table rows. Without one, the database must read every row to find matches (a sequential scan); with one, it seeks directly to the matching range, which is why the row count drops from millions to hundreds. In PostgreSQL the leaf entries point to heap tuples; in InnoDB a secondary index entry carries the primary key value instead, so the engine may perform a second lookup to fetch the row. Either way the full scan is avoided.</p>
+      <p>The query planner chooses the cheapest plan using table statistics, not hints. EXPLAIN reveals that choice: Seq Scan means no usable index, Index Scan means the planner found and used one. Reading plans beats guessing about performance.</p>
+      <p>Indexes are a trade-off: they speed reads but slow writes, since every INSERT and UPDATE must maintain the index too. The discipline is to index the columns your queries actually filter and join on, then verify with EXPLAIN.</p>
+    </div>
+      <div class="mermaid" role="img" aria-label="From slow scan to indexed seek">
+flowchart LR
+  Q["SELECT ... WHERE"] --> P1["EXPLAIN: Seq Scan<br/>2.1M rows"]
+  P1 --> IX["CREATE INDEX<br/>on filter column"]
+  IX --> P2["EXPLAIN: Index Scan<br/>812 rows"]
+      </div>
+    </section>
+
+    <section><h2 id="validation-testing">Validation &amp; Testing</h2>
+      <p>Run the query before and after indexing and compare the execution plan and latency. Pass criteria: correct aggregate results and a plan that switches from a sequential scan to an index range scan.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Index unused:</strong> a function on the column (<code>WHERE DATE(created)</code>) defeats it; filter on the raw column.</li>
+        <li><strong>Wrong counts:</strong> mind NULL handling in aggregates and HAVING vs WHERE.</li>
+        <li><strong>Slow GROUP BY:</strong> index the grouping columns or pre-aggregate.</li>
+      </ul>
+    </details>
+
+    <section><h2 id="troubleshooting">Troubleshooting</h2>
+      <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+        <tr><td>index exists but plan still shows Seq Scan</td><td>the table is tiny or the filter matches most rows, so scanning is genuinely cheaper</td><td>test on realistic data volumes; the planner is usually right</td></tr>
+        <tr><td>function on the column defeats the index</td><td>WHERE DATE(created) = ... cannot use a plain index on created</td><td>filter on the raw column, or create an expression index matching the function</td></tr>
+        <tr><td>GROUP BY returns wrong counts</td><td>NULL handling or confusing WHERE with HAVING</td><td>remember: WHERE filters rows before grouping, HAVING filters groups after</td></tr>
+        <tr><td>query fast in the client, slow in the app</td><td>different parameters, prepared-statement plans, or network overhead</td><td>run EXPLAIN with the app's actual parameter values</td></tr>
+        <tr><td>CREATE INDEX locks the table</td><td>a plain CREATE INDEX takes a write lock on some engines</td><td>use CREATE INDEX CONCURRENTLY on PostgreSQL for production tables</td></tr>
+      </tbody></table>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Cut a filtered query from a multi-million-row scan to an index range scan.</li>
+        <li>Returned aggregate reports in milliseconds after indexing.</li>
+        <li>Verified plan changes with EXPLAIN rather than guessing.</li>
+        <li>Established index-aware querying as a default habit.</li>
+      </ul>
+    </section>
+
+    <section class="lab-takeaways"><h2 id="takeaways">Key Takeaways</h2><ul>
+        <li>SELECT/WHERE/GROUP BY cover most reporting queries.</li>
+        <li>Indexes turn full scans into seeks on filtered columns.</li>
+        <li>EXPLAIN is the source of truth for what the planner chose.</li>
+        <li>Index what you filter and join on; every index taxes writes.</li>
+        <li>Compare plans before and after to prove an optimization worked.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="challenges">Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Slow query hunt</h4><p><strong>Goal:</strong> Find the slowest query in a sample workload with EXPLAIN ANALYZE and fix it with one index.</p><p><strong>Hint:</strong> Look for Seq Scan on large tables in the plan; index the filter column and re-run EXPLAIN.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: HAVING vs WHERE</h4><p><strong>Goal:</strong> Write a query that finds statuses with more than 100 orders since 2026-01-01, using both clauses correctly.</p><p><strong>Hint:</strong> WHERE filters rows first, HAVING filters the grouped results after.</p></div>
+    </section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="database-design.html">Database Design &amp; Normalization</a></li>
+        <li><a href="joins-complex-queries.html">JOINs &amp; Complex Queries</a></li>
+        <li><a href="constraints-keys.html">Constraints &amp; Keys</a></li>
+      
+        <li><a href="joins-complex-queries.html">JOINs & Complex Queries</a></li>
+        <li><a href="database-admin.html">Database Administration</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

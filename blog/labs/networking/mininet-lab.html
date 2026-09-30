@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mininet SDN Lab Explained: Networking Lab | TYFSADIK</title>
+  <meta name="description" content="Build reproducible SDN labs with Mininet: Python topology scripting, remote Ryu/ONOS controllers, Open vSwitch datapaths, and full pingall validation.">
+  <meta name="keywords" content="Mininet, network emulation, SDN lab, Open vSwitch, Python topology, namespaces">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/mininet-lab.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Mininet SDN Lab Environment with the Python API", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-05-20", "dateModified": "2026-09-29", "proficiencyLevel": "Advanced", "dependencies": "Mininet, Open vSwitch, Python API", "articleSection": "Networking", "learningResourceType": "Hands-on lab", "teaches": "computer networking fundamentals"}</script>
+  <meta property="og:title" content="Mininet SDN Lab Explained: Networking Lab | TYFSADIK">
+  <meta property="og:description" content="Build reproducible SDN labs with Mininet: Python topology scripting, remote Ryu/ONOS controllers, Open vSwitch datapaths, and full pingall validation.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/networking/mininet-lab.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Mininet SDN Lab Explained: Networking Lab | TYFSADIK">
+  <meta name="twitter:description" content="Build reproducible SDN labs with Mininet: Python topology scripting, remote Ryu/ONOS controllers, Open vSwitch datapaths, and full pingall validation.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "Mininet SDN Lab Environment with Custom Python Topologies",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "1. Define a topology with the Python API",
+      "text": "1. Define a topology with the Python API"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "2. Launch against a remote controller [PRIVILEGED]",
+      "text": "mn --custom topo.py --topo two --controller remote,ip=127.0.0.1"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "3. Validate full reachability",
+      "text": "mininet> pingall"
+    }
+  ]
+}
+  </script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Networking", "item": "https://tyfsadik.org/blog/labs/networking/index.html"}, {"@type": "ListItem", "position": 4, "name": "Mininet SDN Lab", "item": "https://tyfsadik.org/blog/labs/networking/mininet-lab.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'mn fails with permission errors'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Mininet was run without root. Fix: Run with sudo; namespace and OVS operations require privileges."}}, {"@type": "Question", "name": "How do I fix 'Switches never connect to the controller'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Controller not listening or wrong IP/port. Fix: Confirm the controller is up and the topology points at the right address (default 127.0.0.1:6653)."}}, {"@type": "Question", "name": "How do I fix 'pingall shows packet loss'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Host CPU oversubscribed by too many virtual nodes. Fix: Reduce the topology size or raise link delays; Mininet shares one kernel scheduler."}}, {"@type": "Question", "name": "How do I fix 'Cleanup errors after a crash (RTNETLINK exists)'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: A previous run left namespaces and OVS bridges behind. Fix: Run sudo mn -c to wipe stale state before relaunching."}}, {"@type": "Question", "name": "How do I fix 'Custom topology import fails'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Python path or class name mismatch in the -custom argument. Fix: Check that the file defines the class named in -topo and is importable from the working directory."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>Mininet SDN Lab</span></nav>
+    <div class="page-header"><h1>Mininet SDN Lab Environment with Custom Python Topologies</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Networking</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Mininet</span><span class="tag">Python API</span><span class="tag">OVS</span><span class="tag">topology</span></div>
+    </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
+      <ol>
+      <li><a href="#objective-context">Objective</a></li>
+      <li><a href="#learning-objectives">Learning Objectives</a></li>
+      <li><a href="#environment-prerequisites">Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Steps</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#key-takeaways">Key Takeaways</a></li>
+      <li><a href="#practice-challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+      </ol>
+    </nav>
+
+
+    <section><p class="lead">I built reproducible SDN test environments with the Mininet Python API, defining custom multi-switch topologies that spin up on demand against a remote controller. Codifying topologies made OpenFlow and controller experiments repeatable and disposable.</p></section>
+
+    <section id="objective-context"><h2>Objective &amp; Context</h2>
+      <p>Mininet emulates real networks with lightweight namespaces and Open vSwitch, so an entire fabric runs on one host. This lab uses the Python API to script topologies, providing the reproducible substrate for the SDN concepts, OpenFlow, and controller labs.</p></section>    <section id="learning-objectives">
+      <div class="lab-objectives"><h3>Learning Objectives</h3>
+        <ul>
+        <li>Describe a network topology with the Mininet Python API (hosts, switches, links).</li>
+        <li>Launch the topology against a remote SDN controller with root privileges.</li>
+        <li>Validate full reachability between hosts with pingall.</li>
+        <li>Explain how Mininet uses namespaces and Open vSwitch to emulate a fabric.</li>
+        <li>Reuse the topology as the substrate for OpenFlow and controller experiments.</li>
+        </ul>
+      </div>
+    </section>
+
+
+    <section id="environment-prerequisites"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+      <ul>
+        <li>Mininet with Open vSwitch; Python 3.</li>
+        <li>A remote controller (Ryu/ONOS) for non-trivial topologies.</li>
+        <li>Root privileges (Mininet manipulates namespaces).</li>
+      
+          <li>Mininet installed with Open vSwitch (sudo apt install -y mininet openvswitch-switch).</li>
+          <li>Python 3 for the topology script.</li>
+          <li>A remote controller (Ryu or ONOS) listening on 127.0.0.1 for non-trivial topologies.</li>
+          <li>Root privileges: Mininet creates network namespaces and veth pairs.</li>
+          <li>Basic Python and switching concepts.</li>
+        </ul>
+      <div class="mermaid" role="img" aria-label="Custom Mininet topology">
+flowchart TB
+  C[Remote Controller] --> S1[s1]
+  C --> S2[s2]
+  S1 --- S2
+  S1 --- H1[h1]
+  S2 --- H2[h2]
+      </div>
+          </div>
+</section>
+
+    <section id="step-by-step-execution"><h2>Step-by-Step Execution</h2>
+      <h3>1. Define a topology with the Python API</h3>
+<p class="lab-output-label">Expected output:</p>
+<pre><code class="language-bash">from mininet.topo import Topo
+class TwoSwitch(Topo):
+    def build(self):
+        s1, s2 = self.addSwitch('s1'), self.addSwitch('s2')
+        self.addLink(s1, s2)
+        self.addLink(self.addHost('h1'), s1)
+        self.addLink(self.addHost('h2'), s2)
+topos = {'two': (lambda: TwoSwitch())}</code></pre>
+<p class="lab-step-note">What this teaches: the Python API turns a topology into version-controlled code instead of a pile of manual commands.</p>
+<h3>2. Launch against a remote controller [PRIVILEGED]</h3>
+      <div class="command-block"><div class="command"><code>sudo mn --custom topo.py --topo two --controller remote,ip=127.0.0.1</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>*** Creating network
+*** Adding controller
+*** Adding hosts:
+h1 h2
+*** Adding switches:
+s1 s2
+*** Adding links:
+(h1, s1) (h2, s2) (s1, s2)
+*** Configuring hosts
+h1 h2
+*** Starting controller
+*** Starting 2 switches
+s1 s2 ...
+*** Starting CLI:
+mininet&gt;</code></pre>
+<p class="lab-step-note">What this teaches: Mininet needs root because namespaces, veth pairs, and OVS bridges are privileged kernel operations.</p>
+<p class="lab-step-note">topo.py must be in the current directory (or give --custom the full path). The remote controller target 127.0.0.1:6653 assumes your controller listens locally; start it first, then verify the switch connected with: sudo ovs-vsctl get-controller s1.</p>
+<h3>3. Validate full reachability</h3>
+      <div class="command-block"><div class="command"><code>mininet> pingall</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code class="language-bash">*** Results: 0% dropped (2/2 received)</code></pre>
+<p class="lab-step-note">What this teaches: pingall is the fastest smoke test that every host can reach every other host through the emulated fabric.</p>
+</section>    <section id="how-it-works">
+      <div class="lab-explainer"><h3>How It Works</h3>
+        <p>Mininet builds each virtual host as a Linux network namespace: a separate network stack with its own interfaces, addresses, and routing table, but sharing the host kernel. Switches are Open vSwitch bridges in the root namespace, and hosts attach to them through veth pairs, which behave like a virtual Ethernet cable with one end in each namespace.</p>
+        <p>Because everything runs in the real kernel, the emulated network behaves like real hardware for most purposes: packets traverse real OVS datapaths, real iptables rules apply, and real applications run unmodified on the virtual hosts. The main limitation is performance: all virtual hosts share the host CPU, so Mininet is for functional testing, not throughput benchmarking.</p>
+        <p>The remote controller option is what makes Mininet an SDN lab. Instead of learning MAC addresses on their own, the OVS switches connect to an external controller over OpenFlow, so forwarding behavior is decided by controller software. This is the substrate the SDN concepts, OpenFlow, and controller labs all build on.</p>
+        <div class="mermaid" role="img" aria-label="Mininet emulation layers">
+flowchart TB
+  subgraph Host["Linux host"]
+    NS1["netns: h1"]
+    NS2["netns: h2"]
+    OVS["OVS bridge: s1"]
+  end
+  NS1 ---|"veth pair"| OVS
+  NS2 ---|"veth pair"| OVS
+  OVS -->|"OpenFlow"| CTL["Remote controller"]
+        </div>
+      </div>
+    </section>
+
+
+    <section id="validation-testing"><h2>Validation &amp; Testing</h2>
+      <p>Run <code>pingall</code> and <code>iperf</code> within the emulated topology to confirm connectivity and link behaviour. Pass criteria: 0% drop with the controller present and a clean teardown via <code>mn -c</code>.</p>
+    </section>    <section id="troubleshooting">
+      <h2>Troubleshooting</h2>
+      <table class="lab-table">
+        <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>mn fails with permission errors</td><td>Mininet was run without root</td><td>Run with sudo; namespace and OVS operations require privileges</td></tr>
+          <tr><td>Switches never connect to the controller</td><td>Controller not listening or wrong IP/port</td><td>Confirm the controller is up and the topology points at the right address (default 127.0.0.1:6653)</td></tr>
+          <tr><td>pingall shows packet loss</td><td>Host CPU oversubscribed by too many virtual nodes</td><td>Reduce the topology size or raise link delays; Mininet shares one kernel scheduler</td></tr>
+          <tr><td>Cleanup errors after a crash (RTNETLINK exists)</td><td>A previous run left namespaces and OVS bridges behind</td><td>Run sudo mn -c to wipe stale state before relaunching</td></tr>
+          <tr><td>Custom topology import fails</td><td>Python path or class name mismatch in the -custom argument</td><td>Check that the file defines the class named in -topo and is importable from the working directory</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Stale state errors:</strong> always <code>mn -c</code> between runs to clear namespaces and OVS bridges.</li>
+        <li><strong>No connectivity:</strong> a remote controller must be running or hosts have no flows.</li>
+        <li><strong>Link params ignored:</strong> use TCLink to apply bandwidth/delay.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Scripted reproducible multi-switch topologies that deploy in seconds.</li>
+        <li>Provided the disposable substrate for 3 dependent SDN labs.</li>
+        <li>Achieved 0% packet drop in controller-managed reachability tests.</li>
+        <li>Standardized clean teardown to prevent cross-run contamination.</li>
+      </ul>
+    </section>    <section id="key-takeaways">
+      <div class="lab-takeaways"><h3>Key Takeaways</h3>
+        <ul>
+        <li>Script topologies in Python so experiments are reproducible and reviewable.</li>
+        <li>Always sudo mn -c after a crash to clear stale namespaces.</li>
+        <li>Mininet is for functional correctness, not performance measurement.</li>
+        <li>One topology file can serve every SDN lab in this series.</li>
+        </ul>
+      </div>
+    </section>
+
+
+        <section id="practice-challenges">
+      <h2>Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Build a 3-tier topology</h4><p>Goal: Write a Python topology with core, aggregation, and access layers plus redundant links, then validate with pingall.</p><p>Hint: Subclass Topo, add switches in a loop, and link each layer to the one above it twice.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: Rate-limit a link</h4><p>Goal: Apply a 10 Mbit/s cap with 10 ms delay to one link using TCLink and show the effect with iperf.</p><p>Hint: Pass cls=TCLink and bw=10, delay='10ms' in addLink, then run iperf between the hosts.</p></div>
+    </section>
+<section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="sdn-concepts.html">SDN Concepts</a></li>
+        <li><a href="openflow-protocol.html">OpenFlow Protocol</a></li>
+        <li><a href="sdn-controllers.html">SDN Controllers</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

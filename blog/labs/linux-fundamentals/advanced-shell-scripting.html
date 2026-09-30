@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Advanced Shell Scripting | trap, getopts &amp; Functions</title>
+  <meta name="description" content="Level up Bash: parse flags with getopts, guarantee cleanup with traps, reuse code via functions, and handle lists with arrays. Robust automation techniques.">
+  <meta name="keywords" content="advanced bash scripting, getopts tutorial, bash trap cleanup, bash arrays functions, Linux command line tutorial, bash scripting guide">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-fundamentals/advanced-shell-scripting.html">
+  <meta property="og:title" content="Advanced Shell Scripting | trap, getopts &amp; Functions">
+  <meta property="og:description" content="Level up Bash: parse flags with getopts, guarantee cleanup with traps, reuse code via functions, and handle lists with arrays. Robust automation techniques.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-fundamentals/advanced-shell-scripting.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Advanced Shell Scripting | trap, getopts &amp; Functions">
+  <meta name="twitter:description" content="Level up Bash: parse flags with getopts, guarantee cleanup with traps, reuse code via functions, and handle lists with arrays. Robust automation techniques.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Advanced Shell Scripting with trap and getopts", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-02-11", "dateModified": "2026-09-29", "proficiencyLevel": "Advanced", "dependencies": "Bash 5.x, getopts, trap", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux fundamentals and command-line skills"}</script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Advanced Shell Scripting: Functions, getopts, traps, and Arrays",
+    "description": "Level up Bash: parse flags with getopts, guarantee cleanup with traps, reuse code via functions, and handle lists with arrays. Robust automation techniques.",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "dateModified": "2026-09-29",
+    "step": [
+      {"@type": "HowToStep", "name": "Parse flags with getopts", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/advanced-shell-scripting.html#steps"},
+      {"@type": "HowToStep", "name": "Guarantee cleanup with a trap", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/advanced-shell-scripting.html#steps"},
+      {"@type": "HowToStep", "name": "Iterate an array", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/advanced-shell-scripting.html#steps"},
+      {"@type": "HowToStep", "name": "Package logic in a sourced function library", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/advanced-shell-scripting.html#steps"}
+    ]
+  }</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Linux Fundamentals", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/index.html"}, {"@type": "ListItem", "position": 4, "name": "Advanced Shell Scripting", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/advanced-shell-scripting.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'getopts silently ignores an unknown flag'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The optstring lacks a leading colon for custom handling. Fix: Start the optstring with : and handle \\? and : in the case statement."}}, {"@type": "Question", "name": "How do I fix 'Trap did not run on Ctrl-C'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Only EXIT was trapped; INT needs its own handler. Fix: Add trap 'cleanup' INT TERM EXIT, or make the EXIT handler idempotent."}}, {"@type": "Question", "name": "How do I fix 'Array loop splits entries with spaces'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Used ${arr[*]} or unquoted ${arr[@]}. Fix: Always iterate with \"${arr[@]}\" quoted."}}, {"@type": "Question", "name": "How do I fix 'OPTARG is empty for -o without value'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Missing-argument case not handled. Fix: With leading :, handle the : case to print usage for missing arguments."}}, {"@type": "Question", "name": "How do I fix 'Function variable leaked into global scope'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Bash functions share scope unless declared local. Fix: Declare locals with local var=... at the top of each function."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>Advanced Shell Scripting</span></nav>
+    <div class="page-header"><h1>Advanced Shell Scripting: Functions, getopts, traps, and Arrays</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Linux</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">functions</span><span class="tag">getopts</span><span class="tag">trap</span><span class="tag">arrays</span></div>
+    </div>
+
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#learning-objectives">Learning Objectives</a></li>
+<li><a href="#objective">Objective &amp; Context</a></li>
+<li><a href="#environment">Environment &amp; Prerequisites</a></li>
+<li><a href="#steps">Step-by-Step Execution</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#validation">Validation &amp; Testing</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#key-takeaways">Key Takeaways</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    <section><p class="lead">I built production-grade Bash using functions, getopts argument parsing, EXIT traps for cleanup, and arrays for structured data. Trap-based cleanup guaranteed temp files and locks were removed even when a script aborted mid-run.</p></section>
+
+    <section id="objective"><h2>Objective &amp; Context</h2>
+      <p>Robust automation needs argument parsing, guaranteed cleanup, and reuse. This lab adds getopts for flags, traps for deterministic teardown, functions for libraries, and arrays for lists, elevating the basics into maintainable tools used by the cron and sysadmin labs.</p></section>
+
+    <div class="lab-objectives" id="learning-objectives"><h3>Learning Objectives</h3>
+    <ul>
+      <li>Parse command-line flags and arguments with getopts.</li>
+      <li>Guarantee temp-file cleanup with EXIT traps, even on failure.</li>
+      <li>Organize reusable logic into shell functions and small libraries.</li>
+      <li>Store and iterate lists safely with Bash arrays.</li>
+      <li>Combine strict mode, traps, and getopts into production-style scripts.</li>
+    </ul></div>
+
+    <section id="environment"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+    <ul>
+      <li>Bash 5.x with shellcheck installed.</li>
+      <li>Completion of the shell scripting basics lab (strict mode, quoting).</li>
+      <li>A task needing flags and temp files, such as a multi-host health check.</li>
+      <li>SSH access to at least one test host for the array loop (localhost works).</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="Script lifecycle with trap cleanup">
+flowchart LR
+  P[parse getopts] --> Work[do work + temp files]
+  Work --> Done[normal exit]
+  Work --> Err[error/abort]
+  Done --> T[trap EXIT cleanup]
+  Err --> T
+      </div>
+    </section>
+
+    <section id="steps"><h2>Step-by-Step Execution</h2>
+      <h3>1. Parse flags with getopts</h3>
+<pre><code class="language-bash">#!/usr/bin/env bash
+verbose=1
+while getopts ":v:o:" opt; do
+  case $opt in
+    v) verbose=$OPTARG ;;
+    o) out=$OPTARG ;;
+    *) echo "usage: $0 -v N -o FILE" >&2; exit 2 ;;
+  esac
+done
+shift $((OPTIND - 1))
+echo "verbose=$verbose output=${out:-stdout}"</code></pre>
+      <p class="lab-output-label">Expected output (script behavior):</p><pre><code>$ ./deploy.sh -v 2 -o out.txt
+verbose=2 output=out.txt
+$ ./deploy.sh
+verbose=1 output=stdout
+$ ./deploy.sh -z
+usage: ./deploy.sh -v N -o FILE</code></pre>
+      <p class="lab-step-note">What this teaches: getopts loops over flags, placing each option letter in $opt and its argument in $OPTARG; the leading : in the optstring enables silent error handling so your *) case prints usage. shift $((OPTIND-1)) drops the parsed flags so positional arguments are available afterwards.</p>
+    <h3>2. Guarantee cleanup with a trap</h3>
+      <div class="command-block"><div class="command"><code>tmp=$(mktemp); trap 'rm -f "$tmp"' EXIT</code></div></div>
+      <p class="lab-step-note">What this teaches: trap registers a command that runs when the shell exits for any reason, including errors and Ctrl-C. Pairing mktemp with an EXIT trap is the standard leak-proof temp file pattern.</p>
+    <h3>3. Iterate an array</h3>
+      <div class="command-block"><div class="command"><code>hosts=(web1 web2 db1); for h in "${hosts[@]}"; do ssh "$h" uptime; done</code></div></div>
+      <p class="lab-output-label">Expected output (one line per host, in order):</p><pre><code> 09:14:02 up 3 days,  2:11,  1 user,  load average: 0.12, 0.08, 0.05
+ 09:14:03 up 12 days,  6:44,  2 users, load average: 0.08, 0.11, 0.09
+ 09:14:04 up 40 days, 18:02,  3 users, load average: 0.31, 0.27, 0.22</code></pre>
+      <p class="lab-step-note">What this teaches: "${hosts[@]}" expands each element as a separate word, preserving entries with spaces. Each ssh prints that host's uptime in turn. The names must resolve and accept your key; test the loop with a single entry like hosts=(localhost) before pointing it at real servers.</p>
+    <h3>4. Package logic in a sourced function library</h3>
+<pre><code class="language-bash"># lib.sh: shared helpers
+log() { local level="$1"; shift; printf '[%s] %s: %s\n' "$(date +%F\ %T)" "$level" "$*"; }
+require_cmd() { local cmd="$1"; command -v "$cmd" >/dev/null || { log ERROR "missing: $cmd"; return 1; }; }
+
+# deploy.sh: use the library
+#!/usr/bin/env bash
+set -euo pipefail
+source ./lib.sh
+require_cmd rsync
+log INFO "starting deploy"</code></pre>
+      <p class="lab-output-label">Expected output:</p><pre><code>$ ./deploy.sh
+[2026-06-17 09:14:02] INFO: starting deploy</code></pre>
+      <p class="lab-step-note">What this teaches: Functions package repeated logic behind names, and local keeps their variables out of global scope so helpers never clobber the caller's state. Sourcing a library with source ./lib.sh shares helpers across scripts without copy and paste. Note that functions are defined in the current shell, so the library path must be resolvable from wherever the script runs; scripts that may be invoked from other directories should source via a path relative to the script file itself.</p>
+    </section>
+
+    <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>
+      <p>getopts exists because hand-rolled flag parsing with $1/$2 breaks the moment flags arrive in a new order or combine. The getopts builtin walks the argument list, handles clustered short flags, and separates option arguments cleanly, so -v 2 and -o out.txt work in any order. After the loop, shift $((OPTIND-1)) drops the parsed flags, leaving positional arguments.</p>
+      <p>traps solve the cleanup problem that strict mode alone cannot: a script killed by a signal or exiting early still needs its temp files removed and locks released. trap 'cleanup' EXIT registers a handler for every exit path, and stacking traps for ERR or INT covers interrupts too. Deterministic teardown is what makes a script safe to rerun and safe to kill.</p>
+      <p>Arrays fix the list problem. A space-separated string breaks on entries containing spaces; an array keeps each element intact, and "${arr[@]}" expands them as separate words. Functions then package repeated logic with local variables, so a 200-line script reads as a short main flow calling well-named helpers.</p>
+    </div>
+    <div class="mermaid" role="img" aria-label="Robust script lifecycle">
+flowchart TD
+  P["Parse flags with getopts"] --> T["trap cleanup on EXIT"]
+  T --> M["Main logic with arrays and functions"]
+  M -->|"success or error"| C["Trap fires: temp files removed"]
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section id="validation"><h2>Validation &amp; Testing</h2>
+      <p>Abort the script mid-run (Ctrl-C) and confirm the trap still removes the temp file; pass invalid flags and confirm a clean usage error. Pass criteria: cleanup runs on every exit path and getopts rejects unknown options with exit 2.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+    <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>getopts silently ignores an unknown flag</td><td>The optstring lacks a leading colon for custom handling</td><td>Start the optstring with : and handle \? and : in the case statement</td></tr>
+      <tr><td>Trap did not run on Ctrl-C</td><td>Only EXIT was trapped; INT needs its own handler</td><td>Add trap 'cleanup' INT TERM EXIT, or make the EXIT handler idempotent</td></tr>
+      <tr><td>Array loop splits entries with spaces</td><td>Used ${arr[*]} or unquoted ${arr[@]}</td><td>Always iterate with "${arr[@]}" quoted</td></tr>
+      <tr><td>OPTARG is empty for -o without value</td><td>Missing-argument case not handled</td><td>With leading :, handle the : case to print usage for missing arguments</td></tr>
+      <tr><td>Function variable leaked into global scope</td><td>Bash functions share scope unless declared local</td><td>Declare locals with local var=... at the top of each function</td></tr>
+      <tr><td>set -e kills the script inside getopts loop</td><td>A failing command in the loop body triggers errexit</td><td>Guard expected failures with || true or check statuses explicitly</td></tr>
+    </tbody></table>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Leftover temp files:</strong> register the trap immediately after creating the resource.</li>
+        <li><strong>Array word-splitting:</strong> always expand with <code>"${arr[@]}"</code> (quoted, @).</li>
+        <li><strong>getopts misses long options:</strong> getopts handles short flags only; parse long flags manually.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Guaranteed resource cleanup on all exit paths via EXIT traps.</li>
+        <li>Added robust flag parsing with getopts and usage errors.</li>
+        <li>Processed host lists safely with quoted array expansion.</li>
+        <li>Packaged reusable functions into a sourced library.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways" id="key-takeaways"><h3>Key Takeaways</h3>
+    <ul>
+      <li>getopts parses flags in any order; shift $((OPTIND-1)) afterwards.</li>
+      <li>trap ... EXIT guarantees cleanup on every exit path.</li>
+      <li>mktemp plus an EXIT trap is the leak-proof temp file pattern.</li>
+      <li>"${arr[@]}" preserves list elements with spaces.</li>
+      <li>Functions with local variables turn long scripts into readable flows.</li>
+    </ul></div>
+
+    <section id="practice-challenges"><h2>Practice Challenges</h2>
+    <div class="lab-challenge"><h4>Challenge 1: Flag-driven backup</h4><p>Goal: rewrite backup.sh to accept -s source, -d dest, and -k keep-count flags with getopts, printing usage on bad input.</p><p><strong>Hint:</strong> validate required flags after the loop.</p></div>
+    <div class="lab-challenge"><h4>Challenge 2: Lockfile with trap</h4><p>Goal: add a lockfile to a script so two copies cannot run at once, and ensure the trap removes the lock even on Ctrl-C.</p><p><strong>Hint:</strong> trap the cleanup on EXIT, INT, and TERM.</p></div>
+    </section>
+
+    <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="shell-scripting-basics.html">Shell Scripting Basics</a></li>
+        <li><a href="cron-jobs.html">Cron Jobs &amp; Scheduling</a></li>
+        <li><a href="../python/system-admin-scripts.html">Python System Administration Scripts</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Python Sysadmin Scripts: subprocess &amp; psutil | TYFSADIK</title>
+  <meta name="keywords" content="python sysadmin, psutil, subprocess, systemd timer, linux automation, python scripting">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Python Sysadmin Scripts: subprocess &amp; psutil | TYFSADIK">
+  <meta property="og:description" content="Automate Linux administration with Python using psutil for metrics, subprocess for safe command execution, and systemd timers for scheduling on real servers.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/python/system-admin-scripts.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Python Sysadmin Scripts: subprocess &amp; psutil | TYFSADIK">
+  <meta name="twitter:description" content="Automate Linux administration with Python using psutil for metrics, subprocess for safe command execution, and systemd timers for scheduling on real servers.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="description" content="Automate Linux administration with Python using psutil for metrics, subprocess for safe command execution, and systemd timers for scheduling on real servers.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/python/system-admin-scripts.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Python System Administration Scripts", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-03-25", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "Python 3.11, psutil, subprocess", "articleSection": "Python", "learningResourceType": "Hands-on lab", "teaches": "Python programming"}</script>
+  <script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "Gather metrics with psutil",
+      "text": "Gather metrics with psutil"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Run a command safely with subprocess",
+      "text": "Run a command safely with subprocess"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Schedule via systemd timer [ROOT REQUIRED]",
+      "text": "Schedule via systemd timer [ROOT REQUIRED]"
+    }
+  ],
+  "url": "https://tyfsadik.org/about.html"
+}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Python", "item": "https://tyfsadik.org/blog/labs/python/index.html"}, {"@type": "ListItem", "position": 4, "name": "System Administration Scripts", "item": "https://tyfsadik.org/blog/labs/python/system-admin-scripts.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'psutil raises AccessDenied'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: reading another user's process info without permission. Fix: run as the owning user or root; scope checks to system-wide metrics instead."}}, {"@type": "Question", "name": "How do I fix 'subprocess FileNotFoundError'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the program is not on PATH in the timer's environment. Fix: use absolute paths in scheduled scripts; systemd units get a minimal PATH."}}, {"@type": "Question", "name": "How do I fix 'timer never fires'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the unit was enabled but not started, or the calendar expression is wrong. Fix: use enable --now and verify with systemctl list-timers; check systemd-analyze calendar."}}, {"@type": "Question", "name": "How do I fix 'script works manually but fails from the timer'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: environment differences: cwd, env vars, or user. Fix: set WorkingDirectory= and User= in the service unit; log stderr to the journal."}}, {"@type": "Question", "name": "How do I fix 'alerts fire constantly (flapping)'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: threshold crossed repeatedly around the boundary. Fix: add hysteresis or require N consecutive breaches before alerting."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/python/index.html">Python</a> &rsaquo; <span>System Administration Scripts</span></nav>
+    <div class="page-header"><h1>Python System Administration Scripts with psutil and subprocess</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Python</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">psutil</span><span class="tag">subprocess</span><span class="tag">os</span><span class="tag">systemd timer</span></div>
+    </div>
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+      <li><a href="#objective-context">Objective &amp; Context</a></li>
+      <li><a href="#environment-prerequisites">Environment &amp; Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation &amp; Testing</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#takeaways">Key Takeaways</a></li>
+      <li><a href="#challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+    </ol></nav>
+
+    <section><p class="lead">I automated routine Linux administration with Python, using psutil for resource metrics and subprocess for safe command execution. Scheduled health and cleanup scripts replaced manual checks and surfaced disk and memory pressure before it caused outages.</p></section>
+
+    <section><h2 id="objective-context">Objective &amp; Context</h2>
+      <p>Repetitive admin tasks are error-prone when done by hand. This lab builds idempotent Python scripts that gather metrics, act on thresholds, and run under systemd timers, the toolkit that underpins the IR automation and vulnerability labs.</p></section>
+    <div class="lab-objectives"><h3>Learning Objectives</h3><ul>
+      <li>Read CPU, memory, and disk metrics with psutil.</li>
+      <li>Run shell commands safely with subprocess (no shell=True).</li>
+      <li>Write alerting logic with thresholds and notifications.</li>
+      <li>Schedule scripts with systemd timer and service units.</li>
+      <li>Handle permissions correctly for privileged checks.</li>
+    </ul></div>
+
+    <section><h2 id="environment-prerequisites">Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3><ul>
+      <li>A Linux host with <code>Python 3.11</code> and <code>psutil</code> (<code>pip install psutil</code>)</li>
+      <li><code>systemd</code> for scheduling (timer + service unit); root for enabling the timer</li>
+      <li>Permissions appropriate to the resources being managed</li>
+      <li>Assumed skill: basic Linux commands and Python functions</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="Scheduled health-check script flow">
+flowchart LR
+  Tmr[systemd timer] --> S[health.py]
+  S --> M[psutil metrics]
+  M --> T{Threshold breach?}
+  T -->|yes| A[alert + cleanup]
+  T -->|no| L[log ok]
+      </div>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <h3>1. Gather metrics with psutil</h3>
+<pre><code class="language-python">import psutil
+
+def alert(disk, mem):
+    print(f"ALERT: disk {disk}% mem {mem}%")
+
+disk = psutil.disk_usage("/").percent
+mem  = psutil.virtual_memory().percent
+if disk > 85 or mem > 90:
+    alert(disk, mem)</code></pre>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>(no output; alert fires only over threshold)</code></pre>
+      <p class="lab-step-note">What this teaches: psutil reads from /proc, so the check is cheap and dependency-free; thresholds turn raw metrics into actionable signals. The <code>alert</code> function is a placeholder, wire it to your real notification path (mail, webhook, pager). Save this as <code>/opt/health/health.py</code> for the timer step below.</p>
+      <h3>2. Run a command safely with subprocess</h3>
+      <div class="command-block"><div class="command"><code>python -c "import subprocess; print(subprocess.run(['df','-h','/'],capture_output=True,text=True).stdout)"</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda1 ...</code></pre>
+      <p class="lab-step-note">What this teaches: Passing the command as a list avoids the shell entirely, which eliminates shell-injection risk from interpolated arguments.</p></div>
+      <h3>3. Schedule via systemd timer [ROOT REQUIRED]</h3>
+      <div class="command-block"><div class="command"><code>sudo tee /etc/systemd/system/health.service &gt; /dev/null &lt;&lt;'EOF'
+[Unit]
+Description=System health check
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/health/health.py
+WorkingDirectory=/opt/health
+User=root
+EOF
+sudo tee /etc/systemd/system/health.timer &gt; /dev/null &lt;&lt;'EOF'
+[Unit]
+Description=Run health check hourly
+[Timer]
+OnCalendar=hourly
+Persistent=true
+[Install]
+WantedBy=timers.target
+EOF</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>(no output; unit files written; needs sudo or a root shell)</code></pre>
+      <p class="lab-step-note">What this teaches: The service unit pins the interpreter path, working directory, and user so the script runs the same from the timer as it does by hand. Writing under <code>/etc/systemd/system</code> requires root; use a <code>~/.config/systemd/user/</code> timer instead if you have no sudo on the box.</p></div>
+      <div class="command-block"><div class="command"><code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now health.timer &amp;&amp; systemctl list-timers health.timer</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>NEXT                        UNIT          ACTIVATES
+2026-06-17 10:00:00 UTC     health.timer  health.service</code></pre>
+      <p class="lab-step-note">What this teaches: <code>daemon-reload</code> makes systemd pick up the new units, then the timer appearing in list-timers proves systemd accepted the schedule; enable --now both enables and starts it in one command.</p></div>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+      <div class="lab-explainer"><h3>How It Works</h3>
+      <p>psutil is a cross-platform /proc reader: it parses the same kernel interfaces that top and df use, but returns them as Python objects. That makes health checks a few lines of Python instead of fragile text parsing of command output.</p>
+      <p>subprocess.run with a list argument bypasses the shell, so arguments are passed literally to the program. shell=True reintroduces parsing, quoting, and injection hazards; the list form is the safe default for automation.</p>
+      <p>systemd timers replace cron for service-style scheduling: they support calendar and monotonic triggers, jitter, persistent catch-up after downtime, and their runs appear in the journal, which makes scheduled Python observable like any other service.</p>
+    </div>
+      <div class="mermaid" role="img" aria-label="Sysadmin health check pipeline">
+flowchart LR
+  PS["psutil metrics<br/>disk, mem, cpu"] --> TH{"over threshold?"}
+  TH -->|"yes"| AL["alert()"]
+  TH -->|"no"| OK["log ok"]
+  SUB["subprocess.run([...])"] --> PS
+  TMR["systemd timer"] --> SUB
+      </div>
+    </section>
+
+    <section><h2 id="validation-testing">Validation &amp; Testing</h2>
+      <p>Fill a test filesystem past the threshold and confirm the script alerts and runs cleanup, then verify the timer fires on schedule. Pass criteria: threshold logic triggers correctly, subprocess uses a list (no shell injection), and the timer runs reliably.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Shell injection risk:</strong> pass args as a list, never <code>shell=True</code> with user input.</li>
+        <li><strong>Timer not firing:</strong> check <code>systemctl status health.timer</code> and journal logs.</li>
+        <li><strong>Permission denied:</strong> run the service as a user with the needed access, not blanket root.</li>
+      </ul>
+    </details>
+
+    <section><h2 id="troubleshooting">Troubleshooting</h2>
+      <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+        <tr><td>psutil raises AccessDenied</td><td>reading another user's process info without permission</td><td>run as the owning user or root; scope checks to system-wide metrics instead</td></tr>
+        <tr><td>subprocess FileNotFoundError</td><td>the program is not on PATH in the timer's environment</td><td>use absolute paths in scheduled scripts; systemd units get a minimal PATH</td></tr>
+        <tr><td>timer never fires</td><td>the unit was enabled but not started, or the calendar expression is wrong</td><td>use enable --now and verify with systemctl list-timers; check systemd-analyze calendar</td></tr>
+        <tr><td>script works manually but fails from the timer</td><td>environment differences: cwd, env vars, or user</td><td>set WorkingDirectory= and User= in the service unit; log stderr to the journal</td></tr>
+        <tr><td>alerts fire constantly (flapping)</td><td>threshold crossed repeatedly around the boundary</td><td>add hysteresis or require N consecutive breaches before alerting</td></tr>
+      </tbody></table>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Replaced manual checks with scheduled health monitoring.</li>
+        <li>Surfaced disk/memory pressure before it caused service impact.</li>
+        <li>Eliminated shell-injection risk via list-form subprocess calls.</li>
+        <li>Ran idempotent cleanup automatically under systemd timers.</li>
+      </ul>
+    </section>
+
+    <section class="lab-takeaways"><h2 id="takeaways">Key Takeaways</h2><ul>
+        <li>psutil turns /proc into Python objects: no text parsing needed.</li>
+        <li>Always pass subprocess commands as lists; avoid shell=True.</li>
+        <li>Thresholds plus alerting turn metrics into action.</li>
+        <li>systemd timers make scheduled scripts observable via the journal.</li>
+        <li>Scheduled environments are minimal: use absolute paths and explicit units.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="challenges">Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Hysteresis alerter</h4><p><strong>Goal:</strong> Extend the disk check to alert only after three consecutive breaches and clear after three consecutive recoveries.</p><p><strong>Hint:</strong> Keep a small state file or counter between runs; the timer invokes the script each time.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: Journal-friendly script</h4><p><strong>Goal:</strong> Make the script log structured key=value lines so journalctl queries can filter by metric.</p><p><strong>Hint:</strong> Print to stdout from the service unit; systemd captures it into the journal automatically.</p></div>
+    </section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="cli-tools-argparse.html">CLI Tools with argparse</a></li>
+        <li><a href="memory-usage-analyzer.html">Memory Usage Analyzer</a></li>
+        <li><a href="../security/python-ir-automation.html">Python IR Automation</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linux Hard &amp; Soft Links: Hands-On Tutorial | TYFSADIK</title>
+  <meta name="description" content="Understand Linux hard links vs symbolic links: inodes, link counts, dangling symlinks, and the atomic symlink swap technique for zero-downtime releases.">
+  <meta name="keywords" content="linux hard link vs symbolic link, ln command, inode, symlink atomic deploy, Linux command line tutorial, bash scripting guide">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-fundamentals/hard-soft-links.html">
+  <meta property="og:title" content="Linux Hard &amp; Soft Links: Hands-On Tutorial | TYFSADIK">
+  <meta property="og:description" content="Understand Linux hard links vs symbolic links: inodes, link counts, dangling symlinks, and the atomic symlink swap technique for zero-downtime releases.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-fundamentals/hard-soft-links.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Linux Hard &amp; Soft Links: Hands-On Tutorial | TYFSADIK">
+  <meta name="twitter:description" content="Understand Linux hard links vs symbolic links: inodes, link counts, dangling symlinks, and the atomic symlink swap technique for zero-downtime releases.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Hard and Symbolic Links in Linux", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-16", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "GNU coreutils, ln", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux fundamentals and command-line skills"}</script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Working with Hard and Symbolic Links via inodes",
+    "description": "Understand Linux hard links vs symbolic links: inodes, link counts, dangling symlinks, and the atomic symlink swap technique for zero-downtime releases.",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "dateModified": "2026-09-29",
+    "step": [
+      {"@type": "HowToStep", "name": "Compare inodes of a hard link", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/hard-soft-links.html#steps"},
+      {"@type": "HowToStep", "name": "Create a symlink and inspect it", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/hard-soft-links.html#steps"},
+      {"@type": "HowToStep", "name": "Atomic release switch", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/hard-soft-links.html#steps"}
+    ]
+  }</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Linux Fundamentals", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/index.html"}, {"@type": "ListItem", "position": 4, "name": "Working with Links", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/hard-soft-links.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'ln reports invalid cross-device link'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Hard links cannot span filesystems. Fix: Use a symbolic link instead, or keep both names on the same mount."}}, {"@type": "Question", "name": "How do I fix 'Symlink shows as red/dangling in ls'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Its target was moved or deleted. Fix: Recreate the target or repoint with ln -sfn; find dangling links with find -xtype l."}}, {"@type": "Question", "name": "How do I fix 'ln -sf followed the old link into a directory'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Without -n, ln dereferences a symlink that points to a directory. Fix: Always use ln -sfn for the atomic swap pattern."}}, {"@type": "Question", "name": "How do I fix 'Hard link edits appear in both names unexpectedly'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: That is correct behavior: both names share one inode. Fix: Copy (cp) instead of linking when you need independent files."}}, {"@type": "Question", "name": "How do I fix 'readlink shows a relative path that resolves wrongly'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Relative symlinks resolve from the link's directory, not your cwd. Fix: Prefer absolute targets for system paths like /srv/current."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>Working with Links</span></nav>
+    <div class="page-header"><h1>Working with Hard and Symbolic Links via inodes</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">ln</span><span class="tag">inode</span><span class="tag">symlink</span><span class="tag">ls -i</span></div>
+    </div>
+
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#learning-objectives">Learning Objectives</a></li>
+<li><a href="#objective">Objective &amp; Context</a></li>
+<li><a href="#environment">Environment &amp; Prerequisites</a></li>
+<li><a href="#steps">Step-by-Step Execution</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#validation">Validation &amp; Testing</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#key-takeaways">Key Takeaways</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    <section><p class="lead">I worked through hard versus symbolic links by inspecting inodes and link counts with <code>ls -i</code> and <code>stat</code>. Symlinks enabled atomic configuration swaps (the current-release pointer pattern) while hard links shared data without duplication.</p></section>
+
+    <section id="objective"><h2>Objective &amp; Context</h2>
+      <p>Links are how Linux references the same data from multiple paths. This lab clarifies that hard links share an inode (same data, multiple names) while symlinks are pointers to a path, then applies symlinks for zero-downtime config and release switching.</p></section>
+
+    <div class="lab-objectives" id="learning-objectives"><h3>Learning Objectives</h3>
+    <ul>
+      <li>Explain the difference between hard links and symbolic links using inodes.</li>
+      <li>Create hard links and verify shared inodes and link counts with ls -li.</li>
+      <li>Create symbolic links and inspect their targets with stat and readlink.</li>
+      <li>Identify dangling symlinks and clean them up safely.</li>
+      <li>Perform an atomic release switch with ln -sfn for zero-downtime deploys.</li>
+    </ul></div>
+
+    <section id="environment"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+    <ul>
+      <li>Any Linux shell with GNU coreutils (ln, ls, stat are preinstalled everywhere).</li>
+      <li>A filesystem that supports hard links for step 1 (ext4, xfs, btrfs all qualify; FAT and most network mounts do not).</li>
+      <li>Sample files to link and a scratch directory such as ~/lab/links.</li>
+      <li>Basic familiarity with ls -l output from the file management lab.</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="Hard link vs symlink referencing data">
+flowchart LR
+  N1[name A] --> I[(inode + data)]
+  N2[hard link B] --> I
+  S[symlink] -->|path pointer| N1
+      </div>
+    </section>
+
+    <section id="steps"><h2>Step-by-Step Execution</h2>
+      <h3>1. Compare inodes of a hard link</h3>
+      <div class="command-block"><div class="command"><code>echo hello &gt; file.txt &amp;&amp; ln file.txt hard.txt &amp;&amp; ls -li file.txt hard.txt</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>524301 -rw-r--r-- 2 taki taki 6 2026-06-17 09:12 file.txt
+524301 -rw-r--r-- 2 taki taki 6 2026-06-17 09:12 hard.txt</code></pre>
+      <p class="lab-step-note">What this teaches: Identical inode numbers prove both names point to the same data blocks; the link count of 2 shows two directory entries reference that inode. Deleting one name only decrements the count, and the data survives until the count reaches zero.</p>
+    <h3>2. Create a symlink and inspect it</h3>
+      <div class="command-block"><div class="command"><code>ln -s /srv/releases/v2 /srv/current &amp;&amp; stat /srv/current</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>  File: /srv/current -&gt; /srv/releases/v2
+  Size: 15              Blocks: 0          IO Block: 4096   symbolic link</code></pre>
+      <p class="lab-step-note">What this teaches: stat reveals a symlink is its own tiny file holding a path string (Size 15, Blocks 0); readlink -f resolves the full chain to the real target.</p>
+    <h3>3. Atomic release switch</h3>
+      <div class="command-block"><div class="command"><code>ln -sfn /srv/releases/v3 /srv/current</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>(no output on success; verify with: readlink /srv/current)
+/srv/releases/v3</code></pre>
+      <p class="lab-step-note">What this teaches: The -n flag stops ln from dereferencing an existing symlink to a directory, and -f replaces it; together they swap the pointer atomically so readers never see a half-updated path. This needs sudo when /srv is root-owned.</p>
+    </section>
+
+    <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>
+      <p>A Unix filesystem separates names from data. The inode holds the data blocks, permissions, and timestamps; a directory is just a table mapping names to inode numbers. A hard link adds another name for the same inode, so both names are equal peers and the data survives until the last name is removed and the last open descriptor closes.</p>
+      <p>A symbolic link is a different object entirely: a small file whose content is a path string. The kernel resolves it at open time, which means symlinks can point across filesystems and to directories, but also means they break (dangle) when the target moves. Tools like readlink and stat -c %N expose the link layer so you can tell names apart from data.</p>
+      <p>The atomic swap works because renaming a symlink is a single filesystem operation. ln -sfn creates the new link and renames it over the old one in one step, so a web server reading /srv/current either gets the old release or the new one, never a missing path. This is the same mechanism behind zero-downtime deployment tools.</p>
+    </div>
+    <div class="mermaid" role="img" aria-label="Hard link vs symlink structure">
+flowchart LR
+  subgraph HL["Hard links"]
+    N1["name A"] --> I["inode 524301"]
+    N2["name B"] --> I
+    I --> D["data blocks"]
+  end
+  subgraph SL["Symlink"]
+    N3["/srv/current"] --> P["path string: /srv/releases/v3"]
+    P --> I2["inode 778812"] --> D2["release data"]
+  end
+      </div>
+    </section>
+
+    <section id="validation"><h2>Validation &amp; Testing</h2>
+      <p>Delete the original name of a hard-linked file and confirm the data survives via the other name; repoint a symlink and confirm consumers see the new target atomically. Pass criteria: hard links share an inode and survive original deletion; symlink swap is instantaneous.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+    <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>ln reports invalid cross-device link</td><td>Hard links cannot span filesystems</td><td>Use a symbolic link instead, or keep both names on the same mount</td></tr>
+      <tr><td>Symlink shows as red/dangling in ls</td><td>Its target was moved or deleted</td><td>Recreate the target or repoint with ln -sfn; find dangling links with find -xtype l</td></tr>
+      <tr><td>ln -sf followed the old link into a directory</td><td>Without -n, ln dereferences a symlink that points to a directory</td><td>Always use ln -sfn for the atomic swap pattern</td></tr>
+      <tr><td>Hard link edits appear in both names unexpectedly</td><td>That is correct behavior: both names share one inode</td><td>Copy (cp) instead of linking when you need independent files</td></tr>
+      <tr><td>readlink shows a relative path that resolves wrongly</td><td>Relative symlinks resolve from the link's directory, not your cwd</td><td>Prefer absolute targets for system paths like /srv/current</td></tr>
+      <tr><td>Too many levels of symbolic links error</td><td>Symlinks form a loop pointing at each other</td><td>Break the cycle by removing one link and repointing it correctly</td></tr>
+    </tbody></table>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Cross-filesystem hard link fails:</strong> hard links cannot span filesystems; use a symlink.</li>
+        <li><strong>Dangling symlink:</strong> the target moved or was deleted; recreate or repoint.</li>
+        <li><strong>Non-atomic swap:</strong> use <code>ln -sfn</code> to replace a symlink in one step.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Demonstrated shared-inode behaviour of hard links with link counts.</li>
+        <li>Implemented zero-downtime release switching with atomic symlink swaps.</li>
+        <li>Distinguished symlink path-pointers from inode-sharing hard links.</li>
+        <li>Avoided data duplication for shared references via hard links.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways" id="key-takeaways"><h3>Key Takeaways</h3>
+    <ul>
+      <li>Hard links are extra names for one inode; symlinks are path pointers stored as tiny files.</li>
+      <li>Same inode plus a link count above 1 identifies hard-linked names.</li>
+      <li>Symlinks can cross filesystems and point to directories; hard links cannot.</li>
+      <li>ln -sfn swaps a symlink atomically, which enables zero-downtime releases.</li>
+      <li>Relative symlink targets resolve from the link's own directory.</li>
+    </ul></div>
+
+    <section id="practice-challenges"><h2>Practice Challenges</h2>
+    <div class="lab-challenge"><h4>Challenge 1: Prove shared data</h4><p>Goal: create a hard link, append text through one name, and show it appears through the other; then delete the original and show the data survives.</p><p><strong>Hint:</strong> compare inode numbers with ls -li.</p></div>
+    <div class="lab-challenge"><h4>Challenge 2: Hunt dangling links</h4><p>Goal: find every broken symlink under /etc and /srv, then decide for each whether to repoint or remove it.</p><p><strong>Hint:</strong> find has a -xtype l test for this exact job.</p></div>
+    </section>
+
+    <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="file-management.html">File Management</a></li>
+        <li><a href="mounting-filesystems.html">Mounting Filesystems</a></li>
+        <li><a href="advanced-file-management.html">Advanced File Management</a></li>
+        <li><a href="file-permissions.html">File Permissions &amp; Ownership</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Infrastructure as Code | Bicep &amp; Terraform on Azure</title>
+  <meta name="description" content="Manage Azure infrastructure as code with Bicep and Terraform: modules, remote state, plan and apply workflows, drift detection, and remediation through code.">
+  <meta name="keywords" content="infrastructure as code, Bicep, Terraform, Azure remote state, drift detection, az deployment">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Infrastructure as Code | Bicep &amp; Terraform on Azure">
+  <meta property="og:description" content="Manage Azure infrastructure as code with Bicep and Terraform: modules, remote state, plan and apply workflows, drift detection, and remediation through code.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/cloud-azure/infrastructure-as-code.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Infrastructure as Code | Bicep &amp; Terraform on Azure">
+  <meta name="twitter:description" content="Manage Azure infrastructure as code with Bicep and Terraform: modules, remote state, plan and apply workflows, drift detection, and remediation through code.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/cloud-azure/infrastructure-as-code.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Infrastructure as Code on Azure with Bicep and Terraform", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-03-13", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "Bicep, Terraform 1.7, Azure CLI", "articleSection": "Cloud", "learningResourceType": "Hands-on lab", "teaches": "Microsoft Azure cloud services"}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "HowTo", "name": "Infrastructure as Code | Bicep & Terraform on Azure", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"}, "step": [{"@type": "HowToStep", "name": "Deploy with Bicep", "url": "https://tyfsadik.org/blog/labs/cloud-azure/infrastructure-as-code.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Configure Terraform remote state", "url": "https://tyfsadik.org/blog/labs/cloud-azure/infrastructure-as-code.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Write the equivalent Terraform", "url": "https://tyfsadik.org/blog/labs/cloud-azure/infrastructure-as-code.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Init, plan, and apply with Terraform", "url": "https://tyfsadik.org/blog/labs/cloud-azure/infrastructure-as-code.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Detect drift", "url": "https://tyfsadik.org/blog/labs/cloud-azure/infrastructure-as-code.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Remediate drift through code", "url": "https://tyfsadik.org/blog/labs/cloud-azure/infrastructure-as-code.html#step-by-step-execution"}]}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Cloud & Azure", "item": "https://tyfsadik.org/blog/labs/cloud-azure/index.html"}, {"@type": "ListItem", "position": 4, "name": "Infrastructure as Code", "item": "https://tyfsadik.org/blog/labs/cloud-azure/infrastructure-as-code.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'State lock errors'?", "acceptedAnswer": {"@type": "Answer", "text": "a previous run is holding the lock; wait or force-unlock carefully. Terraform prints the lock info, including a Lock ID, confirm no run is genuinely active (a crashed apply or a closed laptop can leave a stale lease), then release it with terraform force-unlock <LOCK_ID>. Never force-unlock while a teammate's apply might still be running; the lock is the only thing standing between you and a corrupt state file."}}, {"@type": "Question", "name": "How do I fix 'Drift keeps returning'?", "acceptedAnswer": {"@type": "Answer", "text": "stop editing in the portal; remediate only through code. If drift reappears after every apply, something automated is making the change, a policy assignment, a scheduled runbook, or a colleague's script. Find the actor with az monitor activity-log list --resource-group tyf-rg --max-events 20 -o table and look at the caller column."}}, {"@type": "Question", "name": "How do I fix 'Bicep build error'?", "acceptedAnswer": {"@type": "Answer", "text": "run az bicep build to surface the line. The compiler reports file, line, and a diagnostic code (e.g. BCP057 for a name that does not exist in scope), fix the first reported error and rebuild, since later errors are often cascading noise from the first."}}, {"@type": "Question", "name": "How do I fix 'Backend init fails with AuthorizationFailed or 403 on the state blob'?", "acceptedAnswer": {"@type": "Answer", "text": "your account has management rights on the storage account but no data-plane role on the container. Add Storage Blob Data Contributor as shown in the setup section, wait a minute for RBAC propagation, and re-run terraform init."}}, {"@type": "Question", "name": "How do I fix 'Plan wants to destroy and recreate a resource you only renamed'?", "acceptedAnswer": {"@type": "Answer", "text": "Terraform tracks resources by their address (azurerm_storage_account.iac), so renaming the block label looks like \"delete old, create new.\" Use terraform state mv azurerm_storage_account.old_name azurerm_storage_account.new_name to rename the address in state instead of letting the resource be rebuilt. Note that renaming the Azure name property of a storage account genuinely is a recreate, the name is immutable once created, and the plan is correct."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/cloud-azure/index.html">Cloud &amp; Azure</a> &rsaquo; <span>Infrastructure as Code</span></nav>
+    <div class="page-header"><h1>Infrastructure as Code on Azure with Bicep and Terraform</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Cloud</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Bicep</span><span class="tag">Terraform</span><span class="tag">state</span><span class="tag">drift</span></div>
+    </div>
+<nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#architecture-overview">Architecture Overview</a></li>
+<li><a href="#environment-setup">Environment Setup</a></li>
+<li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+<li><a href="#step-flow-map">Step Flow Map</a></li>
+<li><a href="#progress-so-far">Progress So Far</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#testing-validation">Testing & Validation</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#extension-ideas">Extension Ideas</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    
+
+    <section><p class="lead">You will provision the same Azure resources with both Bicep and Terraform, then detect and remediate drift. By the end you will manage cloud infrastructure as version-controlled code with a clear plan-before-apply workflow.</p>
+      <p>Infrastructure as Code (IaC) means your environment is described in text files that live in source control, and every change to that environment is a change to those files, reviewed, versioned, and applied by a tool instead of clicked together in the portal. Azure has two first-class ways to do this. <strong>Bicep</strong> is Microsoft's own declarative language that compiles down to ARM templates and talks to Azure Resource Manager directly. <strong>Terraform</strong> is HashiCorp's tool, cloud-agnostic, and it keeps a <em>state file</em> recording every resource it manages so it can compute precise change plans later.</p>
+      <p>The single most important difference between the two is that state file. Bicep asks Azure "what exists right now?" every time it runs, so it needs no bookkeeping of its own. Terraform compares your configuration against its recorded state, which makes its plans fast and exact, but also means the state file is a piece of critical infrastructure that must be stored safely and locked during runs. This lab makes you operate both tools on the same target resources so the trade-offs stop being theoretical.</p>
+      <p>You will also practice the workflow that makes IaC safe in production: <strong>preview before apply</strong>. Bicep's what-if and Terraform's plan both answer "what would change if I ran this?" before anything is touched, and both can be used after the fact to detect <em>drift</em>, the gap between what your code says and what actually exists, usually caused by someone editing resources by hand.</p>
+    </section>
+
+    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+      <ul>
+        <li>Write a Bicep module and deploy it.</li>
+        <li>Write equivalent Terraform with remote state.</li>
+        <li>Detect configuration drift with plan/what-if.</li>
+        <li>Preview every change before applying it, and remediate drift through code only.</li>
+        <li>Explain how Terraform state differs from Bicep's stateless model and why remote state with locking matters in a team.</li>
+        <li><strong>Time:</strong> ~4 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> Azure CLI, Bicep, Terraform.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="architecture-overview">Architecture Overview</h2>
+      <p>Both tools follow the same mental loop: you write code, the tool computes a plan against the current reality, you apply the approved plan, and Azure resources come into existence (or are corrected). Terraform's extra moving part is the state file, which feeds into every plan so Terraform knows what it already manages. Drift detection is just running the plan step again later and reading what it reports.</p>
+      <div class="mermaid" role="img" aria-label="IaC workflow from code to deployed Azure resources">
+graph LR
+  Code[Bicep / Terraform code] --> Plan[plan / what-if]
+  Plan --> Apply[apply]
+  Apply --> Azure[Azure resources]
+  State[(Terraform state)] --> Plan
+  Azure -->|drift check| Plan
+      </div>
+      <p>Notice that the drift-check arrow flows from live Azure back into the plan step: a plan is never only a pre-flight check, it is also your ongoing audit. If the plan is empty, code and reality agree. If it is not empty and you did not change the code, someone changed reality, and the plan output tells you exactly what, and how the next apply will put it back.</p>
+    </section>
+
+    <section><h2 id="environment-setup">Environment Setup</h2>
+<div class="lab-prereqs"><h3>Prerequisites</h3>
+<ul>
+<li>Azure CLI with Bicep (<code>az bicep version</code>) and Terraform 1.7+ installed.</li>
+<li>An Azure subscription with Contributor access, plus a storage account for Terraform remote state.</li>
+<li>Assumed skills: JSON or HCL comfort, basic <code>az</code> commands, and what a resource group is.</li>
+</ul></div>
+      <p><strong>You will need:</strong> the Azure CLI (with Bicep) and Terraform 1.7.</p>
+      <p><strong>Before you begin:</strong> store Terraform state remotely (Azure Storage) for team-safe locking.</p>
+      <p>Start by confirming both toolchains are present and current. The Azure CLI ships Bicep as a built-in component (older installs needed <code>az bicep install</code> separately), and Terraform is a single binary. Check all three versions up front so a toolchain problem cannot masquerade as a code problem halfway through the lab.</p>
+      <p class="code-label">CHECK THE TOOLCHAIN VERSIONS</p>
+<pre><code>az version
+az bicep version
+terraform version</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az bicep version &amp;&amp; terraform version</span></div>
+        <div class="terminal-output">Bicep CLI version 0.26.170 (e9abaf016a)
+
+Terraform v1.7.5
+on darwin_arm64
++ provider registry.terraform.io/hashicorp/azurerm v3.97.1</div>
+      </div>
+      <p>Next, sign in and point the CLI at the subscription you intend to use. Both Bicep deployments and the Terraform Azure provider pick up these Azure CLI credentials by default, so this one login authenticates the whole lab.</p>
+      <p class="code-label">SIGN IN AND SELECT THE SUBSCRIPTION</p>
+<pre><code>az login
+az account list --output table
+az account set --subscription "My Sandbox Sub"
+az account show --query "{name:name, id:id, state:state}" --output table</code></pre>
+      <p>Create the lab resource group, plus a <em>separate</em> resource group and storage account to hold Terraform's remote state. Keeping state in its own group is deliberate: it survives deletion of the lab environment, and access to it can be restricted independently, the state file can contain sensitive values and deserves tighter RBAC than the resources it describes.</p>
+      <p class="code-label">CREATE THE LAB GROUP AND THE STATE BACKEND STORAGE</p>
+<pre><code># Lab resources live here:
+az group create --name tyf-rg --location canadacentral
+
+# Terraform state lives here, in its own group:
+az group create --name tyf-tfstate-rg --location canadacentral
+az storage account create \
+  --name tyftfstate01 \
+  --resource-group tyf-tfstate-rg \
+  --sku Standard_LRS \
+  --kind StorageV2 \
+  --allow-blob-public-access false \
+  --min-tls-version TLS1_2
+az storage container create \
+  --name tfstate \
+  --account-name tyftfstate01 \
+  --auth-mode login</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az group create --name tyf-rg --location canadacentral</span></div>
+        <div class="terminal-output">{
+  "id": "/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/tyf-rg",
+  "location": "canadacentral",
+  "name": "tyf-rg",
+  "properties": { "provisioningState": "Succeeded" }
+}</div>
+      </div>
+      <div class="note"><strong>Common mistake:</strong> container creation failing with an authorization error even though you own the subscription. Blob <em>data-plane</em> access is separate from management rights, with <code>--auth-mode login</code> your account needs the <code>Storage Blob Data Contributor</code> role on the storage account. Grant it with <code>az role assignment create --assignee $(az ad signed-in-user show --query id -o tsv) --role "Storage Blob Data Contributor" --scope $(az storage account show -n tyftfstate01 -g tyf-tfstate-rg --query id -o tsv)</code> and wait a minute for propagation.</div>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Deploy with Bicep</strong>
+          <p>A Bicep file declares resources in a terse, readable syntax. Parameters (<code>param</code>) are inputs you supply at deploy time; <code>resource</code> blocks describe desired state, each pinned to a resource type and apiVersion. The excerpt below, the same storage account used throughout this lab, shows the whole pattern in seven lines: a name parameter and a storage account that inherits its resource group's location.</p>
+<pre><code class="language-bash">// main.bicep
+param name string
+resource sa 'Microsoft.Storage/storageAccounts@2023-01-01' = {
+  name: name
+  location: resourceGroup().location
+  sku: { name: 'Standard_LRS' }
+  kind: 'StorageV2'
+}</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ az deployment group create -f main.bicep -g tyf-rg --query "properties.provisioningState" -o tsv
+Succeeded</code></pre>
+          <p>The symbolic name <code>sa</code> is only a reference inside the file, it is not the deployed name and never appears in Azure. What lands in Azure is the value of the <code>name</code> parameter. Before deploying, compile and validate: <code>az bicep build</code> surfaces syntax errors with line numbers locally, and <code>az deployment group what-if</code> asks ARM what would change, without changing anything.</p>
+          <p class="code-label">COMPILE AND PREVIEW (no changes made)</p>
+<pre><code>az bicep build --file main.bicep
+
+az deployment group what-if \
+  --resource-group tyf-rg \
+  --template-file main.bicep \
+  --parameters name=tyfiac01</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az deployment group what-if -g tyf-rg --template-file main.bicep --parameters name=tyfiac01</span></div>
+            <div class="terminal-output">Resource and property changes are indicated with these symbols:
+  + Create
+
+Scope: /subscriptions/1111.../resourceGroups/tyf-rg
+
+  + Microsoft.Storage/storageAccounts/tyfiac01
+
+      apiVersion: "2023-01-01"
+      kind:       "StorageV2"
+      location:   "canadacentral"
+      sku.name:   "Standard_LRS"
+
+Resource changes: 1 to create.</div>
+          </div>
+          <p>The preview says exactly one resource will be created and nothing else will move, that is the green light to deploy for real. The create command is identical, minus the what-if operation.</p>
+          <div class="command-block" data-copy><div class="command"><code>az deployment group create -g tyf-rg --template-file main.bicep --parameters name=tyfiac01</code></div></div>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az deployment group create -g tyf-rg --template-file main.bicep --parameters name=tyfiac01 --query properties.provisioningState</span></div>
+            <div class="terminal-output">"Succeeded"</div>
+          </div>
+          <div class="note"><strong>Common mistake:</strong> running the deployment before creating the resource group fails with <code>ResourceGroupNotFound</code>, group-scoped deployments never create their own group. Verify success with <code>az storage account show -n tyfiac01 -g tyf-rg --query provisioningState</code> rather than trusting the CLI exit alone.</div>
+        
+<p class="lab-step-note">What this teaches: Bicep is ARM JSON with the verbosity removed; it compiles to a template before anything reaches Azure.</p></div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Configure Terraform remote state</strong>
+          <p>Before writing any Terraform resources, decide where its state will live. The default is a local <code>terraform.tfstate</code> file, fine for a solo experiment, unacceptable for a team: two people running apply at once would race, and the file itself is easy to lose or leak. The <code>azurerm</code> backend stores state as a blob in Azure Storage and, crucially, takes a <strong>lease on the blob during every state operation</strong>, that lease is the lock that prevents concurrent applies from corrupting each other.</p>
+          <p class="code-label">BACKEND CONFIGURATION, backend.tf</p>
+<pre><code>terraform {
+  required_version = "&gt;= 1.7.0"
+
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~&gt; 3.97"
+    }
+  }
+
+  backend "azurerm" {
+    resource_group_name  = "tyf-tfstate-rg"
+    storage_account_name = "tyftfstate01"
+    container_name       = "tfstate"
+    key                  = "iac-lab.tfstate"
+  }
+}
+
+provider "azurerm" {
+  features {}
+}</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>Initializing the backend...
+Successfully configured the backend "azurerm"!
+Terraform has been successfully initialized!</code></pre>
+          <p>Three things to note here. First, the backend block cannot use variables, backend configuration is evaluated before anything else, so these values are literals (or supplied at init time with <code>-backend-config</code>). Second, the <code>key</code> is the blob name; use one key per environment so dev and prod state never mix. Third, <code>features {}</code> is a required empty block for the azurerm provider, forgetting it is a classic first-run error.</p>
+          <div class="note"><strong>Common mistake:</strong> committing backend credentials or (worse) the state file itself to git. The state blob can hold secrets, storage keys, generated passwords, in plaintext. Store it in the locked-down storage account from the setup section, never in the repository.</div>
+        
+<p class="lab-step-note">What this teaches: Remote state is what makes Terraform a team tool; local state is a single point of failure and confusion.</p></div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Write the equivalent Terraform</strong>
+          <p>Now express the same infrastructure in Terraform's HCL. To keep the comparison honest, this configuration manages the same resource group and adds a <em>second</em> storage account, Terraform and Bicep each manage their own resource here, but through the same resource group, so you can see both tools' outputs side by side in one place. (Two IaC tools managing the <em>same</em> resource is an anti-pattern you should avoid in real environments; here the separation is explicit.)</p>
+          <p class="code-label">TERRAFORM CONFIGURATION, main.tf</p>
+<pre><code>resource "azurerm_storage_account" "iac" {
+  name                     = "tyftfdemo01"
+  resource_group_name      = "tyf-rg"
+  location                 = "canadacentral"
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+  account_kind             = "StorageV2"
+  min_tls_version          = "TLS1_2"
+
+  tags = {
+    deployedBy  = "terraform"
+    environment = "dev"
+  }
+}
+
+output "storage_account_id" {
+  value = azurerm_storage_account.iac.id
+}</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ terraform validate
+Success! The configuration is valid.</code></pre>
+          <p>The block label pair, <code>"azurerm_storage_account"</code> and <code>"iac"</code>, is the resource's address inside Terraform (<code>azurerm_storage_account.iac</code>), and it is this address, not the Azure name, that the state file tracks. Run <code>terraform fmt</code> and <code>terraform validate</code> now; fmt normalizes layout, validate checks syntax and internal consistency against the provider schema.</p>
+          <div class="note"><strong>How to verify:</strong> <code>terraform validate</code> must be run after <code>terraform init</code> (next step) because it needs the provider schema downloaded. If you run it first and get <code>Missing or corrupted provider plugins</code>, that is expected, init, then validate.</div>
+        
+<p class="lab-step-note">What this teaches: HCL describes the same desired state in a different syntax; the concepts of plan, apply, and drift transfer directly.</p></div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Init, plan, and apply with Terraform</strong>
+          <p><code>terraform init</code> does three jobs: downloads the azurerm provider from the registry, configures the remote backend, and migrates state into it (there is nothing to migrate on a first run). Watch its output for the backend confirmation line, if init silently falls back to a local backend, everything that follows loses the locking and sharing you set up.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">terraform init</span></div>
+            <div class="terminal-output">Initializing the backend...
+
+Successfully configured the backend "azurerm"! Terraform will automatically
+use this backend unless the backend configuration changes.
+
+Initializing provider plugins...
+- Finding hashicorp/azurerm versions matching "~&gt; 3.97"...
+- Installing hashicorp/azurerm v3.97.1...
+
+Terraform has been successfully initialized!</div>
+          </div>
+          <p>Then the core workflow, chained: <code>plan -out tf.plan</code> computes the change set and saves it to a file, and <code>apply tf.plan</code> executes <em>exactly that saved plan</em>, not a recomputation of it. Saving the plan and applying the file (rather than running a bare <code>terraform apply</code>) guarantees that what you reviewed is what runs, which is why pipelines always use this two-step form.</p>
+          <div class="command-block" data-copy><div class="command"><code>terraform init &amp;&amp; terraform plan -out tf.plan &amp;&amp; terraform apply tf.plan</code></div></div>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">terraform plan -out tf.plan</span></div>
+            <div class="terminal-output">Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  + create
+
+Terraform will perform the following actions:
+
+  # azurerm_storage_account.iac will be created
+  + resource "azurerm_storage_account" "iac" {
+      + account_replication_type = "LRS"
+      + account_tier             = "Standard"
+      + location                 = "canadacentral"
+      + name                     = "tyftfdemo01"
+      + resource_group_name      = "tyf-rg"
+      ...
+    }
+
+Plan: 1 to add, 0 to change, 0 to destroy.
+
+Saved the plan to: tf.plan</div>
+          </div>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">terraform apply tf.plan</span></div>
+            <div class="terminal-output">azurerm_storage_account.iac: Creating...
+azurerm_storage_account.iac: Creation complete after 26s [id=/subscriptions/1111.../storageAccounts/tyftfdemo01]
+
+Apply complete! Resources: 1 added, 0 changed, 0 destroyed.
+
+Outputs:
+
+storage_account_id = "/subscriptions/1111.../resourceGroups/tyf-rg/providers/Microsoft.Storage/storageAccounts/tyftfdemo01"</div>
+          </div>
+          <div class="note"><strong>Common mistake:</strong> editing <code>main.tf</code> between <code>plan -out</code> and <code>apply</code>. Terraform refuses to apply a stale saved plan (<code>plan file was created with a different configuration</code>), which is a feature, re-run plan and review the fresh output instead of working around the guard.</div>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>Plan: 2 to add, 0 to change, 0 to destroy.
+Apply complete! Resources: 2 added, 0 changed, 0 destroyed.</code></pre>
+<p class="lab-step-note">What this teaches: Plan is the what-if of Terraform; reading the diff before applying is the habit that prevents outages.</p></div></div>
+        <div class="step"><div class="step-num">05</div><div class="step-body"><strong>Detect drift</strong>
+          <p>Drift is any difference between your code and reality. Create some deliberately: change a tag on the Terraform-managed storage account through the Azure CLI, simulating a well-meaning colleague editing in the portal. Then run a plain plan. Terraform refreshes its view of the live resource first, then compares, and reports the difference as a change it wants to make.</p>
+          <p class="code-label">SIMULATE OUT-OF-BAND CHANGE, THEN PLAN</p>
+<pre><code># A "portal edit", done via CLI for repeatability:
+az resource tag --ids $(az storage account show -n tyftfdemo01 -g tyf-rg --query id -o tsv) \
+  --set tags.environment=production
+
+terraform plan -detailed-exitcode; echo "exit=$?"</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ terraform plan -detailed-exitcode
+# azurerm_storage_account.demo will be updated in-place
+~ tags = { "env" = "lab" -&gt; "prod" }
+Plan: 0 to add, 1 to change, 0 to destroy.</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">terraform plan -detailed-exitcode</span></div>
+            <div class="terminal-output">Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  ~ update in-place
+
+Terraform will perform the following actions:
+
+  # azurerm_storage_account.iac will be updated in-place
+  ~ resource "azurerm_storage_account" "iac" {
+        id                       = "/subscriptions/1111.../storageAccounts/tyftfdemo01"
+        name                     = "tyftfdemo01"
+      ~ tags                     = {
+          ~ "environment" = "production" -&gt; "dev"
+            # (1 unchanged element hidden)
+        }
+        # (23 unchanged attributes hidden)
+    }
+
+Plan: 0 to add, 1 to change, 0 to destroy.</div>
+          </div>
+          <p>The <code>-detailed-exitcode</code> flag makes the result scriptable: exit 0 means no drift, exit 1 means an error, exit 2 means drift (changes pending). With no drift, the output is the one-liner below, this is the state you want to return to after remediation.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">terraform plan -detailed-exitcode</span></div>
+            <div class="terminal-output">No changes. Your infrastructure matches the configuration.</div>
+          </div>
+          <p>Bicep's equivalent drift check is what-if: re-run <code>az deployment group what-if</code> against <code>main.bicep</code> and any out-of-band change to <code>tyfiac01</code> shows up as a <code>~</code> modify entry. Same idea, stateless implementation, ARM reads live state every time instead of consulting a state file.</p>
+          <div class="note"><strong>How to verify:</strong> after the tag edit, the plan must show <code>exit=2</code>. If it shows exit 0 while you know the tag was changed, the refresh is being skipped, make sure you are not passing <code>-refresh=false</code> and that you are in the right workspace/directory.</div>
+        
+<p class="lab-step-note">What this teaches: Drift detection proves the state file is a snapshot, not a live view; reality always wins.</p></div></div>
+        <div class="step"><div class="step-num">06</div><div class="step-body"><strong>Remediate drift through code</strong>
+          <p>The fix for drift is not to edit the resource back by hand, that just creates a new unrecorded change. The fix is to re-apply the code, letting the tool converge reality onto the declared state. For Terraform that is another apply of a fresh plan; for the Bicep-managed resource it is re-running the same deployment. Afterwards, both drift checks should come back clean.</p>
+          <p class="code-label">CONVERGE AND CONFIRM</p>
+<pre><code>terraform plan -out fix.plan &amp;&amp; terraform apply fix.plan
+terraform plan -detailed-exitcode; echo "exit=$?"          # expect exit=0
+
+az deployment group create -g tyf-rg --template-file main.bicep --parameters name=tyfiac01 --query properties.provisioningState
+az deployment group what-if -g tyf-rg --template-file main.bicep --parameters name=tyfiac01</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>Apply complete! Resources: 0 added, 1 changed, 0 destroyed.</code></pre>
+          <p>Leave everything running. The Testing &amp; Validation section checks this live environment, and cleanup happens at its end, not here.</p>
+          <div class="note"><strong>Common mistake:</strong> deleting the state storage account while Terraform configurations still point at it. Every subsequent <code>terraform plan</code> then fails with a backend initialization error until you either restore the backend or re-run <code>terraform init -migrate-state</code> against a new one. Destroy the managed resources first, the backend last.</div>
+        
+<p class="lab-step-note">What this teaches: Remediation through code keeps the repository as the single source of truth; manual fixes are undocumented by definition.</p></div></div>
+      </div>
+    </section>
+<section><h2 id="step-flow-map">Step Flow Map</h2>
+<div class="mermaid" role="img" aria-label="Flow of the lab steps from first to last">
+graph TD
+  S1["Deploy with Bicep"]
+  S2["Configure Terraform remote state"]
+  S3["Write the equivalent Terraform"]
+  S4["Init, plan, and apply with Terraform"]
+  S5["Detect drift"]
+  S6["Remediate drift through code"]
+  S1 --> S2
+  S2 --> S3
+  S3 --> S4
+  S4 --> S5
+  S5 --> S6
+</div>
+<p>Each box is one step in the lab; work them in order, since later steps build on earlier state.</p>
+</section>
+
+    
+
+    <section><h2 id="progress-so-far">Progress So Far</h2>
+      <p>The three milestones from the original scope, the Bicep deployment, the Terraform apply, and the drift check, are all complete, with remote state configured along the way and drift actually induced, observed, and remediated rather than only discussed.</p>
+      <div class="mermaid" role="img" aria-label="IaC progress">
+graph LR
+  A[01 Bicep deploy] -->|done| B[02 Terraform apply]
+  B -->|done| C[03 Drift check]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+<div class="lab-explainer">
+<p>Bicep and Terraform solve the same problem with different architectures. Bicep is a friendlier syntax that compiles down to ARM JSON and deploys through the same ARM control plane as the portal and CLI; there is no separate state file because ARM itself is the source of truth. Terraform keeps its own state file mapping your configuration to real-world IDs, which lets one tool manage many clouds but makes that state file the most important artifact in the workflow.</p>
+<p><code>terraform plan</code> is a diff between three things: your configuration, the state file, and the live infrastructure. Drift is what happens when someone changes reality outside Terraform: the next plan surfaces it as an unexpected change. This is a feature, not a bug; it is how you discover that the portal click someone made at 2 AM is now load-bearing.</p>
+<p>Remote state with locking is what turns Terraform from a laptop tool into a team tool. The state lives in blob storage where everyone reads the same copy, and the lease-based lock means two applies cannot corrupt it concurrently. If you take one operational lesson from this lab, it is this: never let two writers touch local state.</p>
+</div>
+</section>
+
+    <section><h2 id="testing-validation">Testing &amp; Validation</h2>
+      <p>These checks verify the live lab. Run them in order, then clean up at the end of this section.</p>
+      <div class="command-block" data-copy><div class="command"><code>az resource list -g tyf-rg -o table &amp;&amp; terraform plan --detailed-exitcode; echo "exit=$?"</code></div></div>
+      <p>An exit code of 0 from plan means no drift. If resources exist and plan is clean, your infrastructure matches code.</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az resource list -g tyf-rg -o table</span></div>
+        <div class="terminal-output">Name        ResourceGroup  Location       Type
+----------  -------------  -------------  ---------------------------------
+tyfiac01    tyf-rg         canadacentral  Microsoft.Storage/storageAccounts
+tyftfdemo01 tyf-rg         canadacentral  Microsoft.Storage/storageAccounts</div>
+      </div>
+      <p>The listing shows both tools' resources coexisting in one group: <code>tyfiac01</code> came from Bicep, <code>tyftfdemo01</code> from Terraform. That is the visible proof that both deployments landed. Three more checks complete the validation picture:</p>
+      <p class="code-label">FULL VALIDATION PASS</p>
+<pre><code># 1. Bicep side: what-if reports no changes (idempotent deployment).
+az deployment group what-if -g tyf-rg --template-file main.bicep --parameters name=tyfiac01
+
+# 2. Terraform side: state knows about exactly the resource you expect.
+terraform state list
+terraform state show azurerm_storage_account.iac | grep -E "^\s+id\s+="
+
+# 3. State backend: the blob exists and carries a lease when a run is active.
+az storage blob list --container-name tfstate --account-name tyftfstate01 --auth-mode login -o table</code></pre>
+      <div class="note"><strong>How to verify:</strong> what-if should end with <code>Resource changes: no change.</code>, <code>terraform state list</code> should print exactly <code>azurerm_storage_account.iac</code>, and the blob listing should show <code>iac-lab.tfstate</code>. Any disagreement among these three means one tool's view has diverged, investigate before proceeding, because the next apply will act on whichever view it trusts.</div>
+      <p>When the lab is done, remove what you built so it stops billing. Terraform resources go with <code>terraform destroy</code>; the Bicep-deployed account is deleted directly (Incremental-mode deployments never delete on their own). Delete the state storage last, after Terraform no longer needs it.</p>
+      <p class="code-label">CLEAN UP ALL LAB RESOURCES</p>
+<pre><code>terraform destroy                        # removes tyftfdemo01 (review the destroy plan!)
+az storage account delete --name tyfiac01 --resource-group tyf-rg --yes
+# tyf-rg stays: it is shared with the other Cloud and Azure labs.
+az group delete --name tyf-tfstate-rg --yes --no-wait   # state backend goes last</code></pre>
+      <p class="lab-output-label">Expected output:</p>
+<pre><code>$ terraform destroy -auto-approve
+Destroy complete! Resources: 1 destroyed.</code></pre>
+      <div class="note"><strong>Common mistake:</strong> deleting the state storage account while Terraform configurations still point at it. Every subsequent <code>terraform plan</code> then fails with a backend initialization error until you either restore the backend or re-run <code>terraform init -migrate-state</code> against a new one. Destroy the managed resources first, the backend last.</div>
+    </section>
+<section><h2 id="troubleshooting">Troubleshooting</h2>
+<p>Quick-reference for the failures you are most likely to hit in this lab.</p>
+<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<tr><td><code>bicep build</code> fails</td><td>Syntax error in the Bicep file</td><td>Run <code>az bicep build</code> and read the first error; the compiler points at the exact line.</td></tr>
+<tr><td><code>terraform init</code> fails</td><td>Provider download blocked by network or proxy</td><td>Retry with proxy variables set; providers cache under <code>~/.terraform.d</code> after the first success.</td></tr>
+<tr><td>State lock held after a crashed apply</td><td>The lock was never released</td><td>Confirm no apply is running, then <code>terraform force-unlock</code> with the lock ID; never unlock while an apply is live.</td></tr>
+<tr><td>Plan shows changes you did not make</td><td>Drift: someone edited the resource outside Terraform</td><td>Investigate the diff; either import the change or let the next apply revert it, deliberately.</td></tr>
+<tr><td>Apply fails halfway</td><td>A dependent resource rejected the change</td><td>Fix the root cause and re-apply; Terraform resumes from the updated state, not from scratch.</td></tr>
+</tbody></table>
+</section>
+
+    
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>State lock errors:</strong> a previous run is holding the lock; wait or force-unlock carefully. Terraform prints the lock info, including a Lock ID, confirm no run is genuinely active (a crashed apply or a closed laptop can leave a stale lease), then release it with <code>terraform force-unlock &lt;LOCK_ID&gt;</code>. Never force-unlock while a teammate's apply might still be running; the lock is the only thing standing between you and a corrupt state file.</li>
+        <li><strong>Drift keeps returning:</strong> stop editing in the portal; remediate only through code. If drift reappears after every apply, something automated is making the change, a policy assignment, a scheduled runbook, or a colleague's script. Find the actor with <code>az monitor activity-log list --resource-group tyf-rg --max-events 20 -o table</code> and look at the caller column.</li>
+        <li><strong>Bicep build error:</strong> run <code>az bicep build</code> to surface the line. The compiler reports file, line, and a diagnostic code (e.g. <code>BCP057</code> for a name that does not exist in scope), fix the first reported error and rebuild, since later errors are often cascading noise from the first.</li>
+        <li><strong>Backend init fails with <code>AuthorizationFailed</code> or 403 on the state blob:</strong> your account has management rights on the storage account but no data-plane role on the container. Add <code>Storage Blob Data Contributor</code> as shown in the setup section, wait a minute for RBAC propagation, and re-run <code>terraform init</code>.</li>
+        <li><strong>Plan wants to destroy and recreate a resource you only renamed:</strong> Terraform tracks resources by their address (<code>azurerm_storage_account.iac</code>), so renaming the block label looks like "delete old, create new." Use <code>terraform state mv azurerm_storage_account.old_name azurerm_storage_account.new_name</code> to rename the address in state instead of letting the resource be rebuilt. Note that renaming the Azure <code>name</code> property of a storage account genuinely is a recreate, the name is immutable once created, and the plan is correct.</li>
+      </ul>
+    </details>
+
+    <section><h2 id="extension-ideas">Extension Ideas</h2>
+      <ul>
+        <li>Run plan/apply in <a href="../devops/cicd-pipeline.html">CI/CD</a> with policy checks.</li>
+        <li>Add module reuse and environments (dev/prod) with workspaces.</li>
+        <li>Continuously audit posture with <a href="cspm-azure-aws.html">CSPM</a>.</li>
+        <li>Break the growing <code>main.tf</code> into modules with versioned sources, and do the same in Bicep with <code>module</code> blocks referencing shared files.</li>
+        <li>Add a scheduled drift-detection job that runs <code>terraform plan -detailed-exitcode</code> nightly and opens an issue when exit code 2 appears.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Provisioned identical resources via Bicep and Terraform.</li>
+        <li>Managed Terraform state remotely with locking.</li>
+        <li>Detected zero drift after apply via plan exit codes.</li>
+        <li>Made infrastructure version-controlled and reviewable.</li>
+        <li>Induced drift deliberately, watched plan and what-if catch it, and remediated through code alone.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways"><h3 id="key-takeaways">Key Takeaways</h3>
+      <ul>
+        <li>Preview before apply, always: what-if for Bicep, <code>plan -out</code> for Terraform. The preview is the same evaluation the apply will execute.</li>
+        <li>Bicep is stateless, it asks Azure what exists on every run. Terraform keeps a state file, which buys exact, fast plans at the cost of having to protect and lock that file.</li>
+        <li>Remote state with blob-lease locking is what makes Terraform team-safe; a local <code>terraform.tfstate</code> is a solo-only convenience.</li>
+        <li><code>-detailed-exitcode</code> turns drift detection into a scriptable signal: 0 clean, 2 drifted. That exit code is what a pipeline gates on.</li>
+        <li>Drift is remediated by re-applying code, never by hand-editing back, the code is the source of truth, or it is nothing.</li>
+        <li>Save the plan to a file and apply the file, so what you reviewed is byte-for-byte what runs.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="practice-challenges">Practice Challenges</h2>
+<div class="lab-challenge"><h4>Challenge 1: Parameterize the environment</h4><p>Goal: Convert the Bicep template to accept an <code>env</code> parameter that changes names and SKUs between dev and prod.</p><p>Hint: Use a variable map keyed by env so the template body stays clean.</p></div>
+<div class="lab-challenge"><h4>Challenge 2: Import a manual resource</h4><p>Goal: Create a resource in the portal, then <code>terraform import</code> it into state without recreating it.</p><p>Hint: Write the configuration block first, then import; the next plan should show no changes.</p></div>
+<div class="lab-challenge"><h4>Challenge 3: Prove locking works</h4><p>Goal: Start two applies at once and observe the second wait on the state lock.</p><p>Hint: Use a <code>null_resource</code> with a sleep provisioner to widen the window.</p></div>
+</section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="arm-templates.html">ARM Templates</a></li>
+        <li><a href="../devops/cicd-pipeline.html">Full CI/CD Pipeline</a></li>
+        <li><a href="cspm-azure-aws.html">Cloud Security Posture Management</a></li>
+      
+        <li><a href="azure-cli-setup.html">Azure CLI Setup</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

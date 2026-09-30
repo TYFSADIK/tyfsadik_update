@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Full CI/CD Pipeline: Build, Scan, Deploy | TYFSADIK</title>
+  <meta name="keywords" content="CI/CD pipeline, github actions, docker build, trivy scan, container deploy, automated releases">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Full CI/CD Pipeline: Build, Scan, Deploy | TYFSADIK">
+  <meta property="og:description" content="Build an end-to-end CI/CD pipeline with GitHub Actions: test, build, Trivy-scan, and deploy containers through gated, automated releases from commit to deploy.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/devops/cicd-pipeline.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Full CI/CD Pipeline: Build, Scan, Deploy | TYFSADIK">
+  <meta name="twitter:description" content="Build an end-to-end CI/CD pipeline with GitHub Actions: test, build, Trivy-scan, and deploy containers through gated, automated releases from commit to deploy.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="description" content="Build an end-to-end CI/CD pipeline with GitHub Actions: test, build, Trivy-scan, and deploy containers through gated, automated releases from commit to deploy.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/devops/cicd-pipeline.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Full CI/CD Pipeline with GitHub Actions", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-03-02", "dateModified": "2026-09-29", "proficiencyLevel": "Advanced", "dependencies": "GitHub Actions, Docker, Trivy, kubectl", "articleSection": "DevOps", "learningResourceType": "Hands-on lab", "teaches": "DevOps practices and tooling"}</script>
+  <script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "Test then build a tagged image",
+      "text": "Test then build a tagged image"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Scan and fail on critical CVEs",
+      "text": "Scan and fail on critical CVEs"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Deploy on merge to main",
+      "text": "Deploy on merge to main"
+    }
+  ],
+  "url": "https://tyfsadik.org/about.html"
+}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "DevOps", "item": "https://tyfsadik.org/blog/labs/devops/index.html"}, {"@type": "ListItem", "position": 4, "name": "Full CI/CD Pipeline", "item": "https://tyfsadik.org/blog/labs/devops/cicd-pipeline.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'docker build fails in CI but works locally'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: different build context or missing .dockerignore entries. Fix: check which files the action uploads; add .dockerignore to keep the context small."}}, {"@type": "Question", "name": "How do I fix 'Trivy flags criticals on a fresh base image'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the base image itself has known CVEs. Fix: pin a patched base image tag and rebuild; document exceptions deliberately."}}, {"@type": "Question", "name": "How do I fix 'deploy step cannot authenticate'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: secret misnamed or expired registry token. Fix: verify secret names match the workflow exactly; rotate tokens and re-save."}}, {"@type": "Question", "name": "How do I fix 'pipeline deploys on every branch push'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the deploy job lacks a branch condition. Fix: gate it with if: github.ref == 'refs/heads/main'."}}, {"@type": "Question", "name": "How do I fix 'rollback is slow'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: previous image tags were overwritten by latest. Fix: never overwrite release tags; keep immutable SHA tags for every build."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/devops/index.html">DevOps</a> &rsaquo; <span>Full CI/CD Pipeline</span></nav>
+    <div class="page-header"><h1>Build a Full CI/CD Pipeline: Test, Scan, Deploy</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">DevOps</span><span class="lab-time">~5 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">CI/CD</span><span class="tag">Docker build</span><span class="tag">Trivy</span><span class="tag">deploy</span></div>
+    </div>
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+      <li><a href="#learning-objectives">Learning Objectives</a></li>
+      <li><a href="#architecture-overview">Architecture Overview</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#environment-setup">Environment Setup</a></li>
+      <li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+      <li><a href="#complete-workflow-file">Complete Workflow File</a></li>
+      <li><a href="#progress-so-far">Progress So Far</a></li>
+      <li><a href="#testing-validation">Testing &amp; Validation</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#extension-ideas">Extension Ideas</a></li>
+      <li><a href="#challenges">Practice Challenges</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#key-takeaways">Key Takeaways</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+    </ol></nav>
+
+    <section><p class="lead">You will build an end-to-end pipeline that tests, builds a container, scans it, and deploys on a successful merge to main. By the end every release is automated, gated, and traceable to a commit.</p>
+      <p>This lab chains together everything from the earlier GitHub Actions and Docker labs into a single production-style workflow. A commit or pull request triggers the test stage; only green tests build a container image; the image is pushed to a registry and scanned for critical vulnerabilities; and only a clean scan on the <code>main</code> branch is allowed to roll out to the cluster. Each stage passes or fails the whole run, so a broken build or a vulnerable image can never reach production silently.</p>
+      <p>The pattern you build here is the same one used in real teams: fast feedback for developers (tests in under a minute), a supply-chain gate (vulnerability scanning), and a controlled blast radius (deploy only from the protected default branch). Everything is defined as YAML in the repo, so the pipeline itself is versioned, reviewed, and auditable like any other code.</p>
+    </section>
+
+    <div class="lab-objectives"><h2 id="learning-objectives">Learning Objectives</h2>
+      <ul>
+        <li>Chain test, build, scan, and deploy stages.</li>
+        <li>Gate deployment on passing tests and a clean scan.</li>
+        <li>Deploy a container to a target on merge to main.</li>
+        <li>Authenticate jobs to a container registry and a Kubernetes cluster using GitHub secrets.</li>
+        <li>Tag images with the commit SHA so every running pod maps to exactly one commit.</li>
+        <li><strong>Time:</strong> ~5 hours &middot; <strong>Difficulty:</strong> Advanced &middot; <strong>Prereqs:</strong> the GitHub Actions and Docker labs.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="architecture-overview">Architecture Overview</h2>
+      <p>The pipeline is a directed chain of jobs. Each job runs in its own runner and only starts when the previous job succeeds, because of the <code>needs:</code> keyword. The scan is the security gate: a critical finding flips the run to failed and the deploy job never starts.</p>
+      <div class="mermaid" role="img" aria-label="CI/CD pipeline stages from commit to deploy">
+graph LR
+  C[Commit] --> T[Test]
+  T --> B[Build image]
+  B --> S[Trivy scan]
+  S -->|clean + on main| D[Deploy]
+  S -->|critical| Fail[Block release]
+      </div>
+      <p>Two conditions guard the deploy stage, and both must be true: the scan job must have passed (enforced by <code>needs: scan</code>) and the workflow must be running against the <code>main</code> branch (enforced by an <code>if:</code> condition). Pull requests run the test, build, and scan stages only, so reviewers see security feedback before merge without any risk of a preview branch reaching production. On pull requests the registry push is skipped (fork tokens are read-only) and the built image reaches the scan job as a workflow artifact, so the same immutable artifact is still what gets scanned.</p>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+      <div class="lab-explainer"><h3>How It Works</h3>
+      <p>A CI/CD pipeline is a chain of gates: each stage (test, build, scan, deploy) must pass before the next runs. Failing fast at the test stage saves the cost of building and scanning code that was already broken.</p>
+      <p>Image scanning with Trivy checks the built image against vulnerability databases before it can deploy. Failing on critical CVEs makes security a release gate rather than a post-incident report, and the scan runs on the exact artifact that would ship.</p>
+      <p>Deploying on merge to main with the commit-SHA tag closes the traceability loop: the running container's tag names the commit, the pipeline run links the commit to the scan results, and rollback is just redeploying the previous tag.</p>
+    </div>
+    </section>
+
+    <section><h2 id="environment-setup">Environment Setup</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3><ul>
+      <li>A GitHub repository with Actions enabled and a Dockerfile to build</li>
+      <li>Container registry access (<code>ghcr.io</code> used here) with credentials in GitHub secrets</li>
+      <li><code>Trivy</code> for image scanning (as an action or CLI)</li>
+      <li>A deploy target: <code>kubectl</code> context or SSH access, credentials as secrets</li>
+      <li>Assumed skill: GitHub Actions basics and Docker fundamentals</li>
+    </ul></div>
+      <p><strong>You will need:</strong> GitHub Actions, a container registry, Trivy, and a deploy target (kubectl/SSH).</p>
+      <p><strong>Before you begin:</strong> store registry and deploy credentials as GitHub secrets.</p>
+      <p>Concretely, this lab uses GitHub Container Registry (ghcr.io) as the registry and a Kubernetes deployment named <code>app</code> as the target. Install the CLI tools locally so you can verify every stage from your terminal as well as in the Actions UI:</p>
+      <p class="code-label">INSTALL THE CLI TOOLS (macOS)</p>
+<pre><code class="language-bash">brew install gh trivy kubectl
+gh auth login        # authenticate the GitHub CLI
+kubectl version --client
+trivy version</code></pre>
+      <p>Secrets must never live in the workflow file. Create them once with the GitHub CLI (or under repo Settings &rsaquo; Secrets and variables &rsaquo; Actions) and reference them as <code>${{ secrets.NAME }}</code>. The pipeline needs exactly one secret: a kubeconfig that can update the deployment. Registry pushes use the built-in <code>GITHUB_TOKEN</code> with a job-level <code>packages: write</code> permission, so no long-lived personal access token is created or stored anywhere.</p>
+      <p class="code-label">STORE THE PIPELINE SECRETS</p>
+<p class="code-label">STORE THE KUBECONFIG SECRET (BASE64-ENCODED)</p>
+<pre><code class="language-bash"># Base64 keeps the multiline kubeconfig intact through the secrets transport;
+# the workflow decodes it with: echo "$SECRET" | base64 --decode
+base64 -w0 ~/.kube/config | gh secret set KUBE_CONFIG_B64
+
+gh secret list</code></pre>
+      <p>Expected output of the last command:</p>
+<pre><code>KUBE_CONFIG_B64  Updated 2026-09-19</code></pre>
+      <p>The repository layout is deliberately small, the pipeline, the app, its tests, and its Dockerfile all live side by side:</p>
+<pre><code>repo/
+├── .github/workflows/cicd.yml   # the pipeline you are building
+├── app.py                       # demo application
+├── requirements.txt
+├── tests/test_app.py            # pytest suite
+└── Dockerfile                   # from the Docker Images lab</code></pre>
+      <p><strong>Common mistake:</strong> putting the workflow in <code>.github/workflow/</code> (singular) or only on a feature branch, Actions only discovers workflows in <code>.github/workflows/</code> on the default branch for <code>push</code> triggers to behave as expected.</p>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Test then build a tagged image</strong>
+          <p>The first two jobs form the quality gate. The <code>test</code> job installs dependencies and runs the test suite; the <code>build</code> job declares <code>needs: test</code>, so a failing test stops the run before a single layer of the image is built. The image is tagged with <code>${{ github.sha }}</code>, the full commit SHA, so the artifact running in production later can be traced back to one exact commit, with no ambiguity about what "latest" meant at deploy time.</p>
+          <p class="code-label">TEST JOB, .github/workflows/cicd.yml</p>
+<pre><code class="language-yaml">name: cicd
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read   # every job adds only the extra scopes it needs
+
+concurrency:
+  group: cicd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11', cache: 'pip' }
+      - run: pip install -r requirements.txt
+      - run: pytest -q</code></pre>
+          <p>The build job below logs in to ghcr.io with the built-in <code>GITHUB_TOKEN</code> (job-level <code>packages: write</code>, no PAT needed), builds the image, and pushes it on trusted events only. Pull requests from forks receive a <strong>read-only</strong> token that cannot push to the registry, so the push step is skipped on <code>pull_request</code> events; instead the built image is saved and uploaded as a workflow artifact for the scan job. The image is built exactly once either way.</p><p>The original minimal form of this job was:</p>
+<pre><code class="language-bash">jobs:
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t ghcr.io/tyfsadik/app:${{ github.sha }} .</code></pre>
+          <p class="code-label">FULL BUILD JOB WITH REGISTRY LOGIN AND PUSH</p>
+<pre><code class="language-yaml">  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # scoped to this job; fork PRs still get read-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: docker build -t ghcr.io/tyfsadik/app:${{ github.sha }} .
+      # Push only on trusted events: fork PRs receive a read-only token.
+      - run: docker push ghcr.io/tyfsadik/app:${{ github.sha }}
+        if: github.event_name != 'pull_request'
+      # On PRs, hand the built image to the scan job as an artifact instead.
+      - run: docker save ghcr.io/tyfsadik/app:${{ github.sha }} -o /tmp/app.tar
+        if: github.event_name == 'pull_request'
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'pull_request'
+        with:
+          name: app-image
+          path: /tmp/app.tar
+          retention-days: 1</code></pre>
+          <p>Push a commit and watch the run locally:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">git push &amp;&amp; gh run watch</span></div>
+            <div class="terminal-output">&#10003; test   Tests        38s
+&#10003; build  Build image  1m04s</div>
+          </div>
+          <p><strong>How to verify:</strong> after a push to main, open Packages under your GitHub profile: the <code>app</code> package should list a tag equal to your commit SHA (<code>git rev-parse HEAD</code>). On a pull request there is no push by design; check the run's Artifacts section for <code>app-image</code> instead. <strong>Common mistake:</strong> omitting <code>packages: write</code> on the build job, which makes the push fail with <code>denied: installation not allowed to Create organization package</code>.</p>
+        </div>
+          <p class="lab-step-note">What this teaches: Tagging the image with the commit SHA ties every artifact to the exact source that produced it.</p></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Scan and fail on critical CVEs</strong>
+          <p>Building an image is not enough, base images ship with OS packages, and dependencies drift out of date within weeks. Trivy scans the pushed image for known vulnerabilities and the <code>--exit-code 1</code> flag turns any CRITICAL finding into a failed job, which blocks the deploy stage via the job chain. This is the supply-chain gate of the pipeline.</p>
+          <p>Run the same command locally first so you understand what the CI step does. Note the substitution: <code>${{ github.sha }}</code> is Actions-only syntax, so locally you resolve the SHA with <code>git rev-parse HEAD</code>:</p>
+          <div class="command-block" data-copy><div class="command"><code>trivy image --exit-code 1 --severity CRITICAL "ghcr.io/tyfsadik/app:$(git rev-parse HEAD)"</code></div></div>
+          <p class="code-label">SCAN JOB, FAILS THE RUN ON CRITICAL CVEs</p>
+<pre><code class="language-yaml">  scan:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read   # pull the pushed image on trusted events
+    steps:
+      # On trusted events the image was pushed; on PRs it arrives as an artifact.
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v4
+        if: github.event_name == 'pull_request'
+        with:
+          name: app-image
+      - run: docker load -i app-image/app.tar
+        if: github.event_name == 'pull_request'
+      - uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ghcr.io/tyfsadik/app:${{ github.sha }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'</code></pre>
+          <p>A clean result looks like this:</p>
+<pre><code>ghcr.io/tyfsadik/app:9f2c1ab (alpine 3.19.1)
+=================================================
+Total: 0 (CRITICAL: 0)</code></pre>
+          <p>...and a blocked one looks like this, with the job exiting non-zero:</p>
+<pre><code>┌─────────────┬────────────────┬──────────┬───────────────────┐
+│   Library   │ Vulnerability  │ Severity │ Installed Version │
+├─────────────┼────────────────┼──────────┼───────────────────┤
+│ openssl     │ CVE-2024-0727  │ CRITICAL │ 3.1.4-r0          │
+└─────────────┴────────────────┴──────────┴───────────────────┘
+Error: Process completed with exit code 1.</code></pre>
+          <p><strong>How to verify:</strong> deliberately pin an old base image (for example <code>FROM python:3.8-slim</code>) on a throwaway branch, open a PR, and confirm the scan job goes red while deploy never runs. <strong>Common mistake:</strong> an <code>UNAUTHORIZED</code> error that looks like a scan result but is actually an auth error. On trusted events the scan job logs in to pull the pushed image; on PRs it loads the artifact, so no registry auth is needed there. If the login step is missing on a push event, the pull fails.</p>
+        </div>
+          <p class="lab-step-note">What this teaches: Failing the pipeline on critical CVEs turns scanning from a report into a gate: vulnerable images cannot ship.</p></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Deploy on merge to main</strong>
+          <p>The deploy job is the only stage that touches production, so it carries the strongest guard: <code>if: github.ref == 'refs/heads/main'</code> means it is skipped entirely on pull requests, and <code>needs: scan</code> means a vulnerable image stops the chain before this job is even scheduled. The job writes the <code>KUBE_CONFIG</code> secret to a temporary file, points <code>kubectl</code> at it, updates the deployment to the exact image built in step 01, and waits for the rollout to finish, so a failed rollout fails the pipeline run instead of passing silently. The job also declares a <code>production-deploy</code> concurrency group with <code>cancel-in-progress: false</code>, so two runs can never roll out over each other: a second run waits instead of racing the first.</p>
+          <p class="code-label">DEPLOY JOB, GATED ON MAIN AND A CLEAN SCAN</p>
+<pre><code class="language-yaml">  deploy:
+    needs: scan
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - uses: azure/setup-kubectl@v4
+      - name: Write kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG_B64 }}" | base64 --decode &gt; $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+      - name: Roll out new image
+        run: |
+          kubectl set image deploy/app app=ghcr.io/tyfsadik/app:${{ github.sha }}
+          kubectl rollout status deploy/app --timeout=120s</code></pre>
+          <p>A successful rollout prints:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl set image deploy/app app=ghcr.io/tyfsadik/app:$GITHUB_SHA &amp;&amp; kubectl rollout status deploy/app</span></div>
+            <div class="terminal-output">deployment "app" successfully rolled out</div>
+          </div>
+          <p><strong>How to verify:</strong> <code>kubectl get pods -l app=app</code> should show new pods in <code>Running</code> state with a recent <code>AGE</code>, and <code>kubectl describe deploy app | grep Image</code> should show the commit-SHA tag. <strong>Common mistake:</strong> the rollout hangs at <code>Waiting for deployment "app" rollout to finish</code> because the cluster cannot pull from the private registry, fix it by creating an image pull secret. Export a token with <code>read:packages</code> scope first (a fine-grained PAT works; the ephemeral <code>GITHUB_TOKEN</code> expires with the workflow run, so the cluster needs its own long-lived credential): <code>kubectl create secret docker-registry ghcr-creds --docker-server=ghcr.io --docker-username=tyfsadik --docker-password="$GHCR_TOKEN"</code>, then reference it under <code>imagePullSecrets</code> in the deployment manifest.</p>
+        </div>
+          <p class="lab-step-note">What this teaches: Gating deployment on passing tests plus a clean scan plus the main branch is what makes releases boring and safe.</p></div>
+      </div>
+    </section>
+
+    <section><h2 id="complete-workflow-file">Complete Workflow File</h2>
+      <p>The three steps above built the pipeline job by job. Here is the entire <code>.github/workflows/cicd.yml</code> assembled, so you can copy it in one piece and then read back through the annotations below. Note that the scan job also gets its own registry login, Trivy pulls the image from ghcr.io, and a private package requires authentication just like a push does.</p>
+      <p class="code-label">FULL PIPELINE, .github/workflows/cicd.yml</p>
+<pre><code class="language-yaml">name: cicd
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read   # every job adds only the extra scopes it needs
+
+concurrency:
+  group: cicd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11', cache: 'pip' }
+      - run: pip install -r requirements.txt
+      - run: pytest -q
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # scoped to this job; fork PRs still get read-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: docker build -t ghcr.io/tyfsadik/app:${{ github.sha }} .
+      # Push only on trusted events: fork PRs receive a read-only token.
+      - run: docker push ghcr.io/tyfsadik/app:${{ github.sha }}
+        if: github.event_name != 'pull_request'
+      # On PRs, hand the built image to the scan job as an artifact instead.
+      - run: docker save ghcr.io/tyfsadik/app:${{ github.sha }} -o /tmp/app.tar
+        if: github.event_name == 'pull_request'
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'pull_request'
+        with:
+          name: app-image
+          path: /tmp/app.tar
+          retention-days: 1
+
+  scan:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read   # pull the pushed image on trusted events
+    steps:
+      # On trusted events the image was pushed; on PRs it arrives as an artifact.
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v4
+        if: github.event_name == 'pull_request'
+        with:
+          name: app-image
+      - run: docker load -i app-image/app.tar
+        if: github.event_name == 'pull_request'
+      - uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ghcr.io/tyfsadik/app:${{ github.sha }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+  deploy:
+    needs: scan
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - uses: azure/setup-kubectl@v4
+      - name: Write kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG_B64 }}" | base64 --decode &gt; $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+      - name: Roll out new image
+        run: |
+          kubectl set image deploy/app app=ghcr.io/tyfsadik/app:${{ github.sha }}
+          kubectl rollout status deploy/app --timeout=120s</code></pre>
+      <p>A few lines deserve a second look before you commit this:</p>
+      <ul>
+        <li><code>on: push: branches: [main]</code> plus <code>pull_request:</code> means PRs run the full test/build/scan chain for review feedback, while only merges to <code>main</code> reach the deploy job.</li>
+        <li>The top-level <code>permissions:</code> block grants only <code>contents: read</code>. The build job adds <code>packages: write</code> and the scan job adds <code>packages: read</code>; no other job can touch the registry, so a compromised step holds the smallest possible token.</li>
+        <li>The push is skipped on <code>pull_request</code> events because fork PRs receive a read-only token. The image is still built exactly once per run; on PRs it travels to the scan job as an artifact instead of through the registry.</li>
+        <li><code>needs:</code> appears on every job after <code>test</code>, which is what turns four independent jobs into a single gated chain. Remove one and that stage runs in parallel, breaking the gate.</li>
+        <li>The same <code>${{ github.sha }}</code> tag appears in build, scan, and deploy, one immutable artifact flows through the whole pipeline instead of being rebuilt at each stage.</li>
+        <li><code>concurrency</code> cancels superseded runs on the same ref, and the deploy job's <code>production-deploy</code> group (with <code>cancel-in-progress: false</code>) serializes production rollouts so two runs never race.</li>
+        <li>The kubeconfig travels base64-encoded (<code>KUBE_CONFIG_B64</code>) and is decoded with <code>base64 --decode</code>, so multiline transport cannot mangle it the way a raw <code>echo</code> of the secret can.</li>
+        <li><code>environment: production</code> attaches the deploy job to a GitHub environment, which is where you later add required reviewers for a manual approval gate.</li>
+      </ul>
+      <p>Validate the YAML before pushing, a syntax error in a workflow file fails silently until the next trigger, which is a frustrating way to discover a typo:</p>
+      <p class="code-label">SANITY-CHECK THE WORKFLOW LOCALLY</p>
+<pre><code class="language-bash">python3 -c "import yaml,sys; yaml.safe_load(open('.github/workflows/cicd.yml')); print('workflow YAML OK')"
+# workflow YAML OK</code></pre>
+    </section>
+
+    <section><h2 id="progress-so-far">Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="CI/CD pipeline progress">
+graph LR
+  A[01 Test+Build] -->|done| B[02 Scan]
+  B -->|done| C[03 Deploy]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+      <p>All three stages are now wired together: tests gate the build, the build feeds the scan, and the scan gates the deploy. The remaining work is proving the whole chain behaves correctly, including its failure modes.</p>
+    </section>
+
+    <section><h2 id="testing-validation">Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>gh run list --workflow=cicd.yml --limit 1 &amp;&amp; kubectl get deploy app -o jsonpath='{.spec.template.spec.containers[0].image}'</code></div></div>
+      <p>The latest run should be green and the deployment image tag should match the merged commit SHA, proving end-to-end traceability.</p>
+      <p>Validate the pipeline in both directions, the happy path and the gates. First confirm the happy path end to end:</p>
+      <p class="code-label">HAPPY-PATH VERIFICATION</p>
+<pre><code class="language-bash">git rev-parse HEAD
+# 9f2c1ab4e7d...  (compare with the image tag below)
+
+gh run list --workflow=cicd.yml --limit 1
+# cicd  main  push  9f2c1ab  completed  success  3m41s
+
+kubectl get deploy app -o jsonpath='{.spec.template.spec.containers[0].image}'
+# ghcr.io/tyfsadik/app:9f2c1ab4e7d...</code></pre>
+      <p>Then prove the gates actually block bad releases, a gate you have never seen fire is a gate you cannot trust:</p>
+      <ul>
+        <li><strong>Test gate:</strong> break a test on a branch, push, and confirm the run fails at the <code>test</code> job and no image is built or pushed.</li>
+        <li><strong>Scan gate:</strong> pin a vulnerable base image on a branch and confirm the <code>scan</code> job fails with exit code 1 and the deploy job shows as <em>skipped</em>.</li>
+        <li><strong>Branch gate:</strong> confirm that on the same PR, the deploy job is skipped because the ref is not <code>refs/heads/main</code>.</li>
+        <li><strong>Rollback path:</strong> run <code>kubectl rollout undo deploy/app</code> once in a test environment so you know the recovery command works before you need it.</li>
+      </ul>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Deploy runs on every branch:</strong> guard the deploy job with <code>if: github.ref == 'refs/heads/main'</code>.</li>
+        <li><strong>Registry push denied:</strong> for ghcr.io prefer the built-in <code>GITHUB_TOKEN</code> with <code>packages: write</code> on the build job; a classic PAT needs the <code>write:packages</code> scope. On fork pull requests the token is read-only by design, which is why this workflow skips the push on <code>pull_request</code> events instead of failing.</li>
+        <li><strong>Scan blocks valid release:</strong> triage the CVE; only fail on fixable criticals where appropriate. Add <code>ignore-unfixed: true</code> so vulnerabilities with no available patch do not freeze releases, and document any accepted risk in a <code>.trivyignore</code> file with an expiry comment.</li>
+        <li><strong>Job stuck at "Waiting for a runner":</strong> the <code>runs-on</code> label is wrong (for example <code>ubuntu-latests</code>) or the repo has Actions disabled under Settings &rsaquo; Actions. Fix the label and re-run with <code>gh run rerun</code>.</li>
+        <li><strong>kubectl: command not found in the deploy job:</strong> runners do not ship with kubectl preconfigured for your context, add <code>azure/setup-kubectl@v4</code> (or <code>aws-actions/configure-aws-credentials</code> plus <code>aws eks update-kubeconfig</code> on EKS) before calling it.</li>
+        <li><strong>Rollout times out after deploy:</strong> the new pods are crash-looping or the image cannot be pulled. Inspect with <code>kubectl get pods</code> and <code>kubectl describe pod &lt;name&gt;</code>; the pipeline will fail the run after <code>--timeout=120s</code>, which is the correct behaviour, fix the cause, then re-run.</li>
+        <li><strong>Image tag mismatch between build and deploy:</strong> always thread the tag through <code>${{ github.sha }}</code> in every job. Never use <code>latest</code>, it makes rollbacks and incident forensics guesswork.</li>
+      </ul>
+    </details>
+
+    <section><h2 id="troubleshooting">Troubleshooting</h2>
+      <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+        <tr><td>docker build fails in CI but works locally</td><td>different build context or missing .dockerignore entries</td><td>check which files the action uploads; add .dockerignore to keep the context small</td></tr>
+        <tr><td>Trivy flags criticals on a fresh base image</td><td>the base image itself has known CVEs</td><td>pin a patched base image tag and rebuild; document exceptions deliberately</td></tr>
+        <tr><td>deploy step cannot authenticate</td><td>secret misnamed or kubeconfig malformed</td><td>verify the secret is named KUBE_CONFIG_B64 and holds base64 output (decode it locally to check); re-run the base64 secret-set command to rotate</td></tr>
+        <tr><td>pipeline deploys on every branch push</td><td>the deploy job lacks a branch condition</td><td>gate it with if: github.ref == 'refs/heads/main'</td></tr>
+        <tr><td>rollback is slow</td><td>previous image tags were overwritten by latest</td><td>never overwrite release tags; keep immutable SHA tags for every build</td></tr>
+      </tbody></table>
+    </section>
+
+    <section><h2 id="extension-ideas">Extension Ideas</h2>
+      <ul>
+        <li>Add a manual approval gate for production: configure the <code>production</code> environment in repo Settings with required reviewers, so the deploy job pauses until a human approves.</li>
+        <li>Deploy to <a href="../containers-kubernetes/aks-deployment.html">AKS</a> instead of a single cluster, using a federated workload identity instead of a stored kubeconfig.</li>
+        <li>Add IaC apply with <a href="../cloud-azure/infrastructure-as-code.html">Terraform</a> in the pipeline so infrastructure changes ship through the same gated workflow.</li>
+        <li>Sign images with cosign and add a verification admission policy, extending the supply-chain gate from "scanned" to "provenance-verified".</li>
+      </ul>
+    </section>
+
+    <section><h2 id="challenges">Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Staging gate</h4><p><strong>Goal:</strong> Add a manual-approval environment so deploys to production wait for a human after staging passes.</p><p><strong>Hint:</strong> Use GitHub environments with required reviewers on the production environment.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: SBOM attach</h4><p><strong>Goal:</strong> Generate an SBOM with Trivy and attach it to the GitHub release for every deployed tag.</p><p><strong>Hint:</strong> Upload the SBOM as a release asset in the same workflow that deploys.</p></div>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Automated test, build, scan, and deploy from one commit.</li>
+        <li>Blocked releases with critical CVEs before deploy.</li>
+        <li>Tagged images with the commit SHA for full traceability.</li>
+        <li>Deployed only from main, gated on green checks.</li>
+      </ul>
+    </section>
+
+    <section class="lab-takeaways"><h2 id="key-takeaways">Key Takeaways</h2>
+      <ul>
+        <li><code>needs:</code> turns separate jobs into a chain: each stage is a gate that can stop everything downstream.</li>
+        <li>Every credential lives in GitHub secrets; the workflow file itself stays safe to read in the repo.</li>
+        <li>Tag images with the commit SHA, never <code>latest</code>, so production state always maps to one exact commit.</li>
+        <li>Deploy requires both a clean scan and the <code>main</code> ref: defense in depth, not a single check.</li>
+        <li>Test the gates by deliberately failing them; an untested gate is an assumption.</li>
+      </ul>
+    </section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="github-actions.html">GitHub Actions Basics</a></li>
+        <li><a href="../containers-kubernetes/docker-images.html">Docker Images &amp; Dockerfile</a></li>
+        <li><a href="../containers-kubernetes/aks-deployment.html">Azure Kubernetes Service (AKS)</a></li>
+      
+        <li><a href="pull-requests.html">Pull Requests & Code Review</a></li>
+        <li><a href="branching-strategies.html">Git Branching Strategies</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

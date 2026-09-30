@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linux Post-Install Configuration | Hardening Basics</title>
+  <meta name="description" content="Harden a fresh Linux install: patch fully, enable automatic security updates, set hostname, timezone, and NTP time sync, then create a non-root sudo user.">
+  <meta name="keywords" content="linux post install hardening, unattended-upgrades, timedatectl ntp, create sudo user linux, Linux system administration, server hardening guide">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-server/post-install-config.html">
+  <meta property="og:title" content="Linux Post-Install Configuration | Hardening Basics">
+  <meta property="og:description" content="Harden a fresh Linux install: patch fully, enable automatic security updates, set hostname, timezone, and NTP time sync, then create a non-root sudo user.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-server/post-install-config.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Linux Post-Install Configuration | Hardening Basics">
+  <meta name="twitter:description" content="Harden a fresh Linux install: patch fully, enable automatic security updates, set hostname, timezone, and NTP time sync, then create a non-root sudo user.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Linux Post-Installation Configuration", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-08", "dateModified": "2026-09-29", "proficiencyLevel": "Beginner", "dependencies": "Ubuntu Server 22.04, systemd, timedatectl", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux server administration"}</script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Linux Post-Installation Configuration and Secure Baseline",
+    "description": "Harden a fresh Linux install: patch fully, enable automatic security updates, set hostname, timezone, and NTP time sync, then create a non-root sudo user.",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "dateModified": "2026-09-29",
+    "step": [
+      {"@type": "HowToStep", "name": "Update the package index and upgrade", "url": "https://tyfsadik.org/blog/labs/linux-server/post-install-config.html#steps"},
+      {"@type": "HowToStep", "name": "Enable automatic security updates", "url": "https://tyfsadik.org/blog/labs/linux-server/post-install-config.html#steps"},
+      {"@type": "HowToStep", "name": "Set hostname, timezone, and NTP", "url": "https://tyfsadik.org/blog/labs/linux-server/post-install-config.html#steps"},
+      {"@type": "HowToStep", "name": "Create a non-root sudo user", "url": "https://tyfsadik.org/blog/labs/linux-server/post-install-config.html#steps"}
+    ]
+  }</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Linux Server", "item": "https://tyfsadik.org/blog/labs/linux-server/index.html"}, {"@type": "ListItem", "position": 4, "name": "Post-Installation Configuration", "item": "https://tyfsadik.org/blog/labs/linux-server/post-install-config.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'apt update hits 404 errors'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Stale mirror entries or a release that moved to old-releases. Fix: Check sources.list against the current release codename and pick a working mirror."}}, {"@type": "Question", "name": "How do I fix 'unattended-upgrades never seems to run'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Timer disabled or package only half-configured. Fix: Verify with systemctl status unattended-upgrades and check /var/log/unattended-upgrades/."}}, {"@type": "Question", "name": "How do I fix 'timedatectl: NTP not synchronized'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: UDP 123 blocked or no NTP servers reachable. Fix: Open NTP egress and confirm with timedatectl timesync-status."}}, {"@type": "Question", "name": "How do I fix 'New user cannot sudo'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Not actually in the sudo group. Fix: Confirm with id username and re-add with usermod -aG sudo."}}, {"@type": "Question", "name": "How do I fix 'Hostname reverts after reboot (cloud)'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Cloud-init rewrites it from metadata. Fix: Set preserve_hostname: true in cloud-init config."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Post-Installation Configuration</span></nav>
+    <div class="page-header"><h1>Linux Post-Installation Configuration and Secure Baseline</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Linux</span><span class="lab-time">~1 hour</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">apt</span><span class="tag">timedatectl</span><span class="tag">sudo</span><span class="tag">unattended-upgrades</span></div>
+    </div>
+
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#learning-objectives">Learning Objectives</a></li>
+<li><a href="#architecture">Architecture Overview</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#steps">Step-by-Step Execution</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#validation">Testing &amp; Validation</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#extensions">Extension Ideas</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#key-takeaways">Key Takeaways</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    <section><p class="lead">You will take a raw Linux install and turn it into a consistent, patched, secure baseline every other server inherits. By the end the host is fully updated, time-synced, and managed through a non-root sudo account.</p></section>
+
+    <div class="learning-objectives lab-objectives" id="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Patch the system and enable automatic security updates.</li>
+        <li>Set hostname, timezone, and time synchronization.</li>
+        <li>Create a non-root administrative user.</li>
+        <li><strong>Time:</strong> ~1 hour &middot; <strong>Difficulty:</strong> Beginner &middot; <strong>Prereqs:</strong> a fresh VM with sudo access.</li>
+      </ul>
+    </div>
+
+    <section id="architecture"><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Baseline configuration components applied to a fresh server">
+graph TD
+  Fresh[Fresh Install] --> U[Patch + auto-updates]
+  Fresh --> T[Hostname + timezone + NTP]
+  Fresh --> A[Non-root sudo user]
+  U --> Base[Secure Baseline]
+  T --> Base
+  A --> Base
+      </div>
+    </section>
+
+    <section id="environment"><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> the VM from the <a href="install-linux-vm.html">install lab</a> with internet access and sudo.</p>
+      <p><strong>Before you begin:</strong> confirm time and date are roughly correct so package signatures validate.</p>
+    </section>
+
+    <div class="lab-prereqs" id="prerequisites"><h3>Prerequisites</h3>
+    <ul>
+      <li>A freshly installed Debian/Ubuntu server (see the install VM lab) with internet access.</li>
+      <li>Root or console access for the first login before SSH hardening.</li>
+      <li>Know your intended hostname and timezone (America/Toronto used here).</li>
+      <li>A username for the daily-driver sudo account.</li>
+    </ul></div>
+
+    <section id="steps"><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Update the package index and upgrade</strong>
+          <p>Patching first closes known vulnerabilities before the host does anything else.</p>
+          <div class="command-block" data-copy><div class="command"><code>sudo apt update &amp;&amp; sudo apt full-upgrade -y</code></div><div class="note">[ROOT REQUIRED] Refreshes the package list and applies all updates.
+          <p class="lab-output-label">Expected output:</p><pre><code>Reading package lists... Done
+Calculating upgrade... Done
+0 upgraded, 0 newly installed, 0 to remove</code></pre>
+          <p class="lab-step-note">What this teaches: Updating the index before upgrading ensures you patch against current metadata; full-upgrade handles dependency changes that plain upgrade would hold back.</p></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Enable automatic security updates</strong>
+          <p>Unattended-upgrades applies security patches without manual intervention, shrinking your exposure window.</p>
+          <div class="command-block" data-copy><div class="command"><code>sudo apt install -y unattended-upgrades &amp;&amp; sudo dpkg-reconfigure -plow unattended-upgrades</code>
+          <p class="lab-output-label">Expected output:</p><pre><code>Updating certificates in /etc/ssl/certs...
+(unattended-upgrades configured and enabled)</code></pre>
+          <p class="lab-step-note">What this teaches: unattended-upgrades applies security patches on a schedule, shrinking the window between disclosure and patching without manual intervention. Note: dpkg-reconfigure writes /etc/apt/apt.conf.d/20auto-upgrades to opt in; the schedule itself lives in the apt-daily-upgrade.timer, not in an enabled service unit.</p></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Set hostname, timezone, and NTP</strong>
+          <p>Consistent identity and accurate time are prerequisites for correlating logs across hosts.</p>
+          <div class="command-block" data-copy><div class="command"><code>sudo hostnamectl set-hostname srv01 &amp;&amp; sudo timedatectl set-timezone America/Toronto &amp;&amp; sudo timedatectl set-ntp true</code>
+          <p class="lab-output-label">Expected output:</p><pre><code>(no output on success; verify with: hostnamectl &amp;&amp; timedatectl)</code></pre>
+          <p class="lab-step-note">What this teaches: hostnamectl sets the static identity; timedatectl sets zone and enables NTP so logs correlate across hosts to the second.</p></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Create a non-root sudo user</strong>
+          <p>Daily work should never use root directly; a sudo user gives auditable, revocable elevation.</p>
+          <p class="lab-output-label">Expected output:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">sudo adduser taki &amp;&amp; sudo usermod -aG sudo taki</span></div>
+            <div class="terminal-output">Adding user `taki' ...
+Adding user `taki' to group `sudo' ...</div>
+          </div>
+          <p class="lab-step-note">What this teaches: A non-root sudo user gives auditable, revocable elevation; adduser creates the account interactively while usermod -aG appends the sudo group.</p></div></div>
+      </div>
+    </section>
+
+    <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>
+      <p>Post-install hardening follows a simple principle: reduce, then maintain. Patching first closes every known vulnerability before the host takes on a role; automatic security updates keep that posture without relying on human memory. A host that starts fully patched and stays patched is dramatically cheaper to defend than one remediated later.</p>
+      <p>Identity and time are the two prerequisites for coherent operations. The hostname is how the machine refers to itself in logs, prompts, and monitoring; consistent naming (srv01, not localhost) makes fleet management possible. Accurate time via NTP underpins TLS validation, Kerberos, and cross-host log correlation, which is why timedatectl set-ntp true is non-negotiable.</p>
+      <p>The non-root user rule exists for accountability. Shared root passwords cannot be revoked per person and leave no audit trail; per-user accounts with sudo log who elevated and when. Disabling direct root SSH later completes the pattern, but creating the sudo user is the step that makes it possible.</p>
+    </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Baseline configuration progress">
+graph LR
+  S1[01 Patch] -->|done| S2[02 Auto-updates]
+  S2 -->|done| S3[03 Time/host]
+  S3 -->|done| S4[04 Sudo user]
+  S4 -->|next| V[Verify]
+  style S1 fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style S2 fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style S3 fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style S4 fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style V fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="validation"><h2>Testing &amp; Validation</h2>
+      <p>Run this final check:</p>
+      <div class="command-block" data-copy><div class="command"><code>timedatectl status &amp;&amp; id taki &amp;&amp; systemctl is-enabled apt-daily-upgrade.timer &amp;&amp; grep Unattended-Upgrade /etc/apt/apt.conf.d/20auto-upgrades</code></div></div>
+      <p>You should see NTP active, the user in the sudo group, the <code>apt-daily-upgrade.timer</code> reporting <code>enabled</code>, and <code>APT::Periodic::Unattended-Upgrade "1";</code> in the config. If all checks pass, your baseline is ready. Note: <code>systemctl is-enabled unattended-upgrades</code> reports <code>static</code> because that service has no [Install] section; the timer is the correct thing to verify.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+    <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>apt update hits 404 errors</td><td>Stale mirror entries or a release that moved to old-releases</td><td>Check sources.list against the current release codename and pick a working mirror</td></tr>
+      <tr><td>unattended-upgrades never seems to run</td><td>Timer disabled or package only half-configured</td><td>Verify with systemctl status unattended-upgrades and check /var/log/unattended-upgrades/</td></tr>
+      <tr><td>timedatectl: NTP not synchronized</td><td>UDP 123 blocked or no NTP servers reachable</td><td>Open NTP egress and confirm with timedatectl timesync-status</td></tr>
+      <tr><td>New user cannot sudo</td><td>Not actually in the sudo group</td><td>Confirm with id username and re-add with usermod -aG sudo</td></tr>
+      <tr><td>Hostname reverts after reboot (cloud)</td><td>Cloud-init rewrites it from metadata</td><td>Set preserve_hostname: true in cloud-init config</td></tr>
+      <tr><td>full-upgrade wants to remove packages</td><td>Dependency resolver cleaning up transitions</td><td>Review the list; use apt upgrade for conservative runs on critical hosts</td></tr>
+    </tbody></table>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>apt update fails with signature errors:</strong> the clock is wrong; set time with <code>sudo timedatectl set-ntp true</code> and retry.</li>
+        <li><strong>sudo: user not in sudoers:</strong> re-run <code>usermod -aG sudo taki</code> and start a fresh login.</li>
+        <li><strong>Held-back packages:</strong> run <code>sudo apt full-upgrade</code> rather than plain upgrade.</li>
+      </ul>
+    </details>
+
+    <section id="extensions"><h2>Extension Ideas</h2>
+      <ul>
+        <li>Harden remote access with <a href="../security/ssh-hardening.html">SSH Hardening</a>.</li>
+        <li>Centralize logs in <a href="log-management.html">Log Management &amp; Analysis</a>.</li>
+        <li>Automate this baseline with Ansible across many hosts.</li>
+      </ul>
+    </section>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Brought a fresh host to a fully patched state in one pass.</li>
+        <li>Enabled automatic security updates, reducing the patch gap to under 24 hours.</li>
+        <li>Replaced direct root use with an auditable sudo account.</li>
+        <li>Standardized hostname, timezone, and NTP for log correlation.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways" id="key-takeaways"><h3>Key Takeaways</h3>
+    <ul>
+      <li>Patch before configuring; a fresh host is at its most vulnerable.</li>
+      <li>Automatic security updates shrink the exposure window.</li>
+      <li>Hostname plus NTP are prerequisites for sane logs and TLS.</li>
+      <li>Daily work happens as a sudo user, never as root.</li>
+      <li>Verify each step (id, timedatectl) before moving on.</li>
+    </ul></div>
+
+    <section id="practice-challenges"><h2>Practice Challenges</h2>
+    <div class="lab-challenge"><h4>Challenge 1: Reboot-proof identity</h4><p>Goal: set hostname, timezone, and NTP, reboot, and prove all three persisted.</p><p><strong>Hint:</strong> hostnamectl and timedatectl status after the reboot.</p></div>
+    <div class="lab-challenge"><h4>Challenge 2: SSH lockdown follow-up</h4><p>Goal: as the new sudo user, disable root SSH login and password auth, then verify you can still get in with your key.</p><p><strong>Hint:</strong> keep one working session open while testing.</p></div>
+    </section>
+
+    <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="install-linux-vm.html">Installing Linux VM</a></li>
+        <li><a href="package-management.html">Package Management</a></li>
+        <li><a href="../security/ssh-hardening.html">SSH Hardening</a></li>
+        <li><a href="user-group-admin.html">User &amp; Group Administration</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

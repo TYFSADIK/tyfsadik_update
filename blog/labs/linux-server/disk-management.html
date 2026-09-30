@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linux Disk Management | Partitioning &amp; Filesystems</title>
+  <meta name="description" content="Manage Linux disks end to end: identify devices with lsblk, create GPT partitions with parted, format ext4 filesystems, and mount persistently by UUID.">
+  <meta name="keywords" content="linux disk management, parted gpt partition, mkfs.ext4, lsblk tutorial, partition linux">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-server/disk-management.html">
+  <meta property="og:title" content="Linux Disk Management | Partitioning &amp; Filesystems">
+  <meta property="og:description" content="Manage Linux disks end to end: identify devices with lsblk, create GPT partitions with parted, format ext4 filesystems, and mount persistently by UUID.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-server/disk-management.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Linux Disk Management | Partitioning &amp; Filesystems">
+  <meta name="twitter:description" content="Manage Linux disks end to end: identify devices with lsblk, create GPT partitions with parted, format ext4 filesystems, and mount persistently by UUID.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Linux Disk Management and Partitioning", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-12", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "parted, mkfs, util-linux, fstab", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux server administration"}</script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Linux Disk Management: Partition, Format, and Mount",
+    "description": "Manage Linux disks end to end: identify devices with lsblk, create GPT partitions with parted, format ext4 filesystems, and mount persistently by UUID.",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "dateModified": "2026-09-29",
+    "step": [
+      {"@type": "HowToStep", "name": "Identify the target disk", "url": "https://tyfsadik.org/blog/labs/linux-server/disk-management.html#steps"},
+      {"@type": "HowToStep", "name": "Create a GPT partition", "url": "https://tyfsadik.org/blog/labs/linux-server/disk-management.html#steps"},
+      {"@type": "HowToStep", "name": "Format with a journaling filesystem", "url": "https://tyfsadik.org/blog/labs/linux-server/disk-management.html#steps"},
+      {"@type": "HowToStep", "name": "Mount persistently by UUID", "url": "https://tyfsadik.org/blog/labs/linux-server/disk-management.html#steps"}
+    ]
+  }</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Linux Server", "item": "https://tyfsadik.org/blog/labs/linux-server/index.html"}, {"@type": "ListItem", "position": 4, "name": "Disk Management", "item": "https://tyfsadik.org/blog/labs/linux-server/disk-management.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'parted warns the disk is in use'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: A partition table is mounted or held by the kernel. Fix: Unmount everything on the disk and confirm with lsblk before proceeding."}}, {"@type": "Question", "name": "How do I fix 'mkfs refuses: device contains a filesystem'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Residual signatures from previous use. Fix: Wipe first with wipefs -a when you are certain the disk is expendable."}}, {"@type": "Question", "name": "How do I fix 'New partition missing after parted'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Kernel did not re-read the table. Fix: Run partprobe or partx -u to force a re-read."}}, {"@type": "Question", "name": "How do I fix 'mount: wrong fs type'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: fstab TYPE field mismatches the formatted filesystem. Fix: Match blkid TYPE= output; use auto only as a fallback."}}, {"@type": "Question", "name": "How do I fix 'System booted to emergency shell'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: fstab entry for the new disk is wrong. Fix: nofail lets the boot continue past a failed mount; fix the entry and reboot. Validate new entries with findmnt --verify before rebooting."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Disk Management</span></nav>
+    <div class="page-header"><h1>Linux Disk Management: Partition, Format, and Mount</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">parted</span><span class="tag">mkfs</span><span class="tag">lsblk</span><span class="tag">fstab</span></div>
+    </div>
+
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#learning-objectives">Learning Objectives</a></li>
+<li><a href="#architecture">Architecture Overview</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#steps">Step-by-Step Execution</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#validation">Testing &amp; Validation</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#extensions">Extension Ideas</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#key-takeaways">Key Takeaways</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    <section><p class="lead">You will add a new disk to a Linux server, create a GPT partition, format it, and mount it persistently. By the end you will have extra storage that survives reboots, with a verification check after every destructive step.</p></section>
+
+    <div class="learning-objectives lab-objectives" id="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Identify disks safely with lsblk before touching them.</li>
+        <li>Create a GPT partition and format it with a journaling filesystem.</li>
+        <li>Mount it persistently by UUID.</li>
+        <li><strong>Time:</strong> ~2 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> a server with a second, empty disk.</li>
+      </ul>
+    </div>
+
+    <section id="architecture"><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Disk to mounted filesystem pipeline">
+graph LR
+  D[("New disk /dev/sdb")] -->|parted GPT| P["Partition /dev/sdb1"]
+  P -->|mkfs.ext4| FS[Filesystem]
+  FS -->|UUID in fstab| M["/mnt/data mounted"]
+      </div>
+    </section>
+
+    <section id="environment"><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> a Linux server and a second empty block device (a fresh virtual disk works well).</p>
+      <p><strong>Before you begin:</strong> double-check the target device, formatting the wrong disk destroys data.</p>
+    </section>
+
+    <div class="lab-prereqs" id="prerequisites"><h3>Prerequisites</h3>
+    <ul>
+      <li>A Linux system with a spare empty disk (VM disk or loop device; never practice on data disks).</li>
+      <li>parted and e2fsprogs installed: <code>sudo apt install -y parted e2fsprogs</code>.</li>
+      <li>Root or sudo access for partitioning and formatting.</li>
+      <li>The install VM lab if you need a safe sandbox.</li>
+    </ul></div>
+
+    <section id="steps"><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Identify the target disk</strong>
+          <p>Confirm the device name and that it is empty before any change, this prevents catastrophic mistakes.</p>
+          <p class="lab-output-label">Expected output:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">lsblk -o NAME,SIZE,TYPE,MOUNTPOINT</span></div>
+            <div class="terminal-output">sda    20G disk
+&#9492;&#9472;sda1 20G part /
+sdb    10G disk            &lt;- empty target</div>
+          </div>
+          <p class="lab-step-note">What this teaches: lsblk renders the block topology (disk, part, mountpoint) so you pick the right device; confirming emptiness here prevents catastrophic wrong-disk mistakes.</p></div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Create a GPT partition</strong>
+          <p>GPT is the modern partition table supporting large disks and many partitions.</p>
+          <div class="command-block" data-copy><div class="command"><code>sudo parted -s /dev/sdb mklabel gpt mkpart primary ext4 1MiB 100%</code></div><div class="note">[ROOT REQUIRED] Creates one full-disk partition on /dev/sdb.
+          <p class="lab-output-label">Expected output:</p><pre><code>(no output on success; verify with: lsblk /dev/sdb)
+sdb    10G disk
+`-sdb1   10G part</code></pre>
+          <p class="lab-step-note">What this teaches: mklabel gpt writes a modern partition table; mkpart carves one full-disk partition non-interactively. Starting at 1MiB aligns the partition with physical sector boundaries, while a 0% start can trigger alignment warnings; GPT replaces MBR's 2 TB and 4-partition limits.</p></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Format with a journaling filesystem</strong>
+          <p>ext4's journal protects metadata consistency across crashes.</p>
+          <div class="command-block" data-copy><div class="command"><code>sudo mkfs.ext4 -L data /dev/sdb1</code>
+          <p class="lab-output-label">Expected output:</p><pre><code>Creating filesystem with 2621440 4k blocks and 655360 inodes
+Creating journal (16384 blocks): done
+Writing superblocks and filesystem accounting information: done</code></pre>
+          <p class="lab-step-note">What this teaches: mkfs.ext4 writes the journaling filesystem structures; -L sets a human-readable label as a second stable identifier alongside the UUID.</p></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Mount persistently by UUID</strong>
+          <p>UUID-based fstab entries stay correct even if device order changes.</p>
+          <p class="code-label">BACK UP FSTAB AND CREATE THE MOUNT POINT</p>
+          <div class="command-block" data-copy><div class="command"><code>sudo cp -a /etc/fstab /etc/fstab.bak &amp;&amp; sudo mkdir -p /mnt/data</code></div><div class="note">[ROOT REQUIRED] A backup lets you revert a bad edit; the mount point must exist before mount -a tests the entry.</div></div>
+          <p>Read the UUID with <code>sudo blkid</code>. The <code>$()</code> substitution runs in your shell <em>before</em> <code>tee</code> elevates privileges, so an unprivileged <code>blkid</code> here can return an empty UUID and write a broken fstab line. Validate the syntax with <code>findmnt --verify</code> before mounting.</p>
+          <p class="code-label">APPEND THE FSTAB ENTRY, VALIDATE, THEN MOUNT</p>
+          <div class="command-block" data-copy><div class="command"><code>UUID=$(sudo blkid -s UUID -o value /dev/sdb1)
+[ -n "$UUID" ] || { echo "ERROR: empty UUID"; exit 1; }
+echo "UUID=$UUID /mnt/data ext4 defaults,nofail 0 2" | sudo tee -a /etc/fstab
+sudo findmnt --verify &amp;&amp; sudo mount -a</code>
+          <p class="lab-output-label">Expected output:</p><pre><code>UUID=a1b2c3d4-5678-90ab-cdef-1234567890ab /mnt/data ext4 defaults,nofail 0 2
+(mount -a produced no errors)</code></pre>
+          <p class="lab-step-note">What this teaches: sudo blkid reads the UUID reliably; findmnt --verify checks fstab syntax before anything mounts; nofail keeps a missing disk from hanging the boot, but it does not forgive malformed fstab syntax, which is why validation comes first.</p></div></div>
+        </div></div>
+      </div>
+    </section>
+
+    <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>
+      <p>Disks become usable storage in four layers: the partition table describes layout, partitions are address ranges, filesystems organize bytes within them, and mounts graft them into the directory tree. parted edits the first layer, mkfs the third, and fstab plus mount handle the fourth. Confusing the layers is how data gets destroyed, so each step targets exactly one.</p>
+      <p>GPT is the modern partition table: 128 partitions by default, disks beyond 2 TB, and a backup header at the end of the disk for recovery. parted -s scripts it deterministically, which matters because interactive fdisk sessions are not reproducible and not auditable.</p>
+      <p>ext4's journal is the reliability feature: metadata changes are written to the journal first, so a crash replays to a consistent state instead of requiring a full fsck. The label (-L data) and UUID together give two stable identifiers, so mounts survive device reordering.</p>
+    </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Disk management progress">
+graph LR
+  A[01 Identify] -->|done| B[02 Partition]
+  B -->|done| C[03 Format]
+  C -->|done| D[04 Mount]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section id="validation"><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>df -h /mnt/data &amp;&amp; touch /mnt/data/test &amp;&amp; ls -l /mnt/data</code></div></div>
+      <p>You should see the mounted size and a writable test file. If both pass, your new storage is ready and persistent.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+    <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>parted warns the disk is in use</td><td>A partition table is mounted or held by the kernel</td><td>Unmount everything on the disk and confirm with lsblk before proceeding</td></tr>
+      <tr><td>mkfs refuses: device contains a filesystem</td><td>Residual signatures from previous use</td><td>Wipe first with wipefs -a when you are certain the disk is expendable</td></tr>
+      <tr><td>New partition missing after parted</td><td>Kernel did not re-read the table</td><td>Run partprobe or partx -u to force a re-read</td></tr>
+      <tr><td>mount: wrong fs type</td><td>fstab TYPE field mismatches the formatted filesystem</td><td>Match blkid TYPE= output; use auto only as a fallback</td></tr>
+      <tr><td>System booted to emergency shell</td><td>fstab entry for the new disk is wrong</td><td>nofail lets the boot continue past a failed mount; fix the entry and reboot. Validate new entries with findmnt --verify first</td></tr>
+      <tr><td>4K alignment warnings</td><td>Partition start not aligned to physical sectors</td><td>Start the partition at an explicit aligned offset (mkpart primary ext4 1MiB 100%); a 0% start can trigger alignment warnings</td></tr>
+    </tbody></table>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>mount -a errors:</strong> a bad fstab line; the <code>nofail</code> option prevents a boot hang while you fix it.</li>
+        <li><strong>Device busy:</strong> something is using it; check with <code>lsof /dev/sdb1</code>.</li>
+        <li><strong>Wrong disk formatted:</strong> stop immediately; restore from backup. Always verify with lsblk first.</li>
+      </ul>
+    </details>
+
+    <section id="extensions"><h2>Extension Ideas</h2>
+      <ul>
+        <li>Make the storage flexible with <a href="lvm.html">Logical Volume Management</a>.</li>
+        <li>Explore mount options further in <a href="mounting-filesystems.html">Mounting &amp; Filesystem Management</a>.</li>
+        <li>Try XFS instead of ext4 and compare resize behaviour.</li>
+      </ul>
+    </section>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Added and prepared a 10GB disk with a verified mount.</li>
+        <li>Used GPT and a journaling filesystem for resilience.</li>
+        <li>Made the mount persistent and boot-safe via UUID + nofail.</li>
+        <li>Validated every destructive step before proceeding.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways" id="key-takeaways"><h3>Key Takeaways</h3>
+    <ul>
+      <li>lsblk before parted: identify the right disk every time.</li>
+      <li>GPT plus parted -s gives scriptable, modern partitioning.</li>
+      <li>mkfs.ext4 -L labels the filesystem for human-friendly identification.</li>
+      <li>Mount by UUID with nofail for reboot-safe persistence.</li>
+      <li>Validate with mount -a before trusting a reboot.</li>
+    </ul></div>
+
+    <section id="practice-challenges"><h2>Practice Challenges</h2>
+    <div class="lab-challenge"><h4>Challenge 1: Two-partition layout</h4><p>Goal: split a 10G disk into a 6G ext4 data partition and a 4G xfs scratch partition, both mounted by UUID.</p><p><strong>Hint:</strong> mkpart with percentage ranges, then two fstab lines.</p></div>
+    <div class="lab-challenge"><h4>Challenge 2: Wrong-disk drill</h4><p>Goal: in a VM with two identical empty disks, document a procedure that guarantees you partition the right one.</p><p><strong>Hint:</strong> compare /dev/disk/by-id entries before touching parted.</p></div>
+    </section>
+
+    <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="lvm.html">Logical Volume Management (LVM)</a></li>
+        <li><a href="mounting-filesystems.html">Mounting &amp; Filesystem Management</a></li>
+        <li><a href="backup-recovery.html">Backup &amp; Recovery</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

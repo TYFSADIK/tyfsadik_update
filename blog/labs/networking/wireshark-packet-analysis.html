@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wireshark Packet Analysis: Networking Lab | TYFSADIK</title>
+  <meta name="description" content="Analyze packets hands-on with Wireshark and tshark: BPF capture filters, display filters, field extraction across flows, and full TCP stream reconstruction.">
+  <meta name="keywords" content="Wireshark, tshark, packet analysis, BPF, display filter, pcap, TCP stream, SNI">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/wireshark-packet-analysis.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Wireshark Packet Analysis and tshark Filtering", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-04-01", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "Wireshark 4.2, tshark, pcap", "articleSection": "Networking", "learningResourceType": "Hands-on lab", "teaches": "computer networking fundamentals"}</script>
+  <meta property="og:title" content="Wireshark Packet Analysis: Networking Lab | TYFSADIK">
+  <meta property="og:description" content="Analyze packets hands-on with Wireshark and tshark: BPF capture filters, display filters, field extraction across flows, and full TCP stream reconstruction.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/networking/wireshark-packet-analysis.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Wireshark Packet Analysis: Networking Lab | TYFSADIK">
+  <meta name="twitter:description" content="Analyze packets hands-on with Wireshark and tshark: BPF capture filters, display filters, field extraction across flows, and full TCP stream reconstruction.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "Wireshark Packet Analysis with Display Filters and tshark",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "1. Capture with a BPF filter",
+      "text": "tshark -i eth0 -f \"host 192.168.20.30 and tcp port 443\" -w tls.pcap"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "2. Apply a display filter and extract fields",
+      "text": "tshark -r tls.pcap -Y \"tls.handshake.type == 1\" -T fields -e tls.handshake.extensions_server_name"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "3. Reconstruct an HTTP session",
+      "text": "tshark -r web.pcap -q -z follow,tcp,ascii,0"
+    }
+  ]
+}
+  </script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Networking", "item": "https://tyfsadik.org/blog/labs/networking/index.html"}, {"@type": "ListItem", "position": 4, "name": "Wireshark Packet Analysis", "item": "https://tyfsadik.org/blog/labs/networking/wireshark-packet-analysis.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'tshark reports no interfaces'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Insufficient privileges to capture. Fix: Add the user to the wireshark group or run with sudo, then re-login."}}, {"@type": "Question", "name": "How do I fix 'Capture file is empty'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: BPF filter too restrictive or the wrong interface. Fix: Capture unfiltered briefly to confirm traffic exists, then tighten the filter."}}, {"@type": "Question", "name": "How do I fix 'Display filter shows no packets'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Field name wrong or the protocol is not decoded as expected. Fix: Check the packet details pane for the exact field name Wireshark uses."}}, {"@type": "Question", "name": "How do I fix 'Follow stream shows garbled output'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The session is encrypted (TLS) or uses compression. Fix: For TLS, provide keylog secrets; for HTTP, check Content-Encoding."}}, {"@type": "Question", "name": "How do I fix 'Huge pcap is slow to open'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Full decode of millions of packets. Fix: Use capture filters next time; for now, use tshark -Y to extract only what you need."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>Wireshark Packet Analysis</span></nav>
+    <div class="page-header"><h1>Wireshark Packet Analysis with Display Filters and tshark</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Networking</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Wireshark</span><span class="tag">tshark</span><span class="tag">display filters</span><span class="tag">pcap</span></div>
+    </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
+      <ol>
+      <li><a href="#objective-context">Objective</a></li>
+      <li><a href="#learning-objectives">Learning Objectives</a></li>
+      <li><a href="#environment-prerequisites">Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Steps</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#key-takeaways">Key Takeaways</a></li>
+      <li><a href="#practice-challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+      </ol>
+    </nav>
+
+
+    <section><p class="lead">I captured live traffic and analyzed it with Wireshark display filters and headless tshark, isolating protocol anomalies and reconstructing full TCP sessions. Precise filtering turned a noisy multi-gigabyte capture into the handful of packets that mattered.</p></section>
+
+    <section id="objective-context"><h2>Objective &amp; Context</h2>
+      <p>Packet analysis is the ground truth of networking and security. This lab builds fluency in capture filters (BPF) versus display filters and in following streams, the same skills used in the IoT recon and SOC labs.</p></section>    <section id="learning-objectives">
+      <div class="lab-objectives"><h3>Learning Objectives</h3>
+        <ul>
+        <li>Capture traffic with tshark using BPF capture filters.</li>
+        <li>Distinguish capture filters (BPF) from display filters.</li>
+        <li>Extract specific fields (SNI, Host) across many packets.</li>
+        <li>Reconstruct a full TCP session with the follow-stream feature.</li>
+        <li>Reduce a large capture to the relevant flow efficiently.</li>
+        </ul>
+      </div>
+    </section>
+
+
+    <section id="environment-prerequisites"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+      <ul>
+        <li>Wireshark 4.2 and tshark; capture privileges on the NIC.</li>
+        <li>A sample pcap or live traffic to analyze.</li>
+        <li>Knowledge of the target protocols (HTTP, DNS, TLS).</li>
+      
+          <li>Wireshark 4.2 and tshark installed (sudo apt install -y wireshark tshark).</li>
+          <li>Capture privileges on the NIC (membership in the wireshark group or root).</li>
+          <li>A sample pcap or live traffic to analyze.</li>
+          <li>Knowledge of the target protocols (HTTP, DNS, TLS).</li>
+        </ul>
+      <div class="mermaid" role="img" aria-label="Capture to analysis pipeline">
+flowchart LR
+  C[Capture<br/>BPF filter] --> P[(pcap)]
+  P --> D[Display filter]
+  D --> F[Follow TCP stream]
+  F --> R[Findings]
+      </div>
+          </div>
+</section>
+
+    <section id="step-by-step-execution"><h2>Step-by-Step Execution</h2>
+      <h3>1. Capture with a BPF filter</h3>
+      <div class="command-block"><div class="command"><code>sudo tshark -i eth0 -f "host 192.168.20.30 and tcp port 443" -a packets:500 -w tls.pcap ; ls -lh tls.pcap</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>Capturing on 'eth0'
+  500
+500 packets captured
+-rw-r--r-- 1 analyst analyst 4.2M Sep 29 12:10 tls.pcap</code></pre>
+<p class="lab-step-note">What this teaches: capture filters decide what gets recorded, so a precise BPF expression keeps pcaps small and relevant.</p>
+<p class="lab-step-note">tshark captures until stopped: -a packets:500 (or -a duration:60) stops it automatically so a forgotten capture cannot fill the disk. The last line is the output of the separate ls -lh command. Capturing needs sudo or membership in the wireshark group on a fresh install.</p>
+<h3>2. Apply a display filter and extract fields</h3>
+      <div class="command-block"><div class="command"><code>tshark -r tls.pcap -Y "tls.handshake.type == 1" -T fields -e tls.handshake.extensions_server_name</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code class="language-bash">tyfsadik.org
+cloud.tyfsadik.org</code></pre>
+<p class="lab-step-note">What this teaches: display filters operate on decoded fields after capture, which is where protocol knowledge pays off.</p>
+<h3>3. Reconstruct an HTTP session</h3>
+      <div class="command-block"><div class="command"><code>tshark -r web.pcap -q -z follow,tcp,ascii,0</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>===================================================================
+Follow: tcp,ascii
+Filter: tcp.stream eq 0
+Node 0: 192.168.20.5:45678
+Node 1: 203.0.113.10:80
+GET /index.html HTTP/1.1
+Host: example.com
+
+HTTP/1.1 200 OK
+Content-Length: 612
+... (reassembled application payload of stream 0) ...
+===================================================================</code></pre>
+<p class="lab-step-note">What this teaches: stream reassembly turns thousands of packets back into the conversation the application actually had.</p>
+<p class="lab-step-note">web.pcap is a sample capture you supply (for example one captured with step 1's command against port 80). The follow output is the reconstructed byte stream, not empty output: change the trailing number to follow a different stream index.</p>
+</section>    <section id="how-it-works">
+      <div class="lab-explainer"><h3>How It Works</h3>
+        <p>Packet analysis has two filter stages with different jobs. Capture filters use BPF syntax and run in the kernel: they decide which packets get recorded at all. Display filters use Wireshark's field syntax and run after capture: they decide which recorded packets you look at. A good workflow captures broadly enough to be useful and displays narrowly enough to be readable.</p>
+        <p>tshark decodes protocols into named fields, and -T fields with -e extracts just those values across every packet: one line per packet, ready for scripting. This is how analysts pull every SNI from a thousand handshakes or every DNS query from an hour of traffic without clicking through the GUI.</p>
+        <p>Follow TCP stream reassembles the byte streams in both directions, showing the application-layer conversation as the endpoints saw it. For HTTP this reveals requests and responses; for suspicious sessions it reveals exactly what was transferred, which is why stream following is central to both troubleshooting and forensics.</p>
+        <div class="mermaid" role="img" aria-label="Capture to findings pipeline">
+flowchart LR
+  C["tshark capture"] -->|"BPF filter"| P["pcap file"]
+  P -->|"display filter"| F["Relevant packets"]
+  F -->|"-T fields"| X["Extracted fields"]
+  F -->|"follow stream"| S["Reassembled session"]
+        </div>
+      </div>
+    </section>
+
+
+    <section id="validation-testing"><h2>Validation &amp; Testing</h2>
+      <p>Filter to a single conversation and confirm the reconstructed stream matches the expected request/response. Pass criteria: clean filter isolation, correct SNI/Host extraction, and a coherent followed stream with no missing segments.</p>
+    </section>    <section id="troubleshooting">
+      <h2>Troubleshooting</h2>
+      <table class="lab-table">
+        <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>tshark reports no interfaces</td><td>Insufficient privileges to capture</td><td>Add the user to the wireshark group or run with sudo, then re-login</td></tr>
+          <tr><td>Capture file is empty</td><td>BPF filter too restrictive or the wrong interface</td><td>Capture unfiltered briefly to confirm traffic exists, then tighten the filter</td></tr>
+          <tr><td>Display filter shows no packets</td><td>Field name wrong or the protocol is not decoded as expected</td><td>Check the packet details pane for the exact field name Wireshark uses</td></tr>
+          <tr><td>Follow stream shows garbled output</td><td>The session is encrypted (TLS) or uses compression</td><td>For TLS, provide keylog secrets; for HTTP, check Content-Encoding</td></tr>
+          <tr><td>Huge pcap is slow to open</td><td>Full decode of millions of packets</td><td>Use capture filters next time; for now, use tshark -Y to extract only what you need</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Capture vs display confusion:</strong> BPF filters at capture (libpcap syntax); Wireshark filters at display (different syntax).</li>
+        <li><strong>Missing packets:</strong> capture on the correct interface and disable offload that hides segmentation.</li>
+        <li><strong>Encrypted payload:</strong> TLS bodies need keys; analyze metadata (SNI, sizes, timing) instead.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Reduced a multi-gigabyte capture to the relevant flow with one display filter.</li>
+        <li>Extracted SNI and Host fields across 100% of inspected handshakes.</li>
+        <li>Reconstructed full TCP sessions for application-layer review.</li>
+        <li>Built reusable tshark one-liners for headless analysis.</li>
+      </ul>
+    </section>    <section id="key-takeaways">
+      <div class="lab-takeaways"><h3>Key Takeaways</h3>
+        <ul>
+        <li>Capture with BPF to limit volume; display-filter to focus analysis.</li>
+        <li>Field extraction (-T fields -e) scales analysis beyond what the GUI can do.</li>
+        <li>Follow streams to see the application conversation, not just packets.</li>
+        <li>Always note the capture filter: it defines what the pcap does not contain.</li>
+        </ul>
+      </div>
+    </section>
+
+
+        <section id="practice-challenges">
+      <h2>Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Find the exfiltration</h4><p>Goal: In a sample pcap, identify which internal host sent the most bytes to an external IP using only tshark field extraction.</p><p>Hint: Extract ip.src and frame.len, then aggregate with awk and sort.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: Extract files from HTTP</h4><p>Goal: Carve every downloaded file out of an HTTP pcap into separate files.</p><p>Hint: Use tshark --export-objects http,&lt;dir&gt; to dump the transferred objects.</p></div>
+    </section>
+<section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="tcp-ip-deep-dive.html">TCP/IP Deep Dive</a></li>
+        <li><a href="../security/iot-network-recon.html">IoT Network Reconnaissance</a></li>
+        <li><a href="network-troubleshooting.html">Network Troubleshooting</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

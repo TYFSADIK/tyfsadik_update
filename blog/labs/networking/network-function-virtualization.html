@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Function Virtualization: Networking Lab | TYFSADIK</title>
+  <meta name="description" content="Build NFV with Linux namespaces: firewall and load-balancer VNFs chained step by step into a service function path using veth pairs, nftables, and HAProxy.">
+  <meta name="keywords" content="NFV, network function virtualization, network namespaces, veth, HAProxy, nftables, service chaining">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/network-function-virtualization.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Network Function Virtualization with Linux Namespaces", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-04-29", "dateModified": "2026-09-29", "proficiencyLevel": "Advanced", "dependencies": "Linux network namespaces, veth, HAProxy, nftables", "articleSection": "Networking", "learningResourceType": "Hands-on lab", "teaches": "computer networking fundamentals"}</script>
+  <meta property="og:title" content="Network Function Virtualization: Networking Lab | TYFSADIK">
+  <meta property="og:description" content="Build NFV with Linux namespaces: firewall and load-balancer VNFs chained step by step into a service function path using veth pairs, nftables, and HAProxy.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/networking/network-function-virtualization.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Network Function Virtualization: Networking Lab | TYFSADIK">
+  <meta name="twitter:description" content="Build NFV with Linux namespaces: firewall and load-balancer VNFs chained step by step into a service function path using veth pairs, nftables, and HAProxy.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "Network Function Virtualization with Linux Namespaces",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "1. Create VNF namespaces and link them [PRIVILEGED]",
+      "text": "ip netns add fw && ip netns add lb && ip link add veth-fw type veth peer name veth-lb"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "2. Run a firewall VNF in its namespace",
+      "text": "ip netns exec fw nft add rule inet filter forward tcp dport 80 accept"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "3. Run HAProxy as the load-balancer VNF",
+      "text": "ip netns exec lb haproxy -f /etc/haproxy/lb.cfg"
+    }
+  ]
+}
+  </script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Networking", "item": "https://tyfsadik.org/blog/labs/networking/index.html"}, {"@type": "ListItem", "position": 4, "name": "Network Function Virtualization", "item": "https://tyfsadik.org/blog/labs/networking/network-function-virtualization.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Namespaces cannot ping each other'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: veth ends not assigned to the right namespaces or missing addresses. Fix: Verify with ip netns exec <ns> ip addr and confirm each veth end has an address in the same subnet."}}, {"@type": "Question", "name": "How do I fix 'nft rule has no effect'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Rule added to the wrong table, chain, or namespace. Fix: List the ruleset inside the namespace with ip netns exec fw nft list ruleset."}}, {"@type": "Question", "name": "How do I fix 'HAProxy fails to bind'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Another process holds the port, or the config has an error. Fix: Run haproxy -c -f /etc/haproxy/lb.cfg to check the config and ss -tlnp to find the port holder."}}, {"@type": "Question", "name": "How do I fix 'Traffic bypasses the firewall VNF'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Routing sends packets directly to the LB namespace. Fix: Check routes in each namespace; the firewall namespace must be on the path."}}, {"@type": "Question", "name": "How do I fix 'Everything breaks after reboot'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Namespaces and veth pairs are ephemeral by design. Fix: Script the setup so the whole chain rebuilds with one command."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>Network Function Virtualization</span></nav>
+    <div class="page-header"><h1>Network Function Virtualization with Linux Namespaces</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Networking</span><span class="lab-time">~6 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">NFV</span><span class="tag">namespaces</span><span class="tag">veth</span><span class="tag">HAProxy</span></div>
+    </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
+      <ol>
+      <li><a href="#objective-context">Objective</a></li>
+      <li><a href="#learning-objectives">Learning Objectives</a></li>
+      <li><a href="#environment-prerequisites">Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Steps</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#key-takeaways">Key Takeaways</a></li>
+      <li><a href="#practice-challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+      </ol>
+    </nav>
+
+
+    <section><p class="lead">I virtualized network functions, a router, a firewall, and a load balancer, as isolated Linux network namespaces connected by veth pairs, then chained them into a single service path. Running VNFs in software on commodity hardware replaced dedicated appliances for the lab fabric.</p></section>
+
+    <section id="objective-context"><h2>Objective &amp; Context</h2>
+      <p>NFV decouples network functions from proprietary hardware, running them as software instances that can be chained into service function paths. This lab uses namespaces as lightweight VNFs and HAProxy as a virtual load balancer, the same primitives behind container networking.</p></section>    <section id="learning-objectives">
+      <div class="lab-objectives"><h3>Learning Objectives</h3>
+        <ul>
+        <li>Create isolated network namespaces and link them with veth pairs.</li>
+        <li>Run a firewall VNF inside a namespace using nftables.</li>
+        <li>Run HAProxy as a load-balancer VNF in a second namespace.</li>
+        <li>Chain the VNFs into a working service function path.</li>
+        <li>Explain how NFV replaces fixed appliances with software instances.</li>
+        </ul>
+      </div>
+    </section>
+
+
+    <section id="environment-prerequisites"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+      <ul>
+        <li>Linux host with iproute2, nftables, and HAProxy.</li>
+        <li>Privileges to create namespaces and veth pairs.</li>
+        <li>Two backend services to balance.</li>
+      
+          <li>Linux host with iproute2, nftables, and HAProxy (sudo apt install -y haproxy).</li>
+          <li>Root or sudo access to create namespaces and veth pairs.</li>
+          <li>Two backend services to balance (simple Python HTTP servers are enough).</li>
+          <li>Understanding of IP addressing and basic firewalling concepts.</li>
+        </ul>
+      <div class="mermaid" role="img" aria-label="Service function chain of virtual network functions">
+flowchart LR
+  C[Client] --> FW[ns: firewall<br/>nftables]
+  FW --> LB[ns: load balancer<br/>HAProxy]
+  LB --> B1[Backend 1]
+  LB --> B2[Backend 2]
+      </div>
+          </div>
+</section>
+
+    <section id="step-by-step-execution"><h2>Step-by-Step Execution</h2>
+      <h3>1. Create VNF namespaces and link them [PRIVILEGED]</h3>
+      <div class="command-block"><div class="command"><code>ip netns add fw &amp;&amp; ip netns add lb
+ip link add veth-host type veth peer name veth-fw2
+ip link add veth-fw type veth peer name veth-lb
+ip link set veth-fw2 netns fw &amp;&amp; ip link set veth-fw netns fw &amp;&amp; ip link set veth-lb netns lb
+ip addr add 192.168.100.1/30 dev veth-host &amp;&amp; ip link set veth-host up
+ip netns exec fw ip addr add 192.168.100.2/30 dev veth-fw2
+ip netns exec fw ip addr add 10.0.0.1/30 dev veth-fw
+ip netns exec lb ip addr add 10.0.0.2/30 dev veth-lb
+ip netns exec fw ip link set lo up \; ip netns exec fw ip link set veth-fw2 up \; ip netns exec fw ip link set veth-fw up
+ip netns exec lb ip link set lo up \; ip netns exec lb ip link set veth-lb up
+ip route add 10.0.0.0/30 via 192.168.100.2
+ip netns exec lb ip route add default via 10.0.0.1</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>(no output on success: every ip command here is silent)</code></pre>
+<div class="command-block"><div class="command"><code>ip netns exec fw ip -br addr show</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>lo               UNKNOWN        127.0.0.1/8
+veth-fw2         UP             192.168.100.2/30
+veth-fw          UP             10.0.0.1/30</code></pre>
+<p class="lab-step-note">What this teaches: namespaces plus veth pairs are the lightweight primitives behind containers, VNFs, and virtual routers alike.</p>
+<p class="lab-step-note">Creating a veth pair leaves both ends in the current namespace: each end must be moved with ip link set ... netns, addressed, and brought up, or the link stays DOWN and nothing routes. The host (client side) reaches the service network through 192.168.100.2, and the lb namespace returns traffic through 10.0.0.1.</p>
+<h3>2. Run a firewall VNF in its namespace</h3>
+      <div class="command-block"><div class="command"><code>ip netns exec fw nft add table inet filter
+ip netns exec fw nft 'add chain inet filter forward { type filter hook forward priority 0; policy drop; }'
+ip netns exec fw nft add rule inet filter forward ct state established,related accept
+ip netns exec fw nft add rule inet filter forward tcp dport 80 accept
+ip netns exec fw sysctl -w net.ipv4.ip_forward=1</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>net.ipv4.ip_forward = 1</code></pre>
+<div class="command-block"><div class="command"><code>ip netns exec fw nft list ruleset</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>table inet filter {
+	chain forward {
+		type filter hook forward priority 0; policy drop;
+		ct state established,related accept
+		tcp dport 80 accept
+	}
+}</code></pre>
+<p class="lab-step-note">What this teaches: a firewall VNF is just packet-filter rules scoped to one namespace's interfaces.</p>
+<p class="lab-step-note">The add rule command fails on a fresh system unless the table and chain already exist: create them first, exactly as above. The chain uses policy drop with an established/related rule so return traffic passes; only new connections to TCP 80 are permitted. ip_forward is a per-namespace setting, so it must be enabled inside the fw namespace. Confirm forwarding between the links with: ip netns exec fw ping -c 2 10.0.0.2.</p>
+<h3>3. Run HAProxy as the load-balancer VNF</h3>
+<p class="lab-output-label">Config content (save as /etc/haproxy/lb.cfg; install first with sudo apt install -y haproxy):</p>
+<pre><code class="language-bash">global
+    daemon
+defaults
+    mode http
+    timeout connect 5s
+    timeout client 30s
+    timeout server 30s
+frontend web
+    bind 10.0.0.2:80
+    default_backend web
+backend web
+    balance roundrobin
+    server b1 127.0.0.11:8001 check
+    server b2 127.0.0.12:8002 check</code></pre>
+      <div class="command-block"><div class="command"><code>haproxy -c -f /etc/haproxy/lb.cfg</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>Configuration file is valid</code></pre>
+      <div class="command-block"><div class="command"><code>ip netns exec lb ip addr add 127.0.0.11/8 dev lo
+ip netns exec lb ip addr add 127.0.0.12/8 dev lo
+ip netns exec lb python3 -m http.server 8001 --bind 127.0.0.11 &gt;/tmp/b1.log 2&gt;&amp;1 &amp;
+ip netns exec lb python3 -m http.server 8002 --bind 127.0.0.12 &gt;/tmp/b2.log 2&gt;&amp;1 &amp;
+ip netns exec lb haproxy -f /etc/haproxy/lb.cfg
+ip netns exec lb ss -tlnp | grep ':80'</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>(haproxy prints nothing: the daemon directive backgrounds it)
+LISTEN 0      128    10.0.0.2:80    0.0.0.0:*</code></pre>
+<p class="lab-step-note">What this teaches: chaining VNFs turns independent functions into an ordered service path, the core NFV idea.</p>
+<p class="lab-step-note">Always validate the config with haproxy -c before starting: a typo otherwise kills the process silently. The backends are two Python web servers on loopback aliases inside the lb namespace (any 127.x address is valid on lo). HAProxy health checks (check) mark a backend down if its server stops responding.</p>
+<h3>4. Test the full service chain [PRIVILEGED]</h3>
+      <div class="command-block"><div class="command"><code>curl -s http://10.0.0.2/ | head -4
+curl -s http://10.0.0.2:22 --max-time 3 || echo "port 22 blocked by the firewall VNF"</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>&lt;!DOCTYPE HTML&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+&lt;meta charset="utf-8"&gt;
+port 22 blocked by the firewall VNF</code></pre>
+<p class="lab-step-note">What this teaches: the chain is only real when traffic provably traverses it: the request crossed the firewall VNF, hit the HAProxy frontend, and was served by a backend.</p>
+<p class="lab-step-note">HTTP through the chain returns a directory listing (proving the firewall passed TCP 80 and the LB distributed to a backend); SSH to port 22 times out (proving the drop policy works). Repeat the curl a few times and watch the backend logs alternate between b1 and b2 (roundrobin). Cleanup when done: sudo pkill -f 'http.server 800' \; ip netns exec lb pkill haproxy \; sudo ip netns del fw \; sudo ip netns del lb.</p>
+</section>    <section id="how-it-works">
+      <div class="lab-explainer"><h3>How It Works</h3>
+        <p>Network Function Virtualization decouples network functions from proprietary hardware. Instead of buying a firewall appliance and a load-balancer appliance, you run firewall software and load-balancer software as virtualized functions on commodity servers, chaining them into service function paths that traffic traverses in order.</p>
+        <p>Linux network namespaces provide the isolation primitive: each namespace has its own interfaces, addresses, routes, and firewall rules, invisible to other namespaces. A veth pair connects two namespaces like a virtual patch cable. This is exactly how container networking works under the hood, so the lab doubles as a container-networking primer.</p>
+        <p>Service chaining is about ordering. The client hits the firewall namespace first, which filters; surviving packets move to the load-balancer namespace, which distributes them across backends. Each VNF is independently replaceable and scalable, which is the operational payoff of NFV over fixed appliances.</p>
+        <div class="mermaid" role="img" aria-label="VNF service chain packet walk">
+flowchart LR
+  C["Client"] -->|"1. filter"| FW["ns: firewall"]
+  FW -->|"2. forward"| LB["ns: load balancer"]
+  LB -->|"3a"| B1["Backend 1"]
+  LB -->|"3b"| B2["Backend 2"]
+        </div>
+      </div>
+    </section>
+
+
+    <section id="validation-testing"><h2>Validation &amp; Testing</h2>
+      <p>Send requests through the chain and confirm they traverse firewall then load balancer and distribute across backends. Pass criteria: only permitted traffic passes the firewall VNF and load is shared across both backends.</p>
+    </section>    <section id="troubleshooting">
+      <h2>Troubleshooting</h2>
+      <table class="lab-table">
+        <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>Namespaces cannot ping each other</td><td>veth ends not assigned to the right namespaces or missing addresses</td><td>Verify with ip netns exec &lt;ns&gt; ip addr and confirm each veth end has an address in the same subnet</td></tr>
+          <tr><td>nft rule has no effect</td><td>Rule added to the wrong table, chain, or namespace</td><td>List the ruleset inside the namespace with ip netns exec fw nft list ruleset</td></tr>
+          <tr><td>HAProxy fails to bind</td><td>Another process holds the port, or the config has an error</td><td>Run haproxy -c -f /etc/haproxy/lb.cfg to check the config and ss -tlnp to find the port holder</td></tr>
+          <tr><td>Traffic bypasses the firewall VNF</td><td>Routing sends packets directly to the LB namespace</td><td>Check routes in each namespace; the firewall namespace must be on the path</td></tr>
+          <tr><td>Everything breaks after reboot</td><td>Namespaces and veth pairs are ephemeral by design</td><td>Script the setup so the whole chain rebuilds with one command</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>No traffic between namespaces:</strong> assign IPs to both veth ends and bring them up.</li>
+        <li><strong>HAProxy bind fails:</strong> confirm it binds inside the namespace, not the host.</li>
+        <li><strong>Forwarding blocked:</strong> enable forwarding within the namespace.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Chained 3 virtual network functions into a single service path.</li>
+        <li>Replaced dedicated appliances with software VNFs on commodity hardware.</li>
+        <li>Load-balanced traffic across 2 backends through the HAProxy VNF.</li>
+        <li>Isolated each function in its own namespace for clean teardown.</li>
+      </ul>
+    </section>    <section id="key-takeaways">
+      <div class="lab-takeaways"><h3>Key Takeaways</h3>
+        <ul>
+        <li>Namespaces and veth pairs are the universal building blocks of virtual networking.</li>
+        <li>Each VNF should do one job well so the chain stays debuggable.</li>
+        <li>Verify each hop independently before testing the full chain.</li>
+        <li>Script ephemeral network state; never rely on hand-built namespaces surviving a reboot.</li>
+        </ul>
+      </div>
+    </section>
+
+
+        <section id="practice-challenges">
+      <h2>Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Add a NAT VNF</h4><p>Goal: Insert a third namespace that performs NAT between the firewall VNF and the backends.</p><p>Hint: Use nft masquerade in the NAT namespace and point the firewall's route at it.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: Make HAProxy health-aware</h4><p>Goal: Configure HAProxy health checks so a dead backend is removed from rotation automatically.</p><p>Hint: Add option httpchk to the backend servers and watch the stats socket during a backend outage.</p></div>
+    </section>
+<section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="sdn-controllers.html">SDN Controllers</a></li>
+        <li><a href="../containers-kubernetes/container-networking.html">Container Networking</a></li>
+        <li><a href="qos.html">Quality of Service (QoS)</a></li>
+      
+        <li><a href="ip-routing-subnetting.html">IP Routing and Subnetting</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

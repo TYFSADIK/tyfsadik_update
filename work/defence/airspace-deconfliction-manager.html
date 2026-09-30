@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Airspace Deconfliction Manager: Defence Build | TYFSADIK</title>
+  <meta name="description" content="Small-scale UAS airspace manager: ESP32 tracker beacons, ArduPilot SITL simulated drones, dynamic geofences, predicted-conflict alerts, human override.">
+  <meta name="keywords" content="airspace deconfliction, UAS traffic management, UTM Canada, ArduPilot SITL, MAVLink, pymavlink, ESP32 tracker beacon, dynamic geofence, conflict detection, time to closest point of approach, human in the loop, Canadian Army airspace study">
+  <meta name="robots" content="index,follow">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <link rel="canonical" href="https://tyfsadik.org/work/defence/airspace-deconfliction-manager.html">
+  <meta property="og:title" content="Airspace Deconfliction Manager: Defence Build | TYFSADIK">
+  <meta property="og:description" content="Small-scale UAS airspace manager: ESP32 tracker beacons, ArduPilot SITL simulated drones, dynamic geofences, predicted-conflict alerts, human override.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/work/defence/airspace-deconfliction-manager.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/Prove/Mini%20airspace%20deconfliction%20manager.jpeg">
+  <meta name="twitter:title" content="Airspace Deconfliction Manager: Defence Build | TYFSADIK">
+  <meta name="twitter:description" content="Small-scale UAS airspace manager: ESP32 tracker beacons, ArduPilot SITL simulated drones, dynamic geofences, predicted-conflict alerts, human override.">
+  <meta name="twitter:image" content="https://tyfsadik.org/Prove/Mini%20airspace%20deconfliction%20manager.jpeg">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Mini Airspace Deconfliction Manager", "name": "Mini Airspace Deconfliction Manager", "description": "Small-scale UAS airspace manager: ESP32 tracker beacons, ArduPilot SITL simulated drones, dynamic geofences, predicted-conflict alerts, human override.", "image": "https://tyfsadik.org/Prove/Mini%20airspace%20deconfliction%20manager.jpeg", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "publisher": {"@type": "Organization", "name": "TYFSADIK", "url": "https://tyfsadik.org/"}, "datePublished": "2026-09-30", "inLanguage": "en-CA", "mainEntityOfPage": {"@type": "WebPage", "@id": "https://tyfsadik.org/work/defence/airspace-deconfliction-manager.html"}, "keywords": ["airspace deconfliction", "UAS traffic management", "ArduPilot SITL", "MAVLink", "ESP32 beacons", "dynamic geofence", "human in the loop"]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Build a Mini Airspace Deconfliction Manager","description":"A small-scale UAS airspace manager that fuses ArduPilot SITL simulated drones and ESP32 tracker beacons, detects predicted conflicts, enforces dynamic geofences, and keeps a human approving every resolution.","step":[{"@type":"HowToStep","name":"Simulated traffic","text":"Run three ArduPilot SITL instances with unique instance offsets and system IDs, each flying an autonomous mission."},{"@type":"HowToStep","name":"MAVLink ingest and track model","text":"Stream telemetry from every instance with pymavlink and fold it into one common track model."},{"@type":"HowToStep","name":"Physical tracker beacons","text":"Flash ESP32 beacons that broadcast stand-in position packets over Wi-Fi UDP."},{"@type":"HowToStep","name":"Beacon ingest and health monitoring","text":"Receive beacon UDP packets, stamp them at ingest, fold them into the track store, and flag stale or jittery beacons."},{"@type":"HowToStep","name":"Conflict engine","text":"Propagate predicted trajectories and compute time-to-closest-approach between every track pair, alerting before separation is lost."},{"@type":"HowToStep","name":"Dynamic geofences","text":"Create, move, and resize 3D keep-in / keep-out volumes live, with immediate violation alerts."},{"@type":"HowToStep","name":"Operator dashboard","text":"Render tracks, geofence volumes, and the advisory alert queue in a web dashboard on the homelab."},{"@type":"HowToStep","name":"Human-in-the-loop resolutions","text":"Propose altitude, hold, or reroute manoeuvres that a human approves before any MAVLink command is sent to an aircraft."},{"@type":"HowToStep","name":"Scripted test cases","text":"Run repeatable conflict scenarios and sign off result sheets logging time-to-alert and resolution quality."},{"@type":"HowToStep","name":"Integration","text":"Publish tracks and alerts into the multi-domain common operating picture over MQTT."}]}</script>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Defence Builds", "item": "https://tyfsadik.org/work/defence/defence-hardware-program.html"}, {"@type": "ListItem", "position": 3, "name": "Mini Airspace Deconfliction Manager", "item": "https://tyfsadik.org/work/defence/airspace-deconfliction-manager.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Second SITL instance never connected'?", "acceptedAnswer": {"@type": "Answer", "text": "I forgot the -I instance offset, so both instances fought over the same ports and the second one's telemetry silently went nowhere. Fix: unique -I and --sysid per instance, and a heartbeat check in the ingest path that screams instead of waiting forever."}}, {"@type": "Question", "name": "How do I fix 'Beacons dropped packets in bursts'?", "acceptedAnswer": {"@type": "Answer", "text": "the ESP32's default modem sleep batches radio traffic, which made stand-in tracks jump and nearly triggered false conflicts. Fix: WiFi.setSleep(false) in the beacon firmware, confirmed with a packet-gap histogram."}}, {"@type": "Question", "name": "How do I fix 'Alerts flapped at the bubble boundary'?", "acceptedAnswer": {"@type": "Answer", "text": "a single-sample threshold raised and cleared the same conflict several times a second as telemetry jittered. Fix: require three consecutive violating predictions to raise, and a clear margin to release, classic hysteresis."}}, {"@type": "Question", "name": "How do I fix 'Predictions were useless at default telemetry rates'?", "acceptedAnswer": {"@type": "Answer", "text": "SITL streams position slowly unless asked, and 1 Hz updates made TCPA estimates jump around. Fix: request GLOBAL_POSITION_INT at 10 Hz with MAV_CMD_SET_MESSAGE_INTERVAL on connect."}}, {"@type": "Question", "name": "How do I fix '\"Repeatable\" scenarios were not repeatable'?", "acceptedAnswer": {"@type": "Answer", "text": "SITL kept leftover waypoints and parameters between runs, so run 2 never matched run 1. Fix: the harness restarts instances and wipes state (sim_vehicle.py -w) before every run."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
+        <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content">
+  <div class="container">
+    <div class="content-box">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="defence-hardware-program.html">Defence</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Mini Airspace Deconfliction Manager</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Mini Airspace Deconfliction Manager</h1>
+      <p class="subtitle">A small-scale UAS airspace manager on my bench: ESP32 tracker beacons plus ArduPilot SITL simulated drones, dynamic geofences, predicted-conflict alerts, and a human-in-the-loop override for every resolution.</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2026</span>
+      <span class="meta-category">Defence</span>
+      <span class="meta-category">Simulation</span>
+      <span class="meta-category">In Progress</span>
+    </div>
+
+    <nav class="viz-toc" aria-label="On this page">
+      <strong>On this page</strong>
+      <ul>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#proof">Proof of Build</a></li>
+        <li><a href="#bom">Bill of Materials</a></li>
+        <li><a href="#wiring">Wiring &amp; Connections</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#tcpa">How Conflict Prediction Works</a></li>
+        <li><a href="#how-building">How I Built It</a></li>
+        <li><a href="#testing">Testing &amp; Metrics</a></li>
+        <li><a href="#troubleshooting">Troubleshooting &amp; Lessons</a></li>
+        <li><a href="#canada-notes">Legal &amp; Safety Notes</a></li>
+        <li><a href="#status">Status &amp; Roadmap</a></li>
+        <li><a href="#related">Related Builds</a></li>
+        <li><a href="#build-phases">Build Narrative: Phase by Phase</a></li>
+        <li><a href="#what-you-need">What You Need</a></li>
+        <li><a href="#challenges-lessons">Challenges and Lessons Learned</a></li>
+        <li><a href="#what-next">What Is Next</a></li>
+      </ul>
+    </nav>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        When a dozen uncrewed aircraft share the same block of sky, somebody, or something, has to
+        keep them apart. The <strong>Canadian Army is studying exactly this problem</strong>: how to
+        manage airspace shared by many uncrewed aircraft at once, a discipline known as airspace
+        deconfliction. With the <strong>Defence Drone Initiative</strong> (launched July 23, 2026)
+        promising fleets of cheap tactical drones, and DRDC trials like Operation NANOOK pushing more
+        uncrewed systems into the same training areas, deconfliction stops being an airline problem
+        and becomes a platoon-level one.
+      </p>
+      <p>
+        This build explores that problem safely and cheaply. It is <strong>mostly simulation</strong>:
+        several ArduPilot SITL drone instances fly missions on my homelab and stream MAVLink telemetry
+        into a manager I wrote. A handful of physical ESP32 tracker beacons stand in for live tracks,
+        so there is real RF hardware in the loop. On top of that track picture sit the two things a
+        deconfliction system actually does: <strong>predict conflicts before separation is lost</strong>,
+        and <strong>enforce dynamic geofences</strong> the operator can draw, move, and resize live.
+      </p>
+      <p>
+        The design rule that shapes everything: the manager is <strong>advisory, never autonomous</strong>.
+        It proposes resolutions, climb, hold, reroute, and a human approves every single one. That is
+        deliberate: it mirrors how military airspace control actually works, and it makes the system
+        safe to experiment with at any scale.
+      </p>
+    </section>
+
+    <section id="proof">
+      <h2>Proof of Build</h2>
+      <img src="../../Prove/Mini%20airspace%20deconfliction%20manager.jpeg" alt="Airspace manager workbench with three labelled ESP32 tracker beacons, a breadboarded controller with an OLED display, signed test-case sheets, and a laptop running ArduPilot showing 3D dynamic geofence volumes with a conflict alert on a drone track" loading="lazy" width="1408" height="768">
+      <p class="diagram-label">The bench as it sits today: three labelled ESP32 tracker beacons, the breadboarded controller with its OLED status display, the signed test-case result sheets, and the laptop running ArduPilot SITL with 3D geofence volumes and a live conflict alert on a drone track.</p>
+    </section>
+
+    <section id="bom">
+      <h2>Bill of Materials</h2>
+      <table class="bom-table">
+        <thead><tr><th>Item</th><th>What I used</th><th>Est. US$</th></tr></thead>
+        <tbody>
+          <tr><td>Beacons</td><td>3 cheap ESP32 boards (tracker beacons)</td><td>6-12 each</td></tr>
+          <tr><td>Simulation</td><td>ArduPilot SITL (free), several drone instances</td><td>0</td></tr>
+          <tr><td>Compute</td><td>Existing laptop / homelab node</td><td>0</td></tr>
+          <tr><td>Display/UI</td><td>Web dashboard on the homelab</td><td>0</td></tr>
+        </tbody>
+      </table>
+      <p>
+        This is deliberately the cheapest build in the program: the point is that deconfliction is a
+        software and doctrine problem, not a hardware procurement. The ESP32s were already in the
+        Phase 3 parts bin; everything else is free software and machines I already own.
+      </p>
+    </section>
+
+    <section id="wiring">
+      <h2>Wiring &amp; Connections</h2>
+      <p>
+        There is very little copper in this build, most of the "wiring" is UDP sockets, but the
+        few physical and logical links all have to be right or the track picture goes stale silently:
+      </p>
+      <table>
+        <thead><tr><th>From</th><th>To</th><th>Cable or interface</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>ESP32 beacons (x3)</td><td>Bench Wi-Fi access point</td><td>2.4 GHz Wi-Fi (WPA2), UDP to manager :5005</td><td>Position packets at 5 Hz; static DHCP lease per beacon MAC so IDs survive reboots</td></tr>
+          <tr><td>Beacon controller ESP32</td><td>SSD1306 OLED display</td><td>4-wire I2C: GPIO21 (SDA), GPIO22 (SCL), 3.3 V, GND</td><td>Display at address 0x3C; shows beacon health and active alert count</td></tr>
+          <tr><td>ESP32 boards</td><td>Laptop</td><td>USB-C cable</td><td>Flashing and serial monitor at 115200 baud; removed in normal operation</td></tr>
+          <tr><td>ArduPilot SITL instances</td><td>Manager ingest</td><td>Loopback UDP 14550-14552</td><td>MAVLink telemetry; GLOBAL_POSITION_INT requested at 10 Hz per instance</td></tr>
+          <tr><td>Manager</td><td>SITL instances</td><td>Loopback UDP (same MAVLink sockets)</td><td>Approved resolution commands only, nothing flows without a human click</td></tr>
+          <tr><td>Manager</td><td>MQTT broker (homelab)</td><td>TCP 1883</td><td><code>cop/air/*</code> topics, QoS 1; integration feed for the common operating picture</td></tr>
+          <tr><td>Operator browser</td><td>Dashboard backend</td><td>HTTP :8080 + WebSocket on the LAN</td><td>Leaflet map UI; 2 Hz state push, no full-history resend</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid" role="img" aria-label="Airspace deconfliction manager data flow">
+flowchart LR
+  subgraph Traffic["Traffic Sources"]
+    SITL["ArduPilot SITL<br/>three drone instances"]
+    ESP["ESP32 tracker beacons<br/>stand-in live tracks"]
+  end
+  ING["Track ingest<br/>MAVLink + UDP<br/>pymavlink"]
+  TM[("Track store<br/>position history")]
+  CE["Conflict engine<br/>trajectory prediction<br/>time-to-closest-approach"]
+  GF["Geofence service<br/>3D keep-in / keep-out"]
+  AQ[("Alert queue<br/>advisory only")]
+  UI["Operator dashboard<br/>map + volumes + queue"]
+  HUMAN["Human operator<br/>approves every resolution"]
+  CMD["Resolution commands<br/>MAVLink to SITL"]
+  COP["Common operating<br/>picture feed"]
+  SITL --> ING
+  ESP --> ING
+  ING --> TM
+  TM --> CE
+  TM --> GF
+  CE --> AQ
+  GF --> AQ
+  AQ --> UI
+  TM --> UI
+  UI --> HUMAN
+  HUMAN --> CMD
+  CMD --> SITL
+  AQ --> COP
+      </div>
+      <p class="diagram-label">Figure 1: simulated and physical tracks flow into one track store; the conflict engine and geofence service raise alerts; a human approves every resolution before any command goes back to an aircraft.</p>
+    </section>
+
+    <section id="tcpa">
+      <h2>How Conflict Prediction Works</h2>
+      <p>
+        The conflict engine answers one question for every pair of live tracks: <strong>when will
+        these two aircraft be closest to each other, and how close will that be?</strong> The
+        pipeline runs in four stages, all of them on the constant-velocity model from step 05:
+      </p>
+      <div class="diagram-figure">
+        <div class="mermaid" role="img" aria-label="TCPA conflict prediction pipeline">
+flowchart LR
+  TA["Track A<br/>(position + velocity)"]
+  TB["Track B<br/>(position + velocity)"]
+  RV["Relative position<br/>and velocity vectors"]
+  TCP["Closest-point time<br/>(d of dist-squared = 0)"]
+  MISS["Miss distance<br/>(horizontal + vertical)"]
+  AL{"Inside lookahead<br/>and separation bubble?"}
+  HYS["Hysteresis<br/>(3 consecutive violations)"]
+  QUEUE["Advisory alert queue"]
+  TA --> RV
+  TB --> RV
+  RV --> TCP
+  TCP --> MISS
+  MISS --> AL
+  AL -->|"yes"| HYS --> QUEUE
+  AL -->|"no"| SILENT["Stays quiet"]
+        </div>
+        <p class="diagram-caption"><strong>Figure 2:</strong> the four-stage prediction pipeline: relative motion, time of closest approach, miss distance in horizontal and vertical components, then a stability gate before anything reaches the operator.</p>
+      </div>
+      <p>
+        Two details make this work in practice rather than just in geometry. First, the vertical
+        check is independent: two tracks can miss by metres horizontally and still be a non-event
+        if they are 80 m apart vertically, so the separation bubble is a cylinder (horizontal
+        radius plus vertical band), not a sphere. Second, the alert must fire with <strong>margin</strong>:
+        the design target is an advisory in the queue at least 30 seconds before the predicted
+        separation loss, giving the human time to read it, decide, and click.
+      </p>
+      <div class="diagram-figure">
+        <svg viewBox="0 0 640 220" width="100%" role="img" aria-label="Alert margin design target diagram">
+          <line x1="40" y1="200" x2="620" y2="200" stroke="#9FA2A4" stroke-width="1"/>
+          <line x1="120" y1="40" x2="430" y2="200" stroke="#5B93EF" stroke-width="2"/>
+          <line x1="560" y1="40" x2="430" y2="200" stroke="#E6C947" stroke-width="2"/>
+          <text x="105" y="30" fill="#DBDADA" font-size="12">track A</text>
+          <text x="545" y="30" fill="#DBDADA" font-size="12">track B</text>
+          <line x1="300" y1="20" x2="300" y2="200" stroke="#6FCF6F" stroke-width="2" stroke-dasharray="6,4"/>
+          <text x="290" y="14" fill="#6FCF6F" font-size="12">alert raised</text>
+          <line x1="430" y1="20" x2="430" y2="200" stroke="#E06060" stroke-width="2" stroke-dasharray="6,4"/>
+          <text x="415" y="14" fill="#E06060" font-size="12">predicted separation loss</text>
+          <line x1="300" y1="150" x2="430" y2="150" stroke="#DBDADA" stroke-width="1"/>
+          <text x="315" y="142" fill="#DBDADA" font-size="12">alert margin, target: at least 30 s</text>
+          <text x="40" y="216" fill="#9FA2A4" font-size="11">time</text>
+        </svg>
+        <p class="diagram-caption"><strong>Figure 3:</strong> the alert margin as a design target, not a measured result: the engine must raise the advisory at least 30 s before the predicted separation loss, so the human has time to act. Measured margins will be published after the Run 1-2 series.</p>
+      </div>
+      <div class="viz-note">
+        <strong>Why constant velocity is honest here:</strong> predicting 30-60 s ahead with a
+        straight-line model is a deliberate approximation. Real aircraft manoeuvre, which is why
+        the engine recomputes on every 10 Hz telemetry tick and the bubble gets a hysteresis
+        margin: a prediction that updates faster than reality changes beats a perfect model that
+        runs too slowly to keep up.
+      </div>
+    </section>
+
+    <section id="how-building">
+      <h2>How I Built It</h2>
+      <details class="viz-steps">
+        <summary>Build steps <span class="viz-steps-hint">(10 steps with code; expand to read)</span></summary>
+        <div class="steps">
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>Simulated traffic</strong>
+            <p>The first requirement is a busy sky. I run three ArduPilot SITL instances on a homelab node, each with its own instance offset (<code>-I</code>, which shifts the base ports by 10 per instance) and its own MAVLink system ID (<code>--sysid</code>), and each streaming telemetry out to a dedicated UDP port where the manager listens. Every instance flies an autonomous waypoint mission loaded through MAVProxy, so the virtual field has real crossing traffic, not three drones hovering politely apart.</p>
+            <p class="code-label">BASH, LAUNCHING THREE SITL INSTANCES</p>
+            <pre><code># terminal 1 - drone 1 (default ports, telemetry out on 14550)
+sim_vehicle.py -v ArduCopter -I0 --sysid 1 --out=udp:127.0.0.1:14550
+
+# terminal 2 - drone 2 (base ports shifted by 10, telemetry on 14551)
+sim_vehicle.py -v ArduCopter -I1 --sysid 2 --out=udp:127.0.0.1:14551
+
+# terminal 3 - drone 3 (telemetry on 14552)
+sim_vehicle.py -v ArduCopter -I2 --sysid 3 --out=udp:127.0.0.1:14552
+
+# load a mission on drone 1 from its MAVProxy console:
+#   wp load ../missions/cross_a.txt
+#   mode auto</code></pre>
+            <p><strong>What can go wrong:</strong> forgetting the <code>-I</code> offset makes the second instance collide with the first on ports 5760/5763, and the failure mode is a silently empty telemetry stream rather than an error. I verified each instance by watching for its heartbeat and distinct sysid on its own output port before moving on.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>MAVLink ingest and the common track model</strong>
+            <p>The manager opens one pymavlink connection per SITL instance, waits for the heartbeat, then explicitly requests a 10 Hz <code>GLOBAL_POSITION_INT</code> stream, the default stream rates are far too low for conflict prediction. Every message is normalised into one track model (<code>id, lat, lon, alt, vx, vy, vz, ts, source</code>) so the rest of the system never cares whether a track came from a simulator or a beacon.</p>
+            <p class="code-label">PYTHON, TRACK INGEST (ingest.py, trimmed)</p>
+            <pre><code>from pymavlink import mavutil
+
+SOURCES = {
+    1: "udp:127.0.0.1:14550",
+    2: "udp:127.0.0.1:14551",
+    3: "udp:127.0.0.1:14552",
+}
+
+conns = {sid: mavutil.mavlink_connection(url) for sid, url in SOURCES.items()}
+for sid, c in conns.items():
+    c.wait_heartbeat()
+    # ask the autopilot for GLOBAL_POSITION_INT at 10 Hz (interval in microseconds)
+    c.mav.command_long_send(
+        c.target_system, c.target_component,
+        mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, 0,
+        mavutil.mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT,
+        100000, 0, 0, 0, 0, 0)
+
+msg = conns[1].recv_match(type="GLOBAL_POSITION_INT", blocking=True, timeout=2)
+track = {
+    "id": msg.get_srcSystem(), "lat": msg.lat / 1e7, "lon": msg.lon / 1e7,
+    "alt": msg.relative_alt / 1000.0,
+    "vx": msg.vx / 100.0, "vy": msg.vy / 100.0,
+    # GLOBAL_POSITION_INT vz is cm/s positive DOWN; the track model is up-positive
+    "vz": -msg.vz / 100.0,
+    "source": "sitl",
+}</code></pre>
+            <p><strong>How I verified:</strong> I printed the inter-arrival time of <code>GLOBAL_POSITION_INT</code> per instance; before the <code>SET_MESSAGE_INTERVAL</code> request it sat near 1 Hz and the predicted tracks jumped, after it the stream settled at 10 Hz and predictions smoothed out.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>Physical tracker beacons</strong>
+            <p>Three cheap ESP32 boards act as tracker beacons, stand-ins for live aircraft. Each runs a small Arduino sketch (Arduino-ESP32 core) that joins the bench Wi-Fi and broadcasts a JSON position packet over UDP to the manager at 5 Hz, in exactly the track model from step 02 so the ingest path cannot tell simulated from physical. The beacons matter less for their data than for their reality: they force the pipeline to survive dropped packets, jitter, and reboots, nuisances SITL never has.</p>
+            <p class="code-label">ARDUINO, BEACON FIRMWARE (beacon.ino, trimmed)</p>
+            <pre><code>#include &lt;WiFi.h&gt;
+#include &lt;WiFiUdp.h&gt;
+
+const char* SSID = "benchlab";
+const char* PASS = "....";
+const char* MANAGER_IP = "192.168.1.50";
+const uint16_t MANAGER_PORT = 5005;
+const int BEACON_ID = 101;      // unique per board
+
+WiFiUDP udp;
+
+void setup() {
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);          // modem sleep eats UDP packets in bursts
+  WiFi.begin(SSID, PASS);
+  while (WiFi.status() != WL_CONNECTED) delay(250);
+}
+
+void loop() {
+  // stand-in track: a slow circle, like a drone loitering on station
+  float t = millis() / 1000.0f;
+  float lat = 43.7615f + 0.0005f * cosf(t / 20.0f);
+  float lon = -79.4111f + 0.0005f * sinf(t / 20.0f);
+  char pkt[160];
+  snprintf(pkt, sizeof(pkt),
+    "{\"src\":\"beacon\",\"id\":%d,\"lat\":%.6f,\"lon\":%.6f,\"alt\":%.1f,\"vx\":%.2f,\"vy\":%.2f}",
+    BEACON_ID, lat, lon, 120.0f, 0.0f, 0.0f);
+  udp.beginPacket(MANAGER_IP, MANAGER_PORT);
+  udp.write((const uint8_t*)pkt, strlen(pkt));
+  udp.endPacket();
+  delay(200);                    // 5 Hz
+}</code></pre>
+            <p><strong>What can go wrong:</strong> ESP32 modem sleep (<code>WIFI_PS_MIN_MODEM</code> is the default) buffers and bursts UDP packets, which looks exactly like a manoeuvring aircraft to the conflict engine. <code>WiFi.setSleep(false)</code> fixed it; I confirmed with a packet-gap histogram on the manager side.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>Beacon ingest and health monitoring</strong>
+            <p>The manager runs a small UDP listener for the beacons. The important design decision: <strong>timestamp at ingest, never trust the device clock</strong>, the ESP32s have no real-time clock, so their idea of "now" is useless for a system whose entire job is time-based prediction. The listener also watches per-beacon health and marks a track STALE when packets stop, so a dead beacon drops out of conflict computations instead of freezing in place as a ghost hazard.</p>
+            <p class="code-label">PYTHON, BEACON UDP LISTENER</p>
+            <pre><code>import json, socket, time
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.bind(("0.0.0.0", 5005))
+sock.settimeout(1.0)
+
+last_seen = {}
+STALE_AFTER_S = 2.0
+
+while True:
+    try:
+        data, addr = sock.recvfrom(2048)
+    except socket.timeout:
+        data = None
+    if data:
+        msg = json.loads(data)
+        msg["ts"] = time.time()          # stamp here - beacon has no RTC
+        tracks.update(msg)
+        last_seen[msg["id"]] = msg["ts"]
+    now = time.time()
+    for bid, ts in last_seen.items():
+        tracks.mark_stale(bid, now - ts &gt; STALE_AFTER_S)</code></pre>
+            <p><strong>How I verified:</strong> I pulled the USB power on one beacon mid-run and watched the dashboard: the track must flip to STALE within the timeout and disappear from the conflict engine's pair list. Before the stale logic, a powered-off beacon lingered forever as a phantom conflict.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Conflict engine</strong>
+            <p>The core of the system. For every live track I propagate a constant-velocity prediction forward and compute the <strong>time to closest point of approach (TCPA)</strong> between every pair, in horizontal and vertical components separately, two aircraft 10 m apart horizontally but 80 m apart vertically are not a conflict. If TCPA falls inside the lookahead window and both miss distances fall inside the separation bubble, the engine raises an alert before separation is actually lost. The pairwise check is O(n&sup2;), trivial at this scale; the real work is in the tunables (bubble radius, vertical separation, lookahead) and in alert stability.</p>
+            <p class="code-label">PYTHON, TCPA BETWEEN TWO TRACKS</p>
+            <pre><code>import math
+
+def tcpa(a, b):
+    """Time and miss distance of closest approach, two constant-velocity tracks.
+    Closest approach is taken on the horizontal plane; vertical separation is
+    read at that time, so a flyby that is far apart vertically never reads
+    as a conflict."""
+    rx, ry, rz = b.x - a.x, b.y - a.y, b.alt - a.alt
+    vx, vy, vz = b.vx - a.vx, b.vy - a.vy, b.vz - a.vz
+    vv = vx*vx + vy*vy + vz*vz
+    if vv &lt; 1e-6:
+        # parallel tracks: closest approach is right now
+        return 0.0, math.hypot(rx, ry), abs(rz)
+    hv = vx*vx + vy*vy
+    if hv &lt; 1e-6:
+        t = 0.0   # no horizontal motion: horizontal miss is current separation
+    else:
+        t = max(0.0, -(rx*vx + ry*vy) / hv)
+    horiz = math.hypot(rx + vx*t, ry + vy*t)   # horizontal miss (m)
+    vert = abs(rz + vz*t)                       # vertical miss at that time (m)
+    return t, horiz, vert
+
+def check_pair(a, b, lookahead_s=60, h_sep=100, v_sep=30):
+    t, horiz, vert = tcpa(a, b)
+    return t &lt;= lookahead_s and horiz &lt; h_sep and vert &lt; v_sep</code></pre>
+            <p><strong>What can go wrong:</strong> with a single-sample threshold, alerts flap on and off as telemetry jitters near the bubble boundary. I require three consecutive violating predictions to raise an alert and a clear margin to release it (hysteresis), verified by walking a simulated track tangentially along the bubble edge and watching the queue stay quiet.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">06</div>
+          <div class="step-body">
+            <strong>Dynamic geofences</strong>
+            <p>The geofence service holds 3D keep-in and keep-out volumes, cylinders and boxes with floor and ceiling altitudes, defined as plain JSON so the dashboard can create, move, and resize them live. Every incoming track update is tested against all active volumes and a violation alerts immediately. This mirrors the real use case: an exercise safety officer declaring a temporary restricted volume over a live-fire range, or shrinking the keep-in box as weather moves in.</p>
+            <p class="code-label">JSON, A KEEP-OUT VOLUME</p>
+            <pre><code>{
+  "id": "RZ-ALPHA",
+  "type": "keep-out",
+  "shape": "cylinder",
+  "center": {"lat": 43.7615, "lon": -79.4111},
+  "radius_m": 250,
+  "floor_m": 0,
+  "ceil_m": 150
+}</code></pre>
+            <p class="code-label">PYTHON, POINT-IN-VOLUME CHECK</p>
+            <pre><code>def inside_cylinder(track, vol):
+    d = haversine_m(track.lat, track.lon,
+                    vol["center"]["lat"], vol["center"]["lon"])
+    in_footprint = d &lt;= vol["radius_m"]
+    in_altband = vol["floor_m"] &lt;= track.alt &lt;= vol["ceil_m"]
+    return in_footprint and in_altband</code></pre>
+            <p><strong>What can go wrong:</strong> naive degree arithmetic (treating lat/lon as flat) distorts distances badly at Toronto's latitude, a 250 m radius becomes an ellipse. I convert through haversine / a local ENU frame everywhere, and verified by checking that a circle drawn on the dashboard measures the same radius north-south as east-west.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">07</div>
+          <div class="step-body">
+            <strong>Operator dashboard</strong>
+            <p>The UI is a small FastAPI backend on the homelab pushing state over a WebSocket to a Leaflet page: tracks as moving markers, geofence volumes as shaded 2D footprints with floor and ceiling labels (Leaflet renders in 2D, so true 3D extrusion would need a separate rendering layer), and the alert queue down the side with approve/reject buttons. It runs at a 2 Hz push of <em>current state only</em>, the browser is a display, not a database.</p>
+            <p class="code-label">PYTHON, DASHBOARD BACKEND (trimmed)</p>
+            <pre><code>import asyncio
+from fastapi import FastAPI, WebSocket
+
+app = FastAPI()
+
+@app.websocket("/ws")
+async def feed(ws: WebSocket):
+    await ws.accept()
+    while True:
+        await ws.send_json({
+            "tracks": tracks.snapshot(),      # current state only
+            "volumes": geofences.snapshot(),
+            "alerts": alert_queue.pending(),  # advisory queue, needs a human
+        })
+        await asyncio.sleep(0.5)              # 2 Hz UI refresh</code></pre>
+            <p><strong>What can go wrong:</strong> my first version shipped full track history every tick and the browser tab crawled after a few minutes. Sending only the latest state (and letting the front end keep short trails) fixed it, verified with the browser's performance panel over a long soak.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">08</div>
+          <div class="step-body">
+            <strong>Human-in-the-loop resolutions</strong>
+            <p>When the conflict engine fires, the manager proposes manoeuvres, an altitude change for one track, a hold, or a reroute around the predicted conflict point, but the queue is <strong>advisory, never autonomous</strong>: nothing reaches an aircraft until a human clicks approve. Approved resolutions go back to the SITL instance as MAVLink commands, and the dashboard then tracks whether the approved manoeuvre actually cleared the conflict; rejected proposals are logged with their outcomes for the test-case review.</p>
+            <p class="code-label">PYTHON, SENDING AN APPROVED ALTITUDE RESOLUTION TO SITL</p>
+            <pre><code>def send_guided_alt(conn, lat_deg, lon_deg, alt_m):
+    # switch the vehicle to GUIDED with an explicit mode command, then verify;
+    # MAV_CMD_NAV_GUIDED_ENABLE is for Guided-within-Auto, not a plain mode switch
+    guided = conn.mode_mapping()["GUIDED"]
+    conn.mav.command_long_send(
+        conn.target_system, conn.target_component,
+        mavutil.mavlink.MAV_CMD_DO_SET_MODE, 0,
+        mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+        guided, 0, 0, 0, 0, 0)
+    conn.mav.set_position_target_global_int_send(
+        0, conn.target_system, conn.target_component,
+        mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
+        0b110111111000,      # type_mask: use lat/lon/alt, ignore vel/accel/yaw
+        int(lat_deg * 1e7), int(lon_deg * 1e7), alt_m,
+        0, 0, 0,             # velocity ignored
+        0, 0, 0,             # acceleration ignored
+        0, 0)                # yaw, yaw_rate ignored</code></pre>
+            <p><strong>How I verified:</strong> I watch for the <code>COMMAND_ACK</code> and then re-run the TCPA computation on the post-command track, an approved climb is only counted as a resolution when the predicted closest approach moves outside the bubble. Commands sent before the mode switch are silently ignored, which was my first "why didn't it climb?" bug, and I confirm the heartbeat's <code>custom_mode</code> reports GUIDED before the position target goes out.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">09</div>
+          <div class="step-body">
+            <strong>Scripted test cases</strong>
+            <p>Deconfliction logic is only worth trusting if it survives repeatable scenarios, so I scripted a set of conflict cases, crossing paths at a common altitude, converging altitudes on parallel tracks, and a deliberate geofence breach, each defined as mission files plus any volumes, runnable repeatedly with identical initial conditions. Every run produces a result sheet (the paper copies on the bench in the photo) that gets signed off with what the system detected, when it alerted, and how the resolution played out.</p>
+            <p class="code-label">PYTHON, SCENARIO HARNESS (trimmed)</p>
+            <pre><code>SCENARIOS = {
+    "crossing-paths":    {"missions": {1: "missions/cross_a.txt",
+                                       2: "missions/cross_b.txt"}},
+    "altitude-converge": {"missions": {1: "missions/level_a.txt",
+                                       2: "missions/climb_b.txt"}},
+    "geofence-breach":   {"missions": {1: "missions/straight_a.txt"},
+                          "volumes": ["volumes/rz_alpha.json"]},
+}
+
+def run(name, repeat=10):
+    for i in range(repeat):
+        reset_sitl()                        # wipe state between runs
+        load_scenario(SCENARIOS[name])      # wp load per drone, push volumes
+        t0 = time.time()
+        result = watch_until_resolved(timeout=300)
+        sheet.log(name, i,
+                  time_to_alert_s=result.alert_t - t0,
+                  margin_s=result.loss_t - result.alert_t,
+                  cleared=result.cleared)</code></pre>
+            <p><strong>What can go wrong:</strong> SITL leaks state between runs (leftover waypoints, changed parameters), which makes "repeatable" runs anything but. The harness restarts instances and wipes (<code>sim_vehicle.py -w</code>) before every run; I confirmed repeatability by diffing the mission state at <code>t0</code> across runs.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">10</div>
+          <div class="step-body">
+            <strong>Integration with the common operating picture</strong>
+            <p>The manager does not live alone: its tracks and alerts publish into the <a href="multi-domain-common-operating-picture.html">multi-domain common operating picture</a> over the same MQTT bus the other defence nodes use, signed the same way, so air tracks become one more layer alongside the passive radar, acoustic, and ground sensors, and the COP's human-in-the-loop queue is the same one this manager writes to.</p>
+            <p class="code-label">PYTHON, PUBLISHING ALERTS TO THE COP BUS</p>
+            <pre><code>import json
+import paho.mqtt.client as mqtt
+
+bus = mqtt.Client(client_id="airspace-manager")
+# paho queues outbound publishes in memory while disconnected; this is NOT a
+# disk-backed store-and-forward queue and does not survive a process restart
+bus.max_queued_messages_set(100)
+bus.reconnect_delay_set(min_delay=1, max_delay=30)
+bus.connect("mqtt.homelab.local", 1883)
+
+def on_alert(alert):
+    payload = json.dumps(alert, separators=(",", ":"))
+    bus.publish(
+        "cop/air/alerts",
+        json.dumps({"msg": payload, "sig": sign_ed25519(payload)}),
+        qos=1)          # at-least-once; survives Wi-Fi blips while connected</code></pre>
+            <p><strong>What can go wrong:</strong> at QoS 0 an alert can vanish on a Wi-Fi hiccup, the worst kind of failure for an advisory system, because the operator never knows it existed. QoS 1 plus paho's in-memory queued messages while the broker is unreachable covers brief outages, with a caveat: that queue is in memory only, so a broker outage that outlasts the process loses alerts. A disk-backed outbox like the COP build's is the hardened path; I verify by killing the broker mid-scenario and confirming the alert arrives on restart.</p>
+          </div>
+        </div>
+        </div>
+      </details>
+    </section>
+
+    <section id="testing">
+      <h2>Testing &amp; Metrics</h2>
+      <p>
+        Testing is scenario-driven, built around the scripted harness from step 09. Every numbered
+        run below follows the same discipline: identical initial conditions, a fresh SITL state, a
+        signed result sheet per repetition, and a pass only when the alert precedes the separation
+        loss with margin.
+      </p>
+
+      <h3>Run 1, Crossing paths</h3>
+      <p>
+        <strong>Setup:</strong> two SITL drones on perpendicular waypoint courses at the same
+        altitude, timed to reach the intersection within seconds of each other.
+        <strong>Procedure:</strong> start both missions simultaneously, let the conflict engine run,
+        then approve the proposed altitude resolution for one drone.
+        <strong>Metric:</strong> time-to-alert (scenario start to alert in queue) and alert margin
+        (alert time to predicted separation loss); post-resolution, the recomputed TCPA must sit
+        outside the bubble.
+      </p>
+
+      <h3>Run 2, Altitude convergence</h3>
+      <p>
+        <strong>Setup:</strong> two drones on parallel tracks, one climbing through the other's
+        altitude at a fixed vertical rate.
+        <strong>Procedure:</strong> no operator input until the alert fires; then approve a hold for
+        the climbing drone.
+        <strong>Metric:</strong> whether the vertical miss distance is computed correctly (this run
+        exists because horizontal-only checks pass here while separation is actually being lost),
+        and time-to-alert margin as in Run 1.
+      </p>
+
+      <h3>Run 3, Geofence breach and live edit</h3>
+      <p>
+        <strong>Setup:</strong> one drone on a straight course through where a keep-out cylinder will
+        appear.
+        <strong>Procedure:</strong> create the volume live from the dashboard while the drone is
+        inbound, then move and resize it mid-run.
+        <strong>Metric:</strong> violation alert latency from the crossing telemetry packet, and
+        enforcement latency from each live edit, target is the next track update.
+      </p>
+
+      <h3>Run 4, Quiet-sky false-alarm soak</h3>
+      <p>
+        <strong>Setup:</strong> three SITL drones on well-separated missions plus all three beacons
+        running their stand-in tracks, no designed conflict.
+        <strong>Procedure:</strong> soak for two hours with normal waypoint traffic and beacon jitter.
+        <strong>Metric:</strong> false-alarm count, target is zero; every spurious alert gets
+        root-caused before the soak counts.
+      </p>
+
+      <h3>Run 5, Degraded track (beacon drop-out mid-conflict)</h3>
+      <p>
+        <strong>Setup:</strong> a beacon on a converging course with a SITL drone.
+        <strong>Procedure:</strong> kill the beacon's power after the conflict engine has begun
+        tracking the pair, then restore it.
+        <strong>Metric:</strong> the track must flag STALE inside the timeout, the conflict must
+        downgrade gracefully rather than freeze on the last position, and the track must rejoin
+        cleanly on beacon return.
+      </p>
+
+      <h3>Targets and Current Status</h3>
+      <table>
+        <thead><tr><th>Metric</th><th>Target</th><th>Current status</th></tr></thead>
+        <tbody>
+          <tr><td>Time-to-alert margin (Runs 1-2)</td><td>Alert at least 30 s before predicted separation loss</td><td>In progress, harness runs, sheets being filled</td></tr>
+          <tr><td>False alerts (Run 4)</td><td>Zero over a 2-hour quiet soak</td><td>In progress</td></tr>
+          <tr><td>Resolution clearance</td><td>Predicted CPA outside the bubble after every approved manoeuvre</td><td>In progress</td></tr>
+          <tr><td>Geofence edit-to-enforcement (Run 3)</td><td>Next track update (1 s or less)</td><td>In progress</td></tr>
+          <tr><td>Stale-track detection (Run 5)</td><td>Flag within 2 s of the last beacon packet</td><td>In progress</td></tr>
+        </tbody>
+      </table>
+      <p>
+        No results are published yet: the scenario harness runs and the result sheets are being
+        filled in, but numbers go up only when every scripted case has been run repeatedly and the
+        sheets are consistent.
+      </p>
+    </section>
+
+    <section id="troubleshooting">
+      <h2>Troubleshooting &amp; Lessons</h2>
+      <ul>
+        <li><strong>Second SITL instance never connected:</strong> I forgot the <code>-I</code> instance offset, so both instances fought over the same ports and the second one's telemetry silently went nowhere. Fix: unique <code>-I</code> and <code>--sysid</code> per instance, and a heartbeat check in the ingest path that screams instead of waiting forever.</li>
+        <li><strong>Beacons dropped packets in bursts:</strong> the ESP32's default modem sleep batches radio traffic, which made stand-in tracks jump and nearly triggered false conflicts. Fix: <code>WiFi.setSleep(false)</code> in the beacon firmware, confirmed with a packet-gap histogram.</li>
+        <li><strong>Alerts flapped at the bubble boundary:</strong> a single-sample threshold raised and cleared the same conflict several times a second as telemetry jittered. Fix: require three consecutive violating predictions to raise, and a clear margin to release, classic hysteresis.</li>
+        <li><strong>Predictions were useless at default telemetry rates:</strong> SITL streams position slowly unless asked, and 1 Hz updates made TCPA estimates jump around. Fix: request <code>GLOBAL_POSITION_INT</code> at 10 Hz with <code>MAV_CMD_SET_MESSAGE_INTERVAL</code> on connect.</li>
+        <li><strong>"Repeatable" scenarios were not repeatable:</strong> SITL kept leftover waypoints and parameters between runs, so run 2 never matched run 1. Fix: the harness restarts instances and wipes state (<code>sim_vehicle.py -w</code>) before every run.</li>
+      </ul>
+    </section>
+
+    <section id="canada-notes">
+      <h2>Legal &amp; Safety Notes</h2>
+      <div class="note">
+        <strong>Simulation-first by design:</strong> this build is deliberately mostly software.
+        ArduPilot SITL carries all flying while the legal side stays simple, real flying waits for
+        Transport Canada compliance (registration, pilot certification, and airspace checks), the
+        same rule that gates the thermal SAR drone build.
+      </div>
+      <div class="note">
+        <strong>Scope:</strong> this project coordinates only my own aircraft and simulated traffic.
+        The ESP32 beacons broadcast stand-in positions on my own network; nothing here tracks,
+        commands, or interferes with anyone else's aircraft.
+      </div>
+    </section>
+
+    <section id="status">
+      <h2>Status &amp; Roadmap</h2>
+      <ul>
+        <li><strong>Done</strong>: multi-instance ArduPilot SITL environment with MAVLink ingest via pymavlink; common track model covering simulated and beacon tracks; ESP32 beacon firmware broadcasting stand-in positions; dynamic 3D geofence service with live edit and violation alerts; operator dashboard with alert queue and approve/reject flow.</li>
+        <li><strong>In progress</strong>: conflict-engine tuning (separation bubble, lookahead horizon, alert flapping); scripted test-case harness with signed result sheets; resolution manoeuvre set (altitude change, hold, reroute) end-to-end back into SITL.</li>
+        <li><strong>Next</strong>: publish scenario metrics once runs are repeatable; publish tracks and alerts into the common operating picture; add a third scripted scenario family (beacon drop-out mid-conflict) to test degraded-track behaviour.</li>
+      </ul>
+    </section>
+
+    <section id="related">
+      <h2>Related Builds</h2>
+      <ul>
+        <li><a href="defence-hardware-program.html"><strong>Canadian Defence Hardware Program</strong></a>, the program hub; this manager is one of the sky builds.</li>
+        <li><a href="multi-domain-common-operating-picture.html"><strong>Multi-Domain Common Operating Picture</strong></a>, where this manager's tracks and alerts ultimately flow.</li>
+        <li><a href="thermal-sar-drone.html"><strong>Thermal Search-and-Rescue Drone</strong></a>, the real aircraft this manager would one day share airspace with; also SITL-first pending Transport Canada compliance.</li>
+        <li><a href="lentus-drone-mapping.html"><strong>Operation LENTUS-Style Drone Mapping</strong></a>, the simulation-side drone workflow that reuses the same ArduPilot SITL environment.</li>
+      </ul>
+    </section>
+
+
+    <section id="build-phases">
+      <h2>Build Narrative: Phase by Phase</h2>
+      <p><strong>Phase 1: simulation environment.</strong> Several ArduPilot SITL drone instances fly missions on the homelab and stream MAVLink telemetry. Each instance gets a unique -I offset and sysid, after an early session where two instances fought over the same ports and the second one's telemetry silently went nowhere; the ingest path now runs a heartbeat check that screams instead of waiting forever.</p>
+      <p><strong>Phase 2: telemetry ingest.</strong> pymavlink ingests the SITL streams into the manager. Default SITL telemetry rates made TCPA estimates jump, so the manager requests GLOBAL_POSITION_INT at 10 Hz with MAV_CMD_SET_MESSAGE_INTERVAL on connect.</p>
+      <p><strong>Phase 3: physical stand-ins.</strong> Three cheap ESP32 tracker beacons broadcast stand-in positions so there is real RF hardware in the loop. The ESP32's default modem sleep batched radio traffic and made tracks jump toward false conflicts; WiFi.setSleep(false) in the firmware fixed it, confirmed with a packet-gap histogram.</p>
+      <p><strong>Phase 4: conflict engine.</strong> Predicted conflicts come from time-to-closest-point-of-approach against a separation bubble and a lookahead horizon. A single-sample threshold flapped alerts several times a second on telemetry jitter, so raising now requires three consecutive violating predictions and release needs a clear margin, classic hysteresis.</p>
+      <p><strong>Phase 5: geofences and resolutions.</strong> A dynamic 3D geofence service supports operator-drawn, moved, and resized volumes with live violation alerts. Resolution manoeuvres (climb, hold, reroute) run end to end back into SITL. The manager is advisory only: it proposes, a human approves every resolution, mirroring how military airspace control actually works.</p>
+      <p><strong>Phase 6: test harness.</strong> A scripted test-case harness restarts instances and wipes state (<code>sim_vehicle.py -w</code>) before every run, because leftover waypoints and parameters made run 2 never match run 1. Result sheets are signed so repeats are comparable.</p>
+    </section>
+
+    <section id="what-you-need">
+      <h2>What You Need</h2>
+<p>The cheapest build in the program on purpose: deconfliction is a software and doctrine problem, not a hardware procurement. The only real cost is compute you already own.</p>
+      <table>
+        <thead><tr><th>Category</th><th>Item</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Hardware</td><td>3 ESP32 tracker beacons</td><td>Cheap boards as live RF stand-ins; disable modem sleep in the firmware</td></tr>
+          <tr><td>Hardware</td><td>Compute</td><td>Existing laptop or homelab node for the SITL instances and the manager</td></tr>
+          <tr><td>Software</td><td>ArduPilot SITL</td><td>Free; several drone instances with unique -I offsets and sysids</td></tr>
+          <tr><td>Software</td><td>pymavlink, Python</td><td>MAVLink ingest at 10 Hz, the common track model, the conflict engine</td></tr>
+          <tr><td>Software</td><td>Web dashboard</td><td>Operator view with the alert queue and the approve/reject flow</td></tr>
+          <tr><td>Skills</td><td>Python, MAVLink basics, software testing</td><td>Scenario design, hysteresis tuning, disciplined repeatable test harnesses</td></tr>
+          <tr><td>Accounts</td><td>None</td><td>No accounts or licenses required</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="challenges-lessons">
+      <h2>Challenges and Lessons Learned</h2>
+      <ul>
+        <li><strong>The second SITL instance never connected.</strong> I forgot the -I instance offset, so both instances fought over the same ports. Lesson: unique -I and sysid per instance, and a heartbeat check in the ingest path that screams instead of waiting forever.</li>
+        <li><strong>Beacons dropped packets in bursts.</strong> ESP32 modem sleep batched radio traffic and stand-in tracks jumped, nearly triggering false conflicts. Lesson: WiFi.setSleep(false) in beacon firmware, confirmed with a packet-gap histogram.</li>
+        <li><strong>Alerts flapped at the bubble boundary.</strong> A single-sample threshold raised and cleared the same conflict several times a second. Lesson: three consecutive violations to raise, a clear margin to release, classic hysteresis.</li>
+        <li><strong>Predictions were useless at default telemetry rates.</strong> 1 Hz position updates made TCPA estimates jump. Lesson: request 10 Hz GLOBAL_POSITION_INT on connect with MAV_CMD_SET_MESSAGE_INTERVAL.</li>
+        <li><strong>Repeatable scenarios were not repeatable.</strong> SITL kept leftover waypoints and parameters between runs. Lesson: the harness restarts instances and wipes state before every run.</li>
+      </ul>
+    </section>
+
+    <section id="what-next">
+      <h2>What Is Next</h2>
+      <ul>
+        <li>Publish scenario metrics once runs are fully repeatable: detection lead time, false-alert rate, resolution success.</li>
+        <li>Publish tracks and alerts into the multi-domain common operating picture.</li>
+        <li>Add a third scripted scenario family: beacon drop-out mid-conflict, testing how the engine behaves when a track degrades during an active alert.</li>
+        <li>Tune the lookahead horizon against the scenario data rather than by feel.</li>
+        <li>Longer term, feed real outdoor flight tracks (from the thermal SAR drone) into the manager as live data alongside the beacons.</li>
+      </ul>
+    </section>
+</div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ground: Seismic &amp; Acoustic Perimeter Mesh | TYFSADIK</title>
+  <meta name="description" content="Solar-powered 915 MHz LoRa mesh of ESP32 sensor nodes with ADXL355 accelerometers and geophones, classifying vehicles, footsteps, and wind at the edge.">
+  <meta name="keywords" content="seismic perimeter security, LoRa sensor mesh 915 MHz, ESP32 LoRa node, ADXL355 accelerometer, SM-24 geophone, edge ML classification, vehicle detection seismic, Canadian Arctic Sensor Suite, ground domain awareness, MQTT signed detections, common operating picture, solar sensor node">
+  <meta name="robots" content="index,follow">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <link rel="canonical" href="https://tyfsadik.org/work/defence/ground-seismic-perimeter-mesh.html">
+  <meta property="og:title" content="Ground: Seismic &amp; Acoustic Perimeter Mesh | TYFSADIK">
+  <meta property="og:description" content="Solar-powered 915 MHz LoRa mesh of ESP32 sensor nodes with ADXL355 accelerometers and geophones, classifying vehicles, footsteps, and wind at the edge.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/work/defence/ground-seismic-perimeter-mesh.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/Prove/Ground%20seismic%20and%20acoustic%20perimeter%20mesh.jpeg">
+  <meta name="twitter:title" content="Ground: Seismic &amp; Acoustic Perimeter Mesh | TYFSADIK">
+  <meta name="twitter:description" content="Solar-powered 915 MHz LoRa mesh of ESP32 sensor nodes with ADXL355 accelerometers and geophones, classifying vehicles, footsteps, and wind at the edge.">
+  <meta name="twitter:image" content="https://tyfsadik.org/Prove/Ground%20seismic%20and%20acoustic%20perimeter%20mesh.jpeg">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Ground: Seismic & Acoustic Perimeter Mesh", "name": "Ground: Seismic & Acoustic Perimeter Mesh", "description": "Solar-powered 915 MHz LoRa mesh of ESP32 sensor nodes with ADXL355 accelerometers and geophones, classifying vehicles, footsteps, and wind at the edge.", "image": "https://tyfsadik.org/Prove/Ground%20seismic%20and%20acoustic%20perimeter%20mesh.jpeg", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "publisher": {"@type": "Organization", "name": "TYFSADIK", "url": "https://tyfsadik.org/"}, "datePublished": "2026-09-30", "inLanguage": "en-CA", "mainEntityOfPage": {"@type": "WebPage", "@id": "https://tyfsadik.org/work/defence/ground-seismic-perimeter-mesh.html"}, "keywords": ["seismic perimeter mesh", "LoRa 915 MHz", "ESP32", "ADXL355", "SM-24 geophone", "edge classification", "Canadian Arctic Sensor Suite", "MQTT", "common operating picture"]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Build a solar LoRa seismic and acoustic perimeter mesh","description":"Bring up ESP32 LoRa nodes, wire ADXL355 seismic sensors, classify vehicles vs footsteps vs wind at the edge, mesh detections to a Pi gateway, and report signed detections to a common operating picture.","step":[{"@type":"HowToStep","name":"Node bring-up","text":"Flash the ESP32 LoRa boards with arduino-cli and bring the SX1262 radio up with RadioLib at 915 MHz (North America; 868 MHz is Europe)."},{"@type":"HowToStep","name":"Radio range survey","text":"Run a two-node range check, logging RSSI and SNR per packet to find the honest hop distance before designing the mesh."},{"@type":"HowToStep","name":"Seismic front end","text":"Wire the ADXL355-class MEMS accelerometer over SPI, verify DEVID, and stream the Z axis at ~1 kHz."},{"@type":"HowToStep","name":"Edge feature extraction","text":"Window the samples and compute RMS plus FFT spectral band energies so the classifier sees a compact feature vector."},{"@type":"HowToStep","name":"Edge classification","text":"Classify vehicles vs footsteps vs wind on-device, thresholds first and then a tiny TFLite Micro model, so only detections leave the node."},{"@type":"HowToStep","name":"LoRa mesh protocol","text":"Define a versioned packet format with source, sequence, hop limit, and CRC, with dedup and backoff to keep floods sane."},{"@type":"HowToStep","name":"Store-and-forward buffering","text":"Buffer signed detections to LittleFS when the gateway is unreachable and replay oldest-first on reconnect."},{"@type":"HowToStep","name":"Gateway and MQTT broker","text":"Run a Pi with a LoRa HAT and a Python service that verifies signatures, dedups, and republishes to a localhost-only mosquitto broker."},{"@type":"HowToStep","name":"Power system","text":"18650 cells in protected holders, small solar panel and charge board, deep-sleep duty cycling, weatherproof box with IP65 glands."},{"@type":"HowToStep","name":"Signing and reporting","text":"Give each node an Ed25519 keypair, sign every detection JSON, and publish verified detections to the common operating picture over MQTT."},{"@type":"HowToStep","name":"Geophone upgrade path","text":"Add SM-24 geophones through a low-noise preamp and a 24-bit ADC for longer-range vehicle detection."},{"@type":"HowToStep","name":"Verify-asset integration","text":"A detection queues a human to task the rover or drone to verify; the human tasks, the machine ferries."}]}</script>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Defence Builds", "item": "https://tyfsadik.org/work/defence/defence-hardware-program.html"}, {"@type": "ListItem", "position": 3, "name": "Ground: Seismic & Acoustic Perimeter Mesh", "item": "https://tyfsadik.org/work/defence/ground-seismic-perimeter-mesh.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Accelerometer reads all 0x00 or all 0xFF.'?", "acceptedAnswer": {"@type": "Answer", "text": "Classic SPI bring-up failure: the ADXL355 is strictly SPI MODE0, and one swapped CS or clock line produces exactly this. The fix is the boot-time DEVID self-check (expect 0xAD), fail loudly at startup instead of silently logging garbage in the field."}}, {"@type": "Question", "name": "How do I fix 'Brownout resets when the radio transmits.'?", "acceptedAnswer": {"@type": "Answer", "text": "The TX current spike sagged the rail on a weak cell and reset the ESP32 mid-packet. Fixed with a bulk capacitor across the supply rail and by checking voltage under load, not at rest, a cell that reads fine on the bench can still collapse under a TX burst in the cold."}}, {"@type": "Question", "name": "How do I fix 'A \"detector\" that was really detecting its own enclosure.'?", "acceptedAnswer": {"@type": "Answer", "text": "Early wind false alarms traced to the box itself vibrating and coupling noise into the spike. Rigid mounting fixed most of it; the rest is why wind became its own labelled reject class instead of an afterthought."}}, {"@type": "Question", "name": "How do I fix 'Packet storms after adding forwarding.'?", "acceptedAnswer": {"@type": "Answer", "text": "The first mesh build had no dedup, and two forwarding nodes happily retransmitted each other's copies forever. The (src, seq) seen-cache plus the hop limit ended the storms; any flooding protocol needs both from day one."}}, {"@type": "Question", "name": "How do I fix 'Moisture in a \"sealed\" box.'?", "acceptedAnswer": {"@type": "Answer", "text": "Temperature swings pump moist air past a badly seated gland. Properly tightened IP65 glands plus a desiccant pack per box, and a lesson learned: weatherproofing is a system, not a product you buy."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
+        <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content">
+  <div class="container">
+    <div class="content-box">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="defence-hardware-program.html">Defence</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Ground: Seismic &amp; Acoustic Perimeter Mesh</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Ground: Seismic &amp; Acoustic Perimeter Mesh</h1>
+      <p class="subtitle">Solar-powered 915 MHz LoRa mesh of ESP32 sensor nodes with ADXL355 accelerometers (and an SM-24 geophone upgrade path) that classify vehicles vs footsteps vs wind at the edge and report signed detections to a common operating picture.</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2026</span>
+      <span class="meta-category">Defence</span>
+      <span class="meta-category">Hardware</span>
+      <span class="meta-category">In Progress</span>
+    </div>
+
+    <nav class="viz-toc" aria-label="On this page">
+      <strong>On this page</strong>
+      <ul>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#proof">Proof of Build</a></li>
+        <li><a href="#bom">Bill of Materials</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#explainer-geophone">Geophone versus Accelerometer</a></li>
+        <li><a href="#wiring">Wiring &amp; Connections</a></li>
+        <li><a href="#how-building">How I Built It</a></li>
+        <li><a href="#explainer-edge">The Edge-Classification Bargain</a></li>
+        <li><a href="#testing">Testing &amp; Metrics</a></li>
+        <li><a href="#troubleshooting">Troubleshooting &amp; Lessons</a></li>
+        <li><a href="#canada-notes">Canada Notes</a></li>
+        <li><a href="#status">Status &amp; Roadmap</a></li>
+        <li><a href="#related">Related Builds</a></li>
+        <li><a href="#build-phases">Build Narrative: Phase by Phase</a></li>
+        <li><a href="#what-you-need">What You Need</a></li>
+        <li><a href="#challenges-lessons">Challenges and Lessons Learned</a></li>
+        <li><a href="#what-next">What Is Next</a></li>
+      </ul>
+    </nav>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        This build is the <strong>land component of the layered domain-awareness picture</strong> Canada
+        is assembling in the Arctic. The Canadian Arctic Sensor Suite Initiative aims at persistent
+        surveillance from seabed to space, and the ground layer of that picture is a network of
+        unattended sensors that stay alive for months in harsh conditions and report only what matters.
+        DRDC's Northern Watch demonstration already showed where these systems hurt: not the sensors
+        themselves, but installation, ice, technical failures, and <strong>data management</strong>.
+      </p>
+      <p>
+        My mesh is five ESP32 LoRa nodes spread across land I control. Each node reads a seismic
+        sensor, classifies what it feels (vehicle, footsteps, or wind) <strong>on the device</strong>,
+        and sends only a short signed detection message over the 915 MHz mesh to a Raspberry Pi
+        gateway. Raw waveforms never leave the node, there is no bandwidth for them, and no need.
+        When the gateway is unreachable, nodes buffer and sync later, which is the same
+        store-and-forward discipline the rest of my defence program runs on.
+      </p>
+      <p>
+        The reason this belongs in a DevOps engineer's portfolio: keeping cheap nodes alive through a
+        Canadian winter, buffering through dead links, signing their output, and fusing them into one
+        trustworthy picture is an infrastructure problem wearing a hardware costume. That is the layer
+        I build.
+      </p>
+    </section>
+
+    <section id="proof">
+      <h2>Proof of Build</h2>
+      <img src="../../Prove/Ground%20seismic%20and%20acoustic%20perimeter%20mesh.jpeg" alt="Solar LoRa mesh sensor node v2.1 on the workbench with three labelled geophones, an acoustic microphone, 18650 cells, a small solar panel, and a rugged laptop showing the perimeter common-operating-picture dashboard with ground, air, and water tracks" loading="lazy" width="1408" height="768">
+      <p class="diagram-label">Sensor node v2.1 on my bench: three labelled geophones and an acoustic microphone wired to the node board, 18650 cells and the small solar panel for power, and my rugged laptop running the perimeter common-operating-picture dashboard with ground, air, and water tracks.</p>
+      <p>
+        Everything in the photo is purchased and assembled, not a rendering. The node board on the
+        left runs the firmware described below; the laptop on the right is subscribed to the same MQTT
+        topic the deployed nodes publish to, so a bench detection shows up as a track on the dashboard
+        exactly the way a field detection will.
+      </p>
+    </section>
+
+    <section id="bom">
+      <h2>Bill of Materials</h2>
+      <table class="bom-table">
+        <thead><tr><th>Part</th><th>Role</th><th>Details</th><th class="bom-cost">Est. US$</th></tr></thead>
+        <tbody>
+          <tr><td>Node boards</td><td>Mesh radio node</td><td>5 ESP32 LoRa boards, 915 MHz (Heltec V3 / LilyGO T-Beam class)</td><td class="bom-cost">20-40 each</td></tr>
+          <tr><td>Sensors</td><td>On-node seismic sensing</td><td>4 ADXL355-class accelerometer breakouts, SPI (four of five nodes; one more needed for one-per-node coverage)</td><td class="bom-cost">15-40 each</td></tr>
+          <tr><td>Upgrade (optional)</td><td>Long-range vehicle pickup</td><td>3 SM-24 geophones + precision ADC</td><td class="bom-cost">100-180</td></tr>
+          <tr><td>Node power</td><td>Unattended field power</td><td>18650 cells, protected holders, small solar panel, charge board, weatherproof box</td><td class="bom-cost">25-40 each</td></tr>
+          <tr><td>Gateway</td><td>Mesh sink and dashboard link</td><td>LoRa HAT / gateway board for a Pi</td><td class="bom-cost">40-80</td></tr>
+        </tbody>
+      </table>
+      <p>
+        All of it is already bought and on the bench. The 915 MHz detail matters: that is the North
+        American ISM band, 868 MHz LoRa parts are for Europe and are not legal to transmit on here.
+      </p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid" role="img" aria-label="Seismic perimeter mesh signal flow">
+flowchart LR
+  subgraph Node["Sensor node (x5)"]
+    GEO["ADXL355 / SM-24 geophone"]
+    FE["Feature extraction<br/>RMS + band energies"]
+    CLF["Edge classifier<br/>vehicle / footsteps / wind"]
+    BUF[("Store-and-forward<br/>buffer")]
+    GEO --> FE --> CLF --> BUF
+  end
+  LORA["915 MHz LoRa mesh"]
+  GW["Pi gateway<br/>LoRa HAT"]
+  MQTT["MQTT broker"]
+  COP["Common operating picture<br/>fused tracks + alert queue"]
+  HUMAN["Human in the loop"]
+  VER["Verify asset<br/>rover / thermal drone"]
+  BUF --> LORA --> GW --> MQTT --> COP --> HUMAN
+  HUMAN -.->|tasks| VER
+  VER -.->|confirmation| COP
+      </div>
+      <p class="diagram-label">Figure 1: each node senses, classifies, and buffers locally; only signed detections cross the mesh to the gateway and the common operating picture, where a human tasks a verify asset.</p>
+      <p>
+        The design rule is that the mesh carries <strong>detections, not data</strong>. A signed JSON
+        detection (node id, timestamp, class, confidence, feature summary) is a few dozen bytes, small
+        enough to stay well inside the 902-928 MHz band's power and channel-occupancy rules (the applicable standard is ISED RSS-247 for digital transmission systems in 902-928 MHz, whose ceiling is 1 W conducted / 4 W EIRP with a compliant antenna; real compliance depends on the certified module's conditions, antenna gain, occupied bandwidth, and spectral density, and the nodes run at a modest TX power pinned in firmware, not at the regulatory ceiling, with channel dwell rules rather than a European-style duty-cycle percentage), small enough to buffer hundreds of on a node during a
+        gateway outage, and small enough to sign on an ESP32 without breaking the power budget.
+      </p>
+    </section>
+
+    <section id="explainer-geophone">
+      <h2>Geophone versus Accelerometer: Why Both Exist Here</h2>
+      <div class="viz-explainer">
+        <p>
+          The SM-24 is a <strong>moving-coil velocity sensor</strong>, not a smaller accelerometer. A
+          mass on a spring hangs inside a coil; ground motion moves the case while the mass stays put,
+          and the relative velocity induces a voltage. Its natural frequency is 10 Hz, its open-circuit
+          sensitivity is 28.8 V per m/s (20.9 V per m/s with a 1000 ohm shunt), and the coil measures
+          375 ohm. That means real vehicle ground roll arrives as millivolt-class signal: strong enough
+          to hear far, but only through a low-noise preamp and a 24-bit ADC. It mounts vertical
+          (tolerance 10 degrees of tilt) and survives minus 40 to plus 100 C, which is exactly the
+          Canadian field envelope.
+        </p>
+        <p>
+          The ADXL355 is a <strong>digital MEMS accelerometer</strong>: it measures acceleration, not
+          velocity, with a noise density around 22.5 to 25 micro-g per root hertz, and it talks SPI
+          straight into the ESP32 with no analog chain at all. It is cheap, tiny, and nearly free in
+          power, but its noise floor at seismic frequencies is far above a geophone's. The build uses
+          the MEMS part for the always-on node (footsteps and nearby vehicles) and keeps the three
+          SM-24 geophones as the sensitivity upgrade for vehicle signatures at ranges the MEMS part
+          cannot touch.
+        </p>
+      </div>
+      <div class="diagram-figure">
+        <svg viewBox="0 0 640 190" width="100%" role="img" aria-label="Spectral band plan: vehicle rumble 5 to 20 hertz, footsteps 20 to 80 hertz, wind and broadband 80 to 250 hertz">
+          <line x1="60" y1="110" x2="580" y2="110" stroke="#9FA2A4" stroke-width="1"/>
+          <rect x="70" y="50" width="31" height="60" fill="#6FCF6F" opacity="0.75"/>
+          <rect x="102" y="50" width="125" height="60" fill="#E6C947" opacity="0.75"/>
+          <rect x="226" y="50" width="354" height="60" fill="#5B93EF" opacity="0.75"/>
+          <line x1="81" y1="40" x2="81" y2="110" stroke="#DBDADA" stroke-width="1" stroke-dasharray="4 3"/>
+          <text x="150" y="36" fill="#DBDADA" font-size="13" text-anchor="middle">vehicle rumble, 5-20 Hz</text>
+          <text x="350" y="36" fill="#DBDADA" font-size="13" text-anchor="middle">footsteps, 20-80 Hz</text>
+          <text x="470" y="36" fill="#DBDADA" font-size="13" text-anchor="middle">wind / broadband, 80-250 Hz</text>
+          <text x="81" y="128" fill="#9FA2A4" font-size="11" text-anchor="middle">SM-24 10 Hz</text>
+          <text x="60" y="128" fill="#9FA2A4" font-size="11" text-anchor="start">0</text>
+          <text x="270" y="128" fill="#9FA2A4" font-size="11" text-anchor="middle">100 Hz</text>
+          <text x="478" y="128" fill="#9FA2A4" font-size="11" text-anchor="middle">200 Hz</text>
+          <text x="580" y="128" fill="#9FA2A4" font-size="11" text-anchor="end">250 Hz</text>
+        </svg>
+        <p class="viz-caption"><strong>Figure:</strong> the spectral band plan the edge classifier works from (engineering estimate, not measured spectra). The dashed line marks the SM-24's 10 Hz natural frequency, where the geophone is most sensitive. Measured spectra land on this page when the labelled runs are complete.</p>
+      </div>
+    </section>
+
+    <section id="wiring">
+      <h2>Wiring &amp; Connections</h2>
+      <p>
+        One node is a small system: sensor front end, radio, and power all meet on the ESP32. This is
+        the full connection map for node v2.1 and the gateway.
+      </p>
+      <table>
+        <thead><tr><th>From</th><th>To</th><th>Cable or interface</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>ADXL355 breakout</td><td>ESP32 (Heltec V3) GPIO</td><td>SPI: SCK, MISO, MOSI, CS, plus 3V3 and GND on short twisted pairs</td><td>SPI MODE0 only; keep leads under ~15 cm or the bus rings at speed</td></tr>
+          <tr><td>SM-24 geophone</td><td>Low-noise preamp, then ADS1256 ADC</td><td>Twisted shielded pair</td><td>Vertical orientation; shield grounded at one end only</td></tr>
+          <tr><td>ADS1256</td><td>ESP32</td><td>Shared SPI bus, second CS line, DRDY to an interrupt-capable GPIO</td><td>Shares SCK/MISO/MOSI with the ADXL355; separate chip-selects</td></tr>
+          <tr><td>Analog MEMS microphone (MAX9814-class)</td><td>ESP32 ADC GPIO</td><td>Shielded 3-wire (VCC, GND, OUT)</td><td>Envelope-level sampling only, machinery signatures, not speech</td></tr>
+          <tr><td>SX1262 radio (on-board)</td><td>915 MHz whip antenna</td><td>u.FL / SMA pigtail</td><td>Never key the transmitter without the antenna attached</td></tr>
+          <tr><td>Solar panel</td><td>Charge board input</td><td>2-core 22 AWG through an IP65 gland</td><td>Panel outside the box, tilted for winter sun</td></tr>
+          <tr><td>18650 cells in protected holders</td><td>Charge board B+/B-</td><td>22 AWG</td><td>Protected cells or a fuse; triple-check polarity before first power</td></tr>
+          <tr><td>Charge board output</td><td>ESP32 5 V / VIN</td><td>22 AWG</td><td>Bulk capacitor across the rail to ride out radio TX current spikes</td></tr>
+          <tr><td>Pi gateway</td><td>LoRa HAT</td><td>40-pin GPIO header (SPI0)</td><td>Enable SPI via raspi-config; CE/reset pins follow the HAT's docs</td></tr>
+          <tr><td>Pi gateway</td><td>MQTT broker</td><td>localhost, broker runs on the same Pi</td><td>Listener bound to 127.0.0.1; the broker is never exposed to the LAN</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="how-building">
+      <h2>How I Built It</h2>
+      <div class="steps">
+
+        <details class="viz-step">
+          <summary><span class="viz-step-num">01</span> <span class="viz-step-title">Node bring-up</span></summary>
+          <div class="viz-step-body">
+            <p>Five nodes means flashing has to be boring and repeatable, so I drive everything from the command line: the Arduino-ESP32 core installed with <code>arduino-cli</code>, firmware compiled and uploaded the same way every time, and the SX1262 radio driven through the RadioLib library. The region is fixed at 915 MHz, the North American ISM band; 868 MHz hardware is for Europe and stays out of this build.</p>
+            <p class="code-label">FLASH A HELTEC V3 NODE (macOS)</p>
+            <pre><code># toolchain and board core
+arduino-cli core update-index
+arduino-cli core install esp32:esp32
+
+# build and upload over USB
+arduino-cli compile --fqbn esp32:esp32:heltec_wifi_lora_32_V3 firmware/node
+arduino-cli upload  --fqbn esp32:esp32:heltec_wifi_lora_32_V3 \
+  --port /dev/cu.usbserial-0001 firmware/node</code></pre>
+            <p>What can go wrong: a board that will not enumerate usually needs BOOT held during reset to enter the download stub. How I verified: <code>arduino-cli monitor</code> shows the boot banner and <code>radio.begin()</code> returning <code>RADIOLIB_ERR_NONE</code> on every board before it gets a node ID.</p>
+          </div>
+        </details>
+
+        <details class="viz-step">
+          <summary><span class="viz-step-num">02</span> <span class="viz-step-title">Radio range survey</span></summary>
+          <div class="viz-step-body">
+            <p>Before designing any mesh topology I wanted the honest hop distance, not the number on the datasheet. One node beacons from the bench at a fixed 10 dBm; I walk the second node down the street while the receiver logs RSSI and SNR for every decoded packet to a CSV over serial. That log is what decides node spacing later.</p>
+            <p class="code-label">RANGE SNIFFER, RECEIVER CORE (RADIOLIB)</p>
+            <pre><code>// freq MHz, BW kHz, SF, CR, sync, power dBm, preamble, TCXO
+int state = radio.begin(915.0, 125.0, 9, 5, 18, 10, 8, 0);
+radio.startReceive();
+// in loop(), on DIO1 interrupt:
+int len = radio.getPacketLength();
+if (radio.readData(rx, len) == RADIOLIB_ERR_NONE) {
+  Serial.printf("%lu,%s,%.0f,%.1f\n", millis(), rx,
+                radio.getRSSI(), radio.getSNR());
+}</code></pre>
+            <p class="code-label">CAPTURE THE LOG</p>
+            <pre><code>arduino-cli monitor -p /dev/cu.usbserial-0001 \
+  --config baudrate=115200 &gt; range-log.csv</code></pre>
+            <p>What can go wrong: RSSI comparisons are meaningless if TX power or spreading factor changes between runs, so both are pinned in firmware. How I verified: I walk the same route twice at different times of day so I can sanity-check repeatability before trusting the map.</p>
+          </div>
+        </details>
+
+        <details class="viz-step">
+          <summary><span class="viz-step-num">03</span> <span class="viz-step-title">Seismic front end</span></summary>
+          <div class="viz-step-body">
+            <p>The ADXL355-class MEMS accelerometer rides on the SPI bus; the ADXL355 supports both SPI and I2C, but SPI is the wiring choice here because it avoids I2C pull-up noise at speed, and it streams the vertical (Z) axis at roughly 1 kHz. The enclosure base carries a spike that couples the sensor into the ground; coupling quality matters more than sensor price, a loose box is just a wind detector.</p>
+            <p class="code-label">ADXL355 SELF-CHECK AND STREAM SETUP</p>
+            <pre><code>SPI.begin(SCK, MISO, MOSI, CS);
+SPI.beginTransaction(SPISettings(10000000, MSBFIRST, SPI_MODE0));
+
+uint8_t id = spiRead(0x00);          // DEVID register
+if (id != 0xAD) { Serial.println("ADXL355 not found"); while (true); }
+
+spiWrite(0x2C, 0x01);                // RANGE: +/- 2 g
+spiWrite(0x28, 0x02);                // FILTER: ODR 1000 Hz
+spiWrite(0x2D, 0x00);                // POWER_CTL: measurement mode
+// then burst-read XDATA3..ZDATA0 (0x08..0x10, 9 bytes) per sample</code></pre>
+            <p>What can go wrong: reading all <code>0x00</code> or all <code>0xFF</code> means the wrong SPI mode or a CS wiring mistake, the 355 is strictly MODE0. How I verified: the DEVID self-check at boot, then a bench drop test watching the Z axis spike in the serial plotter at the expected polarity.</p>
+          </div>
+        </details>
+
+        <details class="viz-step">
+          <summary><span class="viz-step-num">04</span> <span class="viz-step-title">Edge feature extraction</span></summary>
+          <div class="viz-step-body">
+            <p>A 1 kHz stream is far too much to send over LoRa and too much to classify raw on a microcontroller, so each node windows 1024 samples (about one second) and compresses the window into a small feature vector: RMS amplitude plus the energy in three spectral bands from an FFT. The classifier downstream sees a handful of numbers per second, not a thousand samples.</p>
+            <p class="code-label">WINDOW TO RMS + BAND ENERGIES (ARDUINOFFT)</p>
+            <pre><code>static double vReal[1024], vImag[1024];   // static: no heap churn
+ArduinoFFT&lt;double&gt; FFT(vReal, vImag, 1024, 1000.0);
+
+double rms = 0;
+for (int i = 0; i &lt; 1024; i++) { vReal[i] = z[i]; vImag[i] = 0; rms += z[i]*z[i]; }
+rms = sqrt(rms / 1024);
+
+FFT.dcRemoval();
+FFT.windowing(FFTWindow::Hamming, FFT_FORWARD);
+FFT.compute(FFT_FORWARD);
+FFT.complexToMagnitude();
+// sum bins into bands: 5-20 Hz (vehicle rumble),
+// 20-80 Hz (footstep energy), 80-250 Hz (broadband / wind)</code></pre>
+            <p>What can go wrong: allocating those FFT buffers per window fragments the ESP32 heap within hours, they are static. How I verified: a host-side unit test feeds a synthetic 50 Hz sine through the same code path and confirms the energy lands in the expected band before I trust the on-device version.</p>
+          </div>
+        </details>
+
+        <details class="viz-step">
+          <summary><span class="viz-step-num">05</span> <span class="viz-step-title">Edge classification</span></summary>
+          <div class="viz-step-body">
+            <p>First pass is explainable thresholds, because a rule I can read is a rule I can debug in the field: quiet gating on RMS, vehicles as sustained low-band-dominant energy that grows and fades as they pass, footsteps as a periodic cadence peak in a walking band, and everything else filed as wind or unknown. The second pass, once my labelled dataset is big enough, is a tiny model trained in Python and converted with TensorFlow Lite Micro (via Edge Impulse) running on the same feature vector.</p>
+            <p class="code-label">THRESHOLD CLASSIFIER, FIRST PASS</p>
+            <pre><code>const char* classify(float rms, float bandLo, float bandMid, float dur) {
+  if (rms &lt; NOISE_FLOOR * 3.0f)             return "quiet";
+  if (bandLo &gt; 0.6f &amp;&amp; dur &gt; 2.0f)            return "vehicle";
+  if (cadenceHz &gt; 1.5f &amp;&amp; cadenceHz &lt; 2.5f)   return "footsteps";
+  return "wind_or_unknown";
+}</code></pre>
+            <p class="code-label">EMBED THE ML MODEL WHEN IT SHIPS</p>
+            <pre><code>xxd -i model.tflite &gt; model_data.h   # C array, compiled into firmware</code></pre>
+            <p>What can go wrong: thresholds tuned on one node do not transfer, soil, mounting, and sensor variance all shift the noise floor, so each node runs a quiet-period calibration on install. How I verified: labelled recordings are replayed through the classifier on the host first; a firmware build only gets flashed if the replay matches the expected labels.</p>
+          </div>
+        </details>
+
+        <details class="viz-step">
+          <summary><span class="viz-step-num">06</span> <span class="viz-step-title">LoRa mesh protocol</span></summary>
+          <div class="viz-step-body">
+            <p>The mesh carries a small fixed-format packet: version, type, source node, hop counter, per-source sequence number, payload, and a CRC. Forwarding is controlled flooding over raw LoRa (this is application-level flooding, not LoRaWAN), every node that hears a packet retransmits it once, with the hop counter as the kill switch and a (src, seq) seen-cache as the dedup. Spreading factor 9 at 125 kHz bandwidth is my range-versus-airtime compromise for this spacing.</p>
+            <p class="code-label">MESH PACKET FORMAT (FIRMWARE)</p>
+            <pre><code>struct MeshPacket {
+  uint8_t  version;      // 0x02
+  uint8_t  type;         // 0x01 detection, 0x02 ack, 0x03 heartbeat
+  uint8_t  src;          // node id 1-5
+  uint8_t  hops;         // incremented per forward, dropped at 4
+  uint32_t seq;          // per-source sequence; dedup key with src
+  uint8_t  payload[180];
+  uint16_t crc16;
+} __attribute__((packed));</code></pre>
+            <p>What can go wrong: without the seen-cache, two forwarding nodes ping-pong the same packet forever; and simultaneous retransmits collide, so each node adds a randomized backoff keyed on its ID. How I verified: a three-node bench flood with the relay node powered off mid-test, confirming the remaining path still delivers and no packet loops.</p>
+          </div>
+        </details>
+
+        <details class="viz-step">
+          <summary><span class="viz-step-num">07</span> <span class="viz-step-title">Store-and-forward buffering</span></summary>
+          <div class="viz-step-body">
+            <p>Gateways reboot, links drop, and I will absolutely break the gateway while tinkering. When no ACK comes back, the node appends the signed detection to an append-only log in LittleFS and keeps sensing. On link restore it replays oldest-first, waiting for the gateway ACK before truncating each record, the same store-and-forward pattern as my <a href="ddil-proof-devops.html">DDIL-proof DevOps</a> work, shrunk onto a microcontroller.</p>
+            <p class="code-label">BUFFER AND REPLAY (LITTLEFS)</p>
+            <pre><code>if (!gatewayAcked) {
+  File f = LittleFS.open("/queue.bin", FILE_APPEND);
+  f.write((uint8_t*)&amp;det, sizeof(det));
+  f.close();
+}
+// on reconnect: read oldest record, retransmit,
+// wait for ACK(seq), then truncate. Repeat until empty.</code></pre>
+            <p>What can go wrong: flash wears out and filesystems fill, the queue is capped, drop-oldest events are counted and reported in the heartbeat, and only detections are ever buffered, never raw waveforms. How I verified: pull the gateway's power for a set interval, generate detections, restart it, and confirm every sequence number arrives without loss and in order, with the (src, seq) dedup giving effectively-once processing after deduplication on repeats.</p>
+          </div>
+        </details>
+
+        <details class="viz-step">
+          <summary><span class="viz-step-num">08</span> <span class="viz-step-title">Gateway and MQTT broker</span></summary>
+          <div class="viz-step-body">
+            <p>The gateway is a Raspberry Pi wearing a LoRa HAT on the 40-pin header. A small Python service decodes mesh packets, verifies the Ed25519 signature against a per-node public key table, drops replays via the (src, seq) dedup, and republishes clean detections to mosquitto, which listens on localhost only, so the broker is never exposed to the LAN.</p>
+            <p class="code-label">GATEWAY SERVICE (PYNACL + PAHO-MQTT)</p>
+            <pre><code>from nacl.signing import VerifyKey
+import paho.mqtt.client as mqtt
+
+def on_packet(pkt):
+    det, sig = split_payload(pkt)
+    if seen(det["src"], det["seq"]):
+        return                                  # replay, drop
+    VerifyKey(pubkeys[det["src"]]).verify(det_bytes, sig)  # raises on forgery
+    mq.publish("perimeter/ground/detections", json.dumps(det), qos=1)</code></pre>
+            <p class="code-label">BROKER CONFIG, LOCALHOST ONLY</p>
+            <pre><code># /etc/mosquitto/conf.d/perimeter.conf
+listener 1883 127.0.0.1
+allow_anonymous true</code></pre>
+            <p>What can go wrong: every HAT wires CE and reset to different GPIOs, read the HAT's docs instead of assuming. How I verified: a negative test, I sign a packet with the wrong key and confirm the service rejects it and logs the attempt, because a verifier that never fails is a verifier that is not running.</p>
+          </div>
+        </details>
+
+        <details class="viz-step">
+          <summary><span class="viz-step-num">09</span> <span class="viz-step-title">Power system</span></summary>
+          <div class="viz-step-body">
+            <p>Each node runs on 18650 cells in protected holders, topped up by a small solar panel through a charge board, inside a weatherproof box with IP65 glands for the sensor and panel leads. The power budget, not the sensor, decides whether a node survives a dark January week, so the firmware duty-cycles hard: wake, sample a one-second window, classify, transmit only if there is a detection, deep sleep again.</p>
+            <p class="code-label">DUTY-CYCLE SLEEP (FIRMWARE)</p>
+            <pre><code>// one sensing cycle done; radio off, sleep until next window
+esp_sleep_enable_timer_wakeup(4 * 1000000ULL);
+esp_deep_sleep_start();   // ESP32 chip deep sleep is microamp-class; the full board
+                         // (regulator, USB-UART bridge, charge circuit) draws more, measure the board</code></pre>
+            <p>What can go wrong: a radio TX burst can brown out a cold or tired cell mid-packet, hence the bulk capacitor across the rail, and the standing rule that a frozen Li-ion cell warms up before it ever sees charge current. How I verified: a multimeter in series over many full duty cycles, checking the measured average current matches the spreadsheet budget before the box gets sealed.</p>
+          </div>
+        </details>
+
+        <details class="viz-step">
+          <summary><span class="viz-step-num">10</span> <span class="viz-step-title">Signing and reporting</span></summary>
+          <div class="viz-step-body">
+            <p>Every node owns an Ed25519 keypair; the private key never leaves the device. Each detection is serialized, signed on the node with libsodium's Ed25519 implementation (RFC 8032), and the gateway verifies before anything reaches the <a href="multi-domain-common-operating-picture.html">common operating picture</a>. A forged or corrupted message dies at the gateway, which is exactly where untrusted input should die. Note on library choice: Monocypher's default <code>crypto_eddsa_*</code> is a BLAKE2b-based EdDSA variant, not interoperable RFC 8032 Ed25519, so it would not verify against the PyNaCl gateway; libsodium's <code>crypto_sign_detached</code> is used instead, which the gateway verifies with PyNaCl.</p>
+            <p class="code-label">DETECTION MESSAGE, WHAT LEAVES THE NODE</p>
+            <pre><code>{
+  "node": 2, "seq": 1187, "ts": 1758268800,
+  "class": "vehicle", "conf": 0.91,
+  "rms": 0.042, "bands": [0.61, 0.28, 0.11],
+  "sig": "Ed25519 signature over the fields above, base64"
+}</code></pre>
+            <p class="code-label">SIGN ON THE NODE (LIBSODIUM, RFC 8032 ED25519)</p>
+            <pre><code>crypto_sign_detached(sig, NULL, msg, msg_len, sk);   // detached Ed25519 signature; sk is the 64-byte libsodium secret key, verified on the gateway with PyNaCl</code></pre>
+            <p>What can go wrong: key management is the weak point, private keys are generated per node and recorded offline, and a lost key means a reflash, not a recovery procedure. How I verified: flip one byte in a signed message and confirm the gateway rejects it; the negative test is the test that matters.</p>
+          </div>
+        </details>
+
+        <details class="viz-step">
+          <summary><span class="viz-step-num">11</span> <span class="viz-step-title">Geophone upgrade path</span></summary>
+          <div class="viz-step-body">
+            <p>The three SM-24 geophones are the sensitivity upgrade: a true moving-coil geophone picks up vehicle signatures at ranges a MEMS accelerometer cannot touch. The SM-24 feeds a low-noise preamp and then an ADS1256-class 24-bit ADC, which shares the SPI bus with the ADXL355 on its own chip-select, so the feature pipeline and classifier carry over unchanged and only the front-end driver differs. The three labelled geophones in the bench photo are staged for exactly this swap.</p>
+            <p class="code-label">SM-24 FRONT END (ADS1256, SHARED SPI)</p>
+            <pre><code>adc.begin(SCK, MISO, MOSI, CS_ADC, DRDY);
+adc.setPGA(PGA_16);            // geophone output is millivolt-class
+adc.setDRATE(DRATE_500SPS);    // plenty for a 10 Hz geophone</code></pre>
+            <p>What can go wrong: mains hum swamps a high-gain geophone preamp on the bench, battery power and short twisted leads keep it quiet, and the geophone must sit vertical to read ground motion correctly. How I verified: side-by-side with the ADXL355 on the same spike, tapping the ground at a measured distance and comparing signal-to-noise between the two front ends.</p>
+          </div>
+        </details>
+
+        <details class="viz-step">
+          <summary><span class="viz-step-num">12</span> <span class="viz-step-title">Verify-asset integration</span></summary>
+          <div class="viz-step-body">
+            <p>A mesh detection does not trigger anything automatic, it lands in the alert queue of the common operating picture and waits for a human. I read the detection, and if it deserves eyes, I task the <a href="gps-denied-navigation-rover.html">GPS-denied rover</a> or the <a href="thermal-sar-drone.html">thermal SAR drone</a> to go look; the asset's confirmation flows back onto the dashboard as a track update. The human tasks, the machine ferries.</p>
+            <p class="code-label">HUMAN TASKING (OPERATOR CONSOLE)</p>
+            <pre><code>mosquitto_pub -h localhost -t "perimeter/tasking" -m \
+  '{"asset":"rover","action":"goto","node":2,"reason":"detection seq=1187"}'</code></pre>
+            <p>What can go wrong: automation creep, the tasking topic only accepts publishes from the operator console, never from the mesh or the gateway service, so no sensor output can task an asset by itself, ever. How I verified: attempted to publish a tasking message from the gateway's service account and confirmed it is rejected.</p>
+          </div>
+        </details>
+
+      </div>
+    </section>
+
+    <section id="explainer-edge">
+      <h2>The Edge-Classification Bargain</h2>
+      <div class="viz-explainer">
+        <p>
+          A node sampling at 1 kHz generates 1000 samples per second per axis; the FFT consumes them in 1024-sample (1.024 s) windows; over LoRa, sending that
+          raw stream is impossible, it would take hours of airtime per minute of signal. The FFT band
+          plan above is what makes the bargain work: one window of samples collapses into a handful of
+          numbers (RMS plus the energy in each band), and the classifier decides vehicle, footsteps,
+          wind, or unknown from those numbers alone. The feature vector, not the waveform, is all the
+          mesh ever carries. That is why the classifier has to be explainable first: when a node
+          reports a vehicle at 3 a.m., I want to read the rule that fired, not trust a black box I
+          cannot debug in the field.
+        </p>
+      </div>
+    </section>
+
+    <section id="testing">
+      <h2>Testing &amp; Metrics</h2>
+      <p>
+        The protocol is built around labelled ground truth I generate myself, on land I control, with
+        measured distances. Every run below has a defined setup, procedure, and metric; where a run is
+        still collecting data, the status column says so. No results are published yet, only targets
+        and methods.
+      </p>
+
+      <h3>Test Runs</h3>
+      <ol>
+        <li><strong>T1, Bench noise floor and sampling integrity.</strong> Setup: node on the bench, ADXL355 streaming. Procedure: log raw windows and count dropped samples over long runs at the 1 kHz rate. Metric: zero dropped samples sustained, and a stable, low noise floor with nothing moving.</li>
+        <li><strong>T2, Labelled footstep passes.</strong> Setup: node spiked into the ground, routes marked at measured distances. Procedure: I walk each route a set number of times at a normal pace; each window is recorded with its true label. Metric: per-node confusion matrix for footsteps vs quiet vs wind.</li>
+        <li><strong>T3, Vehicle drive-bys.</strong> Setup: same node placement, my vehicle driven past at set distances and speeds. Procedure: repeated passes in both directions, logged with distance and direction. Metric: detection range curve, the distances at which the classifier fires reliably.</li>
+        <li><strong>T4, Wind reject days.</strong> Setup: node deployed on logged windy days with no deliberate activity. Procedure: long unattended captures. Metric: false-alarm rate per node per day, the number that must trend toward zero before I call the classifier done.</li>
+        <li><strong>T5, Mesh range and delivery.</strong> Setup: two nodes at the spacing chosen from the step-02 survey. Procedure: beacon exchanges logged at both ends. Metric: packet delivery ratio per hop with RSSI/SNR margins.</li>
+        <li><strong>T6, Gateway outage and store-and-forward.</strong> Setup: node live, gateway deliberately powered off for a set interval. Procedure: generate detections during the outage, restore the gateway, watch the replay. Metric: every buffered detection delivered without loss and in sequence order, with the dedup giving effectively-once processing after deduplication on repeats.</li>
+        <li><strong>T7, Power endurance.</strong> Setup: sealed node on solar, voltage and charge state logged continuously through real weather, including cold snaps. Metric: uptime through multi-day overcast stretches, and agreement between the measured average current and the power budget.</li>
+      </ol>
+
+      <h3>Outage Replay Protocol (T6)</h3>
+      <div class="mermaid" role="img" aria-label="Store-and-forward outage replay protocol">
+flowchart TB
+  DET["Classifier fires<br/>(signed detection)"]
+  A{"Gateway<br/>reachable?"}
+  SND["Send via mesh<br/>(flood, hop limit)"]
+  BUF3[("LittleFS buffer<br/>(oldest first)")]
+  HEART["Heartbeat probe"]
+  REPLAY["Replay buffered detections<br/>(dedup at gateway)"]
+  DET --> A
+  A -->|"yes"| SND
+  A -->|"no"| BUF3
+  BUF3 --> HEART -->|"gateway back"| REPLAY
+      </div>
+      <p class="diagram-label">Figure 2: the T6 outage protocol. Detections either flood the mesh immediately or wait in the on-device buffer; on reconnect the node replays oldest-first and the gateway dedups, so the operator sees a gapless log.</p>
+
+      <h3>Targets, Measured Evidence, and Current Status</h3>
+      <p>
+        Evidence and targets are kept separate: the "measured to date" column holds only what has
+        actually been recorded, and the target column holds what the build is aiming at.
+      </p>
+      <table class="viz-results">
+        <thead><tr><th>Metric</th><th>Target</th><th>Measured to date</th><th>Current status</th></tr></thead>
+        <tbody>
+          <tr><td>Sampling integrity (T1)</td><td>No dropped samples at 1 kHz sustained</td><td class="viz-measured">No results published yet</td><td>In progress, long-run logging under way</td></tr>
+          <tr><td>Vehicle vs footsteps separation (T2/T3)</td><td>High, verified on the labelled confusion matrix</td><td class="viz-measured">No results published yet</td><td>In progress, labelled dataset still growing</td></tr>
+          <tr><td>Wind false alarms (T4)</td><td>Driven toward zero per node per day</td><td class="viz-measured">No results published yet</td><td>In progress, waiting on more windy-day captures</td></tr>
+          <tr><td>Mesh delivery ratio (T5)</td><td>High per-hop delivery at the surveyed spacing</td><td class="viz-measured">No results published yet</td><td>In progress, range survey data collected, mesh runs pending</td></tr>
+          <tr><td>Outage recovery (T6)</td><td>Complete, ordered, deduped replay (at-least-once delivery, effectively-once processing after dedup)</td><td class="viz-measured">No results published yet</td><td>In progress, buffer firmware in bench testing</td></tr>
+          <tr><td>Solar endurance (T7)</td><td>Survive a multi-day overcast stretch unattended</td><td class="viz-measured">No results published yet</td><td>Pending, outdoor deployment not yet started</td></tr>
+        </tbody>
+      </table>
+      <p>
+        When the labelled runs are complete, the dataset and the confusion matrices land on this page.
+        Until then, everything above is protocol and targets, not results.
+      </p>
+    </section>
+
+    <section id="troubleshooting">
+      <h2>Troubleshooting &amp; Lessons</h2>
+      <ul>
+        <li><strong>Accelerometer reads all 0x00 or all 0xFF.</strong> Classic SPI bring-up failure: the ADXL355 is strictly SPI MODE0, and one swapped CS or clock line produces exactly this. The fix is the boot-time DEVID self-check (expect <code>0xAD</code>), fail loudly at startup instead of silently logging garbage in the field.</li>
+        <li><strong>Brownout resets when the radio transmits.</strong> The TX current spike sagged the rail on a weak cell and reset the ESP32 mid-packet. Fixed with a bulk capacitor across the supply rail and by checking voltage under load, not at rest, a cell that reads fine on the bench can still collapse under a TX burst in the cold.</li>
+        <li><strong>A "detector" that was really detecting its own enclosure.</strong> Early wind false alarms traced to the box itself vibrating and coupling noise into the spike. Rigid mounting fixed most of it; the rest is why wind became its own labelled reject class instead of an afterthought.</li>
+        <li><strong>Packet storms after adding forwarding.</strong> The first mesh build had no dedup, and two forwarding nodes happily retransmitted each other's copies forever. The (src, seq) seen-cache plus the hop limit ended the storms; any flooding protocol needs both from day one.</li>
+        <li><strong>Moisture in a "sealed" box.</strong> Temperature swings pump moist air past a badly seated gland. Properly tightened IP65 glands plus a desiccant pack per box, and a lesson learned: weatherproofing is a system, not a product you buy.</li>
+      </ul>
+    </section>
+
+    <section id="canada-notes">
+      <h2>Legal, Safety &amp; Canada Notes</h2>
+      <div class="note">
+        <strong>Radio rules:</strong> the mesh transmits on 915 MHz, the North American ISM band, at
+        LoRa-legal transmit power: the applicable standard is ISED RSS-247 for digital transmission systems in 902-928 MHz, whose ceiling is 1 W conducted / 4 W EIRP with a compliant antenna, and real compliance depends on the certified module's conditions, antenna gain, occupied bandwidth, and spectral density. The nodes run at a modest TX power pinned in firmware, not at the regulatory ceiling, with channel dwell rules rather than a European-style duty-cycle percentage. 868 MHz hardware is for Europe and is not used. Nothing in this
+        build jams, spoofs, or interferes with anyone else's signals.
+      </div>
+      <div class="note">
+        <strong>Placement and privacy:</strong> nodes run only on land I control and are never pointed at
+        other people. The seismic and acoustic processing targets machinery and movement signatures:
+        engine rumble, footstep cadence, not speech. Only short class labels and confidence values leave
+        each node; raw waveforms stay on the device.
+      </div>
+    </section>
+
+    <section id="status">
+      <h2>Status &amp; Roadmap</h2>
+      <ul>
+        <li><strong>Done</strong>: all hardware purchased and on the bench; node v2.1 assembled with geophones and microphone staged; two-node 915 MHz range survey completed; MQTT topic and dashboard wired so bench detections render as tracks; SPI front end self-checking at boot.</li>
+        <li><strong>In progress</strong>: threshold-based classifier tuning on labelled walks and drive-bys; feature-extraction firmware (RMS + band energies) on the ADXL355 front end; store-and-forward buffer testing with deliberate gateway outages; noise-floor logging runs.</li>
+        <li><strong>Next</strong>: SM-24 geophone swap on two nodes with a measured detection-range comparison; tiny ML classifier (TFLite Micro) once the labelled dataset is big enough; multi-node outdoor deployment on solar; publishing the labelled dataset and the confusion-matrix results.</li>
+      </ul>
+    </section>
+
+    <section id="related">
+      <h2>Related Builds</h2>
+      <ul>
+        <li><a href="multi-domain-common-operating-picture.html"><strong>Multi-Domain Common Operating Picture</strong></a>, where every signed detection from this mesh lands and fuses with air and water tracks.</li>
+        <li><a href="gps-denied-navigation-rover.html"><strong>GPS-Denied Navigation Rover</strong></a>, the ground verify asset a human can task when this mesh raises a detection.</li>
+        <li><a href="convoy-robots-degraded-mesh.html"><strong>Convoy-Following Robots on a Degraded Mesh</strong></a>, shares the LoRa mesh and store-and-forward-through-dead-links discipline.</li>
+        <li><a href="defence-hardware-program.html"><strong>Canadian Defence Hardware Program</strong></a>, the program hub with the full build list and phased BOM.</li>
+      </ul>
+    </section>
+
+
+    <section id="build-phases">
+      <h2>Build Narrative: Phase by Phase</h2>
+      <p><strong>Phase 1: node v2.1 assembly.</strong> Each node is a small system on an ESP32 (Heltec V3): an ADXL355 accelerometer on SPI for the fast channel, an SM-24 geophone through a low-noise preamp into an ADS1256 ADC for the slow sensitive channel, and an analog MEMS microphone on the ADC for acoustic machinery signatures. The on-board SX1262 handles 915 MHz LoRa. A boot-time DEVID self-check expects 0xAD from the accelerometer so a dead sensor fails loudly at startup instead of logging garbage in the field.</p>
+      <p><strong>Phase 2: wiring discipline.</strong> The full connection map was built once and then frozen: ADXL355 on SPI MODE0 with short twisted pairs, the ADS1256 sharing the SPI bus on a second chip-select with DRDY on an interrupt-capable GPIO, geophone leads as a shielded twisted pair grounded at one end only, and a bulk capacitor across the supply rail to ride out radio transmit current spikes.</p>
+      <p><strong>Phase 3: link survey.</strong> A two-node 915 MHz range survey on land I control fixed the deployment spacing and confirmed packet delivery ratios with RSSI/SNR margins before any classifier work began. The radio link was characterized before it was depended on.</p>
+      <p><strong>Phase 4: gateway and dashboard.</strong> A Raspberry Pi gateway with a LoRa HAT takes the mesh traffic and runs a local Mosquitto broker (bound to localhost, never exposed to the LAN) plus the MQTT topic and dashboard that renders bench detections as tracks.</p>
+      <p><strong>Phase 5: classifier and outage testing.</strong> On-device classification (vehicle, footsteps, wind) runs on the node so raw waveforms never need the air; only short signed detection messages flood the mesh with a hop limit. The T6 store-and-forward test deliberately kills the gateway and replays the LittleFS buffer oldest-first with deduplication at the gateway, so the operator sees a gapless log after an outage.</p>
+    </section>
+
+    <section id="what-you-need">
+      <h2>What You Need</h2>
+<p>Five nodes on land I control is the target deployment. The skill most people skip is link budgeting: the range survey comes before the classifier, not after.</p>
+      <table>
+        <thead><tr><th>Category</th><th>Item</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Hardware</td><td>ESP32 nodes with LoRa</td><td>Heltec V3-class boards (ESP32 + SX1262), one per node, 915 MHz whips; never power the radio without the antenna attached</td></tr>
+          <tr><td>Hardware</td><td>Seismic front end</td><td>ADXL355 breakout on SPI, SM-24 geophone with low-noise preamp and ADS1256 ADC, twisted shielded pairs</td></tr>
+          <tr><td>Hardware</td><td>Acoustic channel</td><td>Analog MEMS microphone (MAX9814-class) into the ESP32 ADC, envelope-level sampling for machinery signatures</td></tr>
+          <tr><td>Hardware</td><td>Power</td><td>18650 cells in protected holders, charge board, solar panel sized for winter sun, bulk capacitor on the rail</td></tr>
+          <tr><td>Hardware</td><td>Gateway</td><td>Raspberry Pi with LoRa HAT, MQTT broker on localhost</td></tr>
+          <tr><td>Software</td><td>ESP32 toolchain, RadioLib</td><td>Node firmware, flood mesh with (src, seq) dedup cache and hop limit</td></tr>
+          <tr><td>Software</td><td>Mosquitto, TFLite Micro (later)</td><td>Local broker now, tiny on-device ML classifier once the labelled dataset is big enough</td></tr>
+          <tr><td>Skills</td><td>Embedded C, SPI debugging, RF link basics</td><td>MODE0 discipline, bus ringing on long leads, RSSI/SNR interpretation, soldering</td></tr>
+          <tr><td>Accounts</td><td>None</td><td>No accounts or licenses required for a LoRa sensor mesh on 915 MHz</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="challenges-lessons">
+      <h2>Challenges and Lessons Learned</h2>
+      <ul>
+        <li><strong>The ADXL355 read all 0x00 or all 0xFF.</strong> Classic SPI bring-up failure from one swapped line. Lesson: the boot-time DEVID self-check is now non-negotiable, fail loudly at startup rather than logging plausible garbage.</li>
+        <li><strong>Brownout resets when the radio transmitted.</strong> TX current spikes collapsed a weak cell's voltage and reset the ESP32 mid-packet. Lesson: measure voltage under load, not at rest, and a bulk capacitor across the rail is cheap insurance.</li>
+        <li><strong>The detector detected its own enclosure.</strong> Early wind false alarms traced to the box vibrating and coupling noise into the geophone. Lesson: rigid mounting fixed most of it; wind became a labelled reject class of its own, which is why T4 wind-reject days exist.</li>
+        <li><strong>Packet storms from flooding.</strong> The first mesh had no dedup and two forwarding nodes retransmitted each other's copies forever. Lesson: any flooding protocol needs a (source, sequence) seen-cache plus a hop limit from day one.</li>
+        <li><strong>Moisture in a sealed box.</strong> Temperature swings pumped moist air past a badly seated gland. Lesson: weatherproofing is a system (tightened IP65 glands plus desiccant), not a product you buy.</li>
+      </ul>
+    </section>
+
+    <section id="what-next">
+      <h2>What Is Next</h2>
+      <ul>
+        <li>SM-24 geophone swap on two nodes with a measured detection-range comparison against the accelerometer-only nodes.</li>
+        <li>Tiny ML classifier (TFLite Micro) on the node once the labelled walk and drive-by dataset is large enough.</li>
+        <li>Multi-node outdoor deployment on solar, with T7 power-endurance logging through real weather including cold snaps.</li>
+        <li>Publish the labelled dataset and the confusion-matrix results: footsteps vs quiet vs wind, with the false-alarm rate per node per day trending toward zero before the classifier is called done.</li>
+        <li>Feed signed detections from the field deployment into the multi-domain common operating picture alongside the other nodes.</li>
+      </ul>
+    </section>
+</div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

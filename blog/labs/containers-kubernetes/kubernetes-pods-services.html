@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kubernetes Pods &amp; Deployments: YAML Manifests | TYFSADIK</title>
+  <meta name="description" content="Ship Kubernetes apps with YAML: write Deployment and Service manifests, apply them, roll out a new image version safely, and roll back when it goes wrong.">
+  <meta name="keywords" content="Kubernetes Deployment, Service YAML, kubectl apply, rolling update, rollout rollback, manifests">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Kubernetes Pods &amp; Deployments: YAML Manifests | TYFSADIK">
+  <meta property="og:description" content="Ship Kubernetes apps with YAML: write Deployment and Service manifests, apply them, roll out a new image version safely, and roll back when it goes wrong.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-pods-services.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Kubernetes Pods &amp; Deployments: YAML Manifests | TYFSADIK">
+  <meta name="twitter:description" content="Ship Kubernetes apps with YAML: write Deployment and Service manifests, apply them, roll out a new image version safely, and roll back when it goes wrong.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-pods-services.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Kubernetes Pods, Deployments, and Services", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-02-15", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "Kubernetes 1.29, kubectl", "articleSection": "Containers", "learningResourceType": "Hands-on lab", "teaches": "containers and Kubernetes"}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "HowTo", "name": "Kubernetes Pods & Deployments | YAML Manifests", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"}, "step": [{"@type": "HowToStep", "name": "Write the Deployment + Service", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-pods-services.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Apply it", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-pods-services.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Roll out a new image version", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-pods-services.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Roll back if needed", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-pods-services.html#step-by-step-execution"}]}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Containers & Kubernetes", "item": "https://tyfsadik.org/blog/labs/containers-kubernetes/index.html"}, {"@type": "ListItem", "position": 4, "name": "Pods & Deployments", "item": "https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-pods-services.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Service has no endpoints'?", "acceptedAnswer": {"@type": "Answer", "text": "the selector labels must match the pod labels exactly. Confirm with kubectl get endpoints web, if it shows <none>, compare kubectl get svc web -o jsonpath='{.spec.selector}' against kubectl get pods --show-labels. A single-character difference means zero matches. Fix the manifest and re-apply; do not patch pod labels by hand."}}, {"@type": "Question", "name": "How do I fix 'Image not updating'?", "acceptedAnswer": {"@type": "Answer", "text": "use a specific tag, not latest, so changes are detected. Re-tagging an image under latest changes nothing in the pod template, so the Deployment sees no diff and rolls nothing. Pin a real version tag, or force a restart with kubectl rollout restart deploy/web when you genuinely want to re-pull the same tag."}}, {"@type": "Question", "name": "How do I fix 'curl to the ClusterIP times out from your laptop'?", "acceptedAnswer": {"@type": "Answer", "text": "that is expected, not a bug. ClusterIP addresses exist only on the cluster's internal virtual network. Test from a pod (as in the validation step) or bridge your laptop in temporarily with kubectl port-forward svc/web 8080:80 and curl http://localhost:8080. To expose the app properly, use a NodePort/LoadBalancer Service or an Ingress (covered in the networking lab)."}}, {"@type": "Question", "name": "How do I fix 'Pods stuck in Pending'?", "acceptedAnswer": {"@type": "Answer", "text": "the scheduler cannot place them. kubectl describe pod shows an event like Insufficient cpu or a taint/toleration mismatch. On a small local cluster, reduce replicas or add resource requests small enough to fit; the Deployment is fine, the cluster is just full."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Pods &amp; Deployments</span></nav>
+    <div class="page-header"><h1>Kubernetes Pods, Deployments, and Services in YAML</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Containers</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">YAML</span><span class="tag">Deployment</span><span class="tag">Service</span><span class="tag">rollout</span></div>
+    </div>
+<nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#architecture-overview">Architecture Overview</a></li>
+<li><a href="#environment-setup">Environment Setup</a></li>
+<li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+<li><a href="#step-flow-map">Step Flow Map</a></li>
+<li><a href="#progress-so-far">Progress So Far</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#testing-validation">Testing & Validation</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#extension-ideas">Extension Ideas</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    
+
+    <section><p class="lead">You will define a Deployment and a Service in YAML, apply them, then perform a rolling update and rollback. By the end you will manage workloads declaratively, the way real clusters are operated under GitOps.</p>
+      <p>In the <a href="kubernetes-basics.html">Kubernetes Basics</a> lab you created workloads imperatively with <code>kubectl create</code>. That works for learning, but it leaves no record of what the cluster is supposed to look like. In this lab you switch to the declarative model: you describe the desired state in manifest files, hand them to the API server with <code>kubectl apply</code>, and let the controllers converge the cluster toward that state. This is the workflow used in production, manifests live in Git, changes are reviewed as pull requests, and a CI/CD pipeline (or a GitOps controller such as Argo CD or Flux) applies them.</p>
+      <p>Concretely, you will deploy a 3-replica nginx workload, front it with a stable <span class="glossary-term" data-definition="ClusterIP: the default Kubernetes Service type. It gets a virtual IP reachable only from inside the cluster, and load-balances traffic across all pods matching its selector.">ClusterIP</span> Service, push a new image version through a zero-downtime rolling update, and then roll the release back in a single command.</p>
+    </section>
+
+    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+      <ul>
+        <li>Write Deployment and Service manifests.</li>
+        <li>Perform a zero-downtime rolling update.</li>
+        <li>Roll back a bad release in one command.</li>
+        <li>Verify Service endpoints and understand how label selectors wire everything together.</li>
+        <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> a running cluster from the basics lab.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="architecture-overview">Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Deployment manages ReplicaSet and pods behind a service">
+graph TD
+  Dep[Deployment] --> RS[ReplicaSet]
+  RS --> P1[Pod]
+  RS --> P2[Pod]
+  Svc[Service ClusterIP] --> P1
+  Svc --> P2
+      </div>
+      <p>Three object types cooperate here, and it is worth being precise about the division of labour:</p>
+      <ul>
+        <li><strong>Deployment</strong>, the object you manage. It declares the desired replica count, the pod template, and the update strategy. It never runs containers itself.</li>
+        <li><strong>ReplicaSet</strong>, created and owned by the Deployment. Its only job is to keep <em>N</em> identical pods running. During a rolling update you briefly have two ReplicaSets: the old one scaling down and the new one scaling up.</li>
+        <li><strong>Pod</strong>, the actual running unit, one or more containers sharing a network namespace. Pods are ephemeral and get new IPs every time they are recreated, which is exactly why you never address them directly.</li>
+        <li><strong>Service</strong>, a stable virtual IP (ClusterIP) and DNS name that load-balances across every pod whose labels match its <code>selector</code>. Because it matches on labels, pods can be killed and recreated freely and the Service keeps working.</li>
+      </ul>
+      <p>The glue in the whole system is the label <code>app: web</code>: the Deployment selector matches pod template labels, and the Service selector matches the same labels on the running pods. If any of those three label sets drift apart, the workload either becomes unmanaged or loses its endpoints, this is the single most common mistake in this lab.</p>
+      <p>Notice what is deliberately absent from this design: you never create a bare Pod manifest for a real workload. A standalone pod is scheduled exactly once, if its node dies or the pod is evicted, nothing recreates it. The Deployment/ReplicaSet layering exists to make pods disposable: any pod can be deleted at any moment and the controller replaces it from the template, which is what the self-healing check in the validation section demonstrates.</p>
+      <p>On the traffic side, the Service object itself is only a control-plane record. The actual packet forwarding is done by <span class="glossary-term" data-definition="kube-proxy: an agent running on every node that programs iptables or IPVS rules so connections to a Service's virtual IP are forwarded to a healthy backing pod.">kube-proxy</span> on each node, which programs iptables/IPVS rules mapping the ClusterIP to the live endpoint IPs. That is why <code>kubectl get endpoints</code> is such a useful debugging view: it shows exactly which backends kube-proxy will pick from.</p>
+    </section>
+
+    <section><h2 id="environment-setup">Environment Setup</h2>
+<div class="lab-prereqs"><h3>Prerequisites</h3>
+<ul>
+<li>A running cluster (kind or AKS) with <code>kubectl</code> configured.</li>
+<li>A container image you can version (any registry you can push to, or a public image with multiple tags).</li>
+<li>Assumed skills: YAML indentation and Kubernetes basics (pods, ReplicaSets).</li>
+</ul></div>
+      <p><strong>You will need:</strong> a running cluster and kubectl context set.</p>
+      <p><strong>Before you begin:</strong> keep manifests in a directory so you can version them in Git.</p>
+      <p>Confirm kubectl is talking to the cluster you expect before touching anything. Applying a manifest against the wrong context is a classic way to deploy a test workload into a shared cluster.</p>
+      <div class="command-block" data-copy><div class="command"><code>kubectl config current-context &amp;&amp; kubectl cluster-info</code></div><div class="note">Should print your local context (e.g. kind-lab) and the control plane address.</div></div>
+      <p>Confirm at least one node is Ready to accept pods before you deploy anything:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get nodes</span></div>
+        <div class="terminal-output">NAME               STATUS   ROLES           AGE   VERSION
+lab-control-plane   Ready    control-plane   2d    v1.29.2</div>
+      </div>
+      <p>If the cluster from the basics lab is gone (kind clusters do not survive a Docker restart), recreate it with <code>kind create cluster --name lab</code> and re-check the two commands above.</p>
+      <p>Create a working directory for the manifests and, if you plan to commit them, initialise it as a Git repository now rather than later, the whole point of this lab is that the YAML <em>is</em> the source of truth.</p>
+      <div class="command-block" data-copy><div class="command"><code>mkdir -p k8s-lab/manifests &amp;&amp; cd k8s-lab/manifests &amp;&amp; git init</code></div><div class="note">All kubectl commands below are run from this directory.</div></div>
+      <p>Everything in this lab runs in the <code>default</code> namespace to keep the commands short. On a real cluster you would create a dedicated namespace per app or team and scope your work with <code>-n</code> or <code>kubectl config set-context --current --namespace=...</code>.</p>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Write the Deployment + Service</strong>
+          <p>The manifest below declares both objects in one file, separated by <code>---</code> (a standard multi-document YAML separator). Save it as <code>web.yaml</code>. A Deployment manifest has four parts worth understanding line by line:</p>
+          <ul>
+            <li><code>apiVersion: apps/v1</code> and <code>kind: Deployment</code>, which API group and object type you are declaring. Deployments live in the <code>apps</code> group, not the core <code>v1</code> group.</li>
+            <li><code>spec.replicas: 3</code>, the desired state. The ReplicaSet controller will create pods until three are running, and recreate any that die.</li>
+            <li><code>spec.selector.matchLabels</code>, how the Deployment knows which pods belong to it. This <strong>must</strong> match <code>spec.template.metadata.labels</code> exactly, or the API server rejects the manifest.</li>
+            <li><code>spec.template</code>, the pod blueprint. Every pod the ReplicaSet creates is stamped from this template, including the pinned image <code>nginx:1.25</code>.</li>
+          </ul>
+<pre><code class="language-yaml"># web.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: web }
+spec:
+  replicas: 3
+  selector: { matchLabels: { app: web } }
+  template:
+    metadata: { labels: { app: web } }
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.25
+---
+apiVersion: v1
+kind: Service
+metadata: { name: web }
+spec:
+  selector: { app: web }
+  ports: [{ port: 80 }]</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ kubectl apply --dry-run=client -f web.yaml
+deployment.apps/web created (dry run)
+service/web created (dry run)</code></pre>
+          <p>The Service is deliberately minimal: <code>selector: { app: web }</code> tells it to send traffic to every pod carrying that label, and <code>port: 80</code> is the port the Service itself listens on. Because no <code>type</code> is given, it defaults to <code>ClusterIP</code>, reachable only from inside the cluster. No <code>targetPort</code> is set either, so traffic is forwarded to the same port number (80) on the pods, which is where nginx listens by default.</p>
+          <p><strong>Common mistake:</strong> writing the Service selector as <code>app: web-svc</code> or the pod label as <code>app: frontend</code> "to be descriptive". The objects are wired together purely by these strings, they must match character for character. If you are ever unsure of a field, <code>kubectl explain deployment.spec.template</code> prints the API documentation for any field path.</p>
+          <p>Finally, validate the file before it ever touches the cluster. A client-side dry run catches schema errors (bad indentation, a wrong apiVersion) instantly, and once the objects exist, <code>kubectl diff</code> previews exactly what a future apply would change:</p>
+          <div class="command-block" data-copy><div class="command"><code>kubectl apply -f web.yaml --dry-run=client</code></div><div class="note">Prints "created (dry run)" per object; no cluster state is changed.</div></div>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl diff -f web.yaml</span></div>
+            <div class="terminal-output">(empty output after a successful apply means the file and the cluster agree)</div>
+          </div>
+        
+<p class="lab-step-note">What this teaches: The manifest is the application as data; Deployment plus Service is the smallest complete shippable unit.</p></div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Apply it</strong>
+          <p><code>kubectl apply</code> is declarative: it diffs your file against the live state and makes only the changes needed. Re-running it with an unchanged file is a no-op, which is why it, not <code>kubectl create</code>, is the command you script and commit to CI. Follow it immediately with <code>rollout status</code>, which blocks until all replicas are updated and ready, so your terminal prompt returning means the deployment actually succeeded.</p>
+          <div class="command-block" data-copy><div class="command"><code>kubectl apply -f web.yaml &amp;&amp; kubectl rollout status deploy/web</code></div></div>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl apply -f web.yaml</span></div>
+            <div class="terminal-output">deployment.apps/web created
+service/web created</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl rollout status deploy/web</span></div>
+            <div class="terminal-output">Waiting for deployment "web" rollout to finish: 0 of 3 updated replicas are available...
+Waiting for deployment "web" rollout to finish: 2 of 3 updated replicas are available...
+deployment "web" successfully rolled out</div>
+          </div>
+          <p>Now verify what was actually created. You should see three running pods (each with a random suffix, the first chunk is the ReplicaSet hash, the second the pod hash) and a Service with a cluster-internal IP:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get pods -l app=web -o wide</span></div>
+            <div class="terminal-output">NAME                   READY   STATUS    RESTARTS   AGE   IP           NODE
+web-584f6c6d9b-4k2mz   1/1     Running   0          45s   10.244.0.8   lab-control-plane
+web-584f6c6d9b-7xvqp   1/1     Running   0          45s   10.244.0.9   lab-control-plane
+web-584f6c6d9b-t9rnw   1/1     Running   0          45s   10.244.0.10  lab-control-plane</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get svc web &amp;&amp; kubectl get endpoints web</span></div>
+            <div class="terminal-output">NAME   TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
+web    ClusterIP   10.96.143.21   &lt;none&gt;        80/TCP    1m
+NAME   ENDPOINTS                                   AGE
+web    10.244.0.10:80,10.244.0.8:80,10.244.0.9:80   1m</div>
+          </div>
+          <p>The <code>endpoints</code> output is the proof that the label wiring works: the Service's virtual IP <code>10.96.143.21</code> is backed by exactly the three pod IPs from the first command. If the endpoints list were <code>&lt;none&gt;</code>, the selector does not match any pod labels.</p>
+          <p>The Deployment's own status row is the compact summary operators watch:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get deploy web</span></div>
+            <div class="terminal-output">NAME   READY   UP-TO-DATE   AVAILABLE   AGE
+web    3/3     3            3           2m</div>
+          </div>
+          <p><code>UP-TO-DATE</code> counts pods running the latest template revision; <code>AVAILABLE</code> counts pods passing readiness (with no probes defined, that simply means "container started"). During a rollout these two columns briefly disagree, that gap <em>is</em> the update in progress.</p>
+          <p><strong>How to verify:</strong> <code>READY 1/1</code> on all three pods, the rollout status line "successfully rolled out", and three IPs in the endpoints list. All three must be true before moving on.</p>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ kubectl apply -f web.yaml
+deployment.apps/web created
+service/web created</code></pre>
+<p class="lab-step-note">What this teaches: Apply is the only deployment verb you need; it creates or updates toward the declared state.</p></div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Roll out a new image version</strong>
+          <p>Now simulate shipping a new release: bump nginx from 1.25 to 1.27. <code>kubectl set image</code> patches the Deployment's pod template (the container name before the <code>=</code> must match the <code>name: web</code> in your manifest). Changing the template triggers the Deployment's default update strategy, <code>RollingUpdate</code>: it creates a new ReplicaSet for nginx:1.27, scales it up one pod at a time, and only scales an old pod down once a new one is Ready. With the defaults <code>maxSurge: 25%</code> and <code>maxUnavailable: 25%</code>, the Service always has healthy pods behind it, that is what makes the update zero-downtime for containers that report ready promptly. A readiness probe is what lets Kubernetes hold traffic until the new container actually serves, add one before relying on this in production.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl set image deploy/web web=nginx:1.27 &amp;&amp; kubectl rollout status deploy/web</span></div>
+            <div class="terminal-output">deployment "web" successfully rolled out</div>
+          </div>
+          <p>To watch the swap happen in real time, open a second terminal before running the update and stream the pod list:</p>
+          <div class="command-block" data-copy><div class="command"><code>kubectl get pods -l app=web -w</code></div><div class="note">You will see new pods enter ContainerCreating then Running while old pods Terminate one by one. Ctrl+C to exit the watch.</div></div>
+          <p>Catch the rollout mid-flight and the ReplicaSet view tells the whole story, the old ReplicaSet scaling down while the new one scales up:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get rs -l app=web</span></div>
+            <div class="terminal-output">NAME              DESIRED   CURRENT   READY   AGE
+web-584f6c6d9b    2         2         2       8m
+web-7d9c4b58f7    2         2         1       20s</div>
+          </div>
+          <p>Each ReplicaSet name embeds a hash of its pod template, which is how the Deployment tells revisions apart. When the rollout completes, the old ReplicaSet sits at 0 replicas but is kept around, it becomes your rollback target in step 04.</p>
+          <p>Every template change is recorded as a numbered revision. This history is what makes the next step possible:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl rollout history deploy/web</span></div>
+            <div class="terminal-output">REVISION  CHANGE-CAUSE
+1         &lt;none&gt;
+2         &lt;none&gt;</div>
+          </div>
+          <p><strong>Common mistake:</strong> the <code>CHANGE-CAUSE</code> column shows <code>&lt;none&gt;</code> because nothing recorded why the change happened. On real projects annotate each release so the history is self-documenting: <code>kubectl annotate deploy/web kubernetes.io/change-cause="bump nginx 1.25 to 1.27"</code>. Also note the image tag is explicit (<code>1.27</code>, not <code>latest</code>), with <code>latest</code> the pod template hash does not change, so no rollout is triggered at all.</p>
+          <p><strong>How to verify:</strong> <code>kubectl get deploy web -o jsonpath='{.spec.template.spec.containers[0].image}'</code> should print <code>nginx:1.27</code>, and <code>kubectl get rs</code> should show two ReplicaSets, the new one at 3 replicas, the old one scaled to 0 but retained for rollback.</p>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ kubectl set image deploy/web web=nginx:1.27
+deployment.apps/web image updated
+$ kubectl rollout status deploy/web
+deployment "web" successfully rolled out</code></pre>
+<p class="lab-step-note">What this teaches: Rolling out a new image is changing one field and letting the controllers converge; watch the ReplicaSets trade places.</p></div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Roll back if needed</strong>
+          <p>Pretend the 1.27 release introduced a regression and you need to revert now. Because the old ReplicaSet was scaled to zero rather than deleted, a rollback is just a pointer flip: the Deployment scales the previous ReplicaSet back up and the new one down. It is the same rolling mechanism in reverse, so it is also zero-downtime under the same readiness conditions.</p>
+          <div class="command-block" data-copy><div class="command"><code>kubectl rollout undo deploy/web</code></div></div>
+          <p>That reverts to the immediately previous revision. To jump to a specific older revision, pick its number from the history:</p>
+          <div class="command-block" data-copy><div class="command"><code>kubectl rollout undo deploy/web --to-revision=1</code></div><div class="note">Use the plain undo first; only pin a revision when you need to skip over several bad releases.</div></div>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl rollout status deploy/web &amp;&amp; kubectl get deploy web -o jsonpath='{.spec.template.spec.containers[0].image}'; echo</span></div>
+            <div class="terminal-output">deployment "web" successfully rolled out
+nginx:1.25</div>
+          </div>
+          <p>One subtlety: a rollback does not erase history, it creates a <em>new</em> revision whose template is a copy of the one you reverted to. After the undo, <code>kubectl rollout history</code> shows revision 3 with the nginx:1.25 template, revisions only ever move forward.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl rollout history deploy/web</span></div>
+            <div class="terminal-output">REVISION  CHANGE-CAUSE
+2         &lt;none&gt;
+3         &lt;none&gt;</div>
+          </div>
+          <p>Revision 1 disappeared from the list because its template now lives at revision 3, Kubernetes renumbers the newest copy rather than resurrecting the old slot. The change-cause annotation habit from step 03 is what keeps this list meaningful on a real project.</p>
+          <p><strong>How to verify:</strong> the image is back to <code>nginx:1.25</code>, all pods show <code>Running</code>, and <code>kubectl get endpoints web</code> still lists three healthy IPs. In a real incident you would then curl the Service (next section) to confirm the app itself, not just the pods, is healthy.</p>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ kubectl rollout undo deploy/web
+deployment.apps/web rolled back</code></pre>
+<p class="lab-step-note">What this teaches: Rollback scales the previous ReplicaSet back up; it is fast because the old pods' definition never left etcd.</p></div></div>
+      </div>
+    </section>
+<section><h2 id="step-flow-map">Step Flow Map</h2>
+<div class="mermaid" role="img" aria-label="Flow of the lab steps from first to last">
+graph TD
+  S1["Write the Deployment + Service"]
+  S2["Apply it"]
+  S3["Roll out a new image version"]
+  S4["Roll back if needed"]
+  S1 --> S2
+  S2 --> S3
+  S3 --> S4
+</div>
+<p>Each box is one step in the lab; work them in order, since later steps build on earlier state.</p>
+</section>
+
+    
+
+    <section><h2 id="progress-so-far">Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Deployment lifecycle progress">
+graph LR
+  A[01 Manifest] -->|done| B[02 Apply]
+  B -->|done| C[03 Rolling update]
+  C -->|done| D[04 Rollback]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+<div class="lab-explainer">
+<p>A Deployment is a declaration of desired state for stateless pods: the image, the replica count, and the update strategy. The Deployment controller does not manage pods directly; it manages a ReplicaSet, which maintains the count. This indirection is what makes rolling updates possible: the new ReplicaSet scales up while the old scales down, and both exist simultaneously mid-rollout.</p>
+<p>The rolling update strategy is governed by two knobs: maxUnavailable (how many pods may be down during the update) and maxSurge (how many extra pods may exist). The defaults (25 percent each) mean a rolling update never takes the service fully down and never more than doubles capacity. Changing these trades speed against safety, which is a deliberate operational decision, not a default to accept blindly.</p>
+<p>Every rollout writes a new revision into the ReplicaSet history stored in etcd. Rollback is not undoing the YAML; it is scaling the previous ReplicaSet back up, which is why it is fast and reliable. The revision history is bounded (default 10), so old rollback targets eventually age out; annotate significant rollouts so future you knows what each revision was.</p>
+</div>
+</section>
+
+    <section><h2 id="testing-validation">Testing &amp; Validation</h2>
+      <p>Passing rollout status proves Kubernetes reached the desired state, but it does not prove the application answers traffic. Validate end to end in three parts.</p>
+      <p><strong>1. Confirm the object state.</strong> The history should show the revisions you created, and the Service should have a stable ClusterIP:</p>
+      <div class="command-block" data-copy><div class="command"><code>kubectl rollout history deploy/web &amp;&amp; kubectl get svc web</code></div></div>
+      <p>You should see multiple revisions and a Service with a ClusterIP. If so, you can deploy, update, and undo declaratively.</p>
+      <p><strong>2. Prove the Service actually routes traffic.</strong> A ClusterIP exists only inside the cluster network, so test it from a throwaway pod, not from your laptop:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl run curl-test --rm -i --image=curlimages/curl:8.22.0 --command -- curl -s -o /dev/null -w "%{http_code}\n" http://web</span></div>
+        <div class="terminal-output">200</div>
+      </div>
+      <p>Two things are being validated at once here: cluster DNS resolves the bare name <code>web</code> to the Service's ClusterIP, and kube-proxy routes that IP to one of the healthy pods. The <code>--rm</code> flag deletes the test pod automatically when the command finishes, so nothing is left behind. <code>--command</code> overrides the image entrypoint so the trailing curl invocation runs as the container command instead of being appended to it, and <code>--</code> separates kubectl flags from that command.</p>
+      <p><strong>3. Prove the Service follows scaling.</strong> Scale to five replicas and watch the endpoints list grow to match, this demonstrates that the Service tracks labels, not fixed pod IPs:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl scale deploy/web --replicas=5 &amp;&amp; kubectl rollout status deploy/web</span></div>
+        <div class="terminal-output">deployment.apps/web scaled
+deployment "web" successfully rolled out</div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get endpoints web</span></div>
+        <div class="terminal-output">NAME   ENDPOINTS                                                        AGE
+web    10.244.0.10:80,10.244.0.11:80,10.244.0.12:80,10.244.0.8:80 + 1 more...   12m</div>
+      </div>
+      <p>Scale back to 3 when done (<code>kubectl scale deploy/web --replicas=3</code>) so the live state matches the manifest in Git, drift between the file and the cluster is exactly what declarative management is supposed to prevent.</p>
+      <p>Validation is complete. Tear the lab workloads down last, nothing validates after this point by design:</p>
+      <div class="command-block" data-copy><div class="command"><code>kubectl delete -f web.yaml</code></div></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>$ kubectl delete -f web.yaml
+deployment.apps "web" deleted
+service "web" deleted</code></pre>
+    </section>
+<section><h2 id="troubleshooting">Troubleshooting</h2>
+<p>Quick-reference for the failures you are most likely to hit in this lab.</p>
+<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<tr><td><code>kubectl apply</code> rejects the manifest</td><td>YAML indentation or a wrong API version</td><td>Validate with <code>--dry-run=client</code>; the error names the exact line.</td></tr>
+<tr><td>Pods stuck in CrashLoopBackOff</td><td>The new image exits immediately</td><td>Read the logs of the previous container; the rollout is fine, the image is broken.</td></tr>
+<tr><td>Rollout hangs mid-update</td><td>Readiness probe never passes on the new pods</td><td>Describe a new pod; the events show which probe fails and why.</td></tr>
+<tr><td>Service sends no traffic</td><td>Selector does not match the pod labels</td><td>Compare the service selector against pod labels; one typo breaks it all.</td></tr>
+<tr><td>Rollback went to the wrong revision</td><td>Revisions counted without checking</td><td>Read <code>rollout history</code> first; the numbers only mean something with the annotations.</td></tr>
+</tbody></table>
+</section>
+
+    
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Rollout stuck:</strong> a new pod is crashing; inspect with <code>kubectl describe</code> and <code>logs</code>. Run <code>kubectl describe pod -l app=web</code> and read the <code>Events</code> section at the bottom, it names the failing container and reason. For application-level errors, <code>kubectl logs deploy/web --tail=50</code>. A rollout stuck in <code>CrashLoopBackOff</code> never goes unhealthy on the old pods, which is safe but means the new release is not live; fix the image/config and re-apply, or <code>kubectl rollout undo</code>.</li>
+        <li><strong>Service has no endpoints:</strong> the selector labels must match the pod labels exactly. Confirm with <code>kubectl get endpoints web</code>, if it shows <code>&lt;none&gt;</code>, compare <code>kubectl get svc web -o jsonpath='{.spec.selector}'</code> against <code>kubectl get pods --show-labels</code>. A single-character difference means zero matches. Fix the manifest and re-apply; do not patch pod labels by hand.</li>
+        <li><strong>Image not updating:</strong> use a specific tag, not <code>latest</code>, so changes are detected. Re-tagging an image under <code>latest</code> changes nothing in the pod template, so the Deployment sees no diff and rolls nothing. Pin a real version tag, or force a restart with <code>kubectl rollout restart deploy/web</code> when you genuinely want to re-pull the same tag.</li>
+        <li><strong>curl to the ClusterIP times out from your laptop:</strong> that is expected, not a bug. ClusterIP addresses exist only on the cluster's internal virtual network. Test from a pod (as in the validation step) or bridge your laptop in temporarily with <code>kubectl port-forward svc/web 8080:80</code> and curl <code>http://localhost:8080</code>. To expose the app properly, use a NodePort/LoadBalancer Service or an Ingress (covered in the networking lab).</li>
+        <li><strong>Pods stuck in Pending:</strong> the scheduler cannot place them. <code>kubectl describe pod</code> shows an event like <code>Insufficient cpu</code> or a taint/toleration mismatch. On a small local cluster, reduce <code>replicas</code> or add resource requests small enough to fit; the Deployment is fine, the cluster is just full.</li>
+      </ul>
+    </details>
+
+    <section><h2 id="extension-ideas">Extension Ideas</h2>
+      <ul>
+        <li>Expose externally and add ingress in <a href="kubernetes-networking.html">Kubernetes Networking</a>.</li>
+        <li>Add readiness/liveness probes and resource limits. A <code>readinessProbe</code> on port 80 would make the rolling update genuinely safe, today Kubernetes considers a pod ready the moment the container starts, so a slow-booting app could still drop requests mid-rollout.</li>
+        <li>Force a template change without touching the image: set an environment variable or annotation with <code>kubectl patch</code>, watch the new rollout, then find it in the history.</li>
+        <li>Manage manifests with Kustomize or Helm under GitOps, put <code>web.yaml</code> in a repo and let Argo CD reconcile it, then try editing the cluster by hand and watch GitOps revert your change.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways"><h3 id="key-takeaways">Key Takeaways</h3>
+      <ul>
+        <li>Declarative beats imperative: the YAML manifest is the source of truth, <code>kubectl apply</code> converges the cluster to it, and the file belongs in Git.</li>
+        <li>A Deployment never runs pods directly, it owns ReplicaSets, which own pods. Understanding that chain explains where rollout history and rollback capacity come from.</li>
+        <li>Rolling updates are safe by default because of <code>maxSurge</code>/<code>maxUnavailable</code>: new pods must become Ready before old ones are removed.</li>
+        <li>Services select pods by label, not by IP, so they survive pod churn, rollouts, and scaling without any reconfiguration.</li>
+        <li><code>rollout status</code>, <code>rollout history</code>, and <code>rollout undo</code> are the everyday lifecycle trio, know them before touching a production release.</li>
+        <li>ClusterIP is internal-only; reaching it from outside requires port-forward for debugging or a NodePort/LoadBalancer/Ingress for real exposure.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Deployed a 3-replica workload from declarative YAML.</li>
+        <li>Performed a zero-downtime rolling update.</li>
+        <li>Rolled back a release in a single command.</li>
+        <li>Exposed pods through a stable Service ClusterIP.</li>
+        <li>Verified routing end to end with an in-cluster curl and confirmed endpoints track scaling.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="practice-challenges">Practice Challenges</h2>
+<div class="lab-challenge"><h4>Challenge 1: Feel the Recreate strategy</h4><p>Goal: Switch the strategy to Recreate, roll out, and observe the downtime window.</p><p>Hint: The outage is the lesson; this is why RollingUpdate is the default.</p></div>
+<div class="lab-challenge"><h4>Challenge 2: Break the probes</h4><p>Goal: Add readiness and liveness probes, then deploy an image that fails them, and watch the rollout stall.</p><p>Hint: The stalled rollout protecting the old version is the safety mechanism working.</p></div>
+<div class="lab-challenge"><h4>Challenge 3: Manifest vs imperative scale</h4><p>Goal: Scale with <code>kubectl scale</code>, then diff against the manifest to see the drift.</p><p>Hint: The manifest still says 2 while reality says 5; decide which one is the source of truth.</p></div>
+</section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="kubernetes-basics.html">Kubernetes Basics</a></li>
+        <li><a href="kubernetes-networking.html">Kubernetes Services &amp; Networking</a></li>
+        <li><a href="aks-deployment.html">Azure Kubernetes Service (AKS)</a></li>
+      
+        <li><a href="docker-images.html">Docker Images and Dockerfile</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

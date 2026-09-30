@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure SQL Deployment: az CLI &amp; Firewall Rules | TYFSADIK</title>
+  <meta name="keywords" content="azure sql, az cli, azure sql deployment, firewall rules, contained users, PaaS database">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Azure SQL Deployment: az CLI &amp; Firewall Rules | TYFSADIK">
+  <meta property="og:description" content="Deploy a managed Azure SQL Database with the az CLI, lock it down with firewall rules, and create least-privilege contained users in this step-by-step lab.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/databases/azure-sql-deployment.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Azure SQL Deployment: az CLI &amp; Firewall Rules | TYFSADIK">
+  <meta name="twitter:description" content="Deploy a managed Azure SQL Database with the az CLI, lock it down with firewall rules, and create least-privilege contained users in this step-by-step lab.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="description" content="Deploy a managed Azure SQL Database with the az CLI, lock it down with firewall rules, and create least-privilege contained users in this step-by-step lab.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/databases/azure-sql-deployment.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Azure SQL Database Deployment with the az CLI", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-03-18", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "Azure CLI, Azure SQL Database, SQL", "articleSection": "Databases", "learningResourceType": "Hands-on lab", "teaches": "databases and SQL"}</script>
+  <script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "Create the logical server and database",
+      "text": "Create the logical server and database"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Restrict network access",
+      "text": "Restrict network access"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Create a least-privilege user",
+      "text": "Create a least-privilege user"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Test connectivity as the app user",
+      "text": "Test connectivity as the app user"
+    }
+  ],
+  "url": "https://tyfsadik.org/about.html"
+}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Databases", "item": "https://tyfsadik.org/blog/labs/databases/index.html"}, {"@type": "ListItem", "position": 4, "name": "Azure SQL Deployment", "item": "https://tyfsadik.org/blog/labs/databases/azure-sql-deployment.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'connection timeout from the client'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the client IP is not in any firewall rule. Fix: add the current public IP; verify with az sql server firewall-rule list."}}, {"@type": "Question", "name": "How do I fix 'login failed for user'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: contained user created in the wrong database or password mismatch. Fix: connect to the target database (not master) and recreate the user carefully."}}, {"@type": "Question", "name": "How do I fix 'az sql commands not found'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the sql extension or an old CLI version. Fix: run az upgrade and ensure the sql command group is available."}}, {"@type": "Question", "name": "How do I fix 'S0 throttles under load'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: DTU limit hit during a burst. Fix: check sys.dm_db_resource_stats, then scale to S1/S2 or vCore based on the bottleneck."}}, {"@type": "Question", "name": "How do I fix ''allow Azure services' questioned in review'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: it opens the server to all of Azure, not just your resources. Fix: replace with private endpoint or explicit IPs and document the exception."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/databases/index.html">Databases</a> &rsaquo; <span>Azure SQL Deployment</span></nav>
+    <div class="page-header"><h1>Azure SQL Database Deployment with the az CLI</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Databases</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Azure SQL</span><span class="tag">az CLI</span><span class="tag">firewall</span><span class="tag">least privilege</span></div>
+    </div>
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+      <li><a href="#objective-context">Objective &amp; Context</a></li>
+      <li><a href="#environment-prerequisites">Environment &amp; Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation &amp; Testing</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#takeaways">Key Takeaways</a></li>
+      <li><a href="#challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+    </ol></nav>
+
+    <section><p class="lead">I deployed a managed Azure SQL Database via the az CLI with server-level firewall rules and least-privilege contained users. Scripting the provisioning made a secured PaaS database repeatable and reviewable instead of click-driven.</p></section>
+
+    <section><h2 id="objective-context">Objective &amp; Context</h2>
+      <p>Azure SQL is a managed PaaS database; security depends on firewall scoping and login least privilege, not host hardening. This lab provisions a logical server and database, restricts network access, and creates non-admin application users, aligning to CIS Azure data recommendations.</p></section>
+    <div class="lab-objectives"><h3>Learning Objectives</h3><ul>
+      <li>Provision a logical server and database with the az CLI.</li>
+      <li>Restrict network access with server firewall rules.</li>
+      <li>Create contained, least-privilege database users.</li>
+      <li>Choose a service tier appropriate to the workload.</li>
+      <li>Script provisioning so it is repeatable and reviewable.</li>
+    </ul></div>
+
+    <section><h2 id="environment-prerequisites">Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3><ul>
+      <li>An Azure subscription with the <code>az</code> CLI authenticated (<code>az login</code>)</li>
+      <li>A resource group and a naming convention decided upfront</li>
+      <li>Your client public IP for the firewall allow rule</li>
+      <li>Assumed skill: basic CLI usage and SQL GRANT concepts</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="Azure SQL deployment components">
+flowchart LR
+  RG[Resource Group] --> S[Logical SQL Server]
+  S --> DB[(Azure SQL Database)]
+  S --> FW[Firewall rule: client IP]
+  DB --> U[App login least privilege]
+      </div>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <h3>1. Create the logical server and database</h3>
+      <div class="command-block"><div class="command"><code>az sql server create -g rg -l canadacentral -n tyf-sql --admin-user adm --admin-password '****' &amp;&amp; az sql db create -g rg -s tyf-sql -n appdb --service-objective S0</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>Database appdb provisioned (S0).</code></pre>
+      <p class="lab-step-note">What this teaches: Scripted provisioning makes the database repeatable and reviewable; the S0 tier is a sane starting point you scale after measuring. <code>--location</code> is a required parameter; canadacentral keeps the data in Canada for residency requirements. The command also fails without an authenticated CLI, so run <code>az login</code> first on a fresh machine.</p></div>
+      <h3>2. Restrict network access</h3>
+      <div class="command-block"><div class="command"><code>az sql server firewall-rule create -g rg -s tyf-sql -n client --start-ip-address 203.0.113.10 --end-ip-address 203.0.113.10</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>(firewall rule created)</code></pre>
+      <p class="lab-step-note">What this teaches: A single-IP rule is the minimal viable network posture; 'allow Azure services' and 0.0.0.0/0 are conveniences with real attack surface.</p></div>
+      <h3>3. Create a least-privilege user</h3>
+      <div class="command-block"><div class="command"><code>CREATE USER app WITH PASSWORD='****'; ALTER ROLE db_datareader ADD MEMBER app;</code></div></div>
+<pre><code class="language-bash">Command(s) completed successfully.</code></pre>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>(user app created and added to db_datareader)</code></pre>
+      <p class="lab-step-note">What this teaches: Contained users live in the database, not the server, so credentials move with the database and the app gets read-only by default. Run this T-SQL connected to appdb (for example <code>sqlcmd -S tyf-sql.database.windows.net -d appdb</code>), not to master; a contained user created in master does not exist in appdb.</p></div>
+      <h3>4. Test connectivity as the app user</h3>
+      <div class="command-block"><div class="command"><code>sqlcmd -S tyf-sql.database.windows.net,1433 -d appdb -U app -Q "SELECT TOP (1) name FROM sys.tables;"</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>name
+----
+orders
+(1 row affected)</code></pre>
+      <p class="lab-step-note">What this teaches: Azure SQL listens on TCP 1433, and the comma syntax passes the port to sqlcmd. sqlcmd prompts for the password interactively, so the secret never appears in shell history. A successful query from the allowed IP proves the firewall rule and the contained login both work; run the same command from a non-allowed IP to watch it time out.</p></div>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+      <div class="lab-explainer"><h3>How It Works</h3>
+      <p>Azure SQL Database is PaaS: Microsoft runs the engine, patching, and HA, while you manage schema, users, and firewall rules. The logical server is an administrative container; the database is the billable, tunable unit inside it.</p>
+      <p>Network security is layered: server firewall rules filter by IP before authentication is even attempted. Deny-by-default with explicit allow rules shrinks the reachable surface to exactly your clients, and private endpoints remove public reachability entirely.</p>
+      <p>Contained database users authenticate at the database level rather than the server level. That decouples credentials from the logical server, so the database (and its users) can move between servers without recreating logins, and each app gets only the roles it needs.</p>
+    </div>
+      <div class="mermaid" role="img" aria-label="Hardened Azure SQL deployment">
+flowchart LR
+  AZ["az sql server create<br/>+ db create"] --> FW["firewall rule<br/>single client IP"]
+  FW --> U["contained user<br/>db_datareader"]
+  U --> APP["app connects<br/>least privilege"]
+      </div>
+    </section>
+
+    <section><h2 id="validation-testing">Validation &amp; Testing</h2>
+      <p>Connect from the allowed IP with the app login and confirm read access works while writes are denied; connect from a non-allowed IP and confirm it is blocked. Pass criteria: firewall enforces source IP and the app user holds only granted roles.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Cannot connect:</strong> add the client IP firewall rule and confirm "Allow Azure services" only if intended.</li>
+        <li><strong>Over-privileged login:</strong> avoid using the server admin for apps; create scoped users.</li>
+        <li><strong>Throttling:</strong> the service objective (DTU/vCore) may be undersized for the workload.</li>
+      </ul>
+    </details>
+
+    <section><h2 id="troubleshooting">Troubleshooting</h2>
+      <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+        <tr><td>connection timeout from the client</td><td>the client IP is not in any firewall rule</td><td>add the current public IP; verify with az sql server firewall-rule list</td></tr>
+        <tr><td>login failed for user</td><td>contained user created in the wrong database or password mismatch</td><td>connect to the target database (not master) and recreate the user carefully</td></tr>
+        <tr><td>az sql commands not found</td><td>the sql extension or an old CLI version</td><td>run az upgrade and ensure the sql command group is available</td></tr>
+        <tr><td>S0 throttles under load</td><td>DTU limit hit during a burst</td><td>check sys.dm_db_resource_stats, then scale to S1/S2 or vCore based on the bottleneck</td></tr>
+        <tr><td>'allow Azure services' questioned in review</td><td>it opens the server to all of Azure, not just your resources</td><td>replace with private endpoint or explicit IPs and document the exception</td></tr>
+      </tbody></table>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Provisioned a secured Azure SQL database from a repeatable CLI script.</li>
+        <li>Restricted network access to a single explicit source IP.</li>
+        <li>Granted the app login read-only, removing admin over-privilege.</li>
+        <li>Made the deployment reviewable and reproducible versus portal clicks.</li>
+      </ul>
+    </section>
+
+    <section class="lab-takeaways"><h2 id="takeaways">Key Takeaways</h2><ul>
+        <li>Script provisioning with the az CLI: repeatable beats click-ops.</li>
+        <li>Firewall rules default-deny; allow only known client IPs.</li>
+        <li>Contained users decouple credentials from the logical server.</li>
+        <li>Grant least privilege: db_datareader first, expand deliberately.</li>
+        <li>Pick the tier from measured resource stats, not guesses.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="challenges">Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Private endpoint</h4><p><strong>Goal:</strong> Replace the public firewall rule with a private endpoint in your VNet and prove public connectivity fails.</p><p><strong>Hint:</strong> Create the private endpoint, approve it, then test connection from outside the VNet.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: Failover drill</h4><p><strong>Goal:</strong> Configure an auto-failover group and simulate a failover, measuring the reconnection behaviour.</p><p><strong>Hint:</strong> Use a secondary in another region; watch the app reconnect to the new primary.</p></div>
+    </section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="cloud-database-config.html">Cloud Database Configuration</a></li>
+        <li><a href="database-admin.html">Database Administration</a></li>
+        <li><a href="../cloud-azure/azure-cli-setup.html">Azure CLI Setup</a></li>
+      
+        <li><a href="cloud-database-config.html">Cloud Database Configuration</a></li>
+        <li><a href="database-admin.html">Database Administration</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

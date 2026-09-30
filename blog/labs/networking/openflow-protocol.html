@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenFlow Protocol Explained: Networking Lab | TYFSADIK</title>
+  <meta name="description" content="Program OpenFlow flow tables by hand: ovs-ofctl match fields, priority resolution, forward and drop actions, and verified per-flow counters on Open vSwitch.">
+  <meta name="keywords" content="OpenFlow, OVS, ovs-ofctl, flow table, SDN southbound, match fields, priority">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/openflow-protocol.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "OpenFlow Protocol: Flow Tables and Match-Action", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-04-15", "dateModified": "2026-09-29", "proficiencyLevel": "Advanced", "dependencies": "OpenFlow 1.3, Open vSwitch, ovs-ofctl", "articleSection": "Networking", "learningResourceType": "Hands-on lab", "teaches": "computer networking fundamentals"}</script>
+  <meta property="og:title" content="OpenFlow Protocol Explained: Networking Lab | TYFSADIK">
+  <meta property="og:description" content="Program OpenFlow flow tables by hand: ovs-ofctl match fields, priority resolution, forward and drop actions, and verified per-flow counters on Open vSwitch.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/networking/openflow-protocol.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="OpenFlow Protocol Explained: Networking Lab | TYFSADIK">
+  <meta name="twitter:description" content="Program OpenFlow flow tables by hand: ovs-ofctl match fields, priority resolution, forward and drop actions, and verified per-flow counters on Open vSwitch.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "OpenFlow Protocol: Programming Flow Tables on Open vSwitch",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "1. Install a proactive forwarding flow",
+      "text": "ovs-ofctl -O OpenFlow13 add-flow s1 \"priority=200,in_port=1,actions=output:2\""
+    },
+    {
+      "@type": "HowToStep",
+      "name": "2. Add a higher-priority drop rule",
+      "text": "ovs-ofctl -O OpenFlow13 add-flow s1 \"priority=300,ip,nw_dst=10.0.0.9,actions=drop\""
+    },
+    {
+      "@type": "HowToStep",
+      "name": "3. Inspect counters per flow",
+      "text": "ovs-ofctl -O OpenFlow13 dump-flows s1"
+    }
+  ]
+}
+  </script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Networking", "item": "https://tyfsadik.org/blog/labs/networking/index.html"}, {"@type": "ListItem", "position": 4, "name": "OpenFlow Protocol", "item": "https://tyfsadik.org/blog/labs/networking/openflow-protocol.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Flow appears installed but traffic is unaffected'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: A higher-priority entry matches first, or the flow went to the wrong table. Fix: Dump flows sorted by priority and confirm your entry is the first match for the test traffic."}}, {"@type": "Question", "name": "How do I fix 'ovs-ofctl reports unknown OVSDB or connection refused'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: ovsdb-server not running or the bridge name is wrong. Fix: Check ovs-vsctl show and confirm the bridge name (s1) exists."}}, {"@type": "Question", "name": "How do I fix 'add-flow rejected with a syntax error'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Match field or action invalid for the negotiated OpenFlow version. Fix: Force -O OpenFlow13 and check field names against the OVS manual for that version."}}, {"@type": "Question", "name": "How do I fix 'Counters stay at zero'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Traffic never reaches the switch or matches a different entry. Fix: Generate test traffic and re-dump; zero counters on a live path mean a mismatch."}}, {"@type": "Question", "name": "How do I fix 'Flows vanish after a while'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Idle or hard timeouts expired the entries. Fix: Re-add with explicit timeouts or check that the controller is not deleting them."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>OpenFlow Protocol</span></nav>
+    <div class="page-header"><h1>OpenFlow Protocol: Programming Flow Tables on Open vSwitch</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Networking</span><span class="lab-time">~5 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">OpenFlow 1.3</span><span class="tag">OVS</span><span class="tag">flow tables</span><span class="tag">match-action</span></div>
+    </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
+      <ol>
+      <li><a href="#objective-context">Objective</a></li>
+      <li><a href="#learning-objectives">Learning Objectives</a></li>
+      <li><a href="#environment-prerequisites">Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Steps</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#key-takeaways">Key Takeaways</a></li>
+      <li><a href="#practice-challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+      </ol>
+    </nav>
+
+
+    <section><p class="lead">I programmed OpenFlow 1.3 flow tables directly on Open vSwitch using match-action rules with priorities, idle timeouts, and output actions. Installing proactive flows revealed exactly how the southbound protocol turns controller intent into packet forwarding.</p></section>
+
+    <section id="objective-context"><h2>Objective &amp; Context</h2>
+      <p>OpenFlow is the canonical SDN southbound protocol: a switch matches packet fields against prioritized table entries and applies actions. This lab manipulates flows by hand with ovs-ofctl to make the abstraction concrete before automating it from a controller.</p></section>    <section id="learning-objectives">
+      <div class="lab-objectives"><h3>Learning Objectives</h3>
+        <ul>
+        <li>Install proactive flows on an OVS switch with ovs-ofctl.</li>
+        <li>Use priority values to control which entry wins when matches overlap.</li>
+        <li>Write match fields (in_port, dl_dst, nw_dst) and actions (output, drop, mod).</li>
+        <li>Read per-flow packet and byte counters with dump-flows.</li>
+        <li>Explain the packet-in path for table misses.</li>
+        </ul>
+      </div>
+    </section>
+
+
+    <section id="environment-prerequisites"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+      <ul>
+        <li>Open vSwitch with OpenFlow 1.3 enabled; a Mininet topology.</li>
+        <li>ovs-ofctl and ovs-vsctl tooling.</li>
+        <li>Understanding of match fields (in_port, dl_dst, nw_dst).</li>
+      
+          <li>Open vSwitch with OpenFlow 1.3 enabled and a Mininet topology running.</li>
+          <li>ovs-ofctl and ovs-vsctl installed (sudo apt install -y openvswitch-switch).</li>
+          <li>Understanding of match fields: in_port, dl_dst, nw_dst.</li>
+          <li>Root or sudo access for OVS commands.</li>
+        </ul>
+      <div class="mermaid" role="img" aria-label="OpenFlow match-action pipeline">
+flowchart LR
+  P[Packet] --> M{Match table entry?}
+  M -->|priority match| A[Apply action<br/>output/drop/mod]
+  M -->|miss| C[Send to controller]
+      </div>
+          </div>
+</section>
+
+    <section id="step-by-step-execution"><h2>Step-by-Step Execution</h2>
+      <h3>1. Install a proactive forwarding flow</h3>
+      <div class="command-block"><div class="command"><code>ovs-ofctl -O OpenFlow13 add-flow s1 "priority=200,in_port=1,actions=output:2"</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>(no output: add-flow succeeds silently; the flow is installed)</code></pre>
+<p class="lab-step-note">What this teaches: a flow entry is a prioritized match plus an action, which is the entire OpenFlow programming model.</p>
+<h3>2. Add a higher-priority drop rule</h3>
+      <div class="command-block"><div class="command"><code>ovs-ofctl -O OpenFlow13 add-flow s1 "priority=300,ip,nw_dst=10.0.0.9,actions=drop"</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>(no output: the higher-priority drop rule is installed above the forward rule)</code></pre>
+<p class="lab-step-note">What this teaches: priority resolves overlapping matches deterministically, so a drop rule can override a forward rule.</p>
+<p class="lab-step-note">Two subtleties: actions=drop installs an empty action set (the OpenFlow way to say discard), and nw_dst=10.0.0.9 matches a single /32 address unless a mask is given. Flows installed by hand live alongside controller flows: a connected controller can overwrite or expire them, so re-dump the table after any controller event.</p>
+<h3>3. Inspect counters per flow</h3>
+      <div class="command-block"><div class="command"><code>ovs-ofctl -O OpenFlow13 dump-flows s1</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code class="language-bash">priority=300,ip,nw_dst=10.0.0.9 actions=drop  n_packets=14
+priority=200,in_port=1 actions=output:2       n_packets=88</code></pre>
+<p class="lab-step-note">What this teaches: per-flow counters are the ground truth of what the switch actually did with packets.</p>
+</section>    <section id="how-it-works">
+      <div class="lab-explainer"><h3>How It Works</h3>
+        <p>OpenFlow splits the switch into a flow table and a secure channel to the controller. Each table entry has match fields (which packets it applies to), a priority (which entry wins on overlap), counters (packets and bytes seen), and actions (what to do: forward, drop, modify, or send to the controller).</p>
+        <p>When a packet arrives, the switch walks the table top-down by priority and applies the first matching entry's actions. If nothing matches, the default behavior is a table miss: the switch buffers the packet and sends a packet-in message to the controller, which can then install a flow reactively. Proactive flows, installed ahead of time as in this lab, avoid that round trip.</p>
+        <p>Counters make flows observable. n_packets and n_bytes per entry show exactly how much traffic each rule handled, which is how you verify that the drop rule caught the target host and the forward rule carried everything else. Without counters, flow programming is guesswork.</p>
+        <div class="mermaid" role="img" aria-label="OpenFlow packet processing pipeline">
+flowchart LR
+  P["Packet in"] --> T["Flow table"]
+  T -->|"priority match"| A["Apply actions"]
+  T -->|"table miss"| C["packet-in to controller"]
+  C -->|"flow-mod"| T
+  A --> K["Counters increment"]
+        </div>
+      </div>
+    </section>
+
+
+    <section id="validation-testing"><h2>Validation &amp; Testing</h2>
+      <p>Send traffic and confirm the higher-priority drop wins over the forward rule, with packet counters incrementing on the matched entry. Pass criteria: priority ordering observed and counters confirm which flow handled each packet.</p>
+    </section>    <section id="troubleshooting">
+      <h2>Troubleshooting</h2>
+      <table class="lab-table">
+        <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>Flow appears installed but traffic is unaffected</td><td>A higher-priority entry matches first, or the flow went to the wrong table</td><td>Dump flows sorted by priority and confirm your entry is the first match for the test traffic</td></tr>
+          <tr><td>ovs-ofctl reports unknown OVSDB or connection refused</td><td>ovsdb-server not running or the bridge name is wrong</td><td>Check ovs-vsctl show and confirm the bridge name (s1) exists</td></tr>
+          <tr><td>add-flow rejected with a syntax error</td><td>Match field or action invalid for the negotiated OpenFlow version</td><td>Force -O OpenFlow13 and check field names against the OVS manual for that version</td></tr>
+          <tr><td>Counters stay at zero</td><td>Traffic never reaches the switch or matches a different entry</td><td>Generate test traffic and re-dump; zero counters on a live path mean a mismatch</td></tr>
+          <tr><td>Flows vanish after a while</td><td>Idle or hard timeouts expired the entries</td><td>Re-add with explicit timeouts or check that the controller is not deleting them</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Flow not matching:</strong> a higher-priority entry may shadow it; dump and check ordering.</li>
+        <li><strong>Version errors:</strong> always pass <code>-O OpenFlow13</code> consistently.</li>
+        <li><strong>Flows expire:</strong> set <code>idle_timeout=0</code> for permanent proactive rules.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Installed proactive flows with explicit priority and action semantics.</li>
+        <li>Verified priority resolution between a forward and a drop rule.</li>
+        <li>Read per-flow packet counters to confirm handling, not assumptions.</li>
+        <li>Built the manual baseline later automated via an SDN controller app.</li>
+      </ul>
+    </section>    <section id="key-takeaways">
+      <div class="lab-takeaways"><h3>Key Takeaways</h3>
+        <ul>
+        <li>Priority, not position, decides which overlapping flow wins.</li>
+        <li>Proactive flows avoid controller round trips; reactive flows adapt to new traffic.</li>
+        <li>Always verify with dump-flows counters, never assume installation equals effect.</li>
+        <li>Match as narrowly as needed: broad matches create surprising interactions.</li>
+        </ul>
+      </div>
+    </section>
+
+
+        <section id="practice-challenges">
+      <h2>Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Rate-limit with a meter</h4><p>Goal: Attach an OpenFlow meter to cap one host at 1 Mbit/s and verify with iperf.</p><p>Hint: Create the meter with ovs-ofctl -O OpenFlow13 meter-mod, then reference it in a flow action.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: Rewrite a destination MAC</h4><p>Goal: Add a flow that rewrites dl_dst for traffic to one host and confirm delivery still works.</p><p>Hint: Use actions=mod_dl_dst:&lt;mac&gt;,output:&lt;port&gt; with a priority above the normal forward flow.</p></div>
+    </section>
+<section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="sdn-concepts.html">SDN Concepts</a></li>
+        <li><a href="sdn-controllers.html">SDN Controllers</a></li>
+        <li><a href="mininet-lab.html">Mininet SDN Lab Environment</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

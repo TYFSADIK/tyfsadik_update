@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SSH Remote Access Explained: Linux Tutorial | TYFSADIK</title>
+  <meta name="description" content="Use SSH like a pro: key-based auth, ssh_config host aliases, ProxyJump bastions, and persistent tmux sessions for reliable remote Linux administration.">
+  <meta name="keywords" content="ssh tutorial, ssh key auth, ssh_config ProxyJump, tmux persistent session, remote access linux">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-fundamentals/ssh-remote-access.html">
+  <meta property="og:title" content="SSH Remote Access Explained: Linux Tutorial | TYFSADIK">
+  <meta property="og:description" content="Use SSH like a pro: key-based auth, ssh_config host aliases, ProxyJump bastions, and persistent tmux sessions for reliable remote Linux administration.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-fundamentals/ssh-remote-access.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="SSH Remote Access Explained: Linux Tutorial | TYFSADIK">
+  <meta name="twitter:description" content="Use SSH like a pro: key-based auth, ssh_config host aliases, ProxyJump bastions, and persistent tmux sessions for reliable remote Linux administration.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "SSH Remote Access with Keys and Client Config", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-07", "dateModified": "2026-09-29", "proficiencyLevel": "Beginner", "dependencies": "OpenSSH 9.x, tmux", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux fundamentals and command-line skills"}</script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "SSH Remote Access with Keys, Client Config, and tmux",
+    "description": "Use SSH like a pro: key-based auth, ssh_config host aliases, ProxyJump bastions, and persistent tmux sessions for reliable remote Linux administration.",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "dateModified": "2026-09-29",
+    "step": [
+      {"@type": "HowToStep", "name": "Define a host alias with ProxyJump", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/ssh-remote-access.html#steps"},
+      {"@type": "HowToStep", "name": "Connect with one command", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/ssh-remote-access.html#steps"},
+      {"@type": "HowToStep", "name": "Start a persistent session", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/ssh-remote-access.html#steps"}
+    ]
+  }</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Linux Fundamentals", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/index.html"}, {"@type": "ListItem", "position": 4, "name": "SSH Remote Access", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/ssh-remote-access.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Permission denied (publickey)'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Server rejected all offered keys. Fix: Verify the public key is in ~/.ssh/authorized_keys on the server with correct 600/700 permissions."}}, {"@type": "Question", "name": "How do I fix 'Host key verification failed'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The server key changed or a different host answers. Fix: Investigate before deleting; remove the stale line with ssh-keygen -R hostname only when expected."}}, {"@type": "Question", "name": "How do I fix 'ProxyJump hangs with no error'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The bastion is unreachable or its SSH is down. Fix: Test ssh bastion alone first, then add -v to see where the chain stalls."}}, {"@type": "Question", "name": "How do I fix 'tmux attach says no sessions'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The session name was mistyped or the server was killed. Fix: List with tmux ls; sessions die if the host rebooted."}}, {"@type": "Question", "name": "How do I fix 'Too many authentication failures'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The agent offered many keys before the right one. Fix: Set IdentitiesOnly yes and pin IdentityFile per host."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>SSH Remote Access</span></nav>
+    <div class="page-header"><h1>SSH Remote Access with Keys, Client Config, and tmux</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Linux</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">OpenSSH</span><span class="tag">ssh config</span><span class="tag">ProxyJump</span><span class="tag">tmux</span></div>
+    </div>
+
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#learning-objectives">Learning Objectives</a></li>
+<li><a href="#objective">Objective &amp; Context</a></li>
+<li><a href="#environment">Environment &amp; Prerequisites</a></li>
+<li><a href="#steps">Step-by-Step Execution</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#validation">Validation &amp; Testing</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#key-takeaways">Key Takeaways</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    <section><p class="lead">I standardized remote access to managed Linux hosts using SSH key authentication, a maintained <code>~/.ssh/config</code>, and persistent tmux sessions. Host aliases and ProxyJump turned multi-hop logins into a single short command that survives dropped connections.</p></section>
+
+    <section id="objective"><h2>Objective &amp; Context</h2>
+      <p>SSH is the primary control channel for every server in the homelab. This lab builds reliable, low-friction access with key auth, named host entries, jump-host routing, and tmux for session persistence, the entry point for the hardening lab.</p></section>
+
+    <div class="lab-objectives" id="learning-objectives"><h3>Learning Objectives</h3>
+    <ul>
+      <li>Generate Ed25519 key pairs and deploy public keys with ssh-copy-id.</li>
+      <li>Define host aliases with per-host users, keys, and ProxyJump in ssh_config.</li>
+      <li>Connect through a bastion host with a single command.</li>
+      <li>Keep sessions alive across disconnects with tmux.</li>
+      <li>Harden the client side: key passphrases, agent, and known_hosts hygiene.</li>
+    </ul></div>
+
+    <section id="environment"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+    <ul>
+      <li>OpenSSH client installed (standard on Linux and macOS; Windows via OpenSSH feature).</li>
+      <li>Two reachable hosts for the ProxyJump step (a bastion plus a target, or simulate with one).</li>
+      <li>tmux installed: <code>sudo apt install -y tmux</code>.</li>
+      <li>Existing SSH keys are fine; generate fresh ones if you have none.</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="SSH access via a jump host">
+flowchart LR
+  C[Client] -->|ssh config alias| J[Bastion/Jump]
+  J -->|ProxyJump| H[Internal host]
+  H --> T[tmux persistent session]
+      </div>
+    </section>
+
+    <section id="steps"><h2>Step-by-Step Execution</h2>
+      <h3>1. Generate an Ed25519 key pair and deploy the public key</h3>
+      <div class="command-block"><div class="command"><code>ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N "" &amp;&amp; ssh-copy-id -i ~/.ssh/id_ed25519.pub taki@192.168.20.10</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>Generating public/private ed25519 key pair.
+Your public key has been saved in ~/.ssh/id_ed25519.pub
+Number of key(s) added: 1</code></pre>
+      <p class="lab-step-note">What this teaches: ssh-keygen -t ed25519 creates the modern small, fast key type; -N "" sets an empty passphrase for lab convenience (use a real passphrase on production keys and load them with ssh-agent). ssh-copy-id appends the public key to the server's ~/.ssh/authorized_keys over one password-authenticated login, after which the key does the authenticating. Skip -f if you already have a key: ssh-keygen prompts before overwriting.</p>
+    <h3>2. Define a host alias with ProxyJump</h3>
+<pre><code class="language-bash">Host nas
+  HostName 192.168.20.10
+  User taki
+  ProxyJump bastion
+  IdentityFile ~/.ssh/id_ed25519</code></pre>
+      <p class="lab-output-label">Expected output (config file content):</p><pre><code>(~/.ssh/config created with 600 permissions)
+$ ssh -G nas | grep -E "^(hostname|user|proxyjump)"
+hostname 192.168.20.10
+user taki
+proxyjump bastion</code></pre>
+      <p class="lab-step-note">What this teaches: ssh_config turns repeated flags into a named host: ProxyJump chains through the bastion transparently, and ssh -G prints the effective config for debugging.</p>
+    <h3>3. Connect with one command</h3>
+      <div class="command-block"><div class="command"><code>ssh nas</code></div></div>
+      <p class="lab-step-note">What this teaches: The alias resolves user, key, and jump host automatically; key-based auth means no password prompt. One short word replaces a long fragile command line.</p>
+    <h3>4. Start a persistent session</h3>
+      <div class="command-block"><div class="command"><code>tmux new -s work; tmux attach -t work</code></div></div>
+<p class="lab-output-label">Expected output:</p><pre><code>Last login: Wed Jun 17 2026 from 192.168.10.5
+[work] taki@nas:~$</code></pre>
+      <p class="lab-step-note">What this teaches: tmux new -s work creates a named session; the server keeps it alive if your connection drops, and tmux attach -t work rejoins it. Long jobs survive network flakiness. In practice you detach with Ctrl-b d and reattach later; the second command here just demonstrates the reattach half.</p>
+    </section>
+
+    <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>
+      <p>SSH multiplexes an encrypted channel over TCP: the handshake negotiates ciphers, the server proves its identity via host keys (checked against known_hosts), and the client authenticates, ideally with a public key challenge the server verifies against authorized_keys. Ed25519 keys are the modern default: small, fast, and secure.</p>
+      <p>ssh_config is a per-user policy file where Host blocks set options for matching names. ProxyJump composes connections: your client opens a channel to the bastion, then tunnels the second SSH session through it, so the target never needs a public address. IdentityFile pins which key each host uses, avoiding agent key-spray.</p>
+      <p>tmux adds persistence above SSH. The tmux server runs on the remote host independent of your connection; your terminal merely attaches to it. Detaching (Ctrl-b d) leaves everything running, which is why long transfers and builds belong inside tmux rather than a bare SSH session.</p>
+    </div>
+    <div class="mermaid" role="img" aria-label="SSH via bastion with tmux">
+flowchart LR
+  Y["Your laptop"] -->|"ssh nas"| B["bastion"]
+  B -->|"ProxyJump"| N["nas: 192.168.20.10"]
+  N --> T["tmux session work"]
+  T --> J["long job survives disconnect"]
+  style T fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section id="validation"><h2>Validation &amp; Testing</h2>
+      <p>Disconnect mid-task and reconnect to confirm the tmux session resumes intact, and verify login uses the key (no password prompt). Pass criteria: one-command access through the jump host and a session that survives network drops.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+    <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>Permission denied (publickey)</td><td>Server rejected all offered keys</td><td>Confirm the public key is in the server's ~/.ssh/authorized_keys, with 700 on ~/.ssh and 600 on authorized_keys; sshd in StrictModes ignores the file when permissions are looser</td></tr>
+      <tr><td>Host key verification failed</td><td>The server key changed or a different host answers</td><td>Investigate before deleting; remove the stale line with ssh-keygen -R hostname only when expected</td></tr>
+      <tr><td>ProxyJump hangs with no error</td><td>The bastion is unreachable or its SSH is down</td><td>Test ssh bastion alone first, then add -v to see where the chain stalls</td></tr>
+      <tr><td>tmux attach says no sessions</td><td>The session name was mistyped or the server was killed</td><td>List with tmux ls; sessions die if the host rebooted</td></tr>
+      <tr><td>Too many authentication failures</td><td>The agent offered many keys before the right one</td><td>Set IdentitiesOnly yes and pin IdentityFile per host</td></tr>
+      <tr><td>Connection freezes on idle</td><td>NAT or firewall drops idle TCP</td><td>Add ServerAliveInterval 60 to keep the channel active</td></tr>
+    </tbody></table>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Password prompt:</strong> confirm the public key is in remote <code>~/.ssh/authorized_keys</code> with 600 perms.</li>
+        <li><strong>ProxyJump fails:</strong> the bastion host entry must itself be reachable and keyed.</li>
+        <li><strong>Lost work on disconnect:</strong> always run long tasks inside tmux or screen.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Reduced multi-hop logins to a single aliased command.</li>
+        <li>Eliminated password prompts via key-based authentication.</li>
+        <li>Preserved 100% of long-running sessions across disconnects with tmux.</li>
+        <li>Centralized host definitions in one maintained ssh config.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways" id="key-takeaways"><h3>Key Takeaways</h3>
+    <ul>
+      <li>Ed25519 keys plus ssh_config aliases make logins one word long.</li>
+      <li>ProxyJump reaches private hosts through a bastion transparently.</li>
+      <li>ssh -G reveals the effective config when behavior surprises you.</li>
+      <li>tmux sessions survive disconnects; long jobs belong inside them.</li>
+      <li>600 on keys and 700 on ~/.ssh are mandatory, not cosmetic.</li>
+    </ul></div>
+
+    <section id="practice-challenges"><h2>Practice Challenges</h2>
+    <div class="lab-challenge"><h4>Challenge 1: Key-only lockdown</h4><p>Goal: configure a test VM so password auth is disabled and only your key works, then verify a password login fails.</p><p><strong>Hint:</strong> PasswordAuthentication no in sshd_config plus systemctl reload sshd.</p></div>
+    <div class="lab-challenge"><h4>Challenge 2: Detach survival</h4><p>Goal: start a 10-minute task in tmux, kill your SSH client entirely, reconnect, and reattach to find it still running.</p><p><strong>Hint:</strong> Ctrl-b d detaches cleanly first.</p></div>
+    </section>
+
+    <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="../security/ssh-hardening.html">SSH Hardening</a></li>
+        <li><a href="file-transfer-email.html">File Transfer &amp; Email</a></li>
+        <li><a href="user-group-admin.html">User &amp; Group Administration</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

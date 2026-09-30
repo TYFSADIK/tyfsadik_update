@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kubernetes Basics: kubectl, Cluster &amp; First Pod | TYFSADIK</title>
+  <meta name="description" content="Learn Kubernetes hands-on: create a local cluster, run deployments, scale them, read logs, switch to declarative manifests, and roll back a bad rollout.">
+  <meta name="keywords" content="Kubernetes basics, kubectl, kind, deployments, pods, rollout, local cluster">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Kubernetes Basics: kubectl, Cluster &amp; First Pod | TYFSADIK">
+  <meta property="og:description" content="Learn Kubernetes hands-on: create a local cluster, run deployments, scale them, read logs, switch to declarative manifests, and roll back a bad rollout.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-basics.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Kubernetes Basics: kubectl, Cluster &amp; First Pod | TYFSADIK">
+  <meta name="twitter:description" content="Learn Kubernetes hands-on: create a local cluster, run deployments, scale them, read logs, switch to declarative manifests, and roll back a bad rollout.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-basics.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Kubernetes Basics: Cluster, kubectl, and Pods", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-02-13", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "kind/minikube, kubectl, Kubernetes 1.29", "articleSection": "Containers", "learningResourceType": "Hands-on lab", "teaches": "containers and Kubernetes"}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "HowTo", "name": "Kubernetes Basics | Cluster, kubectl & First Pod", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"}, "step": [{"@type": "HowToStep", "name": "Create a local cluster", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-basics.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Check the node and system pods", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-basics.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Run a deployment", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-basics.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Inspect the cluster", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-basics.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Scale the deployment up and down", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-basics.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Read logs and exec into a pod", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-basics.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Switch to a declarative manifest", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-basics.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Watch the rollout history and roll back", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-basics.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Clean up the lab", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-basics.html#step-by-step-execution"}]}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Containers & Kubernetes", "item": "https://tyfsadik.org/blog/labs/containers-kubernetes/index.html"}, {"@type": "ListItem", "position": 4, "name": "Kubernetes Basics", "item": "https://tyfsadik.org/blog/labs/containers-kubernetes/kubernetes-basics.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'kubectl cannot connect'?", "acceptedAnswer": {"@type": "Answer", "text": "kind writes a kubeconfig context; confirm with kubectl config current-context. If it shows a different cluster, switch with kubectl config use-context kind-lab. If the context is missing entirely, the cluster was deleted or the kubeconfig was overwritten, recreate it with kind create cluster --name lab."}}, {"@type": "Question", "name": "How do I fix 'ImagePullBackOff'?", "acceptedAnswer": {"@type": "Answer", "text": "the image name or tag is wrong; verify it pulls with docker. Run docker pull nginx:stable locally, if that fails, the tag does not exist. Fix the Deployment with kubectl set image deployment/web nginx=<correct-image>; editing the pod directly will not stick."}}, {"@type": "Question", "name": "How do I fix 'CrashLoopBackOff'?", "acceptedAnswer": {"@type": "Answer", "text": "the container starts and immediately exits, and Kubernetes keeps restarting it with backoff. Run kubectl logs <pod> --previous to see the output from the crashed instance, not the currently restarting one, that is where the actual error message lives."}}, {"@type": "Question", "name": "How do I fix 'kind create cluster fails with a port or name conflict'?", "acceptedAnswer": {"@type": "Answer", "text": "a previous cluster was not cleaned up. List them with kind get clusters and remove the stale one with kind delete cluster --name <name>. On corporate networks, a VPN that hijacks localhost routing can also break the API-server connection, disconnect it and retry."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Kubernetes Basics</span></nav>
+    <div class="page-header"><h1>Kubernetes Basics: Your First Cluster and Pod</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Containers</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">kubectl</span><span class="tag">kind</span><span class="tag">pods</span><span class="tag">deployments</span></div>
+    </div>
+<nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#architecture-overview">Architecture Overview</a></li>
+<li><a href="#environment-setup">Environment Setup</a></li>
+<li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+<li><a href="#step-flow-map">Step Flow Map</a></li>
+<li><a href="#progress-so-far">Progress So Far</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#testing-validation">Testing & Validation</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#extension-ideas">Extension Ideas</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    
+
+    <section><p class="lead">You will create a local Kubernetes cluster, learn the core kubectl workflow, and run your first deployment. By the end you will understand how the control plane keeps your desired state running.</p>
+      <p>This lab is the foundation for every other Kubernetes writeup on this site. Instead of reading about pods and controllers in the abstract, you will stand up a real (but disposable) cluster on your own machine, push workloads into it, break them on purpose, and watch Kubernetes put them back together. Every command below is safe to run on a laptop, and the whole environment can be deleted with a single command at the end.</p>
+      <p>We use <span class="glossary-term" data-definition="Kubernetes IN Docker: runs a local Kubernetes cluster using Docker containers as nodes.">kind</span> because it is the tool the Kubernetes project itself uses for testing, it needs nothing beyond Docker, and it behaves enough like a production cluster that the skills transfer directly. If you prefer minikube, every kubectl command in this lab is identical; only the cluster-creation step differs.</p>
+    </section>
+
+    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+      <ul>
+        <li>Spin up a local cluster with kind or minikube.</li>
+        <li>Use kubectl to create and inspect workloads.</li>
+        <li>Run a self-healing deployment.</li>
+        <li>Scale a deployment and read pod logs.</li>
+        <li>Move from imperative commands to a declarative YAML manifest.</li>
+        <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> Docker and kubectl installed.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="architecture-overview">Architecture Overview</h2>
+      <p>Everything in Kubernetes flows through the API server. When you run <code>kubectl create deployment</code>, you are not starting containers directly, you are writing a <em>desired state</em> record into etcd. The scheduler then picks a node for each pending pod, and the controller manager continuously compares what is running against what you asked for, fixing any drift. This reconciliation loop is the single most important idea in Kubernetes, and it is what gives you self-healing for free.</p>
+      <div class="mermaid" role="img" aria-label="Kubernetes control plane reconciling desired state">
+graph LR
+  K[kubectl] -->|apply| API[API Server]
+  API --> ETCD[(etcd desired state)]
+  API --> Sch[Scheduler]
+  Sch --> Node[Worker Node]
+  Node --> Pod[Pod]
+  CM[Controller Manager] -->|reconcile| API
+      </div>
+      <p>The key players you will interact with in this lab:</p>
+      <ul>
+        <li><strong>API server</strong>, the front door. kubectl, the scheduler, and every controller all talk to it; nothing talks to anything else directly.</li>
+        <li><strong>etcd</strong>, the key-value store holding the cluster's desired state. Lose it and the cluster has amnesia.</li>
+        <li><strong>Scheduler</strong>, watches for pods with no node assigned and binds them to one based on resources and constraints.</li>
+        <li><strong>Controller manager</strong>, runs the reconciliation loops (Deployment, ReplicaSet, Node controllers, and more) that keep reality matching your declared state.</li>
+        <li><strong>kubelet</strong>, the agent on each node that actually starts and monitors the containers the scheduler assigned to it.</li>
+      </ul>
+      <p>In a kind cluster all of the control-plane components run as containers inside a single Docker container named <code>lab-control-plane</code>, but the behaviour is the same as a multi-node production setup.</p>
+    </section>
+
+    <section><h2 id="environment-setup">Environment Setup</h2>
+<div class="lab-prereqs"><h3>Prerequisites</h3>
+<ul>
+<li>Docker Engine running locally, plus <code>kind</code> or <code>minikube</code> and <code>kubectl</code> installed.</li>
+<li>A few GB of free RAM; the local cluster runs entirely on your machine.</li>
+<li>Assumed skills: basic Docker (images, containers) and comfort with YAML.</li>
+</ul></div>
+      <p><strong>You will need:</strong> Docker, kubectl, and <span class="glossary-term" data-definition="Kubernetes IN Docker: runs a local Kubernetes cluster using Docker containers as nodes.">kind</span> (or minikube).</p>
+      <p><strong>Before you begin:</strong> confirm kubectl is installed with <code>kubectl version --client</code>.</p>
+      <p>Docker must be <em>running</em>, not just installed, kind builds the cluster out of Docker containers, so if the Docker daemon is down, cluster creation fails immediately. On macOS and Windows that means Docker Desktop must be open; on Linux, the docker service must be active.</p>
+      <p>Verify all three prerequisites before continuing:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker info --format '{{.ServerVersion}}'</span></div>
+        <div class="terminal-output">27.3.1</div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl version --client</span></div>
+        <div class="terminal-output">Client Version: v1.36.0</div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">kind version</span></div>
+        <div class="terminal-output">kind v0.32.0</div>
+      </div>
+      <p>If any of these fail, install the missing piece first:</p>
+      <p class="code-label">INSTALL KIND (macOS / Linux)</p>
+<pre><code class="language-bash"># macOS with Homebrew
+brew install kind
+
+# Linux - download the release binary
+curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64
+chmod +x ./kind &amp;&amp; sudo mv ./kind /usr/local/bin/kind</code></pre>
+      <p>kubectl versions within one minor release of the cluster version are fully supported, so a v1.36 client against a v1.35, v1.36, or v1.37 cluster is fine. Only worry if the skew is larger than that.</p>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create a local cluster</strong>
+          <p>kind boots a single-node Kubernetes cluster where the node itself is a Docker container. The <code>--name lab</code> flag names the cluster (and its kubectl context, which becomes <code>kind-lab</code>), so you can run several throwaway clusters side by side without them colliding. The first run pulls the <code>kindest/node</code> image, which is a few hundred MB, so expect a minute or two; later clusters on the same machine start in seconds.</p>
+          <div class="command-block" data-copy><div class="command"><code>kind create cluster --name lab</code></div><div class="note">Boots a single-node Kubernetes cluster in Docker.</div></div>
+          <div class="terminal-session">
+            <div class="terminal-output">Creating cluster "lab" ...
+ &#10003; Ensuring node image (kindest/node:v1.36.1) &#128736;
+ &#10003; Preparing nodes &#128230;
+ &#10003; Writing configuration &#128393;
+ &#10003; Starting control-plane &#65039;
+ &#10003; Installing CNI &#128296;
+ &#10003; Installing StorageClass &#128190;
+Set kubectl context to "kind-lab"
+You can now use your cluster with:
+
+kubectl cluster-info --context kind-lab</div>
+          </div>
+          <p>kind also merges credentials into your kubeconfig (<code>~/.kube/config</code>) and switches the active context automatically, which is why kubectl works immediately afterwards with no extra configuration.</p>
+          <p><strong>Verify:</strong> the cluster answers and the context is what you expect.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl cluster-info --context kind-lab</span></div>
+            <div class="terminal-output">Kubernetes control plane is running at https://127.0.0.1:51234
+CoreDNS is running at https://127.0.0.1:51234/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl config current-context</span></div>
+            <div class="terminal-output">kind-lab</div>
+          </div>
+          <p><strong>Common mistake:</strong> running this with Docker Desktop closed. The error <code>Cannot connect to the Docker daemon</code> means exactly that, start Docker and retry. Also note the API server port (51234 above) is random per machine; never hard-code it.</p>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ kind create cluster --name lab
+Creating cluster "lab" ...
+  Ensuring node image (kindest/node:v1.36.1)
+  Ready: nodes joined the cluster</code></pre>
+<p class="lab-step-note">What this teaches: A local cluster gives you a real control plane for free; creation is the only step that differs from the cloud.</p></div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Check the node and system pods</strong>
+          <p>Before deploying anything of your own, confirm the cluster itself is healthy. <code>kubectl get nodes</code> shows the machines Kubernetes can schedule onto, and listing pods in <code>kube-system</code> shows the control plane's own workloads. A fresh kind cluster has exactly one node, which is both control plane and worker.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get nodes -o wide</span></div>
+            <div class="terminal-output">NAME                STATUS   ROLES           AGE   VERSION   INTERNAL-IP   OS-IMAGE
+lab-control-plane   Ready    control-plane   2m    v1.36.1   172.18.0.2    Debian GNU/Linux 12</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get pods -n kube-system</span></div>
+            <div class="terminal-output">NAME                                        READY   STATUS    RESTARTS   AGE
+coredns-7c65d6cfc9-8xptd                    1/1     Running   0          2m
+coredns-7c65d6cfc9-vkw92                    1/1     Running   0          2m
+etcd-lab-control-plane                      1/1     Running   0          2m
+kube-apiserver-lab-control-plane            1/1     Running   0          2m
+kube-controller-manager-lab-control-plane   1/1     Running   0          2m
+kube-proxy-4zqk7                            1/1     Running   0          2m
+kube-scheduler-lab-control-plane            1/1     Running   0          2m</div>
+          </div>
+          <p>Those <code>kube-apiserver</code>, <code>etcd</code>, <code>kube-scheduler</code>, and <code>kube-controller-manager</code> pods <em>are</em> the control plane from the architecture diagram, running as static pods on the node. If any of them is not <code>Running</code>, stop here and fix the cluster before continuing, nothing else will work reliably.</p>
+          <p><strong>Common mistake:</strong> forgetting <code>-n kube-system</code> and concluding the cluster is broken because <code>kubectl get pods</code> shows <code>No resources found in default namespace</code>. That just means <em>your</em> namespace is empty, which is expected right now.</p>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ kubectl get nodes
+NAME               STATUS   ROLES
+lab-control-plane  Ready    control-plane</code></pre>
+<p class="lab-step-note">What this teaches: System pods are Kubernetes running itself; a healthy cluster shows them all Running before you deploy anything.</p></div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Run a deployment</strong>
+          <p>A Deployment declares desired replicas; the controller keeps that many pods running. You could create a bare pod with <code>kubectl run</code>, but a bare Pod has no controller behind it: its containers restart according to <code>restartPolicy</code>, yet if the Pod object itself is deleted, or its node dies, nothing recreates it, it is gone forever. A Deployment creates a ReplicaSet, and the ReplicaSet's whole job is to notice a missing pod and replace it, that is the self-healing you will test later. Always wrap workloads in a Deployment (or StatefulSet/DaemonSet) in real life.</p>
+          <div class="command-block" data-copy><div class="command"><code>kubectl create deployment web --image=nginx:stable --replicas=2</code></div><div class="note">Creates a Deployment named web running two nginx pods. Note that <code>nginx:stable</code> is a floating tag, it moves with new releases, so pin a digest (<code>nginx:stable@sha256:...</code>) in any manifest you intend to reproduce exactly.</div></div>
+          <div class="terminal-session">
+            <div class="terminal-output">deployment.apps/web created</div>
+          </div>
+          <p>Breaking the command down: <code>web</code> is the Deployment's name (and the <code>app=web</code> label the pods inherit, which you will use for selectors later), <code>--image=nginx:stable</code> is the container image pulled from Docker Hub, and <code>--replicas=2</code> is the desired count written into etcd. The moment the record exists, the scheduler and ReplicaSet controller act on it, you never touched a node yourself.</p>
+          <p><strong>Verify:</strong> the Deployment reports both replicas available.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get deployment web</span></div>
+            <div class="terminal-output">NAME   READY   UP-TO-DATE   AVAILABLE   AGE
+web    2/2     2            2           45s</div>
+          </div>
+          <p><strong>Common mistake:</strong> using a tag that does not exist (e.g. <code>nginx:stabel</code>). The Deployment is created happily, the failure only shows up later as <code>ImagePullBackOff</code> on the pods, because the spec itself was valid. The object existing is not proof the workload is running.</p>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ kubectl create deployment web --image=nginx:stable
+deployment.apps/web created</code></pre>
+<p class="lab-step-note">What this teaches: Imperative <code>kubectl create</code> is the fastest way to get a first deployment; declarative manifests come later in this lab.</p></div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Inspect the cluster</strong>
+          <p><code>kubectl get</code> is your microscope. With <code>-o wide</code> it adds the node and IP columns; <code>kubectl describe</code> shows the full event history of an object, which is where you look first when something is stuck. Get comfortable reading both before moving on.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get pods -o wide</span></div>
+            <div class="terminal-output">NAME            READY   STATUS    NODE
+web-6f...-a1b2   1/1     Running   lab-control-plane
+web-6f...-c3d4   1/1     Running   lab-control-plane</div>
+          </div>
+          <p>The pod names tell a story: <code>web</code> (Deployment) &rarr; <code>6f...</code> (ReplicaSet hash) &rarr; <code>a1b2</code> (random pod suffix). That nesting is the object hierarchy you just created. To see all of it at once:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get all -l app=web</span></div>
+            <div class="terminal-output">NAME                READY   STATUS    RESTARTS   AGE
+pod/web-6f...-a1b2   1/1     Running   0          3m
+pod/web-6f...-c3d4   1/1     Running   0          3m
+
+NAME                   READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/web    2/2     2            2           3m
+
+NAME                          DESIRED   CURRENT   READY   AGE
+replicaset.apps/web-6f...     2         2         2       3m</div>
+          </div>
+          <p><strong>Verify:</strong> <code>kubectl describe deployment web</code> should end with an event like <code>Scaled up replica set web-6f... to 2</code>. If a pod is stuck, <code>kubectl describe pod web-6f...-a1b2</code> shows exactly which stage (pulling, scheduling, starting) is failing, with the reason in the Events section at the bottom.</p>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ kubectl get deployments,pods
+NAME                 READY   UP-TO-DATE
+deployment.apps/web 2/2     2
+NAME                     READY   STATUS
+pod/web-7c9c5f6b8d-x1y2z 1/1    Running
+pod/web-7c9c5f6b8d-z9a8b 1/1    Running</code></pre>
+<p class="lab-step-note">What this teaches: Inspecting the cluster teaches the object model: deployments own ReplicaSets, ReplicaSets own pods.</p></div></div>
+        <div class="step"><div class="step-num">05</div><div class="step-body"><strong>Scale the deployment up and down</strong>
+          <p>Scaling is just editing the replica count in the desired state, the ReplicaSet controller does the rest. This is the fastest way to feel the reconciliation loop: change a number, watch reality catch up.</p>
+          <div class="command-block" data-copy><div class="command"><code>kubectl scale deployment web --replicas=4</code></div><div class="note">Declares 4 replicas; two new pods are scheduled immediately.</div></div>
+          <div class="terminal-session">
+            <div class="terminal-output">deployment.apps/web scaled</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get pods -l app=web -w</span></div>
+            <div class="terminal-output">NAME            READY   STATUS              RESTARTS   AGE
+web-6f...-a1b2   1/1     Running             0          5m
+web-6f...-c3d4   1/1     Running             0          5m
+web-6f...-e5f6   0/1     ContainerCreating   0          3s
+web-6f...-g7h8   0/1     ContainerCreating   0          3s
+web-6f...-e5f6   1/1     Running             0          9s
+web-6f...-g7h8   1/1     Running             0          9s</div>
+          </div>
+          <p>The <code>-w</code> (watch) flag streams changes live, press Ctrl+C to stop it. Watching the transition from <code>ContainerCreating</code> to <code>Running</code> is the reconciliation loop made visible. Now scale back down so the self-healing test later stays readable:</p>
+          <div class="command-block" data-copy><div class="command"><code>kubectl scale deployment web --replicas=2</code></div></div>
+          <p><strong>Common mistake:</strong> editing a pod directly to "scale", pods are disposable units, not the place where state lives. Any change you make to a single pod (including deleting it) is overridden by the controller. Always change the Deployment, never the pod.</p>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ kubectl scale deployment web --replicas=4
+deployment.apps/web scaled</code></pre>
+<p class="lab-step-note">What this teaches: Scaling is changing desired state and watching the controllers converge; the speed of convergence is the platform's job.</p></div></div>
+        <div class="step"><div class="step-num">06</div><div class="step-body"><strong>Read logs and exec into a pod</strong>
+          <p>Two commands you will use daily: <code>kubectl logs</code> streams a container's stdout/stderr, and <code>kubectl exec</code> opens a shell inside a running container for live debugging. These work on any pod, in any cluster, with no SSH keys or node access required, one of the biggest operational wins over managing VMs by hand.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl logs deploy/web --tail=5</span></div>
+            <div class="terminal-output">10.244.0.1 - - [13/Feb/2025:14:02:11 +0000] "GET / HTTP/1.1" 200 615 "-" "curl/8.7.1"
+2025/02/13 14:02:11 [notice] 1#1: start worker process 29</div>
+          </div>
+          <p>Using <code>deploy/web</code> instead of a pod name is a handy trick: kubectl picks one of the Deployment's pods for you, so you do not have to copy a random pod suffix. To look around inside the container:</p>
+          <p class="code-label">OPEN A SHELL INSIDE A POD</p>
+<pre><code class="language-bash">kubectl exec -it deploy/web -- /bin/sh
+# inside the container:
+cd /usr/share/nginx/html &amp;&amp; ls
+cat /etc/nginx/nginx.conf | head -20
+exit</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ kubectl logs deploy/web --tail=1
+/docker-entrypoint.sh: Configuration complete; ready for start up</code></pre>
+          <p><strong>Verify:</strong> while inside, run <code>hostname</code>, it prints the pod name, confirming you are genuinely inside that pod's network namespace. If <code>exec</code> fails with <code>executable file not found</code>, the image is minimal (distroless/scratch) and has no shell; use <code>kubectl debug</code> with an ephemeral container instead.</p>
+        
+<p class="lab-step-note">What this teaches: Logs and exec are the debugging pair: logs show what the app said, exec shows what the app sees.</p></div></div>
+        <div class="step"><div class="step-num">07</div><div class="step-body"><strong>Switch to a declarative manifest</strong>
+          <p>Imperative commands like <code>kubectl create</code> and <code>kubectl scale</code> are fine for learning, but they are not reproducible, nothing records <em>why</em> the cluster looks the way it does. Real teams declare the desired state in YAML, store it in git, and apply it. Kubernetes merges the manifest into the live object, so the file becomes the source of truth. Generate a starting manifest from the running Deployment instead of writing one from scratch:</p>
+          <div class="command-block" data-copy><div class="command"><code>kubectl get deployment web -o yaml &gt; web-deployment.yaml</code></div><div class="note">Dumps the live Deployment as YAML so you can edit and re-apply it.</div></div>
+          <p>Strip the server-managed fields (<code>status:</code>, <code>resourceVersion</code>, <code>uid</code>, <code>creationTimestamp</code>) and you are left with the clean, minimal manifest:</p>
+          <p class="code-label">web-deployment.yaml</p>
+<pre><code class="language-yaml">apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  labels:
+    app: web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:stable
+          ports:
+            - containerPort: 80</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ kubectl apply -f web-deployment.yaml
+deployment.apps/web configured</code></pre>
+          <p>Change <code>replicas</code> to 3 in the file, then apply it:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl apply -f web-deployment.yaml</span></div>
+            <div class="terminal-output">deployment.apps/web configured</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get deployment web</span></div>
+            <div class="terminal-output">NAME   READY   UP-TO-DATE   AVAILABLE   AGE
+web    3/3     3            3           20m</div>
+          </div>
+          <p>Note the word <code>configured</code> instead of <code>created</code>, apply is idempotent. Run it twice and the second run prints <code>unchanged</code>. That property is what makes manifests safe to keep in CI pipelines.</p>
+          <p><strong>Common mistake:</strong> applying the raw <code>-o yaml</code> dump without removing the <code>status</code> block and server fields. It usually still works, but the file is noisy and some fields cause warnings. Always trim to the minimal spec shown above.</p>
+        
+<p class="lab-step-note">What this teaches: Declarative manifests are versionable desired state; <code>apply</code> becomes the only deployment verb.</p></div></div>
+        <div class="step"><div class="step-num">08</div><div class="step-body"><strong>Watch the rollout history and roll back</strong>
+          <p>Every change to a Deployment's pod template creates a new revision, and kubectl keeps the history. This means a bad image push is a 10-second fix, not an outage: roll back to the previous ReplicaSet and the old pods come back.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl set image deployment/web nginx=nginx:1.27</span></div>
+            <div class="terminal-output">deployment.apps/web image updated</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl rollout status deployment/web</span></div>
+            <div class="terminal-output">Waiting for deployment "web" rollout to finish: 1 out of 3 new replicas have been updated...
+deployment "web" successfully rolled out</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl rollout history deployment/web</span></div>
+            <div class="terminal-output">REVISION  CHANGE-CAUSE
+1         &lt;none&gt;
+2         &lt;none&gt; --record</div>
+          </div>
+          <p>Current kubectl versions deprecated and ignore <code>--record</code>, so <code>CHANGE-CAUSE</code> stays <code>&lt;none&gt;</code>; revision numbers are the reliable identifier. To undo that image change instantly:</p>
+          <div class="command-block" data-copy><div class="command"><code>kubectl rollout undo deployment/web</code></div><div class="note">Rolls back to the previous revision (nginx:stable).</div></div>
+          <p><strong>Verify:</strong> <code>kubectl get deployment web -o jsonpath='{.spec.template.spec.containers[0].image}'</code> prints <code>nginx:stable</code> again after the undo finishes.</p>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ kubectl rollout history deployment/web
+REVISION  CHANGE-CAUSE
+1         &lt;none&gt;
+2         &lt;none&gt;</code></pre>
+<p class="lab-step-note">What this teaches: Revision history makes rollbacks boring, which is exactly what you want from a safety mechanism.</p></div></div>
+        <div class="step"><div class="step-num">09</div><div class="step-body"><strong>Prove self-healing</strong>
+          <p>The defining promise of Kubernetes is that it repairs itself. Do not take it on faith, delete exactly one web pod by name and watch the ReplicaSet replace it. Deleting by name matters here: a label selector such as <code>-l app=web</code> would delete every matching pod at once, which is a different and more destructive test.</p>
+          <div class="command-block" data-copy><div class="command"><code>POD=$(kubectl get pods -l app=web -o jsonpath='{.items[0].metadata.name}') && kubectl delete pod $POD && kubectl get deploy web</code></div></div>
+          <p>Within seconds the Deployment should report full readiness again, proving self-healing:</p>
+          <div class="terminal-session">
+            <div class="terminal-output">pod "web-6f...-a1b2" deleted</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get deploy web</span></div>
+            <div class="terminal-output">NAME   READY   UP-TO-DATE   AVAILABLE   AGE
+web    3/3     3            3           25m</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">kubectl get pods -l app=web</span></div>
+            <div class="terminal-output">NAME            READY   STATUS    RESTARTS   AGE
+web-6f...-c3d4   1/1     Running   0          25m
+web-6f...-e5f6   1/1     Running   0          19m
+web-6f...-j9k0   1/1     Running   0          4s</div>
+          </div>
+          <p>Read the pod ages carefully: the replacement pod <code>web-6f...-j9k0</code> is 4 seconds old with a fresh random suffix, while its siblings are untouched. Nobody restarted anything by hand, the ReplicaSet controller saw <code>current=2, desired=3</code> and created a pod to close the gap. That is the reconciliation loop from the architecture diagram, observed end to end.</p>
+<p class="lab-step-note">What this teaches: self-healing is the ReplicaSet controller reconciling desired versus actual state, no manual intervention required.</p></div></div>
+      </div>
+    </section>
+<section><h2 id="step-flow-map">Step Flow Map</h2>
+<div class="mermaid" role="img" aria-label="Flow of the lab steps from first to last">
+graph TD
+  S1["Create a local cluster"]
+  S2["Check the node and system pods"]
+  S3["Run a deployment"]
+  S4["Inspect the cluster"]
+  S5["Scale the deployment up and down"]
+  S6["Read logs and exec into a pod"]
+  S7["Switch to a declarative manifest"]
+  S8["Watch the rollout history and roll back"]
+  S9["Clean up the lab"]
+  S1 --> S2
+  S2 --> S3
+  S3 --> S4
+  S4 --> S5
+  S5 --> S6
+  S6 --> S7
+  S7 --> S8
+  S8 --> S9
+</div>
+<p>Each box is one step in the lab; work them in order, since later steps build on earlier state.</p>
+</section>
+
+    
+
+    <section><h2 id="progress-so-far">Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Kubernetes basics progress">
+graph LR
+  A[01 Create cluster] -->|done| B[02 Deployment]
+  B -->|done| C[03 Inspect]
+  C -->|next| V[Self-heal test]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style V fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+      </div>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+<div class="lab-explainer">
+<p>Kubernetes is a control plane that drives reality toward declared desired state. You post manifests to the API server; etcd stores them; controllers run reconciliation loops that notice three replicas wanted, two running, and create the third. The control plane is declarative even when you drive it imperatively: commands like <code>create</code>, <code>scale</code>, <code>set image</code>, and <code>delete</code> are imperative conveniences that write desired state to the API server, and the controllers reconcile reality toward it. Every command you run is either declaring state or asking about the gap between desired and actual.</p>
+<p>The object hierarchy exists so each layer has one job. A Deployment manages a ReplicaSet, which maintains the pod count across a rolling update; a Pod is one or more containers sharing network and storage. When you change the image, the Deployment creates a new ReplicaSet and scales it up while scaling the old one down, which is why rollouts can proceed without downtime and why rollbacks are just scaling the previous ReplicaSet back up. True zero-downtime also needs a readiness probe so new pods only receive traffic once they actually serve; without one, the rollout can send requests to pods that are still starting.</p>
+<p>Local clusters like kind run the whole control plane as containers on your laptop. That makes them perfect for learning: creation and deletion take minutes, mistakes cost nothing, and <code>kubectl</code> works exactly as it does against AKS or EKS. The skills transfer directly; only the cluster provisioning step differs in the cloud.</p>
+</div>
+</section>
+
+    <section><h2 id="testing-validation">Testing &amp; Validation</h2>
+      <p>Run this checklist while the cluster still exists. Every item should pass before you tear anything down:</p>
+      <ul>
+        <li><code>kubectl get nodes</code>, node is <code>Ready</code>.</li>
+        <li><code>kubectl get deploy web</code>, <code>READY</code> equals the replica count you set.</li>
+        <li><code>kubectl rollout status deploy web</code>, prints <code>successfully rolled out</code>.</li>
+        <li><code>kubectl describe deploy web</code>, Events show the scale-up and pod recreation, with no failed-pull or crash events.</li>
+      </ul>
+      <p>Every check above has passed, so tear the lab down last. Deleting the Deployment removes its ReplicaSet and pods through owner references, you delete one object and the garbage collector handles the children. Deleting the kind cluster removes the Docker container and its kubectl context. Nothing validates after this point by design:</p>
+      <p class="code-label">DELETE WORKLOADS AND THE CLUSTER</p>
+      <div class="command-block" data-copy><div class="command"><code>kubectl delete -f web-deployment.yaml && kind delete cluster --name lab</code></div></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>$ kubectl delete -f web-deployment.yaml && kind delete cluster --name lab
+deployment.apps "web" deleted
+Deleted nodes: ["lab-control-plane"]</code></pre>
+      <p><strong>Verify:</strong> <code>docker ps</code> no longer shows a <code>lab-control-plane</code> container, and <code>kubectl config get-contexts</code> no longer lists <code>kind-lab</code>. If you want to keep the cluster for the follow-on labs, skip the kind deletion and only delete the Deployment.</p>
+    </section>
+
+    <section><h2 id="troubleshooting">Troubleshooting</h2>
+      <ul>
+        <li><strong>kubectl cannot connect:</strong> kind writes a kubeconfig context; confirm with <code>kubectl config current-context</code>. If it shows a different cluster, switch with <code>kubectl config use-context kind-lab</code>. If the context is missing entirely, the cluster was deleted or the kubeconfig was overwritten, recreate it with <code>kind create cluster --name lab</code>.</li>
+        <li><strong>Pods Pending:</strong> the node may lack resources; check <code>kubectl describe pod</code>. The Events section will say <code>Insufficient cpu</code> or <code>0/1 nodes are available</code>. On kind, the real cause is usually Docker Desktop's memory limit, raise it in Docker Desktop settings, or scale your replicas back down.</li>
+        <li><strong>ImagePullBackOff:</strong> the image name or tag is wrong; verify it pulls with docker. Run <code>docker pull nginx:stable</code> locally, if that fails, the tag does not exist. Fix the Deployment with <code>kubectl set image deployment/web nginx=&lt;correct-image&gt;</code>; editing the pod directly will not stick.</li>
+        <li><strong>CrashLoopBackOff:</strong> the container starts and immediately exits, and Kubernetes keeps restarting it with backoff. Run <code>kubectl logs &lt;pod&gt; --previous</code> to see the output from the <em>crashed</em> instance, not the currently restarting one, that is where the actual error message lives.</li>
+        <li><strong>kind create cluster fails with a port or name conflict:</strong> a previous cluster was not cleaned up. List them with <code>kind get clusters</code> and remove the stale one with <code>kind delete cluster --name &lt;name&gt;</code>. On corporate networks, a VPN that hijacks localhost routing can also break the API-server connection, disconnect it and retry.</li>
+      </ul>
+    
+<p>Quick-reference for the failures you are most likely to hit in this lab.</p>
+<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<tr><td>Cluster creation fails</td><td>Docker is not running, or ports are already in use</td><td>Start the Docker engine and retry; kind needs the daemon healthy first.</td></tr>
+<tr><td><code>kubectl</code> reports no context</td><td>Kubeconfig was not merged or points elsewhere</td><td>Run <code>kind get kubeconfig</code> and check <code>kubectl config current-context</code>.</td></tr>
+<tr><td>Pod stuck in Pending</td><td>No node has capacity, or a volume cannot attach</td><td><code>kubectl describe pod</code> names the exact blocker in the Events section.</td></tr>
+<tr><td>ImagePullBackOff</td><td>Wrong image name or tag, or a private registry without credentials</td><td>Verify the tag exists with <code>docker pull</code>; the error is almost always a typo.</td></tr>
+<tr><td>Rollback did not restore behavior</td><td>Rolled back to the wrong revision</td><td>Check <code>kubectl rollout history</code> first and pick the revision deliberately.</td></tr>
+</tbody></table>
+</section>
+
+    <section><h2 id="extension-ideas">Extension Ideas</h2>
+      <ul>
+        <li>Expose the deployment in <a href="kubernetes-pods-services.html">Pods &amp; Deployments</a>, right now the nginx pods are only reachable inside the cluster, and a Service is how you give them a stable endpoint.</li>
+        <li>Add networking and Services in <a href="kubernetes-networking.html">Kubernetes Networking</a> to route external traffic in through an Ingress and restrict pod-to-pod traffic with policy.</li>
+        <li>Move to managed Kubernetes in <a href="aks-deployment.html">Azure Kubernetes Service</a> once the kubectl workflow here feels mechanical, the manifests carry over unchanged.</li>
+        <li>Give the containers resource requests and limits (<code>resources:</code> in the manifest) and observe how the scheduler's behaviour changes when the node fills up.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Created a working local Kubernetes cluster.</li>
+        <li>Ran a 2-replica deployment via kubectl.</li>
+        <li>Observed control-plane reconciliation of desired state.</li>
+        <li>Proved self-healing by deleting and recovering a pod.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways"><h3 id="key-takeaways">Key Takeaways</h3>
+      <ul>
+        <li>Kubernetes is a desired-state system: you declare what you want in the API server, and controllers reconcile reality toward it, you never manage containers by hand.</li>
+        <li>Always wrap workloads in a Deployment, not a bare pod; the ReplicaSet it creates is what gives you self-healing and scaling.</li>
+        <li><code>kubectl get</code> for status, <code>kubectl describe</code> for the event trail, <code>kubectl logs</code> for the app's own words, that trio diagnoses almost everything.</li>
+        <li>Imperative commands are for learning; declarative YAML in git is for anything that matters. <code>kubectl apply</code> is idempotent and safe to repeat.</li>
+        <li>The kill-a-pod test is the fastest sanity check that a cluster is healthy: if the replacement appears in seconds, the whole control-plane loop is working.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="practice-challenges">Practice Challenges</h2>
+<div class="lab-challenge"><h4>Challenge 1: Expose and curl the app</h4><p>Goal: Create a Service for the deployment and curl it from your machine.</p><p>Hint: Port-forward is the quickest path on kind; a NodePort works too.</p></div>
+<div class="lab-challenge"><h4>Challenge 2: Break it, then roll back</h4><p>Goal: Deploy a bad image tag, watch the rollout stall on the readiness check, then roll back.</p><p>Hint: The stalled rollout is the lesson; <code>rollout status</code> shows it waiting.</p></div>
+<div class="lab-challenge"><h4>Challenge 3: Scale to zero</h4><p>Goal: Scale the deployment to zero replicas and observe what remains in the cluster.</p><p>Hint: The Deployment and ReplicaSet persist; only the pods are gone, which is why scaling back up is instant.</p></div>
+</section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="kubernetes-pods-services.html">Pods &amp; Deployments</a></li>
+        <li><a href="kubernetes-networking.html">Kubernetes Services &amp; Networking</a></li>
+        <li><a href="../../../work/infrastructure/kubernetes-infrastructure.html">Kubernetes Infrastructure Project</a></li>
+      
+        <li><a href="docker-fundamentals.html">Docker Fundamentals</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

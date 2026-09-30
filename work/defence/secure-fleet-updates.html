@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Secure Robot Fleet Updates: TPM 2.0 OTA | TYFSADIK</title>
+  <meta name="description" content="Secure boot, TPM 2.0 measured boot, YubiKey-signed over-the-air updates, and automatic A/B rollback for a small robot fleet, tested in a cold chamber.">
+  <meta name="keywords" content="secure boot Raspberry Pi, TPM 2.0 measured boot, YubiKey Ed25519 signing, secure OTA updates, RAUC A/B rollback, Mender, cosign image signing, syft SBOM, supply chain security, robot fleet management, LUKS TPM sealing, Defence Drone Initiative">
+  <meta name="robots" content="index,follow">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <link rel="canonical" href="https://tyfsadik.org/work/defence/secure-fleet-updates.html">
+  <meta property="og:title" content="Secure Robot Fleet Updates: TPM 2.0 OTA | TYFSADIK">
+  <meta property="og:description" content="Secure boot, TPM 2.0 measured boot, YubiKey-signed over-the-air updates, and automatic A/B rollback for a small robot fleet, tested in a cold chamber.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/work/defence/secure-fleet-updates.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/Prove/Secure%20robot-fleet%20updates.jpeg">
+  <meta name="twitter:title" content="Secure Robot Fleet Updates: TPM 2.0 OTA | TYFSADIK">
+  <meta name="twitter:description" content="Secure boot, TPM 2.0 measured boot, YubiKey-signed over-the-air updates, and automatic A/B rollback for a small robot fleet, tested in a cold chamber.">
+  <meta name="twitter:image" content="https://tyfsadik.org/Prove/Secure%20robot-fleet%20updates.jpeg">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Secure Robot-Fleet Updates", "name": "Secure Robot-Fleet Updates", "description": "Secure boot, TPM 2.0 measured boot, YubiKey-signed over-the-air updates, and automatic A/B rollback for a small robot fleet, tested in a cold chamber.", "image": "https://tyfsadik.org/Prove/Secure%20robot-fleet%20updates.jpeg", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "publisher": {"@type": "Organization", "name": "TYFSADIK", "url": "https://tyfsadik.org/"}, "datePublished": "2026-09-30", "inLanguage": "en-CA", "mainEntityOfPage": {"@type": "WebPage", "@id": "https://tyfsadik.org/work/defence/secure-fleet-updates.html"}, "keywords": ["secure boot", "TPM 2.0 measured boot", "YubiKey Ed25519", "secure OTA", "A/B rollback", "SBOM", "supply-chain integrity", "Defence Drone Initiative"]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Secure Robot-Fleet Updates","description":"Build a robot fleet that boots only signed code, accepts only updates signed by an offline key, and rolls a bad update back automatically.","step":[{"@type":"HowToStep","name":"Secure boot chain on the Pi","text":"Enable Raspberry Pi secure boot with a signed bootloader and kernel so unsigned code never executes; program the public key hash into OTP."},{"@type":"HowToStep","name":"Wire up the TPM 2.0 module","text":"Attach the TPM 2.0 board to the Pi's SPI header, enable the device-tree overlay, and confirm the kernel enumerates the device."},{"@type":"HowToStep","name":"Measured boot with PCRs","text":"Record each boot stage in TPM PCRs and verify the event log matches the expected measurement chain."},{"@type":"HowToStep","name":"Seal disk encryption keys to the TPM","text":"Encrypt the root filesystem with LUKS and seal the key to the measured state so a tampered image cannot decrypt user data."},{"@type":"HowToStep","name":"Signing keys on YubiKeys","text":"Generate Ed25519 signing keys on a YubiKey with an offline backup key, so private key material never touches a networked machine."},{"@type":"HowToStep","name":"SBOM and signature verification","text":"Generate an SBOM with syft for every image, sign the digest offline, and verify cosign-style before any node installs."},{"@type":"HowToStep","name":"RAUC A/B partitions and bundles","text":"Lay out A/B rootfs slots and package updates as signed RAUC bundles that write only to the inactive slot."},{"@type":"HowToStep","name":"Health-check gate and automatic rollback","text":"Boot a new image once on trial; a systemd health gate marks the slot good or the bootloader falls back to last-known-good."},{"@type":"HowToStep","name":"Fleet server identity, policy, campaigns","text":"Enrol each node with a per-device certificate and run targeted, auditable update campaigns from the homelab."},{"@type":"HowToStep","name":"Store-and-forward delivery on degraded links","text":"Queue bundles server-side and resume partial downloads node-side so offline nodes never miss a campaign."},{"@type":"HowToStep","name":"Cold-chamber validation","text":"Apply and roll back updates with the target at freezer temperatures, because flash and SD cards behave differently in the cold."},{"@type":"HowToStep","name":"Chaos tests","text":"Corrupt an image mid-transfer and kill power mid-flash, then prove the device always returns to a signed, working state."}]}</script>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Defence Builds", "item": "https://tyfsadik.org/work/defence/defence-hardware-program.html"}, {"@type": "ListItem", "position": 3, "name": "Secure Robot-Fleet Updates", "item": "https://tyfsadik.org/work/defence/secure-fleet-updates.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'TPM never enumerated.'?", "acceptedAnswer": {"@type": "Answer", "text": "The module sat silently on the header with no /dev/tpm0. The scope showed no clock on SCLK, SPI itself was off, and my first overlay name didn't match the chip. Fix: dtparam=spi=on plus the correct dtoverlay=tpm-slb9670 for the SLB9670-class board, confirmed with dmesg | grep -i tpm. Lesson: debug the bus before blaming the chip."}}, {"@type": "Question", "name": "How do I fix 'I locked my own node out of its disk.'?", "acceptedAnswer": {"@type": "Answer", "text": "A legitimate kernel update changed the PCR measurements, the TPM refused to unseal, and the node couldn't decrypt its own rootfs after a perfectly valid update. Fix: the offline recovery passphrase (separate LUKS keyslot, stored offline), and re-sealing the TPM policy is now an explicit step in the update pipeline, run with every build."}}, {"@type": "Question", "name": "How do I fix 'OTP is one-way, and I knew it could still surprise me.'?", "acceptedAnswer": {"@type": "Answer", "text": "Programming the secure-boot key hash into OTP cannot be undone, a mistake there turns a Pi into a paperweight. Fix: rehearsed the entire sign-flash-boot cycle three times on a second, un-programmed board first, and only burned OTP after three clean reject-and-accept cycles."}}, {"@type": "Question", "name": "How do I fix 'A cheap SD card died during power-cut rehearsals.'?", "acceptedAnswer": {"@type": "Answer", "text": "Random mid-flash power cuts are exactly what consumer cards hate; the card, not the update mechanism, was the weak point. Fix: high-endurance cards from the Phase 0 kit, and the A/B layout means even a failed slot write never touches the running system."}}, {"@type": "Question", "name": "How do I fix 'Condensation in the freezer.'?", "acceptedAnswer": {"@type": "Answer", "text": "The first cold run ended with a damp node that I was not about to power up. Fix: the node now goes into and out of the freezer in a sealed bag and warms to room temperature before power-up, the same discipline as never charging a cold battery. Conformal coating is on the list for nodes that will live outdoors."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
+        <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content">
+  <div class="container">
+    <div class="content-box">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="defence-hardware-program.html">Defence</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Secure Robot-Fleet Updates</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Secure Robot-Fleet Updates</h1>
+      <p class="subtitle">Every node in my fleet boots only signed code, accepts only updates signed by an offline key, and rolls a bad update back automatically, then I prove it in a freezer, because that is where Canadian robots actually work.</p>
+    </div>
+
+    <div class="project-meta">
+      <span class="meta-year">2026</span>
+      <span class="meta-category">Defence</span>
+      <span class="meta-category">Hardware</span>
+      <span class="meta-category">In Progress</span>
+    </div>
+
+    <nav class="viz-toc" aria-label="On this page">
+      <strong>On this page</strong>
+      <ul>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#proof">Proof of Build</a></li>
+        <li><a href="#bom">Bill of Materials</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#measured-boot">Measured Boot vs Secure Boot</a></li>
+        <li><a href="#test-status">Test Status</a></li>
+        <li><a href="#wiring">Wiring &amp; Connections</a></li>
+        <li><a href="#how-building">How I Built It</a></li>
+        <li><a href="#testing">Testing &amp; Metrics</a></li>
+        <li><a href="#troubleshooting">Troubleshooting &amp; Lessons</a></li>
+        <li><a href="#status">Status &amp; Roadmap</a></li>
+        <li><a href="#related">Related Builds</a></li>
+        <li><a href="#build-phases">Build Narrative: Phase by Phase</a></li>
+        <li><a href="#what-you-need">What You Need</a></li>
+        <li><a href="#challenges-lessons">Challenges and Lessons Learned</a></li>
+        <li><a href="#what-next">What Is Next</a></li>
+      </ul>
+    </nav>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        The Army's <strong>MINERVA challenges</strong> say it plainly: Canada has bought foreign
+        robotic systems of mixed quality, with components from unstable supply chains. The
+        <strong>Defence Drone Initiative (launched July 23, 2026)</strong> makes supply-chain
+        integrity a theme rather than an afterthought. A drone or ground robot that will accept
+        any firmware image anyone hands it is a liability, no matter how good its sensors are.
+      </p>
+      <p>
+        This build connects my DevOps discipline to hardware. The fleet is small, the Raspberry Pi
+        nodes from my rover and sensor builds, but the rules are the ones a real program needs:
+      </p>
+      <ul>
+        <li><strong>Every device boots only signed code</strong>, a secure-boot chain from the bootloader up, with a TPM 2.0 measuring each stage and holding the disk keys hostage to that measurement.</li>
+        <li><strong>Every update is signed by an offline key</strong>, Ed25519 keys that live on YubiKeys, not on any machine connected to a network.</li>
+        <li><strong>A bad update rolls itself back</strong>, A/B partitions with health checks, so a broken image never strands a node in the field.</li>
+      </ul>
+      <p>
+        And because these robots are meant to operate in the cold, the same cold the MINERVA
+        documents complain about, the whole update-and-rollback cycle gets validated in a freezer,
+        not just on a warm bench.
+      </p>
+    </section>
+
+    <section id="proof">
+      <h2>Proof of Build</h2>
+      <img src="../../Prove/Secure%20robot-fleet%20updates.jpeg" alt="Secure robot controller board wired to a TPM 2.0 module on the workbench with an oscilloscope and a laptop showing a verified secure-boot log, TPM integrity status, and an automated rollback interface" loading="lazy" width="1408" height="768">
+      <p class="diagram-label">The rig on my bench: a Raspberry Pi fleet node wired to its TPM 2.0 module, with the oscilloscope alongside and the laptop showing a verified secure-boot log, TPM integrity status, and the rollback interface after a forced bad-update test.</p>
+    </section>
+
+    <section id="bom">
+      <h2>Bill of Materials</h2>
+      <p>
+        Everything below is already purchased and on my bench. The fleet nodes themselves are shared
+        with the rover and sensor builds, so the incremental cost of making the whole fleet
+        trustworthy is essentially the TPM and the keys.
+      </p>
+      <table class="bom-table">
+        <thead><tr><th>Item</th><th>What I used</th><th>Est. US$</th></tr></thead>
+        <tbody>
+          <tr><td>TPM</td><td>TPM 2.0 add-on board for the Pi</td><td>25-40</td></tr>
+          <tr><td>Signing keys</td><td>2 YubiKeys (one as backup)</td><td>100-110</td></tr>
+          <tr><td>Targets</td><td>Raspberry Pi fleet nodes from the rover/sensor builds</td><td>(shared)</td></tr>
+          <tr><td>Cold chamber</td><td>Canadian winter (free) or chest freezer (shared with the cold-soak rig)</td><td>0-300</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid" role="img" aria-label="Secure update architecture: offline signing to fleet nodes with automatic rollback">
+flowchart LR
+  subgraph Off["OFFLINE SIGNING"]
+    YK["YubiKey<br/>Ed25519 root key"]
+    BUILD["Image build<br/>syft SBOM + sign"]
+  end
+  subgraph Hub["HOMELAB FLEET SERVER"]
+    SRV["Update server<br/>per-device identity + policy"]
+    SF["Store-and-forward<br/>campaign queue"]
+  end
+  subgraph Node["FLEET NODE (Pi)"]
+    BL["Signed bootloader<br/>+ kernel"]
+    TPM["TPM 2.0<br/>measured boot (PCRs)"]
+    AB["A/B slots<br/>RAUC"]
+    HC["Health checks<br/>auto rollback"]
+  end
+  YK --> BUILD --> SRV --> SF --> AB
+  BL --> TPM --> AB
+  AB --> HC
+  HC -->|"checks fail"| AB
+      </div>
+      <p class="diagram-label">Figure 1: images are signed by a key that never touches a network, delivered through a store-and-forward campaign queue, and installed into the inactive A/B slot, health checks decide whether the new slot stays or the node rolls back.</p>
+      <p>
+        Two trust chains meet here. The <strong>boot chain</strong> (signed bootloader, signed
+        kernel, TPM measurement) guarantees the node runs only what I signed. The
+        <strong>update chain</strong> (offline signing, per-device policy, A/B slots with
+        automatic fallback) guarantees I can change what it runs without ever being able to brick
+        it. A node that misses a campaign because its link is down simply picks the bundle up when
+        the link returns, the same DDIL store-and-forward pattern as my field nodes.
+      </p>
+    </section>
+
+    <section id="measured-boot">
+      <h2>Measured Boot vs Secure Boot</h2>
+      <p>
+        Steps 01 through 04 implement two different ideas that are easy to conflate. Secure boot
+        is a <strong>gate</strong>: the bootloader checks signatures and refuses to execute
+        anything unsigned, so bad code never runs. Measured boot is a <strong>record</strong>:
+        each boot stage hashes the next and extends the hash into a TPM Platform Configuration
+        Register (PCR), so at the end the TPM holds a fingerprint of exactly what booted, and
+        the disk keys are sealed to that fingerprint. Tamper with the image and the PCRs change;
+        the TPM then refuses to unseal, and the attacker gets a brick, not the data.
+      </p>
+      <div class="diagram-figure">
+        <div class="mermaid" role="img" aria-label="Measured boot PCR extend chain">
+flowchart LR
+  BL["Bootloader<br/>(signed, OTP key)"]
+  K["Kernel + initramfs<br/>(bundled in boot image)"]
+  R["Rootfs<br/>(LUKS2 encrypted)"]
+  P0["PCR 0<br/>(firmware)"]
+  P7["PCR 7<br/>(secure-boot policy)"]
+  SEAL["LUKS key sealed<br/>to PCRs 0+7"]
+  OK["Disk unlocks"]
+  NO["TPM refuses to unseal"]
+  BL --> P0
+  K --> P7
+  BL -->|"extends hash"| P0
+  K -->|"extends hash"| P7
+  P0 --> SEAL
+  P7 --> SEAL
+  SEAL -->|"measurements match baseline"| OK
+  SEAL -->|"any stage changed"| NO
+        </div>
+        <p class="diagram-caption"><strong>Figure 2:</strong> the measured-boot chain: each boot stage extends a PCR, and the LUKS disk key is sealed to PCRs 0+7. A modified initramfs changes the measurements, the seal policy fails, and the disk stays locked. This is the mechanism T2 exercises.</p>
+      </div>
+      <div class="viz-explainer">
+        <h3>Why both are needed</h3>
+        <p>
+          Secure boot alone can refuse a tampered image, but it tells you nothing about what
+          actually ran, and a keyed attacker with a valid signature could boot an older,
+          vulnerable image. Measured boot alone cannot stop anything; it only records. Together
+          they close both gaps: the signature check decides whether code may run, and the PCR
+          chain decides whether the disk keys may be released, so even a validly-signed-but-old
+          image cannot unlock data sealed to the current measurements. The recovery passphrase
+          in a separate LUKS keyslot (step 04) is the escape hatch for when the measurements
+          change legitimately, as any kernel update does.
+        </p>
+      </div>
+      <div class="viz-explainer">
+        <h3>Why the signing key never leaves the card</h3>
+        <p>
+          The Ed25519 fleet root key is generated <em>on</em> the YubiKey with
+          <code>gpg --edit-card</code>, admin PIN, and <code>generate</code>. On-card generation
+          means the private key material never exists on any disk, it physically cannot be
+          exported, so there is no backup file to steal and no laptop image that can leak it.
+          Answering "no" to the "off-card backup of encryption key" prompt keeps even that
+          option closed for the signing slot. The RAUC bundles in step 07 are signed with a
+          second on-card key in the YubiKey's PIV slot (generated with yubico-piv-tool, accessed
+          via the pkcs11: URI) rather than the OpenPGP key, because cosign and RAUC speak
+          PKCS#11 and cannot reach the OpenPGP application: two applications on the same card,
+          two keys, same never-leaves-the-card property. One firmware note: Ed25519 in the PIV
+          slot needs YubiKey firmware 5.7 or later; older cards do the same job in the PIV slot
+          with RSA-2048 or P-256, reached through the same pkcs11: URI. The cost of this property is real: if the card is
+          lost, the key is gone, which is exactly why the second YubiKey holds a backup key
+          generated the same way, stored separately and offline. The pipeline verifies with the
+          exported public key only, the proof that verification needs nothing secret.
+        </p>
+      </div>
+    </section>
+
+    <section id="test-status">
+      <h2>Test Status</h2>
+      <p>
+        A quick visual of where the six tests stand, drawn straight from the targets table below.
+        This is a status snapshot, not results: "passing" means the mechanism fires correctly on
+        the bench rig (T1, T2), not that the run counts are statistically meaningful. Full
+        numbers land only when the campaign, rollback, cold-matrix, and chaos batteries have
+        accumulated enough runs.
+      </p>
+      <div class="diagram-figure">
+        <svg viewBox="0 0 640 200" width="100%" role="img" aria-label="Bar chart of test status: two mechanisms passing on bench, three in progress, one next">
+          <rect x="60" y="30" width="100" height="120" fill="#6FCF6F" opacity="0.75"/>
+          <rect x="240" y="30" width="150" height="120" fill="#E6C947" opacity="0.75"/>
+          <rect x="470" y="30" width="50" height="120" fill="#5B93EF" opacity="0.75"/>
+          <text x="110" y="168" fill="#DBDADA" font-size="13" text-anchor="middle">2</text>
+          <text x="315" y="168" fill="#DBDADA" font-size="13" text-anchor="middle">3</text>
+          <text x="495" y="168" fill="#DBDADA" font-size="13" text-anchor="middle">1</text>
+          <text x="110" y="186" fill="#9FA2A4" font-size="12" text-anchor="middle">mechanism passing</text>
+          <text x="110" y="200" fill="#9FA2A4" font-size="12" text-anchor="middle">on bench (T1, T2)</text>
+          <text x="315" y="186" fill="#9FA2A4" font-size="12" text-anchor="middle">in progress</text>
+          <text x="315" y="200" fill="#9FA2A4" font-size="12" text-anchor="middle">(T3, T4, T5)</text>
+          <text x="495" y="186" fill="#9FA2A4" font-size="12" text-anchor="middle">next (T6)</text>
+        </svg>
+        <p class="diagram-caption"><strong>Figure 3:</strong> test status as of this writing. Two tests have their mechanisms firing correctly on the bench rig; three are accumulating runs; the full power-cut chaos battery is next. No pass-rate numbers are published yet.</p>
+      </div>
+    </section>
+
+    <section id="wiring">
+      <h2>Wiring &amp; Connections</h2>
+      <p>
+        The hardware side of this build is deliberately boring, most of the security lives in
+        software. What is physically connected, and why:
+      </p>
+      <table>
+        <thead><tr><th>From</th><th>To</th><th>Cable or interface</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>TPM 2.0 module (Infineon SLB9670)</td><td>Pi 5 GPIO header</td><td>SPI0: MOSI/MISO/SCLK on GPIO 9/10/11, CE0 on GPIO 8, 3.3 V + GND</td><td>Module seats directly on the header; keep leads short so the SPI clock stays clean</td></tr>
+          <tr><td>Pi 5 UART (GPIO 14/15)</td><td>Bench laptop</td><td>3.3 V USB-UART adapter</td><td>The only way to see early-boot failures when secure boot refuses an image and the screen stays black</td></tr>
+          <tr><td>DS18B20 temperature probe</td><td>Pi 5 GPIO 4 (1-Wire)</td><td>3-wire lead, 4.7 k&Omega; pull-up to 3.3 V</td><td>Logs freezer temperature next to update logs; shared with the cold-soak rig</td></tr>
+          <tr><td>Wi-Fi smart plug</td><td>Pi 27 W USB-C supply</td><td>Mains side</td><td>The chaos-test power switch: cuts the node at random offsets mid-flash</td></tr>
+          <tr><td>Oscilloscope probes</td><td>SPI lines (SCLK, MOSI, MISO, CS)</td><td>Scope probes + ground clips</td><td>Used while bringing up the TPM overlay to confirm clock and traffic; visible in the bench photo</td></tr>
+          <tr><td>Fleet server (homelab)</td><td>Fleet nodes</td><td>Ethernet on the bench, Wi-Fi in the field</td><td>Campaigns over TLS; nodes resume partial downloads when the link drops</td></tr>
+          <tr><td>YubiKey (root signing key)</td><td>Offline signing laptop</td><td>USB</td><td>Never plugged into a networked machine; signed bundles cross to the server on removable media</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="how-building">
+      <h2>How I Built It</h2>
+      <details class="viz-steps">
+        <summary>Build steps <span class="viz-steps-hint">(12 steps with code; expand to read)</span></summary>
+        <div class="steps">
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <strong>Secure boot chain on the Pi</strong>
+            <p>The foundation is Raspberry Pi secure boot: the EEPROM bootloader signature-checks the boot image, which bundles the kernel, initramfs, and device tree, so nothing unsigned ever executes. I generated an RSA-2048 device key on the offline signing machine, hashed the public key into the Pi's one-time-programmable (OTP) memory, and set <code>SIGNED_BOOT=1</code> in the EEPROM config. From that moment the board is a device that will only boot my code.</p>
+            <p class="code-label">KEY GENERATION AND SIGNING (offline machine)</p>
+            <pre><code># device key lives on the offline machine only
+openssl genrsa 2048 &gt; device-private.pem
+openssl rsa -in device-private.pem -pubout &gt; device-public.pem
+
+# boot.sig = raw binary RSA-2048 signature over sha256(boot.img), not hex
+openssl dgst -sign device-private.pem -keyform PEM -sha256 \
+  -out boot.sig work/boot.img
+
+# EEPROM config enforcing signed boot
+grep SIGNED_BOOT boot.conf
+#   SIGNED_BOOT=1
+
+# flash EEPROM and program the pubkey hash into OTP - ONE WAY, no undo
+cd usbboot &amp;&amp; sudo ./rpiboot -d secure-boot-msd</code></pre>
+            <p>What can go wrong: OTP programming is irreversible, so I rehearsed the whole sign-and-boot cycle on a second, un-programmed Pi before burning anything. I verified enforcement by deleting <code>boot.sig</code> from the boot partition and confirming over the serial console that the board refused to boot.</p>
+            <p>Two things the listing above simplifies. First, <code>boot.sig</code> is the raw binary RSA signature, not hex output; the official reference flow is the secure-boot-example scripts in Raspberry Pi's usbboot repository, including the <code>rpi-eeprom-digest</code> helper, which produce the same bytes. Second, this is the Pi 4 flow used on this build: Pi 5 secure boot additionally requires Raspberry Pi's own signature on the bootloader firmware, countersigned by the customer key, so this exact script is not portable to Pi 5.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <strong>Wire up the TPM 2.0 module</strong>
+            <p>The TPM 2.0 board (Infineon SLB9670 class) rides the Pi's SPI header. The kernel needs SPI enabled plus the right device-tree overlay; get the overlay name wrong and the chip simply never appears, which is exactly what happened to me at first (see Troubleshooting).</p>
+            <p class="code-label">ENABLE THE TPM AND CONFIRM ENUMERATION</p>
+            <pre><code># /boot/firmware/config.txt
+dtparam=spi=on
+dtoverlay=tpm-slb9670
+
+# after reboot, the kernel should bind the driver
+dmesg | grep -i tpm
+#   tpm_tis_spi spi0.0: 2.0 TPM (device-id 0x1B, rev-id 22)
+ls -l /dev/tpm0 /dev/tpmrm0
+sudo tpm2_getcap properties-fixed | head -5</code></pre>
+            <p>How I verified: <code>tpm2_getcap properties-fixed</code> returning the manufacturer and firmware revision proves real two-way communication, not just a device node. When the chip stayed silent, the oscilloscope on SCLK showed there was no clock at all, SPI was off, not the TPM.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <strong>Measured boot with PCRs</strong>
+            <p>Secure boot answers "is this code signed"; measured boot answers "what exactly booted". Each boot stage extends a Platform Configuration Register, so the TPM ends up holding a hash chain of the bootloader, kernel, initramfs, and rootfs that actually ran. That chain is what the disk-encryption policy in the next step is anchored to.</p>
+            <p class="code-label">READ THE MEASUREMENT CHAIN</p>
+            <pre><code># PCRs after a clean boot
+sudo tpm2_pcrread sha256:0,1,2,3,7
+
+# the event log: which component produced which measurement
+sudo tpm2_eventlog /sys/kernel/security/tpm0/binary_bios_measurements | less
+
+# baseline for comparison after updates
+sudo tpm2_pcrread sha256:0,1,2,3,7 &gt; /etc/fleet/pcr-baseline.txt</code></pre>
+            <p>What can go wrong: any legitimate change, a kernel update, a config edit measured into a PCR, changes the values, so the baseline file is regenerated as part of every update, not treated as permanent. I verified the mechanism by booting a deliberately modified initramfs and watching the PCRs diverge from baseline. One thing to name explicitly: the Pi's own firmware does not extend PCRs or produce this log, so the measuring stage that runs before the kernel must be documented as part of this build; without it the PCRs stay zeroed and the seal policy has nothing to anchor to.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <strong>Seal disk encryption keys to the TPM</strong>
+            <p>The root filesystem is LUKS2-encrypted, and the volume key is sealed to the TPM's measured state. If anyone swaps in a tampered image, the PCRs change, the TPM refuses to unseal, and the attacker has a booting-but-blank brick: user data and sensor recordings stay encrypted. This is the step that turns "tampering detected" into "tampering useless".</p>
+            <p class="code-label">LUKS2 + TPM SEALING</p>
+            <pre><code>sudo cryptsetup luksFormat --type luks2 /dev/mmcblk0p3
+sudo systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=0+7 /dev/mmcblk0p3
+
+# /etc/crypttab
+#   rootfs  /dev/mmcblk0p3  none  tpm2-device=auto,discard
+
+# confirm the TPM2 token is enrolled
+sudo cryptsetup luksDump /dev/mmcblk0p3 | grep -A3 tpm2</code></pre>
+            <p>What can go wrong: locking myself out. A recovery passphrase sits in a separate LUKS keyslot, printed and stored offline, I needed it once already, after my own kernel update changed the measurements before the re-seal step ran. That lesson is why re-sealing is now a pipeline step, not a manual chore.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <strong>Signing keys on YubiKeys</strong>
+            <p>Update manifests are signed with an Ed25519 key generated <em>on</em> a YubiKey, the private key never exists anywhere else and cannot be exported. The signing laptop stays offline; only signed bundles cross to the fleet server. A second YubiKey holds the backup key, generated the same way and stored separately, so losing one device cannot kill the fleet's update channel.</p>
+            <p class="code-label">ON-CARD KEY GENERATION AND SIGNING</p>
+            <pre><code># generate the key ON the card (OpenPGP application, ed25519)
+gpg --edit-card
+#   gpg/card&gt; admin
+#   gpg/card&gt; generate      # key type: ed25519
+
+# sign an update manifest; the PIN pads the card, the card signs
+gpg --detach-sign --armor --local-user FLEET-ROOT manifest.json
+gpg --verify manifest.json.asc manifest.json</code></pre>
+            <p>How I verified: I unplugged the YubiKey mid-workflow and confirmed signing is impossible without it, then verified the signature on a different machine using only the exported public key, the proof that verification needs nothing secret.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">06</div>
+          <div class="step-body">
+            <strong>SBOM and signature verification</strong>
+            <p>Every image build emits an SBOM with <code>syft</code> (SPDX JSON, committed next to the image), and the bundle digest is signed offline, cosign-style. On the node, verification is a hard gate chained directly to install: anything that fails verification is deleted, never staged. This is the same pipeline discipline as my <a href="zero-trust-air-gapped-supply-chain.html">zero-trust air-gapped supply chain</a> project, applied to physical devices instead of containers.</p>
+            <p class="code-label">BUILD-TIME SBOM, SIGN, NODE-SIDE VERIFY</p>
+            <pre><code># offline build machine
+syft dir:./rootfs -o spdx-json=update-1.4.0.spdx.json
+cosign sign-blob --key "pkcs11:object=FLEET-ROOT" \
+  --bundle update-1.4.0.cosign.bundle update-1.4.0.raucb
+
+# on the node: verify BEFORE install; &amp;&amp; is the gate
+cosign verify-blob --key /etc/fleet/fleet-root.pub \
+  --bundle update-1.4.0.cosign.bundle update-1.4.0.raucb \
+  &amp;&amp; rauc install update-1.4.0.raucb</code></pre>
+            <p>What can go wrong: clock skew on a node that has been powered off makes signature timestamps look wrong, so verification pins the known public key rather than a time-based chain, and nodes sync time against my GNSS-disciplined clocks before checking in.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">07</div>
+          <div class="step-body">
+            <strong>RAUC A/B partitions and bundles</strong>
+            <p>Each node carries two rootfs slots, A and B. An update is a signed RAUC bundle that writes only to the inactive slot, so the running system is never touched mid-write, a power cut during install leaves the active slot fully intact. RAUC's keyring is the fleet's offline CA, which makes unsigned bundles fail before a single byte is written.</p>
+            <p class="code-label">/etc/rauc/system.conf AND BUNDLE BUILD</p>
+            <pre><code>[system]
+compatible=tyfsadik-fleet-node
+bootloader=custom
+
+[keyring]
+path=/etc/rauc/fleet-root-ca.cert.pem
+
+[slot.rootfs.0]
+device=/dev/mmcblk0p2
+type=ext4
+bootname=A
+
+[slot.rootfs.1]
+device=/dev/mmcblk0p3
+type=ext4
+bootname=B
+
+# offline machine: build the signed bundle
+rauc bundle --cert=fleet-rel.cert.pem \
+  --key="pkcs11:object=FLEET-ROOT;type=private" \
+  build/ update-1.4.0.raucb</code></pre>
+            <p>How I verified: <code>rauc info update-1.4.0.raucb</code> on the node shows the verified signature chain, and <code>rauc status</code> shows exactly which slot is booted, which is active, and which will receive the next bundle.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">08</div>
+          <div class="step-body">
+            <strong>Health-check gate and automatic rollback</strong>
+            <p>After an install, the bootloader tries the new slot exactly once. A systemd one-shot health gate runs on that first boot: core services up, TPM readable, heartbeat to the fleet server established. Only a clean pass calls <code>rauc status mark-good</code>. If the mark never arrives, the bootloader's boot counter expires and the node falls back to the last-known-good slot on the next reset, no human required.</p>
+            <p class="code-label">/usr/local/sbin/fleet-health-check + systemd UNIT</p>
+            <pre><code>#!/bin/sh
+# runs once on the first boot of a new slot
+systemctl is-active --quiet rauc fleet-heartbeat || exit 1
+tpm2_pcrread sha256:7 -Q || exit 1
+ping -c1 -W2 fleet.tyfsadik.lan &gt;/dev/null || exit 1
+rauc status mark-good
+
+# fleet-health.service: Type=oneshot, After=network-online.target,
+# ExecStart=/usr/local/sbin/fleet-health-check, WantedBy=multi-user.target</code></pre>
+            <p>What can go wrong: a health check that is too strict bricks the update path (everything rolls back forever); too loose and broken images get marked good. I tuned it against a deliberately crippled image, network service masked, and confirmed the node rolled itself back to the previous slot after the boot-count limit.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">09</div>
+          <div class="step-body">
+            <strong>Fleet server: identity, policy, campaigns</strong>
+            <p>The homelab fleet server knows every node by a per-device certificate issued at enrolment, a rover in active testing gets builds far more often than a deployed sensor node, and every campaign is auditable: which devices, which version, what order. Policies are serial by default: the next node waits until the previous one has marked its slot good, so a bad image can never take the whole fleet down at once.</p>
+            <p class="code-label">CAMPAIGN DEFINITION AND ENROLMENT</p>
+            <pre><code># campaign.yaml on the fleet server
+campaign: rover-fleet-2026-09
+image: update-1.4.0.raucb
+targets: [rover-01, rover-02]
+policy:
+  rollout: serial        # one node at a time
+  require_healthy: true  # wait for mark-good before the next node
+  resume: true           # resume partial downloads
+
+# node-side enrolment (my small script over the fleet CA)
+sudo fleet-enrol --server https://fleet.tyfsadik.lan \
+  --tpm --out /etc/fleet/device.json</code></pre>
+            <p>How I verified: enrolling the same node twice fails, the server already has that TPM-bound identity, and a campaign scoped to <code>rover-01</code> leaves <code>rover-02</code> untouched, which is exactly the targeting guarantee I want before the fleet grows.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">10</div>
+          <div class="step-body">
+            <strong>Store-and-forward delivery on degraded links</strong>
+            <p>Nodes that are offline, or behind a link that drops, must not miss a campaign. Bundles queue server-side; node-side fetches are resumable and digest-checked against the signed manifest, so a half-downloaded bundle picks up where it stopped. This is the DDIL pattern from my <a href="ddil-proof-devops.html">DDIL-proof DevOps</a> build, a robot on a degraded mesh and a laptop on hotel Wi-Fi are the same problem.</p>
+            <p class="code-label">RESUMABLE FETCH + BENCH REHEARSAL OF A BAD LINK</p>
+            <pre><code># node-side fetcher: resume, retry, then check against the signed digest
+curl -C - --retry 20 --retry-all-errors \
+  -o update-1.4.0.raucb \
+  https://fleet.tyfsadik.lan/bundles/update-1.4.0.raucb
+echo "$DIGEST  update-1.4.0.raucb" | sha256sum -c -
+
+# rehearse DDIL conditions on the bench
+sudo tc qdisc add dev eth0 root netem loss 15% delay 400ms
+sudo tc qdisc del dev eth0 root   # back to normal</code></pre>
+            <p>How I verified: I pulled the Ethernet cable mid-download three times in a row under <code>netem</code> loss and confirmed the final file still matched the signed digest, resume plus verification, not luck, is what makes that safe.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">11</div>
+          <div class="step-body">
+            <strong>Cold-chamber validation</strong>
+            <p>The update-and-rollback cycle is tested cold, not just on the bench. The node goes into the chest freezer (shared with the cold-soak rig) and runs the full sequence at freezer temperatures around -20 &deg;C: enrol, download, verify, install to the idle slot, trial boot, health check, mark-good, and then again with a deliberately bad image to force a cold rollback. Flash and SD cards genuinely behave differently in the cold: slower, higher error rates, occasional marginal reads. A rollback mechanism tested only at room temperature is an assumption, not a capability.</p>
+            <p class="code-label">TEMPERATURE + UPDATE STATE LOGGING DURING A FREEZER RUN</p>
+            <pre><code>while true; do
+  T=$(cat /sys/bus/w1/devices/28-*/w1_slave | awk -F= '/t=/{print $2/1000}')
+  echo "$(date -Is) temp=${T}C slot=$(rauc status --output-format=shell \
+    | grep ^RAUC_SYSTEM_BOOTED)" &gt;&gt; /var/log/cold-update.log
+  sleep 30
+done</code></pre>
+            <p>What can go wrong: condensation. A node pulled from the freezer and powered up wet is a corrosion risk, so cold runs end with the node sealed in a bag while it warms to room temperature, the same discipline as never charging a cold battery.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">12</div>
+          <div class="step-body">
+            <strong>Chaos tests</strong>
+            <p>The final gate is deliberately breaking things: corrupt bundles mid-transfer, kill power mid-flash at random offsets with the smart plug, and feed the node well-formed bundles with invalid signatures. Each fault is injected repeatedly, warm and cold. The pass criterion is absolute: after any fault, in any order, the device returns to a signed, working state, either the new verified slot or the last-known-good one, with zero manual intervention.</p>
+            <p class="code-label">FAULT INJECTION</p>
+            <pre><code># corrupt 1 MiB in the middle of a bundle mid-transfer
+dd if=/dev/urandom of=update-1.4.0.raucb bs=1M seek=40 count=1 conv=notrunc
+
+# power-cut mid-flash at a random point in the write
+sleep $((RANDOM % 90))
+curl -X POST "http://plug.local/relay/0?turn=off"
+
+# after power returns: must show a GOOD, bootable slot
+rauc status --output-format=shell | grep -E "BOOTED|GOOD"</code></pre>
+            <p>How I verified failure honestly: the first corruption run did exactly what it should, verification rejected the bundle and nothing was installed. A test that never fails isn't proving anything; I want to see the rejection path fire every time a fault is injected.</p>
+          </div>
+        </div>
+        </div>
+      </details>
+    </section>
+
+    <section id="testing">
+      <h2>Testing &amp; Metrics</h2>
+      <p>
+        The test protocol treats trust properties as measurable, pass/fail things. Each run below
+        has a fixed setup, procedure, and metric; results are logged per run so the eventual
+        dataset is counts, not vibes.
+      </p>
+
+      <h3>T1, Boot-chain rejection</h3>
+      <ul>
+        <li><strong>Setup:</strong> OTP-programmed node, serial console attached to catch early-boot output.</li>
+        <li><strong>Procedure:</strong> attempt to boot (a) an unsigned image, (b) an image signed with the wrong key, (c) a valid image with one byte flipped.</li>
+        <li><strong>Metric:</strong> boots accepted. Target: 0 of 3, every variant must be refused before the kernel starts.</li>
+      </ul>
+
+      <h3>T2, TPM seal integrity</h3>
+      <ul>
+        <li><strong>Setup:</strong> node with LUKS rootfs, key sealed to PCRs 0+7, recovery passphrase in a separate keyslot.</li>
+        <li><strong>Procedure:</strong> boot a deliberately modified initramfs; attempt to unlock the disk. Repeat with the unmodified image as control.</li>
+        <li><strong>Metric:</strong> unseal blocked for the tampered image, unseal succeeds for the control, recovery passphrase works. Target: 3 of 3.</li>
+      </ul>
+
+      <h3>T3, Update campaign reliability</h3>
+      <ul>
+        <li><strong>Setup:</strong> two enrolled nodes, fleet server running a serial-rollout campaign.</li>
+        <li><strong>Procedure:</strong> run repeated full campaigns (enrol check, transfer, verify, install, trial boot, health gate, mark-good) at room temperature.</li>
+        <li><strong>Metric:</strong> per-stage success counts across campaigns. Target: 100% mark-good on every node, serial ordering respected every time.</li>
+      </ul>
+
+      <h3>T4, Forced rollback</h3>
+      <ul>
+        <li><strong>Setup:</strong> a deliberately crippled image (network service masked so the health gate can never pass).</li>
+        <li><strong>Procedure:</strong> push it as a campaign; observe trial boot, health-gate failure, boot-count expiry, fallback.</li>
+        <li><strong>Metric:</strong> campaigns ending on the last-known-good slot with no manual intervention. Target: 100%.</li>
+      </ul>
+
+      <h3>T5, Cold matrix</h3>
+      <ul>
+        <li><strong>Setup:</strong> node plus DS18B20 probe in the chest freezer, logging temperature and slot state together.</li>
+        <li><strong>Procedure:</strong> run T3 and T4 at room temperature, at freezer temperature (~-20 &deg;C), and during warm-up.</li>
+        <li><strong>Metric:</strong> success vs temperature, plus any cold-only errors (slow flash, marginal reads). Target: identical outcomes across the matrix; deviations get root-caused, not averaged away.</li>
+      </ul>
+
+      <h3>T6, Fault injection (chaos)</h3>
+      <ul>
+        <li><strong>Setup:</strong> smart plug on the node's power, corruption script for mid-transfer damage, invalid-signature bundles.</li>
+        <li><strong>Procedure:</strong> inject each fault repeatedly, warm and cold: truncated bundles, flipped payload bytes, power cuts at random offsets into the flash write.</li>
+        <li><strong>Metric:</strong> returns to a signed, working state with zero manual recovery. Target: 100% across every fault type and temperature.</li>
+      </ul>
+
+      <h3>Targets and current status</h3>
+      <table>
+        <thead><tr><th>Test</th><th>Target</th><th>Current status</th></tr></thead>
+        <tbody>
+          <tr><td>T1 Boot-chain rejection</td><td>0 of 3 bad variants boot</td><td>Passing on the bench rig</td></tr>
+          <tr><td>T2 TPM seal integrity</td><td>Tampered image cannot unseal; control can; recovery key works</td><td>Passing on the bench rig</td></tr>
+          <tr><td>T3 Campaign reliability</td><td>100% mark-good, serial order respected</td><td>In progress, accumulating runs</td></tr>
+          <tr><td>T4 Forced rollback</td><td>100% return to last-known-good</td><td>Basic path passing; full automation in progress</td></tr>
+          <tr><td>T5 Cold matrix</td><td>Identical outcomes at room, -20 &deg;C, warm-up</td><td>In progress, first freezer runs logged</td></tr>
+          <tr><td>T6 Fault injection</td><td>100% signed, working state after every fault</td><td>Next, corruption path verified, power-cut battery not yet run</td></tr>
+        </tbody>
+      </table>
+      <p>
+        Full numbers (campaign counts, rollback rates, cold-vs-warm comparison) will be published
+        once the matrix has accumulated enough runs to mean something. Nothing above is a final
+        result yet; "passing" means the mechanism fires correctly on the bench, not that the run
+        count is statistically meaningful.
+      </p>
+      <div class="note">
+        <strong>Key discipline:</strong> the root signing key lives on a YubiKey that never touches a
+        networked machine, signing happens on an offline machine, and only signed bundles cross to
+        the fleet server. The backup key is stored separately and offline, so losing or
+        compromising any single device cannot produce a valid signature.
+      </div>
+    </section>
+
+    <section id="troubleshooting">
+      <h2>Troubleshooting &amp; Lessons</h2>
+      <ul>
+        <li><strong>TPM never enumerated.</strong> The module sat silently on the header with no <code>/dev/tpm0</code>. The scope showed no clock on SCLK, SPI itself was off, and my first overlay name didn't match the chip. Fix: <code>dtparam=spi=on</code> plus the correct <code>dtoverlay=tpm-slb9670</code> for the SLB9670-class board, confirmed with <code>dmesg | grep -i tpm</code>. Lesson: debug the bus before blaming the chip.</li>
+        <li><strong>I locked my own node out of its disk.</strong> A legitimate kernel update changed the PCR measurements, the TPM refused to unseal, and the node couldn't decrypt its own rootfs after a perfectly valid update. Fix: the offline recovery passphrase (separate LUKS keyslot, stored offline), and re-sealing the TPM policy is now an explicit step in the update pipeline, run with every build.</li>
+        <li><strong>OTP is one-way, and I knew it could still surprise me.</strong> Programming the secure-boot key hash into OTP cannot be undone, a mistake there turns a Pi into a paperweight. Fix: rehearsed the entire sign-flash-boot cycle three times on a second, un-programmed board first, and only burned OTP after three clean reject-and-accept cycles.</li>
+        <li><strong>A cheap SD card died during power-cut rehearsals.</strong> Random mid-flash power cuts are exactly what consumer cards hate; the card, not the update mechanism, was the weak point. Fix: high-endurance cards from the Phase 0 kit, and the A/B layout means even a failed slot write never touches the running system.</li>
+        <li><strong>Condensation in the freezer.</strong> The first cold run ended with a damp node that I was not about to power up. Fix: the node now goes into and out of the freezer in a sealed bag and warms to room temperature before power-up, the same discipline as never charging a cold battery. Conformal coating is on the list for nodes that will live outdoors.</li>
+      </ul>
+    </section>
+
+    <section id="status">
+      <h2>Status &amp; Roadmap</h2>
+      <ul>
+        <li><strong>Done</strong>: hardware on the bench (TPM board, both YubiKeys, fleet nodes); secure-boot chain with signed bootloader and kernel; TPM enumerated and measured boot logging; LUKS keys sealed to PCRs (with an offline recovery key after the lockout lesson); basic A/B update with a health-gate script; first cold rollback runs in the freezer; mid-transfer corruption verified to reject.</li>
+        <li><strong>In progress</strong>: automated mark-good flow end to end; per-device enrolment and serial-rollout campaign policies on the homelab fleet server; store-and-forward delivery under <code>netem</code> degraded-link rehearsal; accumulating the cold-temperature test matrix (T5).</li>
+        <li><strong>Next</strong>: full power-cut chaos battery (T6) warm and cold; publish the test dataset (campaign counts, rollback rate vs temperature); conformal coating for outdoor nodes; extend enrolment to every rover and sensor node in the program.</li>
+      </ul>
+    </section>
+
+    <section id="related">
+      <h2>Related Builds</h2>
+      <ul>
+        <li><a href="defence-hardware-program.html"><strong>Canadian Defence Hardware Program</strong></a>, the hub: every build, the full phased BOM, and the Canadian requirements each one answers.</li>
+        <li><a href="zero-trust-air-gapped-supply-chain.html"><strong>Zero-Trust Air-Gapped Supply Chain</strong></a>, the signing, SBOM, and provenance discipline this fleet inherits, proven on containers first.</li>
+        <li><a href="ddil-proof-devops.html"><strong>DDIL-Proof DevOps</strong></a>, the store-and-forward delivery patterns the fleet server reuses for nodes on degraded links.</li>
+        <li><a href="cold-soak-battery-rig.html"><strong>Cold-Soak Characterization Rig</strong></a>, the shared chest freezer and instrumentation behind this build's cold-chamber update tests.</li>
+      </ul>
+    </section>
+
+
+    <section id="build-phases">
+      <h2>Build Narrative: Phase by Phase</h2>
+      <p><strong>Phase 1: TPM bringup.</strong> An SLB9670-class TPM 2.0 add-on board on the Pi's SPI header. Bringup fought the bus, not the chip: <code>dtparam=spi=on</code> plus the correct <code>dtoverlay=tpm-slb9670</code>, confirmed with <code>dmesg | grep -i tpm</code> and <code>/dev/tpm0</code> appearing. The scope showed no clock on SCLK until the overlay matched.</p>
+      <p><strong>Phase 2: secure boot chain.</strong> A signed bootloader and kernel chain from the bootloader up, with the TPM 2.0 measuring each stage. The OTP key-hash programming was rehearsed three times on a second, un-programmed board, with full reject-and-accept cycles, before being burned on the real node. OTP is one-way: a mistake there is a paperweight.</p>
+      <p><strong>Phase 3: sealed disk keys.</strong> LUKS disk keys sealed to the TPM's PCR measurements so the keys are held hostage to the measured boot state, plus a separate offline recovery passphrase in its own LUKS keyslot. That recovery key exists because a legitimate kernel update once changed the PCRs and locked the node out of its own disk; re-sealing the TPM policy is now an explicit step in the update pipeline.</p>
+      <p><strong>Phase 4: signing ceremony.</strong> Update images are signed with Ed25519 keys that live on two YubiKeys (one is the backup), offline, never on a networked machine. The fleet nodes verify every image against the pinned key before they will install it.</p>
+      <p><strong>Phase 5: A/B updates with rollback.</strong> A/B partitions with a health-gate script and a mark-good flow: a bad image rolls itself back to the known-good slot. Mid-transfer corruption was verified to reject, and the first cold rollback runs happened in the freezer. Power-cut rehearsals exposed a weak point that was not the mechanism at all: a cheap SD card dying mid-flash, replaced with high-endurance cards from the Phase 0 kit.</p>
+    </section>
+
+    <section id="what-you-need">
+      <h2>What You Need</h2>
+<p>The fleet nodes are shared with the rover and sensor builds, so the incremental cost of trust is essentially the TPM and the keys. The scarcest resource is the discipline to rehearse destructive operations on a spare board.</p>
+      <table>
+        <thead><tr><th>Category</th><th>Item</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Hardware</td><td>TPM 2.0 add-on board</td><td>SLB9670-class for the Pi; enumerate with the correct dtoverlay before blaming the chip</td></tr>
+          <tr><td>Hardware</td><td>2 YubiKeys</td><td>Offline Ed25519 signing keys, one as backup; never on a networked machine</td></tr>
+          <tr><td>Hardware</td><td>Raspberry Pi fleet nodes</td><td>Shared with the rover and sensor builds</td></tr>
+          <tr><td>Hardware</td><td>Cold chamber</td><td>Chest freezer shared with the cold-soak rig, or a Canadian winter; sealed-bag discipline for condensation</td></tr>
+          <tr><td>Software</td><td>tpm2-tools, cryptsetup/LUKS</td><td>Measured boot, PCR policy, sealed keyslots plus the offline recovery keyslot</td></tr>
+          <tr><td>Software</td><td>Signing and update scripts</td><td>Image signing, verification on the node, A/B slot management, health-gate and mark-good flow</td></tr>
+          <tr><td>Software</td><td>Fleet server on the homelab</td><td>Enrolment, serial-rollout campaign policies, store-and-forward delivery rehearsal under netem</td></tr>
+          <tr><td>Skills</td><td>Linux boot process, LUKS, TPM basics</td><td>Understanding measured boot and PCR fragility, key management hygiene</td></tr>
+          <tr><td>Accounts</td><td>None</td><td>No accounts or licenses required</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="challenges-lessons">
+      <h2>Challenges and Lessons Learned</h2>
+      <ul>
+        <li><strong>The TPM never enumerated.</strong> The module sat silently on the header with no /dev/tpm0. Lesson: debug the bus before blaming the chip, the overlay name and SPI enable were the whole problem.</li>
+        <li><strong>I locked my own node out of its disk.</strong> A legitimate kernel update changed the PCR measurements and the TPM refused to unseal. Lesson: keep an offline recovery passphrase in a separate LUKS keyslot, and make re-sealing the TPM policy an explicit step in the update pipeline.</li>
+        <li><strong>OTP is one-way, and it can still surprise you.</strong> Burning the secure-boot key hash into OTP cannot be undone. Lesson: rehearse the entire sign-flash-boot cycle three times on a spare board, and only burn OTP after clean reject-and-accept cycles.</li>
+        <li><strong>A cheap SD card died during power-cut rehearsals.</strong> Random mid-flash power cuts are exactly what consumer cards hate. Lesson: high-endurance cards, and the A/B layout means a failed slot write never touches the running system.</li>
+        <li><strong>Condensation in the freezer.</strong> The first cold run ended with a damp node I would not power up. Lesson: sealed-bag discipline in and out of the cold, warm to room temperature before power-up; conformal coating is on the list for outdoor nodes.</li>
+      </ul>
+    </section>
+
+    <section id="what-next">
+      <h2>What Is Next</h2>
+      <ul>
+        <li>Automated mark-good flow end to end, removing the manual step from the update pipeline.</li>
+        <li>Per-device enrolment and serial-rollout campaign policies on the homelab fleet server.</li>
+        <li>Store-and-forward update delivery under netem degraded-link rehearsal, because field nodes update over bad links.</li>
+        <li>Complete the cold-temperature test matrix (T5) and run the full power-cut chaos battery warm and cold (T6).</li>
+        <li>Publish the test dataset: campaign counts and rollback rate versus temperature.</li>
+        <li>Conformal coating for outdoor nodes, then extend enrolment to every rover and sensor node in the program.</li>
+      </ul>
+    </section>
+</div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

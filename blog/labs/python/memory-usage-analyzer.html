@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Python Memory Usage Analyzer | tracemalloc &amp; psutil</title>
+  <meta name="keywords" content="python memory, tracemalloc, psutil, generators, memory profiling, RSS">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Python Memory Usage Analyzer | tracemalloc & psutil">
+  <meta property="og:description" content="Profile Python memory with tracemalloc snapshots, psutil RSS tracking, and gc inspection, then cut usage by refactoring to generators with proven techniques.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/python/memory-usage-analyzer.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Python Memory Usage Analyzer | tracemalloc & psutil">
+  <meta name="twitter:description" content="Profile Python memory with tracemalloc snapshots, psutil RSS tracking, and gc inspection, then cut usage by refactoring to generators with proven techniques.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="description" content="Profile Python memory with tracemalloc snapshots, psutil RSS tracking, and gc inspection, then cut usage by refactoring to generators with proven techniques.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/python/memory-usage-analyzer.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Python Memory Usage Analyzer with tracemalloc", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-04-15", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "Python 3.11, tracemalloc, psutil, gc", "articleSection": "Python", "learningResourceType": "Hands-on lab", "teaches": "Python programming"}</script>
+  <script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "Snapshot top allocators",
+      "text": "Snapshot top allocators"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Track process RSS with psutil",
+      "text": "Track process RSS with psutil"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Refactor accumulation to a generator",
+      "text": "Refactor accumulation to a generator"
+    }
+  ],
+  "url": "https://tyfsadik.org/about.html"
+}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Python", "item": "https://tyfsadik.org/blog/labs/python/index.html"}, {"@type": "ListItem", "position": 4, "name": "Memory Usage Analyzer", "item": "https://tyfsadik.org/blog/labs/python/memory-usage-analyzer.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'tracemalloc shows nothing useful'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: tracing started after the allocations happened. Fix: call tracemalloc.start() before the workload, not after."}}, {"@type": "Question", "name": "How do I fix 'RSS stays high after freeing objects'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the allocator returned memory to its arenas but not to the OS. Fix: this is normal; watch for growth across repeated runs, not the absolute number."}}, {"@type": "Question", "name": "How do I fix 'generator is slower than the list'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the workload is CPU-bound or re-iterates the data. Fix: generators save memory, not time; materialize when you need multiple passes."}}, {"@type": "Question", "name": "How do I fix 'compare snapshots shows negative noise'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: small allocations churn between snapshots. Fix: filter to the top-N statistics and focus on the dominant lines."}}, {"@type": "Question", "name": "How do I fix 'gc.collect() changes nothing'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the objects are still referenced, not garbage. Fix: use gc.get_referrers or objgraph-style tracing to find who holds them."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/python/index.html">Python</a> &rsaquo; <span>Memory Usage Analyzer</span></nav>
+    <div class="page-header"><h1>Python Memory Usage Analyzer with tracemalloc and psutil</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Python</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">tracemalloc</span><span class="tag">psutil</span><span class="tag">gc</span><span class="tag">profiling</span></div>
+    </div>
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+      <li><a href="#objective-context">Objective &amp; Context</a></li>
+      <li><a href="#environment-prerequisites">Environment &amp; Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation &amp; Testing</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#takeaways">Key Takeaways</a></li>
+      <li><a href="#challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+    </ol></nav>
+
+    <section><p class="lead">I built a memory profiler that snapshots allocations with tracemalloc, tracks process RSS with psutil, and inspects the garbage collector. Identifying the top allocators let me replace a list accumulation with a generator and cut peak memory substantially.</p></section>
+
+    <section><h2 id="objective-context">Objective &amp; Context</h2>
+      <p>Memory bloat is invisible until a script is OOM-killed. This lab measures rather than guesses, using tracemalloc to rank allocation sites and psutil to track real RSS, then applies streaming patterns to reduce footprint.</p></section>
+    <div class="lab-objectives"><h3>Learning Objectives</h3><ul>
+      <li>Snapshot allocations with tracemalloc and rank top allocators.</li>
+      <li>Track process RSS with psutil.</li>
+      <li>Inspect garbage collector behaviour with gc.</li>
+      <li>Identify accumulation patterns that waste memory.</li>
+      <li>Refactor list accumulation into lazy generators.</li>
+    </ul></div>
+
+    <section><h2 id="environment-prerequisites">Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3><ul>
+      <li><code>Python 3.11</code> with <code>tracemalloc</code> and <code>gc</code> (standard library)</li>
+      <li><code>psutil</code> installed (<code>pip install psutil</code>)</li>
+      <li>A memory-heavy script and a representative input dataset to profile</li>
+      <li>Assumed skill: functions, loops, and comprehensions</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="Memory profiling workflow">
+flowchart LR
+  S[Start tracemalloc] --> R[Run workload]
+  R --> Snap[Snapshot top stats]
+  Snap --> Fix[Generator / del refs]
+  Fix --> V[Compare RSS]
+      </div>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <h3>1. Snapshot top allocators</h3>
+<pre><code class="language-python">import tracemalloc
+tracemalloc.start()
+data = [object() for _ in range(1_000_000)]
+for stat in tracemalloc.take_snapshot().statistics("lineno")[:3]:
+    print(stat)</code></pre>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>&lt;stdin&gt;:4: size=23.3 MiB, count=1000001, average=24 B
+(sample; your line numbers and byte counts will differ)</code></pre>
+      <p class="lab-step-note">What this teaches: statistics('lineno') attributes every allocation to a source line, so the report names the exact line to fix instead of a vague 'high memory'. The sample workload here is one million objects; swap in your own workload between <code>start()</code> and the snapshot to profile real code.</p>
+      <h3>2. Track process RSS with psutil</h3>
+      <div class="command-block"><div class="command"><code>python -c "import psutil,os; print(psutil.Process(os.getpid()).memory_info().rss//1024//1024,'MB')"</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>(prints current RSS in MB, e.g. 214 MB)</code></pre>
+      <p class="lab-step-note">What this teaches: RSS is the ground truth from the OS; comparing it before and after a change proves the optimization worked outside the interpreter's accounting.</p></div>
+      <h3>3. Refactor accumulation to a generator</h3>
+      <div class="command-block"><div class="command"><code>python -c "g=(x*x for x in range(10**6)); print(sum(g))"</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>333332833333500000</code></pre>
+      <p class="lab-step-note">What this teaches: The generator computes the same sum without materializing a million-element list; the result is identical while peak memory collapses. Compare with <code>sum([x*x for x in range(10**6)])</code> under tracemalloc to see the peak difference directly.</p></div>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+      <div class="lab-explainer"><h3>How It Works</h3>
+      <p>tracemalloc hooks Python's allocator and records where each block was allocated. take_snapshot() freezes that accounting so statistics('lineno') can rank source lines by bytes held, turning 'the process is big' into 'line 42 holds 128 MiB'.</p>
+      <p>RSS (resident set size) is what the OS actually reserved for the process, including interpreter overhead and fragmentation that tracemalloc cannot see. Profiling with both gives the full picture: tracemalloc finds the Python-level culprit, RSS confirms the real-world impact.</p>
+      <p>Generators trade time for space: a generator expression yields one item at a time instead of building the whole list. When the consumer only needs each item once (sum, iteration, filtering), laziness removes the peak without changing the result.</p>
+    </div>
+      <div class="mermaid" role="img" aria-label="Memory profiling workflow">
+flowchart LR
+  S["tracemalloc snapshot"] --> R["rank by lineno"]
+  R --> C["culprit line"]
+  C --> G["refactor to generator"]
+  G --> V["verify: RSS down,<br/>result identical"]
+      </div>
+    </section>
+
+    <section><h2 id="validation-testing">Validation &amp; Testing</h2>
+      <p>Compare tracemalloc snapshots and RSS before and after the generator refactor on the same input. Pass criteria: the top allocator is identified, peak RSS drops measurably, and output is unchanged after the optimization.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Memory not freed:</strong> drop references and call <code>gc.collect()</code>; watch for lingering globals.</li>
+        <li><strong>Reference cycles:</strong> inspect with <code>gc.get_referrers</code>; prefer weakrefs for caches.</li>
+        <li><strong>Misleading RSS:</strong> the allocator may retain freed memory; trust tracemalloc deltas.</li>
+      </ul>
+    </details>
+
+    <section><h2 id="troubleshooting">Troubleshooting</h2>
+      <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+        <tr><td>tracemalloc shows nothing useful</td><td>tracing started after the allocations happened</td><td>call tracemalloc.start() before the workload, not after</td></tr>
+        <tr><td>RSS stays high after freeing objects</td><td>the allocator returned memory to its arenas but not to the OS</td><td>this is normal; watch for growth across repeated runs, not the absolute number</td></tr>
+        <tr><td>generator is slower than the list</td><td>the workload is CPU-bound or re-iterates the data</td><td>generators save memory, not time; materialize when you need multiple passes</td></tr>
+        <tr><td>compare snapshots shows negative noise</td><td>small allocations churn between snapshots</td><td>filter to the top-N statistics and focus on the dominant lines</td></tr>
+        <tr><td>gc.collect() changes nothing</td><td>the objects are still referenced, not garbage</td><td>use gc.get_referrers or objgraph-style tracing to find who holds them</td></tr>
+      </tbody></table>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Identified the single top allocation site via tracemalloc ranking.</li>
+        <li>Cut peak RSS by streaming with a generator instead of a list.</li>
+        <li>Verified unchanged output after the memory optimization.</li>
+        <li>Built a reusable profiling harness for future scripts.</li>
+      </ul>
+    </section>
+
+    <section class="lab-takeaways"><h2 id="takeaways">Key Takeaways</h2><ul>
+        <li>tracemalloc pinpoints the exact source lines behind memory growth.</li>
+        <li>RSS from psutil is the OS-level ground truth for process size.</li>
+        <li>Rank allocations by lineno to find the one line worth fixing.</li>
+        <li>Generators eliminate materialization peaks when data is consumed once.</li>
+        <li>Verify optimizations with before/after RSS, not just theory.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="challenges">Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Leak hunt</h4><p><strong>Goal:</strong> Write a script that appends to a global list in a loop, snapshot with tracemalloc, and identify the line from the report alone.</p><p><strong>Hint:</strong> Take snapshots before and after the loop and compare them; the delta names the leak.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: Lazy pipeline</h4><p><strong>Goal:</strong> Convert a three-stage list pipeline (read, transform, filter) into chained generators and measure peak RSS on 1M rows.</p><p><strong>Hint:</strong> Each stage becomes a generator expression feeding the next; sum() at the end drives the chain.</p></div>
+    </section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="lists-dictionaries.html">Lists &amp; Dictionaries</a></li>
+        <li><a href="system-admin-scripts.html">System Administration Scripts</a></li>
+        <li><a href="functions-modules.html">Functions &amp; Modules</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

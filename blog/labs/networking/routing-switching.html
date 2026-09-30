@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Routing &amp; Switching Explained: Networking Lab | TYFSADIK</title>
+  <meta name="description" content="Combine switching and routing hands-on: Rapid STP loop prevention, LACP link aggregation bundles, and SVI-based inter-VLAN routing with verification steps.">
+  <meta name="keywords" content="RSTP, STP, LACP, 802.3ad, inter-VLAN routing, SVI, link aggregation">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/routing-switching.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Routing and Switching: STP, LACP, and Inter-VLAN", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-02-25", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "Cisco IOS, STP/RSTP, LACP (802.3ad)", "articleSection": "Networking", "learningResourceType": "Hands-on lab", "teaches": "computer networking fundamentals"}</script>
+  <meta property="og:title" content="Routing &amp; Switching Explained: Networking Lab | TYFSADIK">
+  <meta property="og:description" content="Combine switching and routing hands-on: Rapid STP loop prevention, LACP link aggregation bundles, and SVI-based inter-VLAN routing with verification steps.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/networking/routing-switching.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Routing &amp; Switching Explained: Networking Lab | TYFSADIK">
+  <meta name="twitter:description" content="Combine switching and routing hands-on: Rapid STP loop prevention, LACP link aggregation bundles, and SVI-based inter-VLAN routing with verification steps.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "Routing and Switching: STP, LACP, and Inter-VLAN Routing",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "1. Enable Rapid STP",
+      "text": "spanning-tree mode rapid-pvst"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "2. Bundle uplinks with LACP",
+      "text": "interface range Gi0/1-2 ; channel-group 1 mode active"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "3. Create an inter-VLAN SVI",
+      "text": "interface vlan 20 ; ip address 192.168.20.1 255.255.255.0 ; no shutdown"
+    }
+  ]
+}
+  </script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Networking", "item": "https://tyfsadik.org/blog/labs/networking/index.html"}, {"@type": "ListItem", "position": 4, "name": "Routing & Switching", "item": "https://tyfsadik.org/blog/labs/networking/routing-switching.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Bundle members show suspended or standalone'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: LACP mode mismatch (one side active, other side on) or no LACP at all. Fix: Set both sides to active (or active/passive pair) and check show etherchannel summary."}}, {"@type": "Question", "name": "How do I fix 'RSTP still takes ~30s to converge'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: A legacy 802.1D neighbor forces fallback timers. Fix: Identify the old switch with show spanning-tree and isolate or upgrade it."}}, {"@type": "Question", "name": "How do I fix 'Inter-VLAN routing fails'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: SVI down because no access port in that VLAN is up, or missing IP routing. Fix: Confirm the SVI is up/up and ip routing is enabled on the L3 switch."}}, {"@type": "Question", "name": "How do I fix 'Traffic uses only one bundle member'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Hashing algorithm sends the test flows down the same link. Fix: This is normal: LACP balances flows, not packets; test with diverse source/destination pairs."}}, {"@type": "Question", "name": "How do I fix 'Loop despite STP'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: A device with STP disabled bridging two VLANs, or a unidirectional link. Fix: Enable loop guard and UDLD on fiber links; audit for unmanaged switches."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>Routing &amp; Switching</span></nav>
+    <div class="page-header"><h1>Routing and Switching: STP, LACP, and Inter-VLAN Routing</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Networking</span><span class="lab-time">~5 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">STP</span><span class="tag">LACP</span><span class="tag">inter-VLAN</span><span class="tag">Cisco IOS</span></div>
+    </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
+      <ol>
+      <li><a href="#objective-context">Objective</a></li>
+      <li><a href="#learning-objectives">Learning Objectives</a></li>
+      <li><a href="#environment-prerequisites">Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Steps</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#key-takeaways">Key Takeaways</a></li>
+      <li><a href="#practice-challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+      </ol>
+    </nav>
+
+
+    <section><p class="lead">I built a loop-free switching fabric using Rapid STP, aggregated uplinks with LACP, and enabled inter-VLAN routing on a Layer 3 switch. The design eliminated Layer 2 loops while providing redundant, load-shared uplinks with sub-second failover.</p></section>
+
+    <section id="objective-context"><h2>Objective &amp; Context</h2>
+      <p>Switching forwards within a broadcast domain; routing moves between them. This lab combines RSTP loop prevention, 802.3ad link aggregation for bandwidth and redundancy, and SVI-based inter-VLAN routing to connect the VLANs from the segmentation lab.</p></section>    <section id="learning-objectives">
+      <div class="lab-objectives"><h3>Learning Objectives</h3>
+        <ul>
+        <li>Enable Rapid STP and interpret port roles and states.</li>
+        <li>Bundle redundant links with LACP (802.3ad) for bandwidth and failover.</li>
+        <li>Create SVIs for inter-VLAN routing on a Layer 3 switch.</li>
+        <li>Verify loop-free topology and bundle membership.</li>
+        <li>Explain when to route on an SVI vs a dedicated router interface.</li>
+        </ul>
+      </div>
+    </section>
+
+
+    <section id="environment-prerequisites"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+      <ul>
+        <li>Two managed switches with RSTP and LACP support.</li>
+        <li>Pre-configured VLANs (10/20/30/40) and a Layer 3 switch.</li>
+        <li>Redundant inter-switch links for the LACP bundle.</li>
+      
+          <li>Two managed switches with RSTP and LACP (802.3ad) support.</li>
+          <li>Pre-configured VLANs 10/20/30/40 from the VLAN lab.</li>
+          <li>A Layer 3 switch or router for the inter-VLAN SVIs.</li>
+          <li>Redundant inter-switch links for the LACP bundle.</li>
+          <li>Console or management access to both switches.</li>
+        </ul>
+      <div class="mermaid" role="img" aria-label="Redundant switches with LACP bundle and RSTP">
+flowchart LR
+  S1[Switch 1] ===|LACP bundle| S2[Switch 2]
+  S1 -. RSTP blocked .- S2
+  S2 --> L3[L3 Switch<br/>inter-VLAN SVIs]
+      </div>
+          </div>
+</section>
+
+    <section id="step-by-step-execution"><h2>Step-by-Step Execution</h2>
+      <h3>1. Enable Rapid STP</h3>
+      <div class="command-block"><div class="command"><code>spanning-tree mode rapid-pvst</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>SW1(config)# spanning-tree mode rapid-pvst
+SW1(config)#
+(verify with: show spanning-tree vlan 20)</code></pre>
+<p class="lab-step-note">What this teaches: RSTP blocks redundant ports logically so the physical loop never becomes a broadcast storm.</p>
+<h3>2. Bundle uplinks with LACP</h3>
+      <div class="command-block"><div class="command"><code>interface range Gi0/1-2 ; channel-group 1 mode active</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>SW1(config)# interface range Gi0/1-2
+SW1(config-if-range)# channel-group 1 mode active
+Creating a port-channel interface Port-channel 1
+SW1(config-if-range)# exit
+SW1(config)#</code></pre>
+<p class="lab-step-note">What this teaches: LACP negotiates the bundle dynamically, so both ends must agree on active or passive mode.</p>
+<h3>3. Create an inter-VLAN SVI</h3>
+      <div class="command-block"><div class="command"><code>interface vlan 20 ; ip address 192.168.20.1 255.255.255.0 ; no shutdown</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code class="language-bash">Port-channel1  LACP  active  Gi0/1 Gi0/2  bundled
+Vlan20         up/up  192.168.20.1</code></pre>
+<p class="lab-step-note">What this teaches: an SVI is a virtual Layer 3 interface that lets the switch route between VLANs directly.</p>
+</section>    <section id="how-it-works">
+      <div class="lab-explainer"><h3>How It Works</h3>
+        <p>Switching forwards frames within a broadcast domain using MAC tables; routing forwards packets between domains using IP tables. A Layer 3 switch does both: it switches at wire speed in hardware and routes through SVIs, which are virtual interfaces bound to VLANs with their own IP addresses.</p>
+        <p>Redundant links create loops, and loops create broadcast storms, so STP exists to block redundant paths logically while keeping them physically connected. RSTP converges in seconds rather than the 30 to 50 seconds of classic STP by using handshake-based proposals between switches instead of timer-based aging.</p>
+        <p>LACP bundles multiple physical links into one logical channel. Traffic is distributed across member links by a hashing algorithm (usually source/destination MAC or IP), and if a member fails, its traffic moves to the survivors in under a second. Both ends must run LACP in compatible modes (active/passive); a static bundle with no negotiation is the brittle alternative.</p>
+        <div class="mermaid" role="img" aria-label="RSTP and LACP topology">
+flowchart LR
+  S1["Switch 1"] <==>|"LACP bundle"| S2["Switch 2"]
+  S1 -.->|"RSTP blocked"| S2
+  S2 --> L3["L3 switch: SVIs"]
+  L3 --> V20["VLAN 20"]
+  L3 --> V30["VLAN 30"]
+        </div>
+      </div>
+    </section>
+
+
+    <section id="validation-testing"><h2>Validation &amp; Testing</h2>
+      <p>Disconnect one bundle member and confirm traffic continues over the survivor; verify RSTP shows one forwarding path. Pass criteria: no loop, sub-second LACP failover, and successful inter-VLAN routing via the SVIs.</p>
+      <div class="command-block"><div class="command"><code>show etherchannel summary ; show spanning-tree vlan 20 brief</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>SW1# show etherchannel summary
+Group  Port-channel  Protocol    Ports
+------+-------------+-----------+----------------------------
+1      Po1(RU)         LACP      Gi0/1(P)        Gi0/2(P)
+
+SW1# show spanning-tree vlan 20 brief
+VLAN20
+  Spanning tree enabled protocol rstp
+  Root ID    Priority    4096
+             Address     aabb.cc00.0100
+             This bridge is the root</code></pre>
+<p class="lab-step-note">RU means the bundle is in use, P means each member is bundled in the port-channel. Confirm the RSTP root is the intended switch before calling the topology loop-free.</p>
+    </section>    <section id="troubleshooting">
+      <h2>Troubleshooting</h2>
+      <table class="lab-table">
+        <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>Bundle members show suspended or standalone</td><td>LACP mode mismatch (one side active, other side on) or no LACP at all</td><td>Set both sides to active (or active/passive pair) and check show etherchannel summary</td></tr>
+          <tr><td>RSTP still takes ~30s to converge</td><td>A legacy 802.1D neighbor forces fallback timers</td><td>Identify the old switch with show spanning-tree and isolate or upgrade it</td></tr>
+          <tr><td>Inter-VLAN routing fails</td><td>SVI down because no access port in that VLAN is up, or missing IP routing</td><td>Confirm the SVI is up/up and ip routing is enabled on the L3 switch</td></tr>
+          <tr><td>Traffic uses only one bundle member</td><td>Hashing algorithm sends the test flows down the same link</td><td>This is normal: LACP balances flows, not packets; test with diverse source/destination pairs</td></tr>
+          <tr><td>Loop despite STP</td><td>A device with STP disabled bridging two VLANs, or a unidirectional link</td><td>Enable loop guard and UDLD on fiber links; audit for unmanaged switches</td></tr>
+          <tr><td>channel-group accepted but member stays suspended</td><td>Member interfaces differ in speed, duplex, or trunk allowed list, so LACP cannot bundle them</td><td>Match speed/duplex and trunk config on all members, then shut/no shut the port-channel</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>LACP not bundling:</strong> both ends must be active/passive compatible with matching speed/duplex.</li>
+        <li><strong>STP blocking wrong port:</strong> set bridge priority to elect the intended root.</li>
+        <li><strong>No inter-VLAN routing:</strong> enable <code>ip routing</code> on the L3 switch.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Eliminated Layer 2 loops with RSTP across redundant links.</li>
+        <li>Achieved sub-second failover on LACP member loss.</li>
+        <li>Doubled inter-switch bandwidth via a 2-link 802.3ad bundle.</li>
+        <li>Routed all 4 VLANs through SVIs on a single L3 switch.</li>
+      </ul>
+    </section>    <section id="key-takeaways">
+      <div class="lab-takeaways"><h3>Key Takeaways</h3>
+        <ul>
+        <li>RSTP gives fast convergence, but only if every switch in the domain speaks it.</li>
+        <li>LACP needs matching modes on both ends; verify the bundle, do not assume it.</li>
+        <li>An SVI needs at least one up port in its VLAN to stay up.</li>
+        <li>Hashing balances flows across members; single-flow tests will not show aggregation.</li>
+        </ul>
+      </div>
+    </section>
+
+
+        <section id="practice-challenges">
+      <h2>Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Measure failover time</h4><p>Goal: Run a continuous ping across the bundle, pull one member link, and measure the outage duration.</p><p>Hint: Use ping with 100 ms intervals and timestamp the gap when the member goes down.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: Tune STP costs</h4><p>Goal: Force a specific switch to become root for VLAN 20 by tuning priority, then verify with show spanning-tree.</p><p>Hint: Lower the bridge priority with spanning-tree vlan 20 priority 4096 on the desired root.</p></div>
+    </section>
+<section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="vlan-configuration.html">VLAN Configuration</a></li>
+        <li><a href="ip-routing-subnetting.html">IP Routing &amp; Subnetting</a></li>
+        <li><a href="network-troubleshooting.html">Network Troubleshooting</a></li>
+      
+        <li><a href="acl-config.html">Access Control Lists</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

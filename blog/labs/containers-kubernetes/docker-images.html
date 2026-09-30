@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Docker Images: Dockerfile Build &amp; Optimize | TYFSADIK</title>
+  <meta name="description" content="Build better Docker images: write multi-stage Dockerfiles, exploit the build cache, compare image sizes, and scan for vulnerabilities before shipping.">
+  <meta name="keywords" content="Dockerfile, multi-stage build, docker build, image optimization, vulnerability scanning, build cache">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Docker Images: Dockerfile Build &amp; Optimize | TYFSADIK">
+  <meta property="og:description" content="Build better Docker images: write multi-stage Dockerfiles, exploit the build cache, compare image sizes, and scan for vulnerabilities before shipping.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/containers-kubernetes/docker-images.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Docker Images: Dockerfile Build &amp; Optimize | TYFSADIK">
+  <meta name="twitter:description" content="Build better Docker images: write multi-stage Dockerfiles, exploit the build cache, compare image sizes, and scan for vulnerabilities before shipping.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/containers-kubernetes/docker-images.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Building Optimized Docker Images with Multi-Stage Builds", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-02-05", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "Docker 24.x, BuildKit, Trivy", "articleSection": "Containers", "learningResourceType": "Hands-on lab", "teaches": "containers and Kubernetes"}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "HowTo", "name": "Docker Images & Dockerfile | Build & Optimize", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"}, "step": [{"@type": "HowToStep", "name": "Write a multi-stage Dockerfile", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/docker-images.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Build with cache and a tag", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/docker-images.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Compare image size", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/docker-images.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Scan for vulnerabilities", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/docker-images.html#step-by-step-execution"}]}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Containers & Kubernetes", "item": "https://tyfsadik.org/blog/labs/containers-kubernetes/index.html"}, {"@type": "ListItem", "position": 4, "name": "Docker Images & Dockerfile", "item": "https://tyfsadik.org/blog/labs/containers-kubernetes/docker-images.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Image still huge.'?", "acceptedAnswer": {"@type": "Answer", "text": "The final stage almost certainly is not the slim one. Confirm the last FROM in the Dockerfile is the distroless/alpine base, that you copy the artifact with COPY --from=build (the documented double-dash form), and that you tagged the result of the whole build. Run docker history tyf/app:1.0 and look for fat layers carrying the toolchain, if you see them, you are shipping the build stage."}}, {"@type": "Question", "name": "How do I fix 'Cache never hits; every build re-downloads dependencies.'?", "acceptedAnswer": {"@type": "Answer", "text": "The Dockerfile copies source before resolving dependencies. Reorder so COPY go.mod go.sum ./ and RUN go mod download come before COPY . ., and add a .dockerignore so files that change constantly (.git, logs, editor temp files) do not invalidate the context. Also confirm BuildKit is actually on: legacy builders (DOCKER_BUILDKIT=0) cache far less aggressively."}}, {"@type": "Question", "name": "How do I fix 'Trivy DB error on first run'?", "acceptedAnswer": {"@type": "Answer", "text": "(failed to download vulnerability DB). Trivy needs internet access once to fetch its database. Behind a corporate proxy, export HTTPS_PROXY before scanning. In fully offline environments, pre-seed the cache directory (~/.cache/trivy) from a machine that has access, or scan with --skip-db-update against an older cached DB and record the DB age in your report."}}, {"@type": "Question", "name": "How do I fix 'Build fails with go: go.mod file not found.'?", "acceptedAnswer": {"@type": "Answer", "text": "The project has no module file but Go 1.22 builds in module mode. Run go mod init example.com/myapp locally, commit the resulting go.mod (and go.sum), and rebuild. As a stopgap for trivial single-file programs only, GO111MODULE=off go build works, but modules are the correct fix."}}, {"@type": "Question", "name": "How do I fix 'Container exits instantly with exec /app: no such file or directory.'?", "acceptedAnswer": {"@type": "Answer", "text": "The binary exists but its interpreter does not: it was dynamically linked (CGO enabled) and the distroless base has no libc. Rebuild with CGO_ENABLED=0, or switch the runtime base to gcr.io/distroless/base-nossl (or base) if the app genuinely needs cgo. A related variant, exec format error, means an architecture mismatch, e.g. building on an Apple Silicon Mac (arm64) and deploying to an amd64 server; fix with docker buildx build --platform linux/amd64 -t tyf/app:1.0 .."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Docker Images &amp; Dockerfile</span></nav>
+    <div class="page-header"><h1>Build Optimized Docker Images with Multi-Stage Dockerfiles</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Containers</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Dockerfile</span><span class="tag">multi-stage</span><span class="tag">layer cache</span><span class="tag">Trivy</span></div>
+    </div>
+<nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#architecture-overview">Architecture Overview</a></li>
+<li><a href="#environment-setup">Environment Setup</a></li>
+<li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+<li><a href="#step-flow-map">Step Flow Map</a></li>
+<li><a href="#progress-so-far">Progress So Far</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#testing-validation">Testing & Validation</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#extension-ideas">Extension Ideas</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    
+
+    <section><p class="lead">You will write a Dockerfile, build it with multi-stage layers, and scan the result for vulnerabilities. By the end you will produce a small, cache-friendly image with a minimal attack surface.</p>
+      <p>Most first-pass Dockerfiles <em>work</em> but ship far too much: a full compiler toolchain, package managers, shells, and hundreds of megabytes of libraries the application never calls at runtime. Every extra package is extra attack surface and another stream of CVEs to triage. In this lab you will take a small Go service from a naive ~900MB single-stage image down to a ~12MB distroless runtime, set the build up so rebuilds take seconds instead of minutes thanks to BuildKit layer caching, and finish by scanning the image with Trivy and gating on CRITICAL findings, the same workflow you would run in a CI pipeline before pushing to a registry.</p>
+      <p>The lab assumes a small HTTP service written in Go (any single-binary language works, the same pattern applies to Rust, Java, or Node with minor changes). All example output is illustrative but representative of Docker 24+ with BuildKit and Trivy 0.5x.</p>
+    </section>
+
+    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+      <ul>
+        <li>Author a Dockerfile using layer-cache-friendly ordering.</li>
+        <li>Shrink images with a multi-stage build.</li>
+        <li>Scan images for known CVEs with Trivy.</li>
+        <li>Use a <code>.dockerignore</code> file to keep secrets and clutter out of the build context.</li>
+        <li>Inspect image layers with <code>docker history</code> and explain where image size comes from.</li>
+        <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> Docker and a small app to containerize.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="architecture-overview">Architecture Overview</h2>
+      <p>A multi-stage Dockerfile contains two (or more) <code>FROM</code> instructions. The first stage is a <strong>build environment</strong>: it starts from a fat base image like <code>golang:1.22</code> (~800MB) that contains the compiler, module tooling, and headers. The second stage is the <strong>runtime environment</strong>: it starts from a minimal base, here <code>gcr.io/distroless/static</code>, which contains nothing but CA certificates, timezone data, and a non-root user. There is no shell, no package manager, and no coreutils, which is precisely the point from a security perspective.</p>
+      <p>The only thing that crosses the boundary between stages is what you explicitly copy with <code>COPY --from=build</code>. The Go compiler produces a statically linked binary (because <code>CGO_ENABLED=0</code> removes the dependency on libc), so the runtime stage needs literally nothing else. The final image is the only stage that gets tagged and pushed; the build stage is discarded after the build, though BuildKit keeps its layers in the local cache to speed up the next run.</p>
+      <div class="mermaid" role="img" aria-label="Multi-stage build producing a slim runtime image">
+graph LR
+  Src[Source code] --> B[Build stage<br/>compile/deps]
+  B -->|copy artifact| R[Runtime stage<br/>slim base]
+  R --> Img[Final image]
+  Img -->|Trivy scan| Scan[CVE report]
+      </div>
+      <p>Two ideas in this diagram do most of the heavy lifting:</p>
+      <ul>
+        <li><strong>Layer caching:</strong> every instruction in a Dockerfile produces a layer. If the inputs to an instruction have not changed since the last build, BuildKit reuses the cached layer instead of re-running it. Ordering the Dockerfile from least-frequently-changing to most-frequently-changing (dependencies before source code) is what makes rebuilds fast.</li>
+        <li><strong>Stage separation:</strong> vulnerability scanners report on what is <em>in the shipped image</em>. A distroless runtime has almost no packages, so the scan surface collapses, typically from hundreds of findings in a full <code>golang</code> base down to zero or a handful.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="environment-setup">Environment Setup</h2>
+<div class="lab-prereqs"><h3>Prerequisites</h3>
+<ul>
+<li>Docker Engine 24+ with BuildKit enabled (default in recent versions).</li>
+<li>A small sample application with source code to containerize (any language).</li>
+<li>Assumed skills: Docker fundamentals (images vs containers) and basic shell use.</li>
+</ul></div>
+      <p><strong>You will need:</strong> Docker with BuildKit and Trivy (<a href="https://aquasecurity.github.io/trivy/" target="_blank" rel="noopener">install docs</a>).</p>
+      <p><strong>Before you begin:</strong> have a buildable app (a small Go or Node service works well).</p>
+      <p>First confirm Docker is running and that BuildKit, the modern build backend, is available. Docker 23+ enables BuildKit by default, but it is worth checking explicitly because several steps in this lab depend on it:</p>
+      <p class="code-label">Verify Docker and BuildKit</p>
+      <pre><code>docker version
+docker buildx version</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker version --format 'Client: {{.Client.Version}}  Server: {{.Server.Version}}'</span></div>
+        <div class="terminal-output">Client: 24.0.7  Server: 24.0.7</div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker buildx version</span></div>
+        <div class="terminal-output">github.com/docker/buildx v0.12.0</div>
+      </div>
+      <p>Install Trivy if you do not already have it. On macOS use Homebrew; on Debian/Ubuntu use the Aqua Security apt repository:</p>
+      <p class="code-label">Install Trivy (macOS and Debian/Ubuntu)</p>
+      <pre><code># macOS
+brew install trivy
+
+# Debian/Ubuntu
+sudo apt-get install wget gnupg
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg &gt; /dev/null
+echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+sudo apt-get update &amp;&amp; sudo apt-get install trivy</code></pre>
+      <p class="code-label">Verify Trivy</p>
+      <pre><code>trivy version</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">trivy version</span></div>
+        <div class="terminal-output">Version: 0.58.1</div>
+      </div>
+      <p>For the sample app, a minimal Go module is enough. The exact code does not matter, what matters is that it compiles to a static binary. A typical project layout for this lab:</p>
+      <p class="code-label">Project layout used in this lab</p>
+      <pre><code>myapp/
+  main.go        # a tiny HTTP server listening on :8080
+  go.mod         # module example.com/myapp; go 1.22
+  go.sum         # dependency checksums (may be empty of third-party deps)
+  Dockerfile
+  .dockerignore</code></pre>
+      <p><strong>Common mistake:</strong> skipping the <code>go.mod</code> file. Since Go 1.16 the toolchain builds in module mode by default, and <code>go build .</code> inside a directory with no <code>go.mod</code> fails with <code>go: go.mod file not found</code>. Run <code>go mod init example.com/myapp</code> locally first if your project predates modules.</p>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Write a multi-stage Dockerfile</strong>
+          <p>Compiling in a build stage and copying only the artifact into a slim base keeps the runtime tiny.</p>
+<pre><code class="language-dockerfile"># Dockerfile
+FROM golang:1.22 AS build
+WORKDIR /src
+COPY . .
+RUN CGO_ENABLED=0 go build -o app .
+
+FROM gcr.io/distroless/static
+COPY --from=build /src/app /app
+ENTRYPOINT ["/app"]</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker build --check -f Dockerfile . &amp;&amp; echo "Dockerfile lints clean"
+Dockerfile lints clean</code></pre>
+          <p>What each line does and why:</p>
+          <ul>
+            <li><code>FROM golang:1.22 AS build</code>, starts the build stage from the official Go image and names it <code>build</code> so later instructions can reference it. Pinning the minor version is steadier than <code>latest</code>, but the tag still floats with patch releases, only a digest (<code>golang:1.22@sha256:...</code>) makes a build truly reproducible.</li>
+            <li><code>WORKDIR /src</code>, sets the working directory for subsequent instructions; avoids scattering files across the image root.</li>
+            <li><code>CGO_ENABLED=0</code>, forces a fully static binary with no libc dependency. This is what allows the binary to run on <code>distroless/static</code>, which has no C library at all.</li>
+            <li><code>ENTRYPOINT ["/app"]</code>, exec form (JSON array), so the binary runs as PID 1 and receives signals like SIGTERM directly. The shell form (<code>ENTRYPOINT /app</code>) wraps the process in <code>sh -c</code>, which would fail here anyway because distroless has no shell.</li>
+          </ul>
+          <p>The minimal Dockerfile above works, but it wastes the layer cache: <code>COPY . .</code> copies the entire source tree before the build, so <em>any</em> file change, even editing a README, invalidates every layer below it and forces a full re-download of dependencies. The cache-friendly version copies the module files first and downloads dependencies as a separate layer:</p>
+          <p class="code-label">Dockerfile, cache-optimized version</p>
+          <pre><code># syntax=docker/dockerfile:1
+FROM golang:1.22 AS build
+WORKDIR /src
+
+# 1. Dependencies change rarely - cache them in their own layer
+COPY go.mod go.sum ./
+RUN go mod download
+
+# 2. Source code changes often - copy it last
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o app .
+
+FROM gcr.io/distroless/static:nonroot
+COPY --from=build /src/app /app
+USER nonroot:nonroot
+EXPOSE 8080
+ENTRYPOINT ["/app"]</code></pre>
+          <p>With this ordering, editing <code>main.go</code> only invalidates the layers from <code>COPY . .</code> downward, the <code>go mod download</code> layer is reused and rebuilds drop from minutes to seconds. The extra flags matter too: <code>-trimpath</code> strips local filesystem paths from the binary (reproducibility and information hygiene), and <code>-ldflags="-s -w"</code> omits the symbol and debug tables, shaving roughly 20-30% off the binary size. The runtime stage uses the <code>nonroot</code> tag and <code>USER nonroot:nonroot</code> so the process never runs as root, a cheap, meaningful hardening step.</p>
+          <p class="code-label">.dockerignore, keep the build context clean</p>
+          <pre><code>.git
+.gitignore
+Dockerfile
+.dockerignore
+*.md
+.env
+.env.*
+bin/
+tmp/
+node_modules/</code></pre>
+          <p>The <code>.dockerignore</code> file controls what gets sent to the Docker daemon as the build context. Without it, <code>COPY . .</code> can silently bake your <code>.git</code> directory, including full history and any secrets ever committed, into an image layer, where it stays even if you delete it in a later layer (earlier layers are immutable and remain in the image). Excluding <code>.env</code> files is the same story: dotenv files are a classic source of leaked credentials in published images.</p>
+          <p><strong>How to verify:</strong> run <code>docker build</code> twice (next step) and watch for <code>CACHED</code> markers beside the <code>go mod download</code> step on the second run. To confirm the context is clean, check the build output line <code>transferring context</code>, it should be kilobytes, not tens of megabytes.</p>
+        
+<p class="lab-step-note">What this teaches: Multi-stage Dockerfiles separate the build toolchain from the runtime; only the artifact ships.</p></div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Build with cache and a tag</strong>
+          <div class="command-block" data-copy><div class="command"><code>DOCKER_BUILDKIT=1 docker build -t tyf/app:1.0 .</code></div><div class="note">BuildKit caches layers, speeding up rebuilds.</div></div>
+          <p>Breaking the command down: <code>DOCKER_BUILDKIT=1</code> forces the BuildKit backend (redundant on Docker 23+, but harmless and explicit), <code>-t tyf/app:1.0</code> names and tags the image as <code>tyf/app</code> version <code>1.0</code>, and the trailing <code>.</code> is the build context, the directory sent to the daemon, filtered through <code>.dockerignore</code>.</p>
+          <p>On the first run BuildKit pulls both base images and executes every instruction. Use <code>--progress=plain</code> if you want full command output instead of the interactive display, essential in CI logs:</p>
+          <p class="code-label">First build (truncated output)</p>
+          <pre><code>DOCKER_BUILDKIT=1 docker build --progress=plain -t tyf/app:1.0 .</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker build -t demo:multi .
+[+] Building 12.4s (14/14) FINISHED
+ =&gt; naming to docker.io/library/demo:multi</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">DOCKER_BUILDKIT=1 docker build -t tyf/app:1.0 .</span></div>
+            <div class="terminal-output">[+] Building 47.3s (12/12) FINISHED
+ =&gt; [internal] load build definition from Dockerfile
+ =&gt; [internal] load .dockerignore
+ =&gt; [internal] load metadata for docker.io/library/golang:1.22
+ =&gt; [internal] load metadata for gcr.io/distroless/static:nonroot
+ =&gt; [build 1/5] FROM docker.io/library/golang:1.22
+ =&gt; [internal] load build context
+ =&gt; [build 2/5] WORKDIR /src
+ =&gt; [build 3/5] COPY go.mod go.sum ./
+ =&gt; [build 4/5] RUN go mod download
+ =&gt; [build 5/5] COPY . .
+ =&gt; [build 6/5] RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o app .
+ =&gt; [stage-1 2/3] COPY --from=build /src/app /app
+ =&gt; exporting to image
+ =&gt; =&gt; writing image sha256:9f3c...a21b
+ =&gt; =&gt; naming to docker.io/tyf/app:1.0</div>
+          </div>
+          <p>Now change one line in <code>main.go</code> and build again. Every step up to <code>COPY . .</code> should report <code>CACHED</code>, and only the compile and export steps re-run:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">DOCKER_BUILDKIT=1 docker build -t tyf/app:1.1 .</span></div>
+            <div class="terminal-output">[+] Building 6.1s (12/12) FINISHED
+ =&gt; [build 3/5] COPY go.mod go.sum ./                    CACHED
+ =&gt; [build 4/5] RUN go mod download                      CACHED
+ =&gt; [build 5/5] COPY . .
+ =&gt; [build 6/5] RUN CGO_ENABLED=0 GOOS=linux go build ...
+ =&gt; exporting to image
+ =&gt; =&gt; naming to docker.io/tyf/app:1.1</div>
+          </div>
+          <p>Tagging discipline matters. <code>tyf/app:1.0</code> follows the pattern <code>registry-namespace/name:tag</code>. Avoid shipping only <code>latest</code>: mutable tags make rollbacks and incident forensics painful because you cannot tell which build is actually running. A common convention is to tag each build with both a semantic version and the git commit SHA.</p>
+          <p><strong>How to verify:</strong> <code>docker image inspect tyf/app:1.0 --format '{{.Os}}/{{.Architecture}} {{json .Config.Entrypoint}}'</code> should print <code>linux/amd64 ["/app"]</code>. <strong>Common mistake:</strong> forgetting the trailing <code>.</code> context, which makes Docker read the Dockerfile from stdin and produce a confusing <code>the Dockerfile cannot be empty</code> error.</p>
+        
+<p class="lab-step-note">What this teaches: Layer caching rewards good instruction ordering; put slow, stable steps early and fast, changing steps late.</p></div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Compare image size</strong>
+          <p>Numbers make the multi-stage win concrete. First build a naive single-stage version for comparison, the kind of Dockerfile most people write on day one, which ships the entire Go toolchain as the runtime:</p>
+          <p class="code-label">Dockerfile.naive, single-stage, for comparison only</p>
+          <pre><code>FROM golang:1.22
+WORKDIR /src
+COPY . .
+RUN go build -o app .
+ENTRYPOINT ["/app"]</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker images demo --format '{{.Tag}} {{.Size}}'
+single  342MB
+multi   48MB</code></pre>
+          <p class="code-label">Build both and compare</p>
+          <pre><code>docker build -f Dockerfile.naive -t tyf/app:naive .
+docker images tyf/app</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker images tyf/app</span></div>
+            <div class="terminal-output">REPOSITORY  TAG    SIZE
+tyf/app     1.0    12.3MB   &lt;- distroless runtime
+tyf/app     naive  892MB    &lt;- single-stage golang base</div>
+          </div>
+          <p>That is roughly a 98% reduction: 892MB down to 12.3MB. Smaller images pull faster, start faster, cost less to store in a registry, and, the security-relevant part, contain drastically fewer packages that can carry CVEs.</p>
+          <p>To understand <em>where</em> the remaining size lives, inspect the layer history. Each instruction that modified the filesystem contributed a layer:</p>
+          <p class="code-label">Inspect image layers</p>
+          <pre><code>docker history tyf/app:1.0</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker history tyf/app:1.0</span></div>
+            <div class="terminal-output">IMAGE          CREATED        CREATED BY                                      SIZE
+9f3ca21b       2 minutes ago  ENTRYPOINT ["/app"]                             0B
+&lt;missing&gt;      2 minutes ago  EXPOSE map[8080/tcp:{}]                         0B
+&lt;missing&gt;      2 minutes ago  USER nonroot:nonroot                            0B
+&lt;missing&gt;      2 minutes ago  COPY /src/app /app # buildkit                   10.1MB
+&lt;missing&gt;      5 weeks ago    COPY / / # distroless static files              2.2MB</div>
+          </div>
+          <p>Reading this bottom-up: the distroless base contributes ~2.2MB (CA certs, tzdata, passwd entries), and the only meaningful addition is the compiled binary at ~10.1MB. Metadata-only instructions like <code>ENTRYPOINT</code>, <code>USER</code>, and <code>EXPOSE</code> cost 0 bytes.</p>
+          <p><strong>Common mistake:</strong> trying to shrink an image by deleting files in a later <code>RUN</code>, e.g. <code>RUN apt-get install ... </code> followed by <code>RUN rm -rf /var/lib/apt/lists</code> in a <em>separate</em> instruction. Layers are additive and immutable: the files still exist in the earlier layer and still count toward the pull size. Cleanup must happen in the <em>same</em> <code>RUN</code> as the install (<code>RUN apt-get update &amp;&amp; apt-get install -y foo &amp;&amp; rm -rf /var/lib/apt/lists/*</code>), or the data must never enter the image, which is exactly what multi-stage builds achieve for toolchains.</p>
+          <p><strong>How to verify:</strong> confirm the final stage carries no shell or package manager by trying to run one: <code>docker run --rm --entrypoint sh tyf/app:1.0</code> should fail with an error like <code>exec: "sh": not found</code>. That failure is a feature, an attacker who compromises the process gets no shell and no tooling.</p>
+        
+<p class="lab-step-note">What this teaches: Size comparison makes bloat visible; you cannot optimize what you do not measure.</p></div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Scan for vulnerabilities</strong>
+          <div class="command-block" data-copy><div class="command"><code>trivy image --severity HIGH,CRITICAL tyf/app:1.0</code></div></div>
+          <p>Trivy inspects the image's package inventory (OS packages plus language dependencies such as Go modules) and matches each component against its vulnerability database. On the very first run it downloads that database (~50MB) to <code>~/.cache/trivy</code>, so the first scan needs internet access; subsequent runs reuse the cached DB and refresh it periodically.</p>
+          <p>Scanning the naive single-stage image shows why base image choice dominates your security posture:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">trivy image --severity HIGH,CRITICAL tyf/app:naive</span></div>
+            <div class="terminal-output">tyf/app:naive (debian 12.5)
+Total: 147 (HIGH: 118, CRITICAL: 29)
+
+Library  Vulnerability   Severity  Installed  Fixed     Title
+stdlib   CVE-2024-24790  CRITICAL  1.22.0     1.22.4    net/netip: unexpected behavior...
+openssl  CVE-2023-5678   HIGH      3.0.11     3.0.12    Excessive time spent checking DH keys...</div>
+          </div>
+          <p>The same scan against the multi-stage image tells a very different story:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">trivy image --severity HIGH,CRITICAL tyf/app:1.0</span></div>
+            <div class="terminal-output">tyf/app:1.0 (distroless static)
+Total: 0 (HIGH: 0, CRITICAL: 0)</div>
+          </div>
+          <p>Distroless images ship almost no packages, so there is almost nothing to be vulnerable. Any findings that <em>do</em> appear against a distroless base are usually in the Go standard library compiled into your binary, and the fix is to rebuild with a patched Go version, which is why pinning and regularly bumping <code>FROM golang:1.22</code> matters.</p>
+          <p>To turn the scan into a gate, use <code>--exit-code 1</code> so Trivy returns non-zero when it finds anything at or above your threshold, the exact behaviour you want blocking a CI pipeline:</p>
+          <p class="code-label">Fail the build on CRITICAL findings</p>
+          <pre><code>trivy image --exit-code 1 --severity CRITICAL tyf/app:1.0
+echo "exit code: $?"</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ trivy image --exit-code 1 --severity CRITICAL tyf/app:1.0
+tyf/app:1.0 (distroless static)
+Total: 0 (CRITICAL: 0)
+$ echo "exit code: $?"
+exit code: 0</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">echo "exit code: $?"</span></div>
+            <div class="terminal-output">exit code: 0   &lt;- no CRITICAL findings, gate passes</div>
+          </div>
+          <p>If you need to accept a specific finding temporarily (for example a CVE with no fixed version that you have assessed as not exploitable in your deployment), list it, with a justification comment, in a <code>.trivyignore</code> file at the repo root rather than lowering the severity threshold globally. Ignored CVEs stay visible in version control and reviewable.</p>
+          <p><strong>Common mistake:</strong> scanning the wrong artifact. Scan the <em>final</em> image you actually ship, not the build-stage image or the local Dockerfile. <code>trivy config Dockerfile</code> (misconfiguration scanning) and <code>trivy fs .</code> (dependency scanning) are useful complements, but neither replaces scanning the built image.</p>
+          <p><strong>How to verify:</strong> deliberately scan the naive image and confirm Trivy exits 1 with <code>--exit-code 1</code>, you now know the gate actually fails when it should, not just passes when it should.</p>
+        
+<p class="lab-step-note">What this teaches: Scanning before shipping turns known vulnerabilities into a decision instead of a surprise.</p></div></div>
+      </div>
+    </section>
+<section><h2 id="step-flow-map">Step Flow Map</h2>
+<div class="mermaid" role="img" aria-label="Flow of the lab steps from first to last">
+graph TD
+  S1["Write a multi-stage Dockerfile"]
+  S2["Build with cache and a tag"]
+  S3["Compare image size"]
+  S4["Scan for vulnerabilities"]
+  S1 --> S2
+  S2 --> S3
+  S3 --> S4
+</div>
+<p>Each box is one step in the lab; work them in order, since later steps build on earlier state.</p>
+</section>
+
+    
+
+    <section><h2 id="progress-so-far">Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Image build progress">
+graph LR
+  A[01 Dockerfile] -->|done| B[02 Build]
+  B -->|done| C[03 Size check]
+  C -->|done| D[04 Trivy scan]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+<div class="lab-explainer">
+<p>Each Dockerfile instruction creates a layer, and layers cache: if the instruction and its inputs are unchanged, the build reuses the cached layer instead of re-executing. Ordering the Dockerfile from least-frequently-changed (base image, dependency install) to most-frequently-changed (your source copy) is what makes rebuilds take seconds instead of minutes. A change early in the file invalidates every layer after it.</p>
+<p>Multi-stage builds separate the build environment from the runtime environment. The first stage carries compilers and SDKs to produce an artifact; the final stage copies only that artifact into a minimal base. The result is an image that contains your application but not your toolchain, which is smaller, faster to pull, and presents less attack surface.</p>
+<p>Scanners work by comparing the packages in your image's layers against vulnerability databases. They report CVEs with severities, but the fix is almost always the same: rebuild from a newer base image or bump the vulnerable package. Scanning in the build pipeline turns shipping known CVEs from a discovery into a choice.</p>
+</div>
+</section>
+
+    <section><h2 id="testing-validation">Testing &amp; Validation</h2>
+      <p>Before calling the lab done, prove the image actually works, not just that it builds and scans clean. Run the container and exercise it the way a user would:</p>
+      <p class="code-label">Smoke-test the running container</p>
+      <pre><code>docker run --rm -d --name app-test -p 8080:8080 tyf/app:1.0
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/
+docker logs app-test
+docker stop app-test</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/</span></div>
+        <div class="terminal-output">200</div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker logs app-test</span></div>
+        <div class="terminal-output">2026/09/21 14:03:11 listening on :8080</div>
+      </div>
+      <div class="command-block" data-copy><div class="command"><code>docker image inspect tyf/app:1.0 --format 'user={{.Config.User}} arch={{.Architecture}}' &amp;&amp; trivy image --exit-code 1 --severity CRITICAL tyf/app:1.0</code></div></div>
+      <p>The app should run and Trivy should exit 0 (no criticals). If so, you have a small, scanned image.</p>
+      <p>Two things worth knowing when validating distroless images specifically:</p>
+      <ul>
+        <li><strong>You cannot <code>docker exec -it app-test sh</code></strong>, there is no shell to exec into. For debugging, distroless publishes a <code>:debug</code> variant (e.g. <code>gcr.io/distroless/static:debug-nonroot</code>) that bundles busybox; build a debug tag of your image from it when you need a shell, and keep it out of production.</li>
+        <li><strong>Check the process identity:</strong> <code>docker top app-test</code> should show the process running as the <code>nonroot</code> UID (65532), confirming the <code>USER</code> directive took effect.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="troubleshooting">Troubleshooting</h2>
+      <p>Issues that come up most often in this lab, with the cause and the fix:</p>
+      <ul>
+        <li><strong>Image still huge.</strong> The final stage almost certainly is not the slim one. Confirm the last <code>FROM</code> in the Dockerfile is the distroless/alpine base, that you copy the artifact with <code>COPY --from=build</code> (the documented double-dash form), and that you tagged the result of the <em>whole</em> build. Run <code>docker history tyf/app:1.0</code> and look for fat layers carrying the toolchain, if you see them, you are shipping the build stage.</li>
+        <li><strong>Cache never hits; every build re-downloads dependencies.</strong> The Dockerfile copies source before resolving dependencies. Reorder so <code>COPY go.mod go.sum ./</code> and <code>RUN go mod download</code> come <em>before</em> <code>COPY . .</code>, and add a <code>.dockerignore</code> so files that change constantly (<code>.git</code>, logs, editor temp files) do not invalidate the context. Also confirm BuildKit is actually on: legacy builders (<code>DOCKER_BUILDKIT=0</code>) cache far less aggressively.</li>
+        <li><strong>Trivy DB error on first run</strong> (<code>failed to download vulnerability DB</code>). Trivy needs internet access once to fetch its database. Behind a corporate proxy, export <code>HTTPS_PROXY</code> before scanning. In fully offline environments, pre-seed the cache directory (<code>~/.cache/trivy</code>) from a machine that has access, or scan with <code>--skip-db-update</code> against an older cached DB and record the DB age in your report.</li>
+        <li><strong>Build fails with <code>go: go.mod file not found</code>.</strong> The project has no module file but Go 1.22 builds in module mode. Run <code>go mod init example.com/myapp</code> locally, commit the resulting <code>go.mod</code> (and <code>go.sum</code>), and rebuild. As a stopgap for trivial single-file programs only, <code>GO111MODULE=off go build</code> works, but modules are the correct fix.</li>
+        <li><strong>Container exits instantly with <code>exec /app: no such file or directory</code>.</strong> The binary exists but its <em>interpreter</em> does not: it was dynamically linked (CGO enabled) and the distroless base has no libc. Rebuild with <code>CGO_ENABLED=0</code>, or switch the runtime base to <code>gcr.io/distroless/base-nossl</code> (or <code>base</code>) if the app genuinely needs cgo. A related variant, <code>exec format error</code>, means an architecture mismatch, e.g. building on an Apple Silicon Mac (arm64) and deploying to an amd64 server; fix with <code>docker buildx build --platform linux/amd64 -t tyf/app:1.0 .</code>.</li>
+      </ul>
+    
+<p>Quick-reference for the failures you are most likely to hit in this lab.</p>
+<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<tr><td>Builds are slow every time</td><td>A frequently changing instruction sits early in the Dockerfile, invalidating the cache</td><td>Move <code>COPY . .</code> after dependency installation so code changes do not reinstall dependencies.</td></tr>
+<tr><td><code>COPY failed: file not found</code></td><td>The file is outside the build context or excluded by <code>.dockerignore</code></td><td>Check the context directory and the ignore file; the daemon only sees what you send it.</td></tr>
+<tr><td>Scanner reports critical CVEs</td><td>The base image or a package has known vulnerabilities</td><td>Bump the base tag, rebuild, and re-scan; pin the new digest once it is clean.</td></tr>
+<tr><td>Final image is still huge</td><td>Build artifacts or caches leaked into the final stage</td><td>Verify only the artifact is copied with <code>--from</code>, and add a <code>.dockerignore</code>.</td></tr>
+<tr><td>Tag confusion across environments</td><td><code>latest</code> moved between deploy and rollback</td><td>Tag releases immutably (for example with the git SHA) and pin digests in production.</td></tr>
+</tbody></table>
+</section>
+
+    <section><h2 id="extension-ideas">Extension Ideas</h2>
+      <ul>
+        <li>Push to a registry and sign the image with cosign.</li>
+        <li>Generate an SBOM (<code>trivy image --format spdx-json -o sbom.json tyf/app:1.0</code>) and archive it alongside each release.</li>
+        <li>Add the scan to a pipeline in <a href="../devops/cicd-pipeline.html">Full CI/CD Pipeline</a>.</li>
+        <li>Run it on a cluster in <a href="kubernetes-pods-services.html">Pods &amp; Deployments</a>.</li>
+        <li>Try <code>docker buildx build --cache-to type=registry</code> to share the build cache across CI runners.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Produced a ~12MB runtime image via multi-stage build.</li>
+        <li>Cut rebuild time with BuildKit layer caching.</li>
+        <li>Scanned for HIGH/CRITICAL CVEs before shipping.</li>
+        <li>Minimized attack surface with a distroless base.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways"><h3 id="key-takeaways">Key Takeaways</h3>
+      <ul>
+        <li><strong>Order your Dockerfile for the cache:</strong> dependencies before source code, least-frequently-changing layers first. This is the difference between 6-second and 6-minute rebuilds.</li>
+        <li><strong>Ship artifacts, not toolchains:</strong> the build stage exists to produce the binary; only the binary crosses into the runtime stage.</li>
+        <li><strong>Smaller image, smaller attack surface:</strong> distroless removed ~880MB of packages and took the CVE count from triple digits to zero.</li>
+        <li><strong>Secrets do not belong in layers:</strong> use <code>.dockerignore</code> for <code>.git</code> and <code>.env</code> files, deleted files still live in earlier layers.</li>
+        <li><strong>Scan the image you ship and gate on it:</strong> <code>trivy image --exit-code 1 --severity CRITICAL</code> turns scanning from a report into an enforcement point.</li>
+        <li><strong>Verify behaviour, not just builds:</strong> a clean scan does not prove the app runs, smoke-test the container end to end.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="practice-challenges">Practice Challenges</h2>
+<div class="lab-challenge"><h4>Challenge 1: Get under 50 MB</h4><p>Goal: Rebuild the sample app image under 50 MB using a minimal base and multi-stage build.</p><p>Hint: Distroless or alpine bases plus copying only the compiled artifact is the standard recipe.</p></div>
+<div class="lab-challenge"><h4>Challenge 2: Drop root</h4><p>Goal: Add a non-root <code>USER</code> to the final stage and prove the container no longer runs as root.</p><p>Hint: Run <code>docker exec app whoami</code> for the proof; fix file ownership with <code>--chown</code> on COPY.</p></div>
+<div class="lab-challenge"><h4>Challenge 3: Compare three strategies</h4><p>Goal: Build the same app as single-stage, multi-stage, and distroless, and tabulate size and CVE count.</p><p>Hint: The table is the deliverable; it makes the tradeoffs visible instead of theoretical.</p></div>
+</section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="docker-fundamentals.html">Docker Fundamentals</a></li>
+        <li><a href="docker-compose.html">Docker Compose</a></li>
+        <li><a href="../devops/cicd-pipeline.html">Full CI/CD Pipeline</a></li>
+      
+        <li><a href="kubernetes-pods-services.html">Kubernetes Pods and Deployments</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

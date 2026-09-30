@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Install Debian &amp; CentOS VMs: VirtualBox Guide | TYFSADIK</title>
+  <meta name="description" content="Build disposable Linux VMs in VirtualBox from the CLI: create disks, install Debian and CentOS Stream, verify the boot, and snapshot a clean base image.">
+  <meta name="keywords" content="virtualbox vm setup, install debian vm, centos stream vm, VBoxManage tutorial, vm snapshot">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-fundamentals/installing-debian-centos-vm.html">
+  <meta property="og:title" content="Install Debian &amp; CentOS VMs: VirtualBox Guide | TYFSADIK">
+  <meta property="og:description" content="Build disposable Linux VMs in VirtualBox from the CLI: create disks, install Debian and CentOS Stream, verify the boot, and snapshot a clean base image.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-fundamentals/installing-debian-centos-vm.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Install Debian &amp; CentOS VMs: VirtualBox Guide | TYFSADIK">
+  <meta name="twitter:description" content="Build disposable Linux VMs in VirtualBox from the CLI: create disks, install Debian and CentOS Stream, verify the boot, and snapshot a clean base image.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Installing Debian and CentOS Virtual Machines", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-05", "dateModified": "2026-09-29", "proficiencyLevel": "Beginner", "dependencies": "VirtualBox, Debian 12, CentOS Stream 9", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux fundamentals and command-line skills"}</script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Installing Debian and CentOS Virtual Machines in VirtualBox",
+    "description": "Build disposable Linux VMs in VirtualBox from the CLI: create disks, install Debian and CentOS Stream, verify the boot, and snapshot a clean base image.",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "dateModified": "2026-09-29",
+    "step": [
+      {"@type": "HowToStep", "name": "Create the VM disk from CLI", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/installing-debian-centos-vm.html#steps"},
+      {"@type": "HowToStep", "name": "Verify the install booted", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/installing-debian-centos-vm.html#steps"},
+      {"@type": "HowToStep", "name": "Snapshot the clean base", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/installing-debian-centos-vm.html#steps"}
+    ]
+  }</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Linux Fundamentals", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/index.html"}, {"@type": "ListItem", "position": 4, "name": "Installing Debian & CentOS VMs", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/installing-debian-centos-vm.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'VT-x/AMD-V is disabled error'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Virtualization extensions are off in firmware. Fix: Enable Intel VT-x or AMD-V in BIOS/UEFI settings."}}, {"@type": "Question", "name": "How do I fix 'Installer cannot see the virtual disk'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Wrong storage controller type for the guest. Fix: Use SATA for modern guests; IDE for very old ones."}}, {"@type": "Question", "name": "How do I fix 'Guest is extremely slow'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Too little RAM/vCPU or no Guest Additions. Fix: Raise allocation and install Guest Additions for paravirtual drivers."}}, {"@type": "Question", "name": "How do I fix 'No network in the guest'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Adapter attached to the wrong network mode. Fix: NAT gives outbound access; bridged gives a LAN address for SSH."}}, {"@type": "Question", "name": "How do I fix 'Snapshot restore lost recent work'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Restore discards the differencing image by design. Fix: Take a new snapshot before restoring when the current state might matter."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>Installing Debian &amp; CentOS VMs</span></nav>
+    <div class="page-header"><h1>Installing Debian and CentOS Virtual Machines in VirtualBox</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Linux</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">VirtualBox</span><span class="tag">Debian 12</span><span class="tag">CentOS Stream</span><span class="tag">ISO</span></div>
+    </div>
+
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#learning-objectives">Learning Objectives</a></li>
+<li><a href="#objective">Objective &amp; Context</a></li>
+<li><a href="#environment">Environment &amp; Prerequisites</a></li>
+<li><a href="#steps">Step-by-Step Execution</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#validation">Validation &amp; Testing</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#key-takeaways">Key Takeaways</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    <section><p class="lead">I installed Debian 12 and CentOS Stream 9 VMs in VirtualBox with sensible partitioning, bridged networking, and guest additions. A clean base image cloned in minutes became the reproducible starting point for every later lab.</p></section>
+
+    <section id="objective"><h2>Objective &amp; Context</h2>
+      <p>A disposable VM is the safest place to learn. This lab builds both a Debian- and an RHEL-family base so commands can be tested across package managers, the substrate for the server-admin and KVM labs.</p></section>
+
+    <div class="lab-objectives" id="learning-objectives"><h3>Learning Objectives</h3>
+    <ul>
+      <li>Create and register VirtualBox VMs entirely from the command line.</li>
+      <li>Attach ISO media and step through Debian and CentOS installers.</li>
+      <li>Verify a successful boot and identify the installed release.</li>
+      <li>Take and restore snapshots of a clean base system.</li>
+      <li>Compare Debian-family and RHEL-family defaults side by side.</li>
+    </ul></div>
+
+    <section id="environment"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+    <ul>
+      <li>VirtualBox 7.x installed with VT-x/AMD-V enabled in firmware.</li>
+      <li>Debian 12 and CentOS Stream 9 ISO images downloaded.</li>
+      <li>At least 4 GB RAM and 20 GB free disk for the guests.</li>
+      <li>A host OS that runs VirtualBox (Linux, macOS, or Windows).</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="VM creation to base image flow">
+flowchart LR
+  ISO[Download ISO] --> VM[Create VM + disk]
+  VM --> Inst[Guided install]
+  Inst --> GA[Guest Additions]
+  GA --> Clone[Snapshot/clone base]
+      </div>
+    </section>
+
+    <section id="steps"><h2>Step-by-Step Execution</h2>
+      <h3>1. Create the VM disk from CLI</h3>
+      <div class="command-block"><div class="command"><code>VBoxManage createvm --name debian12 --register &amp;&amp; VBoxManage createmedium disk --filename debian12.vdi --size 20480</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>Virtual machine 'debian12' is created and registered.
+Medium created. UUID: 8f3a2c1e-...
+(debian12.vdi, 20 GB dynamically allocated)</code></pre>
+      <p class="lab-step-note">What this teaches: VBoxManage createvm registers the VM definition; createmedium builds a dynamically allocated disk that grows with use instead of consuming 20 GB up front. The --size value is in megabytes.</p>
+    <h3>1b. Attach storage and the installer ISO</h3>
+<pre><code class="language-bash">VBoxManage storagectl debian12 --name SATA --add sata --controller IntelAhci
+VBoxManage storageattach debian12 --storagectl SATA --port 0 --device 0 --type hdd --medium debian12.vdi
+VBoxManage storageattach debian12 --storagectl SATA --port 1 --device 0 --type dvddrive --medium ~/iso/debian-12-amd64-netinst.iso
+VBoxManage modifyvm debian12 --memory 2048 --cpus 2 --boot1 dvd --boot2 disk
+VBoxManage startvm debian12 --type headless</code></pre>
+      <p class="lab-output-label">Expected output:</p><pre><code>Waiting for VM "debian12" to power on...
+VM "debian12" has been successfully started.</code></pre>
+      <p class="lab-step-note">What this teaches: A registered VM boots from nothing until you wire a storage controller, attach the VDI as the hard disk, and attach the ISO as a virtual DVD with boot order DVD first. Without the controller and attachments, the installer would report no bootable medium. The headless start keeps the lab scriptable; connect over VRDE or the GUI console to walk the installer.</p>
+    <h3>2. Verify the install booted</h3>
+      <div class="command-block"><div class="command"><code>cat /etc/os-release | head -2</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>PRETTY_NAME="Debian GNU/Linux 12 (bookworm)"
+NAME="Debian GNU/Linux"</code></pre>
+      <p class="lab-step-note">What this teaches: /etc/os-release is the standard distro identification file; PRETTY_NAME confirms which family you booted, which decides whether apt or dnf applies in later labs. Run this inside the guest after the installer finishes and the VM reboots from the virtual disk.</p>
+    <h3>3. Snapshot the clean base</h3>
+      <div class="command-block"><div class="command"><code>VBoxManage snapshot debian12 take clean-base</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>0%...10%...20%...30%...40%...50%...60%...70%...80%...90%...100%
+Snapshot taken. UUID: 8f3a2c1e-4b5d-4c6e-8a7f-9b0c1d2e3f4a</code></pre>
+      <p class="lab-step-note">What this teaches: Snapshots capture disk plus VM state; naming the clean base lets you revert any future experiment instantly, which is what makes a VM a safe lab sandbox. Snapshot the VM while powered off for the cleanest base image.</p>
+    </section>
+
+    <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>
+      <p>VirtualBox is a type-2 hypervisor: it runs as an application on your host OS and uses CPU virtualization extensions (VT-x/AMD-V) to execute guest code nearly natively. The VDI disk is a file on your host that the guest sees as a real hard drive; dynamically allocated VDIs grow as the guest writes, trading a little speed for host disk savings.</p>
+      <p>Installing two families side by side is deliberate pedagogy. Debian 12 uses apt, predictable interface names, and a conservative release cadence; CentOS Stream 9 uses dnf, SELinux enforcing by default, and a rolling pre-RHEL stream. Labs later in the series assume you can translate commands between the two, and this is where that fluency starts.</p>
+      <p>Snapshots implement copy-on-write checkpoints: the base VDI becomes read-only and new writes go to a differencing image. Restoring discards the differencing image, returning the VM to the exact captured state in seconds. This undo button is why every destructive lab in the series starts from a snapshot.</p>
+    </div>
+    <div class="mermaid" role="img" aria-label="VM lab workflow">
+flowchart LR
+  C["VBoxManage createvm"] --> I["Install from ISO"]
+  I --> V["Verify os-release"]
+  V --> S["Snapshot clean-base"]
+  S --> X["Experiment freely"]
+  X -->|"breaks"| R["Restore snapshot"]
+  R --> X
+  style S fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section id="validation"><h2>Validation &amp; Testing</h2>
+      <p>Boot each VM, confirm networking reaches the internet, and clone from the snapshot to verify reproducibility. Pass criteria: both distros install cleanly, have working bridged networking, and a snapshot restores a pristine base.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+    <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>VT-x/AMD-V is disabled error</td><td>Virtualization extensions are off in firmware</td><td>Enable Intel VT-x or AMD-V in BIOS/UEFI settings</td></tr>
+      <tr><td>Installer cannot see the virtual disk</td><td>Wrong storage controller type for the guest</td><td>Use SATA for modern guests; IDE for very old ones</td></tr>
+      <tr><td>Guest is extremely slow</td><td>Too little RAM/vCPU or no Guest Additions</td><td>Raise allocation and install Guest Additions for paravirtual drivers</td></tr>
+      <tr><td>No network in the guest</td><td>Adapter attached to the wrong network mode</td><td>NAT gives outbound access; bridged gives a LAN address for SSH</td></tr>
+      <tr><td>Snapshot restore lost recent work</td><td>Restore discards the differencing image by design</td><td>Take a new snapshot before restoring when the current state might matter</td></tr>
+      <tr><td>CentOS installer hangs at network step</td><td>Stream installer waiting on a mirror</td><td>Check connectivity or pick a closer mirror during setup</td></tr>
+    </tbody></table>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>No 64-bit option:</strong> enable VT-x/AMD-V in the host BIOS.</li>
+        <li><strong>No network:</strong> switch the adapter to bridged or confirm NAT DNS.</li>
+        <li><strong>Slow VM:</strong> install Guest Additions and allocate more vCPU/RAM.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Built reproducible Debian and CentOS base images.</li>
+        <li>Captured clean snapshots that clone in minutes.</li>
+        <li>Verified bridged networking on both distros.</li>
+        <li>Established a safe, disposable lab environment.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways" id="key-takeaways"><h3>Key Takeaways</h3>
+    <ul>
+      <li>VBoxManage scripts the entire VM lifecycle reproducibly.</li>
+      <li>Dynamically allocated disks save host space.</li>
+      <li>/etc/os-release identifies the distro family reliably.</li>
+      <li>Snapshot the clean base before any experiment.</li>
+      <li>Debian versus RHEL differences start at the package manager and defaults.</li>
+    
+      <li>NAT is the default safe NIC mode; bridged exposes the guest to your LAN.</li>
+      <li>Write down the guest additions steps for each family; they differ.</li>
+    </ul></div>
+
+    <section id="practice-challenges"><h2>Practice Challenges</h2>
+    <div class="lab-challenge"><h4>Challenge 1: Headless provision</h4><p>Goal: create, install (unattended), and snapshot a Debian VM without ever opening the VirtualBox GUI.</p><p><strong>Hint:</strong> VBoxManage unattended install plus modifyvm for VRDE.</p></div>
+    <div class="lab-challenge"><h4>Challenge 2: Family diff sheet</h4><p>Goal: boot both VMs and document five concrete defaults that differ (package manager, firewall, SELinux, network config, default shell).</p><p><strong>Hint:</strong> compare systemctl, sestatus, and /etc/os-release.</p></div>
+    </section>
+
+    <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="nested-vms-kvm.html">Nested VMs with KVM</a></li>
+        <li><a href="../linux-server/install-linux-vm.html">Installing Linux VM</a></li>
+        <li><a href="mounting-filesystems.html">Mounting Filesystems</a></li>
+        <li><a href="ssh-remote-access.html">SSH Remote Access</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

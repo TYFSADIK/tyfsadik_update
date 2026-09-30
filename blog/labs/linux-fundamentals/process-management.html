@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linux Process Management | ps, top, kill &amp; systemd</title>
+  <meta name="description" content="Control Linux processes: read ps output, master the kill signal model, tune priority with nice, and manage services through systemd units and systemctl.">
+  <meta name="keywords" content="linux process management, ps kill tutorial, signals SIGTERM SIGKILL, systemd service management, nice renice">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-fundamentals/process-management.html">
+  <meta property="og:title" content="Linux Process Management | ps, top, kill &amp; systemd">
+  <meta property="og:description" content="Control Linux processes: read ps output, master the kill signal model, tune priority with nice, and manage services through systemd units and systemctl.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-fundamentals/process-management.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Linux Process Management | ps, top, kill &amp; systemd">
+  <meta name="twitter:description" content="Control Linux processes: read ps output, master the kill signal model, tune priority with nice, and manage services through systemd units and systemctl.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Linux Process Management with ps, top, and systemd", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-30", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "procps-ng, systemd", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux fundamentals and command-line skills"}</script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Linux Process Management with ps, top, kill, and systemd",
+    "description": "Control Linux processes: read ps output, master the kill signal model, tune priority with nice, and manage services through systemd units and systemctl.",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "dateModified": "2026-09-29",
+    "step": [
+      {"@type": "HowToStep", "name": "Find the offending process", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/process-management.html#steps"},
+      {"@type": "HowToStep", "name": "Signal it gracefully, then forcefully", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/process-management.html#steps"},
+      {"@type": "HowToStep", "name": "Manage a service with systemd", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/process-management.html#steps"}
+    ]
+  }</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Linux Fundamentals", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/index.html"}, {"@type": "ListItem", "position": 4, "name": "Process Management", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/process-management.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'kill reports no such process but ps showed it'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The PID was reused or the process already exited. Fix: Re-run ps to confirm, and prefer pkill -f with a pattern over stale PIDs."}}, {"@type": "Question", "name": "How do I fix 'Process ignores SIGTERM forever'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: It masks the signal or is stuck in uninterruptible sleep (D state). Fix: Check STAT for D (wait for I/O); use SIGKILL only after TERM fails."}}, {"@type": "Question", "name": "How do I fix 'kill: operation not permitted'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The process belongs to another user. Fix: Use sudo, or have the service owner signal it."}}, {"@type": "Question", "name": "How do I fix 'systemctl restart hangs'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The unit's ExecStop never completes. Fix: Inspect with systemctl status and journalctl -u, then consider TimeoutStopSec."}}, {"@type": "Question", "name": "How do I fix 'Zombie processes accumulate'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The parent is not reaping exited children. Fix: Fix or restart the parent; zombies are already dead and hold no resources."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>Process Management</span></nav>
+    <div class="page-header"><h1>Linux Process Management with ps, top, kill, and systemd</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">ps</span><span class="tag">top</span><span class="tag">signals</span><span class="tag">systemd</span></div>
+    </div>
+
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#learning-objectives">Learning Objectives</a></li>
+<li><a href="#objective">Objective &amp; Context</a></li>
+<li><a href="#environment">Environment &amp; Prerequisites</a></li>
+<li><a href="#steps">Step-by-Step Execution</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#validation">Validation &amp; Testing</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#key-takeaways">Key Takeaways</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    <section><p class="lead">I diagnosed and controlled processes using ps and top for inspection, signals for lifecycle control, nice/renice for scheduling priority, and systemd for service management. Sending the right signal in the right order stopped a runaway process cleanly instead of with a blunt SIGKILL.</p></section>
+
+    <section id="objective"><h2>Objective &amp; Context</h2>
+      <p>Process control is core incident response on a host. This lab covers reading process state, the signal model (TERM before KILL), priority tuning, and systemd as the modern init/service manager, feeding the IR and sysadmin labs.</p></section>
+
+    <div class="lab-objectives" id="learning-objectives"><h3>Learning Objectives</h3>
+    <ul>
+      <li>Read process state, CPU, and memory columns in ps output.</li>
+      <li>Choose the right signal: TERM for graceful, KILL as a last resort.</li>
+      <li>Send signals by PID and by name with kill, pkill, and killall.</li>
+      <li>Adjust scheduling priority with nice and renice.</li>
+      <li>Manage services with systemctl: start, stop, restart, enable, status.</li>
+    </ul></div>
+
+    <section id="environment"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+    <ul>
+      <li>Linux with procps-ng and systemd (standard on modern distributions).</li>
+      <li>A test process to inspect and signal (stress-ng or a sleep loop).</li>
+      <li>A managed service unit to practice on (nginx, ssh, or cron).</li>
+      <li>Root or sudo for signaling other users' processes and managing services.</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="Process termination signal order">
+flowchart LR
+  P[Runaway PID] --> T[SIGTERM graceful]
+  T --> W{exited?}
+  W -->|no after grace| K[SIGKILL force]
+  W -->|yes| Done[Clean exit]
+      </div>
+    </section>
+
+    <section id="steps"><h2>Step-by-Step Execution</h2>
+      <h3>1. Find the offending process</h3>
+      <div class="command-block"><div class="command"><code>ps -eo pid,ppid,%cpu,%mem,comm --sort=-%cpu | head</code></div></div>
+      <p class="lab-step-note">What this teaches: -e selects every process; -o picks exact columns so output stays parseable; --sort=-%cpu orders by CPU descending, surfacing the offender at the top without eyeballing hundreds of rows.</p>
+    <h3>2. Signal it gracefully, then forcefully</h3>
+      <div class="command-block"><div class="command"><code>kill -TERM 4412 ; sleep 5 ; kill -KILL 4412 2>/dev/null</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>(no output if the process exits gracefully)
+$ ps -p 4412
+  PID TTY          TIME CMD
+(no such process: terminated)</code></pre>
+      <p class="lab-step-note">What this teaches: SIGTERM asks the process to clean up and exit; SIGKILL (-KILL) cannot be caught and the kernel reaps the process immediately. TERM first is both polite and safer for data integrity.</p>
+    <h3>3. Manage a service with systemd</h3>
+      <div class="command-block"><div class="command"><code>systemctl restart nginx &amp;&amp; systemctl status nginx --no-pager</code></div></div>
+<p class="lab-output-label">Expected output:</p><pre><code class="language-bash">nginx.service: active (running)
+Main PID: 812 (nginx)</code></pre>
+      <p class="lab-step-note">What this teaches: systemctl is the control plane for the init system: restart bounces the service (it prints nothing on success), and status shows state, main PID, and recent log lines in one view.</p>
+    <h3>4. Tune scheduling priority with nice and renice</h3>
+      <div class="command-block"><div class="command"><code>nice -n 10 ./heavy-job.sh &amp; renice -n 5 -p $!</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>4412 (process ID) old priority 10, new priority 5</code></pre>
+      <p class="lab-step-note">What this teaches: nice -n 10 starts a process with lowered priority (higher niceness means a smaller CPU share); renice adjusts a running process by PID, and $! is the PID of the backgrounded job. Only root may set negative niceness to raise priority. Priority only matters when processes actually compete for CPU, which is why a lone busy loop shows no difference.</p>
+    </section>
+
+    <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>
+      <p>A process is a running program plus kernel state: memory mappings, open file descriptors, and scheduling metadata, all visible under /proc/PID. ps formats that state into columns; STAT codes like R (running), S (sleeping), and Z (zombie) describe what the process is doing right now, while %CPU and %MEM quantify its footprint.</p>
+      <p>Signals are the kernel's inter-process messaging. SIGTERM (15) is a polite request the program can handle to flush buffers and exit; SIGKILL (9) bypasses the program entirely and the kernel destroys it. The TERM-before-KILL discipline exists because killing a database mid-write corrupts data, while asking first lets it checkpoint.</p>
+      <p>systemd sits above individual processes as the service manager: units describe how to start a daemon, its dependencies, and its restart policy. systemctl talks to PID 1 over D-Bus, which is why systemctl status can show the cgroup tree and journal logs together. Priority tuning with nice then decides how CPU time is shared when processes compete.</p>
+    </div>
+    <div class="mermaid" role="img" aria-label="Signal escalation flow">
+flowchart TD
+  F["Misbehaving process"] --> T["kill -TERM pid"]
+  T --> W{"Exits within seconds?"}
+  W -->|"yes"| D["Done: clean shutdown"]
+  W -->|"no"| K["kill -KILL pid"]
+  K --> G["Kernel reaps process"]
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section id="validation"><h2>Validation &amp; Testing</h2>
+      <p>Start a CPU-bound test process, locate it, and stop it with the graceful-then-forceful sequence; restart a service and confirm it returns to active. Pass criteria: TERM is attempted before KILL and the service recovers cleanly under systemd.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+    <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>kill reports no such process but ps showed it</td><td>The PID was reused or the process already exited</td><td>Re-run ps to confirm, and prefer pkill -f with a pattern over stale PIDs</td></tr>
+      <tr><td>Process ignores SIGTERM forever</td><td>It masks the signal or is stuck in uninterruptible sleep (D state)</td><td>Check STAT for D (wait for I/O); use SIGKILL only after TERM fails</td></tr>
+      <tr><td>kill: operation not permitted</td><td>The process belongs to another user</td><td>Use sudo, or have the service owner signal it</td></tr>
+      <tr><td>systemctl restart hangs</td><td>The unit's ExecStop never completes</td><td>Inspect with systemctl status and journalctl -u, then consider TimeoutStopSec</td></tr>
+      <tr><td>Zombie processes accumulate</td><td>The parent is not reaping exited children</td><td>Fix or restart the parent; zombies are already dead and hold no resources</td></tr>
+      <tr><td>nice had no visible effect</td><td>Only one CPU-hungry process was running, so there was no contention</td><td>Priority matters when processes compete; test with two busy loops</td></tr>
+    </tbody></table>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Process won't die:</strong> a process in uninterruptible sleep (D state) is waiting on I/O; address the I/O, not the signal.</li>
+        <li><strong>Zombie processes:</strong> reap by fixing or restarting the parent, not by killing the zombie.</li>
+        <li><strong>Service keeps dying:</strong> inspect <code>journalctl -u service</code> for the real failure.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Identified the top CPU consumer instantly via sorted ps output.</li>
+        <li>Stopped runaway processes gracefully before forcing termination.</li>
+        <li>Managed service lifecycle reliably through systemd.</li>
+        <li>Diagnosed zombie and D-state cases correctly rather than blindly killing.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways" id="key-takeaways"><h3>Key Takeaways</h3>
+    <ul>
+      <li>ps -eo with --sort surfaces resource hogs without manual scanning.</li>
+      <li>SIGTERM first for graceful shutdown; SIGKILL only as a last resort.</li>
+      <li>Uninterruptible (D-state) processes cannot be killed; wait out the I/O.</li>
+      <li>systemctl manages services; journalctl -u shows their logs.</li>
+      <li>nice/renice tune CPU sharing when processes actually compete.</li>
+    </ul></div>
+
+    <section id="practice-challenges"><h2>Practice Challenges</h2>
+    <div class="lab-challenge"><h4>Challenge 1: Graceful vs forceful</h4><p>Goal: start a writer script that traps TERM to flush a file, then compare kill -TERM versus kill -KILL by checking whether the flush happened.</p><p><strong>Hint:</strong> trap 'echo flushed &gt;&gt; out' TERM.</p></div>
+    <div class="lab-challenge"><h4>Challenge 2: Find the fork bomb's parent</h4><p>Goal: given a runaway process tree, use ps --forest to identify the parent, then stop the whole tree cleanly.</p><p><strong>Hint:</strong> pkill -P targets children of a PID.</p></div>
+    </section>
+
+    <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="../linux-server/service-management.html">Service Management (systemd)</a></li>
+        <li><a href="../python/system-admin-scripts.html">Python System Administration Scripts</a></li>
+        <li><a href="cron-jobs.html">Cron Jobs &amp; Scheduling</a></li>
+        <li><a href="ssh-remote-access.html">SSH Remote Access</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

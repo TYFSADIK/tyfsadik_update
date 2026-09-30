@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linux File Permissions: chmod, chown &amp; ACLs | TYFSADIK</title>
+  <meta name="description" content="Master Linux permissions: octal chmod modes, chown ownership, setuid/setgid/sticky bits, umask defaults, and POSIX ACLs for fine-grained access control.">
+  <meta name="keywords" content="linux file permissions, chmod octal, chown, setuid setgid sticky bit, umask, posix acl">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-fundamentals/file-permissions.html">
+  <meta property="og:title" content="Linux File Permissions: chmod, chown &amp; ACLs | TYFSADIK">
+  <meta property="og:description" content="Master Linux permissions: octal chmod modes, chown ownership, setuid/setgid/sticky bits, umask defaults, and POSIX ACLs for fine-grained access control.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-fundamentals/file-permissions.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Linux File Permissions: chmod, chown &amp; ACLs | TYFSADIK">
+  <meta name="twitter:description" content="Master Linux permissions: octal chmod modes, chown ownership, setuid/setgid/sticky bits, umask defaults, and POSIX ACLs for fine-grained access control.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Linux File Permissions, Ownership, and ACLs", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-14", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "GNU coreutils, acl (setfacl/getfacl)", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux fundamentals and command-line skills"}</script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Linux File Permissions, Ownership, and POSIX ACLs",
+    "description": "Master Linux permissions: octal chmod modes, chown ownership, setuid/setgid/sticky bits, umask defaults, and POSIX ACLs for fine-grained access control.",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "dateModified": "2026-09-29",
+    "step": [
+      {"@type": "HowToStep", "name": "Set explicit octal modes", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/file-permissions.html#steps"},
+      {"@type": "HowToStep", "name": "Grant a user access via ACL", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/file-permissions.html#steps"},
+      {"@type": "HowToStep", "name": "Set a setgid directory for shared group ownership", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/file-permissions.html#steps"}
+    ]
+  }</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Linux Fundamentals", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/index.html"}, {"@type": "ListItem", "position": 4, "name": "File Permissions & Ownership", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/file-permissions.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'ACL grants access but the user is still denied'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The ACL mask entry caps effective permissions below the grant. Fix: Check getfacl output and raise the mask with setfacl -m m::rx."}}, {"@type": "Question", "name": "How do I fix 'chmod 777 seemed necessary to make it work'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Ownership or group membership is wrong, not the mode. Fix: Fix with chown/chgrp and use 750/640 instead of opening to everyone."}}, {"@type": "Question", "name": "How do I fix 'New files ignore the directory group'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: setgid bit is missing on the shared directory. Fix: Apply chmod g+s so new files inherit the directory group."}}, {"@type": "Question", "name": "How do I fix 'Script fails with permission denied despite +x'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The filesystem is mounted noexec, or the shebang interpreter lacks rights. Fix: Remount without noexec or move the script to an executable path."}}, {"@type": "Question", "name": "How do I fix 'umask change had no effect on existing files'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: umask only applies at file creation time. Fix: Adjust existing files explicitly with chmod."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>File Permissions &amp; Ownership</span></nav>
+    <div class="page-header"><h1>Linux File Permissions, Ownership, and POSIX ACLs</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">chmod</span><span class="tag">chown</span><span class="tag">setfacl</span><span class="tag">umask</span></div>
+    </div>
+
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#learning-objectives">Learning Objectives</a></li>
+<li><a href="#objective">Objective &amp; Context</a></li>
+<li><a href="#environment">Environment &amp; Prerequisites</a></li>
+<li><a href="#steps">Step-by-Step Execution</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#validation">Validation &amp; Testing</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#key-takeaways">Key Takeaways</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    <section><p class="lead">I enforced least-privilege file access using the standard user/group/other model, special bits, and POSIX ACLs for finer control. Explicit, auditable modes and ACLs let multiple users share directories without over-granting access.</p></section>
+
+    <section id="objective"><h2>Objective &amp; Context</h2>
+      <p>Permissions are the first access-control layer on every Linux file. This lab covers octal modes, ownership, setuid/setgid/sticky bits, umask defaults, and ACLs for cases the three-class model cannot express, aligning to NIST AC-6 least privilege.</p></section>
+
+    <div class="lab-objectives" id="learning-objectives"><h3>Learning Objectives</h3>
+    <ul>
+      <li>Read and set octal permission modes with chmod for files and directories.</li>
+      <li>Change file ownership and group ownership with chown and chgrp.</li>
+      <li>Apply setuid, setgid, and sticky bits and explain what each one does.</li>
+      <li>Predict default permissions from umask values.</li>
+      <li>Grant per-user access beyond the owner/group/other model using POSIX ACLs.</li>
+    </ul></div>
+
+    <section id="environment"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+    <ul>
+      <li>Linux with coreutils and the acl package: <code>sudo apt install -y acl</code> or <code>sudo dnf install -y acl</code>.</li>
+      <li>Root or sudo access, since changing ownership requires elevation.</li>
+      <li>Two or more test user accounts and a shared directory to experiment on.</li>
+      <li>Completion of the file management lab is recommended.</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="Permission evaluation order">
+flowchart LR
+  A[Access request] --> O{Owner?}
+  O -->|yes| OU[owner bits]
+  O -->|no| N{Named user ACL entry?}
+  N -->|yes| NE[entry perms AND mask]
+  N -->|no| G{In owning group?}
+  G -->|yes| GB[group bits AND mask]
+  G -->|no| OT[other bits]
+      </div>
+    </section>
+
+    <section id="steps"><h2>Step-by-Step Execution</h2>
+      <h3>1. Set explicit octal modes</h3>
+      <div class="command-block"><div class="command"><code>chmod 750 /srv/app &amp;&amp; chown app:web /srv/app</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>(no output on success; verify with: stat -c "%a %U:%G %n" /srv/app)
+750 app:web /srv/app</code></pre>
+      <p class="lab-step-note">What this teaches: Octal 750 means rwxr-x---: full control for the owner, read/execute for the group, nothing for others. Directories need the execute bit for traversal.</p>
+    <h3>2. Grant a user access via ACL</h3>
+      <div class="command-block"><div class="command"><code>setfacl -m u:deploy:rx /srv/app &amp;&amp; getfacl /srv/app</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code># file: /srv/app
+# owner: root
+# group: web
+user::rwx
+user:deploy:r-x
+group::r-x
+mask::r-x
+other::---</code></pre>
+      <p class="lab-step-note">What this teaches: setfacl adds an access control entry for one user without changing the base mode; getfacl reveals the effective permissions, including the mask entry that caps every named user and group entry. If you later grant u:deploy:rwx but the mask stays r-x, deploy still gets only r-x, which is the number one reason ACL grants appear not to work.</p>
+    <h3>3. Set a setgid directory for shared group ownership</h3>
+      <div class="command-block"><div class="command"><code>chmod 2775 /srv/shared</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>(no output on success; verify with: stat -c "%a %n" /srv/shared)
+2775 /srv/shared</code></pre>
+      <p class="lab-step-note">What this teaches: The leading 2 is the setgid bit: new files in the directory inherit the directory's group instead of the creator's primary group, which keeps shared trees consistently owned.</p>
+    </section>
+
+    <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>
+      <p>Every Linux file carries three permission triples: one for the owning user, one for the owning group, and one for everyone else. Each triple is three bits (read, write, execute), conventionally written as one octal digit, so 750 is a compact way of saying rwxr-x---. The kernel checks them in order and stops at the first class that matches the requesting process.</p>
+      <p>The special bits extend this model. setuid (4) on an executable runs the program as the file's owner, setgid (2) runs it as the file's group or forces group inheritance on directories, and the sticky bit (1) on a directory like /tmp lets users delete only their own files. umask then subtracts from the default 666/777 at creation time, which is why new files are 644 and new directories 755 under the common 022 umask.</p>
+      <p>POSIX ACLs exist because the three-class model cannot express rules like 'give deploy read access but nobody else outside the group'. An ACL attaches named user and group entries to the file, and getfacl shows a mask entry that caps the effective rights of all named entries. Checking the mask is the step most people skip when an ACL 'does not work'.</p>
+    </div>
+    <div class="mermaid" role="img" aria-label="Permission check decision flow">
+flowchart TD
+  P["Process requests access"] --> O{"Is process the owner?"}
+  O -->|"yes"| OU["Apply user bits"]
+  O -->|"no"| G{"In owning group?"}
+  G -->|"yes"| GG["Apply group or ACL mask bits"]
+  G -->|"no"| OT["Apply other bits"]
+  style P fill:#1a3a5a,stroke:#4da3ff,color:#fff
+      </div>
+    </section>
+
+    <section id="validation"><h2>Validation &amp; Testing</h2>
+      <p>As each test user, attempt allowed and disallowed actions and confirm the kernel enforces the expected result. Pass criteria: owner/group/other behave per mode, the ACL grants exactly the named user, and setgid propagates group ownership to new files.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+    <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>ACL grants access but the user is still denied</td><td>The ACL mask entry caps effective permissions below the grant</td><td>Check getfacl output and raise the mask with setfacl -m m::rx</td></tr>
+      <tr><td>chmod 777 seemed necessary to make it work</td><td>Ownership or group membership is wrong, not the mode</td><td>Fix with chown/chgrp and use 750/640 instead of opening to everyone</td></tr>
+      <tr><td>New files ignore the directory group</td><td>setgid bit is missing on the shared directory</td><td>Apply chmod g+s so new files inherit the directory group</td></tr>
+      <tr><td>Script fails with permission denied despite +x</td><td>The filesystem is mounted noexec, or the shebang interpreter lacks rights</td><td>Remount without noexec or move the script to an executable path</td></tr>
+      <tr><td>umask change had no effect on existing files</td><td>umask only applies at file creation time</td><td>Adjust existing files explicitly with chmod</td></tr>
+      <tr><td>setuid on a shell script does nothing</td><td>The kernel ignores setuid on interpreted scripts for safety</td><td>Compile a helper binary or use sudo rules instead</td></tr>
+    </tbody></table>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Unexpected access:</strong> an ACL may override base bits; inspect with getfacl.</li>
+        <li><strong>New files wrong group:</strong> set the setgid bit on the parent directory.</li>
+        <li><strong>Too-open defaults:</strong> tighten umask (027) for service accounts.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Enforced least privilege with explicit octal modes across service dirs.</li>
+        <li>Granted per-user access via ACLs without widening group membership.</li>
+        <li>Standardized shared directories with setgid for consistent ownership.</li>
+        <li>Hardened default creation modes with a stricter umask.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways" id="key-takeaways"><h3>Key Takeaways</h3>
+    <ul>
+      <li>Octal modes encode three triples; the kernel stops at the first class that matches.</li>
+      <li>Directories need the execute bit for traversal, not just listing.</li>
+      <li>setgid directories keep shared trees under one group automatically.</li>
+      <li>umask only shapes newly created files; it never changes existing ones.</li>
+      <li>When ACLs misbehave, check the mask entry first.</li>
+    </ul></div>
+
+    <section id="practice-challenges"><h2>Practice Challenges</h2>
+    <div class="lab-challenge"><h4>Challenge 1: Secure a web root</h4><p>Goal: set /srv/app so the owner has full control, group web can read and traverse, and others get nothing, then verify with stat.</p><p><strong>Hint:</strong> one octal digit per class.</p></div>
+    <div class="lab-challenge"><h4>Challenge 2: Debug a denied deploy</h4><p>Goal: a deploy user gets permission denied on a group-readable file; use namei -l and getfacl to find whether the blocker is the path, the group, or the mask.</p><p><strong>Hint:</strong> every parent directory needs the execute bit.</p></div>
+    </section>
+
+    <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="user-group-admin.html">User &amp; Group Administration</a></li>
+        <li><a href="../security/selinux-apparmor.html">SELinux &amp; AppArmor</a></li>
+        <li><a href="file-management.html">File Management</a></li>
+        <li><a href="hard-soft-links.html">Working with Links</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

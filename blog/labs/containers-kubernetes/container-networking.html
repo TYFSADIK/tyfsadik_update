@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Container Networking: Bridge, DNS &amp; Isolation | TYFSADIK</title>
+  <meta name="description" content="Master Docker networking hands-on: user-defined bridges, embedded DNS, container-to-container connectivity, isolation tests, and publishing only what you must.">
+  <meta name="keywords" content="Docker networking, bridge network, container DNS, network isolation, docker network, port publishing">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Container Networking: Bridge, DNS &amp; Isolation | TYFSADIK">
+  <meta property="og:description" content="Master Docker networking hands-on: user-defined bridges, embedded DNS, container-to-container connectivity, isolation tests, and publishing only what you must.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Container Networking: Bridge, DNS &amp; Isolation | TYFSADIK">
+  <meta name="twitter:description" content="Master Docker networking hands-on: user-defined bridges, embedded DNS, container-to-container connectivity, isolation tests, and publishing only what you must.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Docker Container Networking and Isolation", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-02-07", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "Docker 24.x, bridge networks", "articleSection": "Containers", "learningResourceType": "Hands-on lab", "teaches": "containers and Kubernetes"}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "HowTo", "name": "Container Networking | Bridges, DNS & Isolation", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"}, "step": [{"@type": "HowToStep", "name": "Create a user-defined network", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Attach containers to it", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Resolve by name from the app", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Inspect the bridge", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Test app-to-database connectivity", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Create a second, isolated network", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Prove isolation from the outsider", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Expose only the frontend", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Clean up", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html#step-by-step-execution"}]}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Containers & Kubernetes", "item": "https://tyfsadik.org/blog/labs/containers-kubernetes/index.html"}, {"@type": "ListItem", "position": 4, "name": "Container Networking", "item": "https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Name not resolving'?", "acceptedAnswer": {"@type": "Answer", "text": "the default bridge lacks DNS; attach to a user-defined network. Verify with docker exec <container> cat /etc/resolv.conf, if you do not see nameserver 127.0.0.11, the container is not on a user-defined bridge. Fix by recreating it with --network app-net."}}, {"@type": "Question", "name": "How do I fix 'Containers can all reach each other'?", "acceptedAnswer": {"@type": "Answer", "text": "they share one network; separate concerns into distinct networks. docker network inspect <name> lists every attached container, if unrelated shows up under app-net, disconnect it with docker network disconnect app-net unrelated."}}, {"@type": "Question", "name": "How do I fix 'Port not reachable from host'?", "acceptedAnswer": {"@type": "Answer", "text": "publish it with -p; network membership alone does not expose it. Also confirm the service binds 0.0.0.0 inside the container, a process bound to 127.0.0.1 in its own namespace is unreachable no matter how you publish."}}, {"@type": "Question", "name": "How do I fix 'postgres container exits immediately'?", "acceptedAnswer": {"@type": "Answer", "text": "the official image aborts when no password is set. docker logs db shows Error: Database is uninitialized and superuser password is not specified. Fix by passing -e POSTGRES_PASSWORD=... (or POSTGRES_HOST_AUTH_METHOD=trust for throwaway labs only)."}}, {"@type": "Question", "name": "How do I fix '\"network with name app-net already exists\" or IP pool exhaustion'?", "acceptedAnswer": {"@type": "Answer", "text": "inspect existing networks with docker network ls; either reuse the existing network, remove the stale one with docker network rm, or create yours with an explicit non-overlapping --subnet. Pool exhaustion shows up as could not find an available, non-overlapping IPv4 address pool and means too many dead networks are squatting on RFC1918 ranges, docker network prune clears them."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Container Networking</span></nav>
+    <div class="page-header"><h1>Docker Container Networking and Isolation</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Containers</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">bridge</span><span class="tag">DNS</span><span class="tag">isolation</span><span class="tag">-network</span></div>
+    </div>
+<nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#architecture-overview">Architecture Overview</a></li>
+<li><a href="#under-the-hood-what-docker-actually-creates">Under the Hood: What Docker Actually Creates</a></li>
+<li><a href="#environment-setup">Environment Setup</a></li>
+<li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+<li><a href="#step-flow-map">Step Flow Map</a></li>
+<li><a href="#progress-so-far">Progress So Far</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#testing-validation">Testing & Validation</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#extension-ideas">Extension Ideas</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    
+
+    <section><p class="lead">You will create user-defined bridge networks so containers reach each other by name while staying isolated from unrelated containers. By the end you will prove a database is reachable by its app but unreachable from outside its network.</p>
+      <p>Networking is where most multi-container deployments quietly go wrong: everything lands on the default bridge, every container can see every other container, and nothing resolves by name. This lab builds the opposite posture on purpose. You will stand up a two-tier application (an nginx frontend and a PostgreSQL database) on a private bridge, confirm Docker's embedded DNS resolves service names, then attach a hostile-by-omission "unrelated" container to a second bridge and prove it cannot reach the database at all. The same mental model carries directly into Docker Compose and Kubernetes, so treat this as foundational, not optional.</p>
+    </section>
+
+    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+      <ul>
+        <li>Create user-defined bridge networks with built-in DNS.</li>
+        <li>Connect containers by name instead of IP.</li>
+        <li>Verify network isolation between groups.</li>
+        <li>Inspect bridges, subnets, and attached containers with <code>docker network inspect</code>.</li>
+        <li>Publish only the ports that must be public, and leave internal services unpublished.</li>
+        <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> Docker installed.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="architecture-overview">Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Two isolated bridge networks">
+graph TD
+  subgraph app-net
+    Web[web] -->|DNS: db:5432| DB[db]
+  end
+  subgraph other-net
+    X[unrelated]
+  end
+  X -. cannot reach .- DB
+      </div>
+      <p>Three ideas carry the whole lab. First, a <strong>user-defined bridge</strong> is a private Layer&nbsp;2 segment: Docker creates a Linux bridge interface on the host, hands the network its own subnet (for example <code>172.18.0.0/16</code>), and attaches each container with a virtual Ethernet pair. Second, every user-defined bridge gets an <strong>embedded DNS server</strong> inside each container at <code>127.0.0.11</code>, which resolves container names to their current IPs on that network only. Third, bridges are <strong>isolated by default</strong>: kernel and iptables rules prevent traffic between bridges unless you explicitly connect a container to both, and nothing is reachable from outside the host unless you publish a port with <code>-p</code>.</p>
+      <p>The default <code>bridge</code> network that Docker attaches containers to when you specify nothing has none of the DNS behaviour, containers there can only find each other by raw IP address. That single difference is the reason every real deployment uses named networks.</p>
+    </section>
+
+    <section><h2 id="under-the-hood-what-docker-actually-creates">Under the Hood: What Docker Actually Creates</h2>
+      <p>You can treat bridge networks as magic, or you can look at the four moving parts once and never be confused by them again. When you run <code>docker network create app-net</code> and attach a container, the Docker daemon:</p>
+      <ul>
+        <li><strong>Creates a Linux bridge interface</strong> named <code>br-&lt;network-id-prefix&gt;</code> on the host and assigns it the network's gateway address (here, <code>172.18.0.1</code>).</li>
+        <li><strong>Creates a veth pair per container:</strong> a virtual Ethernet cable with one end inside the container's network namespace (its <code>eth0</code>) and the other plugged into the bridge. Traffic between containers on the same bridge is pure L2 switching, it never touches the host's routing table.</li>
+        <li><strong>Programs iptables rules:</strong> a NAT masquerade rule so containers can reach the internet, isolation rules that drop packets crossing between bridges, and (only when you use <code>-p</code>) a DNAT rule in the <code>DOCKER</code> chain that forwards the published host port to the container.</li>
+        <li><strong>Starts the embedded DNS responder</strong> bound to <code>127.0.0.11:53</code> inside each container's namespace, fronting the daemon's name table for that network.</li>
+      </ul>
+      <p>On a native Linux host you can watch all of this directly, the interfaces appear and disappear as you create networks and start containers:</p>
+      <p class="code-label">OBSERVE THE BRIDGE ON A LINUX HOST</p>
+      <pre><code>ip link show type bridge
+ip addr show br-$(docker network inspect -f '{{.Id}}' app-net | cut -c1-12)
+sudo iptables -t nat -L DOCKER -n</code></pre>
+      <p><strong>Docker Desktop caveat (macOS and Windows):</strong> the daemon runs inside a lightweight Linux VM, so <code>br-*</code> interfaces and iptables rules live in that VM, not on your Mac. Everything in this lab still works identically from the container's point of view; the only visible difference is that published ports are forwarded through the VM, which is why <code>localhost:8080</code> works at all on Desktop.</p>
+      <p>The practical payoff of knowing this: when isolation "leaks", it leaks at one of these four layers, and <code>docker network inspect</code> plus the iptables listing will show you which one.</p>
+    </section>
+
+    <section><h2 id="environment-setup">Environment Setup</h2>
+<div class="lab-prereqs"><h3>Prerequisites</h3>
+<ul>
+<li>Docker Engine 24+ running locally on Linux or macOS.</li>
+<li>A terminal; no prior networking labs needed, but basic <code>docker run</code> helps.</li>
+<li>Assumed skills: running commands and reading command output.</li>
+</ul></div>
+      <p><strong>You will need:</strong> Docker and two or three small images (nginx and postgres work well).</p>
+      <p><strong>Before you begin:</strong> the default bridge has no DNS; always use user-defined networks.</p>
+      <p>Confirm the engine is up and note its version. Everything below was written against Docker Engine 24.x/25.x, but any reasonably current release behaves the same:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker version --format '{{.Server.Version}}'</span></div>
+        <div class="terminal-output">25.0.3</div>
+      </div>
+      <p>Pull the three images up front so no step stalls waiting on a download. The <code>alpine</code> image is our general-purpose probe, busybox inside it ships <code>ping</code> and <code>nc</code>, which is all we need to test reachability:</p>
+      <p class="code-label">PULL THE LAB IMAGES</p>
+      <pre><code>docker pull nginx:stable
+docker pull postgres:16
+docker pull alpine:3.20</code></pre>
+      <p>Finally, look at the networks that exist out of the box. You should see exactly three: <code>bridge</code> (the default), <code>host</code>, and <code>none</code>. If previous experiments left named networks behind, that is fine, just do not reuse their names in this lab.</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker network ls</span></div>
+        <div class="terminal-output">NETWORK ID     NAME      DRIVER    SCOPE
+a1b2c3d4e5f6   bridge    bridge    local
+b2c3d4e5f6a1   host      host      local
+c3d4e5f6a1b2   none      null      local</div>
+      </div>
+      <p><strong>Permissions note:</strong> if every command answers with <code>permission denied while trying to connect to the Docker daemon socket</code>, your user is not in the <code>docker</code> group. Either prefix every command here with <code>sudo</code>, or run <code>sudo usermod -aG docker $USER</code> and log out and back in. Docker Desktop on macOS and Windows handles this for you, so no setup is needed there.</p>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create a user-defined network</strong>
+          <p>User-defined bridges provide automatic name resolution between attached containers.</p>
+          <div class="command-block" data-copy><div class="command"><code>docker network create app-net</code></div></div>
+          <p>The command returns the full 64-character network ID on success. Behind the scenes Docker allocates the next free private subnet, creates a bridge interface on the host (visible as <code>br-&lt;id&gt;</code> in <code>ip link</code> on Linux), and programs iptables rules that NAT outbound traffic and block inbound traffic from other bridges.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker network create app-net</span></div>
+            <div class="terminal-output">d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker network ls</span></div>
+            <div class="terminal-output">NETWORK ID     NAME      DRIVER    SCOPE
+a1b2c3d4e5f6   bridge    bridge    local
+d4e5f6a1b2c3   app-net   bridge    local
+b2c3d4e5f6a1   host      host      local
+c3d4e5f6a1b2   none      null      local</div>
+          </div>
+          <p><strong>Common mistake:</strong> running this twice and getting <code>Error response from daemon: network with name app-net already exists</code>. That error is harmless, the network is already there and you can move on. If you genuinely want to start over, remove it with <code>docker network rm app-net</code> first (it must have no attached containers).</p>
+          <p><strong>Optional hardening:</strong> pin the subnet yourself so it never collides with a VPN or LAN range, e.g. <code>docker network create --subnet 10.90.0.0/24 app-net</code>.</p>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker network create app-net
+8f2c1a4b5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3</code></pre>
+<p class="lab-step-note">What this teaches: A user-defined network is a private bridge with its own subnet; creating it is what enables everything after.</p></div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Attach containers to it</strong>
+          <p>Run the database first, then the frontend. The <code>--name</code> flag matters twice here: it gives you a handle for <code>docker exec</code>, and it becomes the DNS record other containers on <code>app-net</code> resolve. Note that the official <code>postgres</code> image refuses to start without a password, so we set <code>POSTGRES_PASSWORD</code> explicitly (a throwaway lab value, never use a real secret this way):</p>
+          <p class="code-label">START THE DATABASE AND THE FRONTEND ON APP-NET</p>
+          <pre><code>docker run -d --name db --network app-net \
+  -e POSTGRES_PASSWORD=labpass \
+  postgres:16
+
+docker run -d --name web --network app-net nginx:stable</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker run -d --name web --network app-net nginx:stable
+a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f</code></pre>
+          <p>Flag by flag: <code>-d</code> detaches, <code>--network app-net</code> places the container on our bridge instead of the default one, and <code>-e</code> passes an environment variable into the container. Neither command publishes a port, so nothing is reachable from the host yet, exactly what we want for the database.</p>
+          <p>Verify both containers are actually running and on the right network:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"</span></div>
+            <div class="terminal-output">NAMES   IMAGE         STATUS         PORTS
+web     nginx:stable  Up 4 seconds
+db      postgres:16   Up 9 seconds   5432/tcp</div>
+          </div>
+          <p>Notice <code>db</code> shows <code>5432/tcp</code> with no host mapping, the port is open <em>inside the container</em> but not published. If <code>db</code> is missing from the list, run <code>docker ps -a</code>; a postgres container that exits immediately almost always means the password variable was forgotten, which <code>docker logs db</code> will confirm.</p>
+          <p><strong>Common mistake:</strong> omitting <code>--network</code> on one of the two containers. It silently lands on the default bridge, and step 03's name lookup will fail. When in doubt, check with <code>docker inspect -f '{{json .NetworkSettings.Networks}}' db</code>.</p>
+        
+<p class="lab-step-note">What this teaches: Attaching containers to the same network is what puts them on the same broadcast domain; placement is the policy.</p></div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Resolve by name from the app</strong>
+          <p>Now prove the embedded DNS works. From inside <code>web</code>, resolve the name <code>db</code>:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker exec web getent hosts db</span></div>
+            <div class="terminal-output">172.18.0.2      db</div>
+          </div>
+          <p>This works because every container on a user-defined network gets a <code>resolv.conf</code> pointing at Docker's embedded DNS server, which listens on <code>127.0.0.11</code> inside the container's network namespace. That server forwards real internet lookups upstream but answers container names itself, and only for networks the asking container is attached to:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker exec web cat /etc/resolv.conf</span></div>
+            <div class="terminal-output">nameserver 127.0.0.11
+options ndots:0</div>
+          </div>
+          <p><strong>How to verify it is DNS and not luck:</strong> re-create <code>db</code> (<code>docker rm -f db</code> then re-run it) and resolve again. The IP may change, but <code>getent hosts db</code> still answers correctly because Docker updates its records on container start and stop. Anything caching the old IP, a connection pool, for instance, would need to reconnect, which is exactly why apps should connect by name and never pin container IPs.</p>
+          <p><strong>Scoped aliases:</strong> besides its container name, a container can answer to extra names per network via <code>--network-alias</code>. A container started with <code>--name db --network app-net --network-alias postgres-primary</code> resolves under <em>both</em> names on <code>app-net</code>, useful for giving a container a stable service identity while the container name itself stays free to change.</p>
+          <p><strong>Common mistake:</strong> testing from a container on the default bridge and concluding "DNS is broken". The default bridge has no embedded DNS names; the lookup only works between containers sharing a user-defined network.</p>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker exec web getent hosts db
+172.19.0.3      db</code></pre>
+<p class="lab-step-note">What this teaches: Embedded DNS is the payoff: names resolve to current IPs, so restarts do not break connectivity.</p></div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Inspect the bridge</strong>
+          <p>Before trusting a topology, look at it. <code>docker network inspect</code> dumps the subnet, gateway, and every attached container with its IP:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker network inspect app-net</span></div>
+          </div>
+          <p class="code-label">EXPECTED OUTPUT (ABRIDGED)</p>
+          <pre><code>[
+    {
+        "Name": "app-net",
+        "Driver": "bridge",
+        "IPAM": {
+            "Config": [
+                {
+                    "Subnet": "172.18.0.0/16",
+                    "Gateway": "172.18.0.1"
+                }
+            ]
+        },
+        "Containers": {
+            "3f4a...": {
+                "Name": "db",
+                "IPv4Address": "172.18.0.2/16"
+            },
+            "9c1b...": {
+                "Name": "web",
+                "IPv4Address": "172.18.0.3/16"
+            }
+        }
+    }
+]</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker network inspect app-net --format '{{.IPAM.Config}}'
+[{172.19.0.0/16  172.19.0.1 map[]}]</code></pre>
+          <p>For scripting, filter instead of reading the whole blob: <code>docker network inspect -f '{{json .Containers}}' app-net</code>. The <code>Containers</code> map is your ground truth for "who can talk to whom by name", if a container is not listed here, it is not on this network no matter what you intended.</p>
+        
+<p class="lab-step-note">What this teaches: Inspecting the bridge shows the machinery: subnets, gateways, and which containers hold addresses.</p></div></div>
+        <div class="step"><div class="step-num">05</div><div class="step-body"><strong>Test app-to-database connectivity</strong>
+          <p>Name resolution alone does not prove the port is reachable. The nginx image is Debian-based and ships bash, so we can use bash's <code>/dev/tcp</code> pseudo-device as a dependency-free TCP probe, no need to install <code>nc</code> or <code>curl</code>:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker exec web bash -c 'cat &lt; /dev/null &gt; /dev/tcp/db/5432 &amp;&amp; echo "db reachable on 5432"'</span></div>
+            <div class="terminal-output">db reachable on 5432</div>
+          </div>
+          <p>Cross-check from the database side with postgres's own health tool, which confirms the server is not just listening but accepting connections:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker exec db pg_isready -U postgres</span></div>
+            <div class="terminal-output">localhost:5432 - accepting connections</div>
+          </div>
+          <p><strong>Common mistake:</strong> declaring victory after <code>ping db</code> succeeds. ICMP only proves the container is up; the service can still be down or listening on a different port. Always probe the actual port, as above.</p>
+          <p><strong>Optional, a real client handshake:</strong> if you want proof at the application layer rather than the TCP layer, run the postgres client from a throwaway container on the same network. It will authenticate and return a row:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker run --rm --network app-net -e PGPASSWORD=labpass postgres:16 psql -h db -U postgres -c "SELECT version();"</span></div>
+            <div class="terminal-output">                         version
+------------------------------------------------------------
+ PostgreSQL 16.4 (Debian 16.4-1.pgdg120+1) on x86_64-pc-linux-gnu
+(1 row)</div>
+          </div>
+          <p>This is the same pattern every real app follows: a service name (<code>db</code>), a port (<code>5432</code>), and credentials passed by environment variable, the exact triad you will later write into a Compose file or a Kubernetes manifest.</p>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker exec web sh -c 'echo &gt; /dev/tcp/db/5432' &amp;&amp; echo "db reachable"
+db reachable</code></pre>
+<p class="lab-step-note">What this teaches: App-to-database connectivity is the real-world test; the app never knows it is in a container.</p></div></div>
+        <div class="step"><div class="step-num">06</div><div class="step-body"><strong>Create a second, isolated network</strong>
+          <p>Isolation means nothing until something is actually on the outside trying to get in. Create a second bridge and attach a long-running Alpine container to it. This container stands in for anything that shares the Docker host but has no business talking to your database, a compromised sidecar, a neighbour tenant, a leftover debug container:</p>
+          <p class="code-label">SECOND NETWORK PLUS AN OUTSIDER CONTAINER</p>
+          <pre><code>docker network create other-net
+docker run -d --name unrelated --network other-net alpine:3.20 sleep 3600</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker network create other-net
+c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d</code></pre>
+          <p>The <code>sleep 3600</code> keeps Alpine alive for an hour; without a long-running command the container would exit instantly and have nothing to probe from.</p>
+          <p>Confirm the new topology before attacking it. <code>docker network ls</code> should now show four custom-relevant entries, and each network's inspect output should list exactly the containers you put there:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker network ls</span></div>
+            <div class="terminal-output">NETWORK ID     NAME        DRIVER    SCOPE
+a1b2c3d4e5f6   bridge      bridge    local
+d4e5f6a1b2c3   app-net     bridge    local
+e5f6a1b2c3d4   other-net   bridge    local
+b2c3d4e5f6a1   host        host      local
+c3d4e5f6a1b2   none        null      local</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker inspect -f '{{json .NetworkSettings.Networks}}' unrelated</span></div>
+            <div class="terminal-output">{"other-net":{...,"IPAddress":"172.19.0.2",...}}</div>
+          </div>
+          <p>Note that <code>other-net</code> received its own subnet (<code>172.19.0.0/16</code>), Docker allocates these sequentially. The <code>unrelated</code> container has an interface on <code>other-net</code> only; it has no route into <code>172.18.0.0/16</code> at all.</p>
+        
+<p class="lab-step-note">What this teaches: A second network is a second broadcast domain; networks are the isolation boundary.</p></div></div>
+        <div class="step"><div class="step-num">07</div><div class="step-body"><strong>Prove isolation from the outsider</strong>
+          <p>Attack it two ways. First, name resolution from <code>unrelated</code> fails outright, <code>db</code> is not a record on <code>other-net</code>, so the embedded DNS answers with nothing:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker exec unrelated ping -c 2 db</span></div>
+            <div class="terminal-error">ping: bad address 'db'</div>
+          </div>
+          <p>Second, and more important, even if the attacker learns the database IP out of band, the traffic itself is blocked because the two bridges are separate L2 domains with iptables rules between them:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker exec unrelated sh -c 'nc -zw3 172.18.0.2 5432 &amp;&amp; echo OPEN || echo BLOCKED'</span></div>
+            <div class="terminal-output">BLOCKED</div>
+          </div>
+          <p>That second test is the one that matters for security. DNS failure is a convenience barrier; the L2/iptables separation is the real wall. If you ever <em>do</em> need a container to span both worlds, say a monitoring agent, the surgical tool is <code>docker network connect app-net unrelated</code>, which adds a second interface to a running container rather than flattening the networks together.</p>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker exec outsider ping -c1 db
+ping: bad address 'db'</code></pre>
+<p class="lab-step-note">What this teaches: A failed ping is a successful experiment: it proves the isolation is real, not assumed.</p></div></div>
+        <div class="step"><div class="step-num">08</div><div class="step-body"><strong>Expose only the frontend</strong>
+          <p>Right now the application works internally but is unreachable from the host, which is safe and useless in equal measure. The frontend is the piece the outside world is supposed to reach, so publish its port, and only its port. Ports are set at container creation time, so recreate <code>web</code>:</p>
+          <p class="code-label">RECREATE WEB WITH A PUBLISHED PORT</p>
+          <pre><code>docker rm -f web
+docker run -d --name web --network app-net -p 8080:80 nginx:stable</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker ps --format '{{.Names}} {{.Ports}}'
+web 0.0.0.0:8080-&gt;80/tcp
+db  5432/tcp</code></pre>
+          <p>Because <code>web</code> rejoins <code>app-net</code> under the same name, the DNS record is re-registered and nothing else changes. Verify from the host:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker port web</span></div>
+            <div class="terminal-output">80/tcp -&gt; 0.0.0.0:8080</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080</span></div>
+            <div class="terminal-output">200</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">nc -zv localhost 5432</span></div>
+            <div class="terminal-error">nc: connect to localhost port 5432 (tcp) failed: Connection refused</div>
+          </div>
+          <p>The pattern to internalize: the web tier is published (<code>-p 8080:80</code>), the database is not. An attacker who reaches the host can talk to nginx and nothing else; the database only exists on <code>app-net</code>. This is the container-era version of putting the DB in a private subnet.</p>
+          <p><strong>Common mistake:</strong> publishing with <code>-p 80:80</code> and colliding with something already on host port 80, or assuming <code>-p</code> can be added to a running container, it cannot. Port bindings are fixed at <code>docker run</code> time; changing them always means recreating the container, as we just did. Also note that <code>EXPOSE</code> in a Dockerfile is documentation only, it publishes nothing by itself.</p>
+        
+<p class="lab-step-note">What this teaches: Publishing one port is least privilege at the network edge; the database stays unreachable from the host.</p></div></div>
+        <div class="step"><div class="step-num">09</div><div class="step-body"><strong>Clean up</strong>
+          <p>Remove the containers first, a network with attached containers cannot be deleted, then the networks:</p>
+          <p>Do not tear down yet. The Testing &amp; Validation section runs against these live containers and networks; the teardown commands are at its end.</p>
+          <p>Confirm with <code>docker network ls</code> and <code>docker ps -a</code> that only the three built-in networks and no lab containers remain. On a shared or long-lived host, <code>docker network prune</code> reclaims every unused custom network in one shot, useful, but be sure nothing else on the host is relying on an idle network before running it.</p>
+        
+<p class="lab-step-note">What this teaches: Cleanup removes the bridges and their iptables rules; leftover networks are a common source of confusion later.</p></div></div>
+      </div>
+    </section>
+<section><h2 id="step-flow-map">Step Flow Map</h2>
+<div class="mermaid" role="img" aria-label="Flow of the lab steps from first to last">
+graph TD
+  S1["Create a user-defined network"]
+  S2["Attach containers to it"]
+  S3["Resolve by name from the app"]
+  S4["Inspect the bridge"]
+  S5["Test app-to-database connectivity"]
+  S6["Create a second, isolated network"]
+  S7["Prove isolation from the outsider"]
+  S8["Expose only the frontend"]
+  S9["Clean up"]
+  S1 --> S2
+  S2 --> S3
+  S3 --> S4
+  S4 --> S5
+  S5 --> S6
+  S6 --> S7
+  S7 --> S8
+  S8 --> S9
+</div>
+<p>Each box is one step in the lab; work them in order, since later steps build on earlier state.</p>
+</section>
+
+    
+
+    <section><h2 id="progress-so-far">Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Container networking progress">
+graph LR
+  A[01 Create net] -->|done| B[02 Attach]
+  B -->|done| C[03 Resolve by name]
+  C -->|next| V[Verify isolation]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style V fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+      </div>
+      <p>Steps 01-03 built and proved the inside of the network; steps 04-08 verified it from every angle, including the outside. Use the checklist below as a final end-to-end pass.</p>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+<div class="lab-explainer">
+<p>Every Docker network is a Linux bridge with friends. Creating a network builds a bridge interface on the host, allocates a subnet, and attaches each container through a veth pair: one end inside the container's network namespace, the other on the bridge. iptables rules on the host then handle NAT for outbound traffic and port publishing for inbound. <code>docker network inspect</code> shows you this machinery in JSON form.</p>
+<p>User-defined networks get an embedded DNS server at 127.0.0.11 inside each container, which resolves container names to their current IPs. The default bridge network deliberately lacks this: containers there can only reach each other by IP, which breaks the moment a container restarts with a new address. This single difference is why every serious compose file defines its own network.</p>
+<p>Isolation in Docker is just non-shared bridges. Two containers on different user-defined networks have no path between them at layer 3, which you prove by watching the ping fail. Publishing a port with <code>-p</code> punches exactly one hole from the host into the container; everything else stays unreachable, which is the container analogue of a default-deny firewall.</p>
+</div>
+</section>
+
+    <section><h2 id="testing-validation">Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>docker run --rm --name probe alpine sh -c "nc -zv db 5432 || echo isolated"</code></div></div>
+      <p>The probe (not on app-net) should print <code>isolated</code>, while <code>web</code> can reach <code>db</code>. That confirms isolation plus intended connectivity.</p>
+      <p>Run all four checks below after finishing the steps; the lab passes only if every row behaves as shown:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker exec web getent hosts db</span></div>
+        <div class="terminal-output">172.18.0.2      db        <span># 1. name resolution inside app-net: OK</span></div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker exec web bash -c 'cat &lt; /dev/null &gt; /dev/tcp/db/5432 &amp;&amp; echo OK'</span></div>
+        <div class="terminal-output">OK                        <span># 2. intended path web -&gt; db:5432: OK</span></div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker exec unrelated sh -c 'nc -zw3 172.18.0.2 5432 &amp;&amp; echo OPEN || echo BLOCKED'</span></div>
+        <div class="terminal-output">BLOCKED                   <span># 3. cross-network traffic: denied</span></div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">nc -zv localhost 5432</span></div>
+        <div class="terminal-error">Connection refused        <span># 4. db unpublished on the host: OK</span></div>
+      </div>
+      <p>Check 3 is the one people skip, and the one that matters most. A green check 2 with a green check 3 is "isolated but working"; a green check 2 with a red check 3 means your isolation is an illusion and some container is bridged across networks it should not span.</p>
+      <p>Two notes on interpreting failures. If check 1 fails but check 2 works when you substitute the raw IP, DNS is the broken layer and the rest of the network is fine, look at which network the asking container is attached to. If checks 1 and 2 both fail, test <code>docker exec web ping -c 2 172.18.0.2</code>: a working ping with a failing port probe points at the postgres process itself (<code>docker logs db</code>), while a failing ping points at network membership (<code>docker network inspect app-net</code>). And on Docker Desktop, run check 4 from the Mac/Windows host exactly as shown, the port-forwarding VM makes <code>localhost</code> the correct target there too.</p>
+          <p class="code-label">TEARDOWN</p>
+      <pre><code>docker rm -f web db unrelated
+docker network rm app-net other-net</code></pre>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>$ docker network rm app-net other-net
+app-net
+other-net</code></pre>
+      <p>Confirm with <code>docker network ls</code> and <code>docker ps -a</code> that only the three built-in networks and no lab containers remain.</p>
+</section>
+
+    <section><h2 id="troubleshooting">Troubleshooting</h2>
+      <p>Networking failures in Docker almost always reduce to one of four layers: DNS, network membership, iptables/port publishing, or the application itself. Work the list top-down, resolve the name first, then check which network the container is actually on, then check publishing, and only then blame the app. These are the five failures you will actually meet:</p>
+      <ul>
+        <li><strong>Name not resolving:</strong> the default bridge lacks DNS; attach to a user-defined network. Verify with <code>docker exec &lt;container&gt; cat /etc/resolv.conf</code>, if you do not see <code>nameserver 127.0.0.11</code>, the container is not on a user-defined bridge. Fix by recreating it with <code>--network app-net</code>.</li>
+        <li><strong>Containers can all reach each other:</strong> they share one network; separate concerns into distinct networks. <code>docker network inspect &lt;name&gt;</code> lists every attached container, if <code>unrelated</code> shows up under <code>app-net</code>, disconnect it with <code>docker network disconnect app-net unrelated</code>.</li>
+        <li><strong>Port not reachable from host:</strong> publish it with <code>-p</code>; network membership alone does not expose it. Also confirm the service binds <code>0.0.0.0</code> inside the container, a process bound to <code>127.0.0.1</code> in its own namespace is unreachable no matter how you publish.</li>
+        <li><strong>postgres container exits immediately:</strong> the official image aborts when no password is set. <code>docker logs db</code> shows <code>Error: Database is uninitialized and superuser password is not specified</code>. Fix by passing <code>-e POSTGRES_PASSWORD=...</code> (or <code>POSTGRES_HOST_AUTH_METHOD=trust</code> for throwaway labs only).</li>
+        <li><strong>"network with name app-net already exists" or IP pool exhaustion:</strong> inspect existing networks with <code>docker network ls</code>; either reuse the existing network, remove the stale one with <code>docker network rm</code>, or create yours with an explicit non-overlapping <code>--subnet</code>. Pool exhaustion shows up as <code>could not find an available, non-overlapping IPv4 address pool</code> and means too many dead networks are squatting on RFC1918 ranges, <code>docker network prune</code> clears them.</li>
+      </ul>
+    
+<p>Quick-reference for the failures you are most likely to hit in this lab.</p>
+<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<tr><td>Name resolution fails between containers</td><td>Containers are on the default bridge, which has no embedded DNS</td><td>Create a user-defined network and attach both containers to it.</td></tr>
+<tr><td>Connection refused on a published port</td><td>The app listens on localhost inside the container, or the port mapping is wrong</td><td>Check <code>docker ps</code> for the mapping and make the app bind <code>0.0.0.0</code>.</td></tr>
+<tr><td>Isolation test unexpectedly succeeds</td><td>Both containers are still attached to the first network</td><td>Inspect each container's networks; a container can hold memberships in several.</td></tr>
+<tr><td>Subnet overlap errors</td><td>Docker's chosen subnet collides with your LAN or VPN</td><td>Create the network with an explicit <code>--subnet</code> outside your ranges.</td></tr>
+<tr><td>DNS queries are slow</td><td>The embedded DNS forwarder struggling with the host resolver</td><td>Check the container's <code>/etc/resolv.conf</code>; it should point at 127.0.0.11.</td></tr>
+</tbody></table>
+</section>
+
+    <section><h2 id="extension-ideas">Extension Ideas</h2>
+      <ul>
+        <li>Define the whole topology declaratively in <a href="docker-compose.html">Docker Compose</a>, Compose creates a dedicated project network automatically, which is this lab's model with the manual steps removed.</li>
+        <li>Move isolation to L3 in <a href="kubernetes-networking.html">Kubernetes Services &amp; Networking</a>, where NetworkPolicy replaces per-bridge iptables as the enforcement point.</li>
+        <li>Enforce policy with the <a href="../security/zero-trust-hybrid-cloud.html">Zero-Trust</a> microsegmentation lab, which takes "default-deny between segments" from one Docker host to a whole environment.</li>
+        <li>Add a second frontend container on <code>app-net</code> and resolve <code>web</code> from <code>db</code> to confirm DNS is symmetric, then use <code>--network-alias api</code> to give a container a stable service name independent of its container name.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Connected containers by name via user-defined DNS.</li>
+        <li>Isolated unrelated containers onto separate networks.</li>
+        <li>Proved both connectivity and isolation with a live probe.</li>
+        <li>Established the networking model used by Compose and K8s.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways"><h3 id="key-takeaways">Key Takeaways</h3>
+      <ul>
+        <li>Always use user-defined bridge networks: the default bridge has no DNS and no meaningful isolation story.</li>
+        <li>Container names are DNS records on their network, connect by name, never by pinned IP, because IPs change on recreate.</li>
+        <li>Isolation is the default between bridges; verify it by attacking from a container on another network, not just by checking config.</li>
+        <li>Publishing (<code>-p</code>) is the only door from the host or outside world, publish frontends, leave databases unpublished.</li>
+        <li><code>docker network inspect</code> is ground truth: the <code>Containers</code> map tells you exactly who can reach whom.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="practice-challenges">Practice Challenges</h2>
+<div class="lab-challenge"><h4>Challenge 1: Custom subnet with static IPs</h4><p>Goal: Create a network with an explicit <code>--subnet</code>, assign static IPs to two containers, and prove they communicate.</p><p>Hint: Static IPs remove DHCP from the equation, which makes the DNS test cleaner.</p></div>
+<div class="lab-challenge"><h4>Challenge 2: Prove the default bridge cannot resolve names</h4><p>Goal: Run two containers on the default bridge and show name resolution failing while IP connectivity works.</p><p>Hint: The contrast with the user-defined network is the lesson; run both experiments back to back.</p></div>
+<div class="lab-challenge"><h4>Challenge 3: Map veth to container</h4><p>Goal: Use <code>docker network inspect</code> and <code>ip link</code> to match a veth interface to its container.</p><p>Hint: The interface index in the inspect output corresponds to the host-side veth name.</p></div>
+</section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="docker-compose.html">Docker Compose</a></li>
+        <li><a href="multi-container-apps.html">Multi-Container Applications</a></li>
+        <li><a href="kubernetes-networking.html">Kubernetes Services &amp; Networking</a></li>
+      
+        <li><a href="docker-fundamentals.html">Docker Fundamentals</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

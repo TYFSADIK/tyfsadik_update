@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Custom LLM from Scratch: Training Guide | TYFSADIK</title>
+  <meta name="description" content="Proposed protocol for training a custom ~7B parameter transformer from scratch and serving it via llama.cpp with a custom web interface, by Taki Sadik.">
+  <meta name="robots" content="index,follow">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="keywords" content="TYFSADIK, Taki Sadik, MD. Taki Yasir Faraji Sadik, custom LLM, transformer training, llama.cpp, local AI">
+  <link rel="canonical" href="https://tyfsadik.org/work/infrastructure/private-ai-model.html">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Custom LLM from Scratch: Training Guide | TYFSADIK">
+  <meta property="og:description" content="Proposed protocol for training a custom ~7B parameter transformer from scratch and serving it via llama.cpp with a custom web interface, by Taki Sadik.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/work/infrastructure/private-ai-model.html">
+  <meta property="og:image" content="https://tyfsadik.org/images/projects/private-ai-model.jpg">
+  <meta property="og:image:alt" content="Custom LLM from Scratch | TYFSADIK">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Custom LLM from Scratch: Training Guide | TYFSADIK">
+  <meta name="twitter:description" content="Proposed protocol for training a custom ~7B parameter transformer from scratch and serving it via llama.cpp with a custom web interface, by Taki Sadik.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/projects/private-ai-model.jpg">
+  <meta name="twitter:image:alt" content="Custom LLM from Scratch | TYFSADIK">
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Custom LLM from Scratch", "name": "Custom LLM from Scratch", "description": "Proposed protocol for training a custom ~7B parameter transformer from scratch and serving it via llama.cpp with a custom web interface, by Taki Sadik.", "image": "https://tyfsadik.org/images/projects/private-ai-model.jpg", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "publisher": {"@type": "Organization", "name": "TYFSADIK", "url": "https://tyfsadik.org/"}, "datePublished": "2026-09-30", "inLanguage": "en-CA", "mainEntityOfPage": {"@type": "WebPage", "@id": "https://tyfsadik.org/work/infrastructure/private-ai-model.html"}, "keywords": []}</script>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Infrastructure", "item": "https://tyfsadik.org/work.html"}, {"@type": "ListItem", "position": 3, "name": "Custom LLM from Scratch", "item": "https://tyfsadik.org/work/infrastructure/private-ai-model.html"}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
+        <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+
+<main class="page-content">
+  <div class="container">
+    <div class="content-box">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Infrastructure</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Custom LLM from Scratch</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Custom LLM from Scratch</h1>
+      <p class="subtitle">A proposed protocol for training a ~7B parameter transformer from the ground up, served via llama.cpp with a fully custom web interface.</p>
+    </div>
+
+    <figure class="project-hero">
+  <img src="../../images/projects/private-ai-model.jpg" alt="GPU server with visible graphics cards beside a monitor showing a training loss curve">
+  <figcaption>Concept visualization: the GPU training workstation beside a monitor with training metrics. Generated illustration, not a photo of the actual setup.</figcaption>
+</figure>
+
+    <div class="project-meta">
+      <span class="meta-year">2026</span>
+      <span class="meta-category">AI / Infrastructure</span>
+    </div>
+
+    <!-- ── OVERVIEW ── -->
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        This page documents a <strong>proposed protocol</strong> for a fully custom large language model
+        project: the model architecture, the training pipeline, and the web interface, all designed from
+        scratch. Unlike projects that wrap existing models (Llama, Mistral, GPT-J, etc.), this protocol
+        trains weights from random initialization on curated data. The design target is a
+        <strong>~7 billion parameter transformer</strong> served on my own server.
+      </p>
+      <p>
+        Note on naming: an earlier draft of this page called the project "Chakor". That name now belongs
+        to a separate open-source project of mine, Chakor, a self-hosted AI workspace, so this training
+        protocol uses no codename to avoid confusion.
+      </p>
+      <p>
+        The planned frontend is a full-stack Next.js 15 application featuring authentication, persistent
+        conversation history, an admin dashboard, and integrated web search. The inference path uses no
+        third-party AI APIs and no off-the-shelf model weights; the optional web search integration does
+        call third-party search APIs, so search-augmented queries leave the local environment.
+      </p>
+    </section>
+
+    <!-- ── MODEL ── -->
+    <section id="model">
+      <h2>The Model (Proposed Architecture)</h2>
+      <p>
+        The planned architecture is a decoder-only transformer, implemented in PyTorch, following the design
+        patterns established by modern open LLMs but written as an original codebase. Below are the
+        target architectural parameters:
+      </p>
+      <ul>
+        <li><strong>Parameters:</strong> ~7 billion (target; trained from scratch under this protocol)</li>
+        <li><strong>Layers:</strong> 32 transformer decoder layers</li>
+        <li><strong>Attention heads:</strong> 32</li>
+        <li><strong>Hidden size:</strong> 4096</li>
+        <li><strong>Architecture:</strong> Decoder-only transformer (GPT-style autoregressive)</li>
+        <li><strong>Implementation:</strong> PyTorch: every layer, loss function, and training loop written by hand</li>
+      </ul>
+
+      <h3>Training (Proposed Protocol)</h3>
+      <p>
+        Training a 7B model from random initialization requires a massive amount of data and sustained
+        compute. The planned training corpus mixes web text, code, and instruction-style data, with a
+        target of over <strong>100 billion tokens</strong>. The protocol calls for distributed training
+        across a multi-GPU NVIDIA setup, with duration estimated at several weeks to months depending on
+        the hardware and the training phase.
+      </p>
+      <ul>
+        <li><strong>Dataset target:</strong> 100B+ tokens (web text, code, instruction data)</li>
+        <li><strong>Hardware required:</strong> Multi-GPU setup (NVIDIA GPUs), distributed training. Budget roughly 12 to 16 bytes of VRAM per parameter for mixed-precision Adam (weights, gradients, and optimizer states), which is over 100 GB for a 7B model before activations, so plain DDP replication needs 80 GB class GPUs or ZeRO/FSDP sharding across smaller cards</li>
+        <li><strong>Estimated training duration:</strong> Several weeks to months across phases</li>
+        <li><strong>Target training loss:</strong> ~1.8-2.5 range</li>
+        <li><strong>Target perplexity:</strong> ~6-12 depending on evaluation set (perplexity is e raised to the loss, so a loss of 1.8-2.5 maps to roughly 6-12)</li>
+      </ul>
+      <p>
+        After pretraining, the protocol includes an <strong>instruction tuning</strong> phase (supervised
+        fine-tuning on instruction/response pairs) to improve the model's ability to follow prompts and
+        maintain coherent multi-turn conversations, the same technique used to turn a raw pretrained model
+        into a useful chat assistant.
+      </p>
+
+      <h3>Inference (Planned)</h3>
+      <p>
+        After training, the PyTorch weights would be converted to <strong>GGUF format</strong> for efficient
+        inference with <strong>llama.cpp</strong>. GGUF enables quantized, low-overhead inference on
+        both CPU and GPU without the full PyTorch runtime. The plan is to run the model continuously on
+        my server with custom prompt formatting and context window management.
+      </p>
+      <ul>
+        <li><strong>Inference engine:</strong> llama.cpp</li>
+        <li><strong>Weight format:</strong> GGUF (converted from PyTorch checkpoint)</li>
+        <li><strong>Optimizations:</strong> Quantization for low-latency CPU/GPU inference</li>
+        <li><strong>Availability target:</strong> 24/7 on self-hosted server</li>
+      </ul>
+    </section>
+
+    <!-- ── WEB UI ── -->
+    <section id="web-ui">
+      <h2>The Web Interface (Planned)</h2>
+      <p>
+        The web application serving the model is planned as a full frontend and backend build rather
+        than an off-the-shelf chat UI dropped in front of the inference server.
+      </p>
+
+      <h3>Stack</h3>
+      <ul>
+        <li><strong>Frontend:</strong> Next.js 15, React, Tailwind CSS</li>
+        <li><strong>Backend:</strong> Node.js with Next.js API routes</li>
+        <li><strong>Inference backend:</strong> llama.cpp (custom REST integration)</li>
+        <li><strong>Reverse proxy:</strong> Nginx with WebSocket and SSE support</li>
+        <li><strong>SSL:</strong> Let's Encrypt / Certbot with automated renewal</li>
+      </ul>
+
+      <h3>Features</h3>
+      <ul>
+        <li><strong>Authentication system</strong>, custom-built user registration, login, and session management</li>
+        <li><strong>Persistent conversations</strong>, full conversation history saved and retrievable per user</li>
+        <li><strong>Admin dashboard</strong>, server monitoring, model status, user management</li>
+        <li><strong>Web search integration</strong>, search APIs surfaced inline during conversations (note: this calls third-party search APIs)</li>
+        <li><strong>Streaming responses</strong>, real-time token streaming via SSE (server-sent events)</li>
+        <li><strong>Custom prompt formatting</strong>, tailored to the model's instruction-tuned format</li>
+      </ul>
+    </section>
+
+    <!-- ── ARCHITECTURE ── -->
+    <section id="architecture">
+      <h2>System Architecture</h2>
+      <div class="mermaid">
+graph LR
+  U["User Browser"]
+  NG["Nginx :443"]
+  LE["Lets Encrypt"]
+  FE["Next.js Frontend"]
+  API["API Routes"]
+  AUTH["Auth System"]
+  LC["llama.cpp :8080"]
+  WG[("GGUF Weights (planned ~7B)")]
+  SR["Web Search API"]
+
+  LE -- renews --> NG
+  U -->|HTTPS| NG
+  NG -->|proxy_pass| FE
+  FE -->|requests| API
+  API -->|session| AUTH
+  API -->|POST completion| LC
+  API -->|search| SR
+  LC --- WG
+  LC -->|SSE stream| API
+  API -->|stream| FE
+  FE -->|render| U
+
+style U fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style NG fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style LE fill:#181818,stroke:#444,color:#888
+style FE fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style API fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style AUTH fill:#181818,stroke:#444,color:#888
+style LC fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style WG fill:#181818,stroke:#444,color:#888
+style SR fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+      </div>
+    </section>
+
+    <!-- ── REQUEST FLOW ── -->
+    <section id="workflow">
+      <h2>Request Flow</h2>
+      <div class="mermaid">
+sequenceDiagram
+  participant U as User Browser
+  participant NG as Nginx
+  participant FE as Next.js
+  participant API as API Routes
+  participant LC as llama.cpp
+  participant SR as Search API
+
+  U-->>NG: HTTPS POST chat message
+  NG-->>FE: proxy_pass
+  FE-->>API: message and conversation history
+  API-->>SR: web search query
+  SR-->>API: search results JSON
+  API-->>LC: POST /completion with prompt and context
+  LC-->>API: streaming token response SSE
+  API-->>FE: streamed output
+  FE-->>U: real-time rendered response
+      </div>
+    </section>
+
+    <!-- ── BUILD PROCESS ── -->
+    <section id="build-process">
+      <h2>Build Process (Protocol)</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h3>Design the Model Architecture</h3>
+            <p>
+              The protocol specifies a decoder-only transformer in PyTorch: 32 layers, 32 attention heads,
+              4096 hidden dimensions, targeting ~7B parameters. Every component is written by hand: the
+              multi-head self-attention, feed-forward layers, RMSNorm, rotary positional embeddings, and a
+              causal attention mask applied to the scores before the softmax.
+            </p>
+            <pre><code># Simplified example of the core attention block
+class MultiHeadAttention(nn.Module):
+    def __init__(self, d_model=4096, n_heads=32):
+        super().__init__()
+        self.n_heads = n_heads
+        self.head_dim = d_model // n_heads
+        self.q = nn.Linear(d_model, d_model, bias=False)
+        self.k = nn.Linear(d_model, d_model, bias=False)
+        self.v = nn.Linear(d_model, d_model, bias=False)
+        self.out = nn.Linear(d_model, d_model, bias=False)
+
+    def forward(self, x):
+        B, T, C = x.shape
+        q = self.q(x).view(B, T, self.n_heads, self.head_dim).transpose(1,2)
+        k = self.k(x).view(B, T, self.n_heads, self.head_dim).transpose(1,2)
+        v = self.v(x).view(B, T, self.n_heads, self.head_dim).transpose(1,2)
+        attn = (q @ k.transpose(-2,-1)) / (self.head_dim ** 0.5)
+        # Causal mask: each position attends only to earlier positions
+        causal = torch.tril(torch.ones(T, T, device=x.device)).view(1, 1, T, T)
+        attn = attn.masked_fill(causal == 0, float('-inf'))
+        attn = F.softmax(attn, dim=-1)
+        out = (attn @ v).transpose(1,2).reshape(B, T, C)
+        return self.out(out)</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h3>Assemble and Preprocess the Training Corpus</h3>
+            <p>
+              The protocol calls for curating a 100B+ token dataset from web text, open-source code
+              repositories, and instruction-style data, with data pipeline scripts to download, clean,
+              tokenize, and shard the data into efficient binary format for streaming during training.
+            </p>
+            <pre><code># Tokenize and shard dataset to binary format
+python prepare_data.py \
+  --sources web_text code instruction \
+  --tokenizer custom_bpe \
+  --output-dir ./data/shards/ \
+  --shard-size 500M
+
+# Verify token count
+python count_tokens.py ./data/shards/
+# Example output: N tokens across M shards (target: 100B+)</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h3>Pretraining (Distributed, Multi-GPU)</h3>
+            <p>
+              Training would run in a distributed setup across multiple NVIDIA GPUs using PyTorch
+              DDP (DistributedDataParallel), with checkpoints saved periodically and a target final
+              training loss in the 1.8-2.5 range.
+            </p>
+            <pre><code># Launch distributed training (example: 8 GPUs on one node)
+# ~1M tokens per step (512 sequences x 2048 tokens), so 120k steps lands near the 100B token target
+torchrun --nproc_per_node=8 train.py \
+  --model-config configs/7b.json \
+  --data-dir ./data/shards/ \
+  --batch-size 512 \
+  --lr 3e-4 \
+  --warmup-steps 2000 \
+  --max-steps 120000 \
+  --checkpoint-dir ./checkpoints/ \
+  --log-interval 100</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <h3>Instruction Tuning (SFT)</h3>
+            <p>
+              After pretraining, the protocol fine-tunes the model on instruction/response pairs using
+              supervised fine-tuning (SFT). This stage teaches the model to follow prompts, maintain context
+              across multi-turn conversations, and produce useful, structured responses rather than raw
+              text completion.
+            </p>
+            <pre><code># Instruction tuning on curated chat data
+python sft_train.py \
+  --base-checkpoint ./checkpoints/pretrain_final.pt \
+  --data instruction_data.jsonl \
+  --epochs 3 \
+  --lr 1e-5 \
+  --output ./checkpoints/sft_final.pt</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <h3>Convert to GGUF for llama.cpp</h3>
+            <p>
+              The final PyTorch checkpoint would be converted to GGUF format in two steps:
+              <code>convert_hf_to_gguf.py</code> (positional model path, <code>--outfile</code>,
+              <code>--outtype</code>) produces an F16 GGUF, because the converter only emits
+              f32/f16/bf16/q8_0, and then the compiled <code>llama-quantize</code> tool produces the
+              Q4_K_M file. GGUF enables efficient quantized inference without the full PyTorch runtime.
+              Note that llama-server binds to 127.0.0.1 by default, so <code>--host 0.0.0.0</code> below is a deliberate choice to listen
+              on all interfaces.
+            </p>
+            <pre><code># Convert PyTorch checkpoint to GGUF. The converter only emits f32/f16/bf16/q8_0,
+# so convert to F16 first, then quantize with the compiled llama-quantize tool.
+python convert_hf_to_gguf.py ./checkpoints/sft_final/ \
+  --outfile custom-7b-f16.gguf \
+  --outtype f16
+
+# Quantize the F16 GGUF to Q4_K_M
+./llama-quantize custom-7b-f16.gguf custom-7b-q4_K_M.gguf Q4_K_M
+
+# Start llama.cpp server
+./llama-server \
+  --model ./custom-7b-q4_K_M.gguf \
+  --host 0.0.0.0 \
+  --port 8080 \
+  --ctx-size 4096 \
+  --n-predict 1024</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">6</div>
+          <div class="step-body">
+            <h3>Build the Web App (Next.js Full-Stack)</h3>
+            <p>
+              The web app is planned as a from-scratch Next.js 15 and React build. The backend API routes
+              handle authentication, session management, conversation persistence, and proxying requests
+              to the llama.cpp inference server. The frontend streams responses in real time using SSE.
+            </p>
+            <pre><code># Core API route: stream completion from llama.cpp
+// app/api/chat/route.ts
+export async function POST(req: Request) {
+  const { messages, conversationId } = await req.json();
+  const prompt = formatPrompt(messages); // custom prompt formatter
+
+  const llamaRes = await fetch('http://localhost:8080/completion', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, stream: true, n_predict: 1024 }),
+  });
+
+  // Stream tokens directly back to the client
+  return new Response(llamaRes.body, {
+    headers: { 'Content-Type': 'text/event-stream' },
+  });
+}</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">7</div>
+          <div class="step-body">
+            <h3>Deploy with Nginx + Let's Encrypt</h3>
+            <p>
+              The Next.js app is proxied through Nginx with WebSocket and SSE support enabled. Let's
+              Encrypt provides the SSL certificate, with automatic renewal via a systemd timer.
+            </p>
+            <pre><code># Only send "Connection: upgrade" when the client actually asked to upgrade;
+# an unconditional upgrade header breaks plain SSE/HTTP streaming.
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 443 ssl;
+    server_name ai.tyfsadik.org;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Do not buffer the SSE token stream
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+}
+
+# Provision certificate
+certbot --nginx -d ai.tyfsadik.org</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── CHALLENGES ── -->
+    <section id="challenges">
+      <h2>Challenges &amp; Planned Mitigations</h2>
+      <ul>
+        <li>
+          <strong>Training stability at 7B scale:</strong> early training runs at this scale commonly
+          diverge from learning rate spikes. Planned mitigation: a cosine LR schedule with a linear
+          warmup phase (2000 steps), gradient clipping at 1.0, and careful weight initialization
+          following the GPT-NeoX paper.
+        </li>
+        <li>
+          <strong>Data quality at 100B+ tokens:</strong> raw web data contains enormous amounts of
+          boilerplate, duplicate content, and low-quality text that degrades model outputs. The protocol
+          includes deduplication and quality filtering scripts to remove near-duplicates,
+          perplexity-filter low-quality documents, and up-sample higher-quality sources like code and
+          curated text.
+        </li>
+        <li>
+          <strong>GGUF conversion from a custom checkpoint:</strong> llama.cpp's conversion scripts
+          expect HuggingFace-compatible checkpoint formats. Since this model is not derived from an HF
+          model, the protocol includes a compatibility shim that maps the custom PyTorch state dict keys
+          to the expected HF format before running the GGUF converter.
+        </li>
+        <li>
+          <strong>SSE streaming through the proxy chain:</strong> token streaming breaks when any hop
+          buffers the response; the usual culprit is Nginx's proxy buffering, not the Next.js route
+          handler. Planned fix: <code>proxy_buffering off</code> on the stream location and returning
+          the upstream body directly as a <code>ReadableStream</code> from the API route.
+        </li>
+        <li>
+          <strong>Context management for multi-turn chat:</strong> llama.cpp processes a flat prompt string,
+          not structured messages. The plan includes a custom prompt formatter that assembles the full
+          conversation history into the model's instruction format and truncates it intelligently when the
+          context window is approaching capacity.
+        </li>
+        <li>
+          <strong>Nginx timeout on long generations:</strong> long outputs can cause Nginx to drop
+          connections mid-stream. Planned fix: <code>proxy_read_timeout 300s</code> and
+          <code>proxy_send_timeout 300s</code> in the location block.
+        </li>
+      </ul>
+    </section>
+
+    <!-- ── LEARNINGS ── -->
+    <section id="learnings">
+      <h2>What This Protocol Teaches</h2>
+      <ul>
+        <li>Transformer architecture internals: attention, positional encoding, normalization, and how architectural choices affect training dynamics at scale</li>
+        <li>Distributed training with PyTorch DDP: gradient synchronization, checkpoint management, and debugging divergence across multiple GPUs</li>
+        <li>Large-scale data pipeline engineering: deduplication, quality filtering, tokenization, and efficient sharded binary datasets</li>
+        <li>The practical difference between pretraining (learning from raw text) and instruction tuning (learning to follow prompts)</li>
+        <li>GGUF format internals and the weight conversion pipeline from PyTorch to llama.cpp</li>
+        <li>Full-stack Next.js 15 development: App Router, API routes, and SSE streaming</li>
+        <li>Nginx configuration for WebSocket and SSE proxying with long-lived connections</li>
+        <li>The full end-to-end lifecycle of a production LLM: architecture → training → conversion → serving → UI</li>
+      </ul>
+    </section>
+
+    <section id="how-i-built-it">
+  <h2>Build plan</h2>
+  <p>Most "private AI" projects wrap someone else's model. This protocol goes further: train the weights from random initialization, on curated data, and serve the result on my own server. That means building both a training pipeline and a product around it.</p>
+  <ol>
+    <li><strong>Phase 1, design the architecture:</strong> A decoder-only transformer in PyTorch: 32 layers, 32 attention heads, 4096 hidden dimensions, roughly 7 billion parameters. Every component, multi-head attention, feed-forward blocks, RMSNorm, rotary embeddings, the causal mask, written by hand.</li>
+    <li><strong>Phase 2, assemble the corpus:</strong> A training mix of web text, code, and instruction-style data with a target of over 100 billion tokens.</li>
+    <li><strong>Phase 3, train at scale:</strong> Distributed training across a multi-GPU NVIDIA setup over weeks to months per phase, watching loss curves and gradient norms for instability.</li>
+    <li><strong>Phase 4, serve the weights:</strong> Export to GGUF and serve with llama.cpp behind Nginx with TLS, streaming tokens to clients over SSE.</li>
+    <li><strong>Phase 5, build the product around it:</strong> A from-scratch web application: Next.js 15 frontend, custom auth and session management, persistent conversations, an admin dashboard, and inline web search.</li>
+  </ol>
+</section>
+<section id="what-you-need">
+  <h2>What you need</h2>
+  <table>
+    <thead><tr><th>Category</th><th>Item</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Hardware</td><td>Multi-GPU NVIDIA setup with large VRAM</td><td>Training a 7B model needs sustained distributed compute</td></tr>
+      <tr><td>Hardware</td><td>Inference server with enough RAM or VRAM</td><td>To serve the quantized model 24/7</td></tr>
+      <tr><td>Software</td><td>PyTorch, custom training loop, llama.cpp</td><td>Hand-written model code plus the GGUF inference runtime</td></tr>
+      <tr><td>Software</td><td>Next.js 15, Node.js, Nginx, Let's Encrypt</td><td>The custom web interface and its TLS front door</td></tr>
+      <tr><td>Skills</td><td>Deep learning fundamentals and distributed training</td><td>Mixed precision, gradient clipping, checkpoint management</td></tr>
+      <tr><td>Data</td><td>100B+ token curated corpus</td><td>Data quality dominates final model quality</td></tr>
+    </tbody>
+  </table>
+</section>
+<section id="challenges-lessons">
+  <h2>Challenges and lessons learned</h2>
+  <ul>
+    <li><strong>Training stability:</strong> loss spikes can waste days of compute if caught late. Lesson: log aggressively, checkpoint often, and automate alerts on gradient norms.</li>
+    <li><strong>Data curation at scale:</strong> filtering 100B+ tokens without destroying diversity is a project of its own. Lesson: build the data pipeline before renting the GPUs, and sample-inspect every stage.</li>
+    <li><strong>Evaluation honesty:</strong> a custom model needs real benchmarks, not vibes. Lesson: hold out evaluation sets from the start and track them across checkpoints.</li>
+  </ul>
+</section>
+<section id="whats-next">
+  <h2>What is next</h2>
+  <ul>
+    <li>Run continued pretraining on domain-specific corpora to sharpen expertise areas.</li>
+    <li>Add instruction tuning and preference alignment phases.</li>
+    <li>Publish evaluation results against standard benchmarks with full methodology.</li>
+    <li>Distill smaller variants that run comfortably on consumer GPUs.</li>
+  </ul>
+</section>
+
+    <div class="tags">
+      <span class="tag">AI</span>
+      <span class="tag">LLM</span>
+      <span class="tag">PyTorch</span>
+      <span class="tag">Transformer</span>
+      <span class="tag">llama.cpp</span>
+      <span class="tag">GGUF</span>
+      <span class="tag">Next.js</span>
+      <span class="tag">Docker</span>
+      <span class="tag">Nginx</span>
+      <span class="tag">Linux</span>
+      <span class="tag">Distributed Training</span>
+      <span class="tag">Privacy</span>
+    </div>
+
+  </div>
+</div>
+    <section class="related-labs"><h2>Related Work</h2>
+      <ul>
+        <li><a href="tyf-ai-platform.html">TYF-AI</a>, the hardened local inference stack this model work feeds into.</li>
+        <li><a href="chakor.html">Chakor</a>, the self-hosted AI workspace that consumes local models.</li>
+        <li><a href="search-engine.html">Public Search Engine</a>, self-hosted search to complement local AI.</li>
+      </ul>
+    </section>
+
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Regular Expressions &amp; grep | ERE &amp; Pattern Matching</title>
+  <meta name="description" content="Build regex fluency for Linux: ERE anchors, character classes, quantifiers, and groups with grep. The precision text-matching tool for log triage and search.">
+  <meta name="keywords" content="linux regex tutorial, grep -E examples, ERE syntax, log triage regex, pattern matching">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-fundamentals/regex-grep.html">
+  <meta property="og:title" content="Regular Expressions &amp; grep | ERE &amp; Pattern Matching">
+  <meta property="og:description" content="Build regex fluency for Linux: ERE anchors, character classes, quantifiers, and groups with grep. The precision text-matching tool for log triage and search.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-fundamentals/regex-grep.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Regular Expressions &amp; grep | ERE &amp; Pattern Matching">
+  <meta name="twitter:description" content="Build regex fluency for Linux: ERE anchors, character classes, quantifiers, and groups with grep. The precision text-matching tool for log triage and search.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Regular Expressions with grep", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-02-05", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "GNU grep, ERE", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux fundamentals and command-line skills"}</script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Regular Expressions and Precise grep Pattern Matching",
+    "description": "Build regex fluency for Linux: ERE anchors, character classes, quantifiers, and groups with grep. The precision text-matching tool for log triage and search.",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "dateModified": "2026-09-29",
+    "step": [
+      {"@type": "HowToStep", "name": "Match IPv4 addresses", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/regex-grep.html#steps"},
+      {"@type": "HowToStep", "name": "Anchor to whole-line status codes", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/regex-grep.html#steps"},
+      {"@type": "HowToStep", "name": "Case-insensitive context search", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/regex-grep.html#steps"}
+    ]
+  }</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Linux Fundamentals", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/index.html"}, {"@type": "ListItem", "position": 4, "name": "Regular Expressions & grep", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/regex-grep.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Pattern with + or ? matches literally'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: BRE is active; those are literal characters without backslashes. Fix: Use grep -E for extended syntax."}}, {"@type": "Question", "name": "How do I fix 'grep -P warns it is experimental or missing'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: PCRE support is a GNU extension, absent on BSD/macOS grep. Fix: Rewrite with -E, or install pcre2grep for portability."}}, {"@type": "Question", "name": "How do I fix 'Match includes trailing characters you did not want'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: A greedy quantifier consumed more than intended. Fix: Anchor the end ($ or a delimiter) or use a negated class like [^ ]*."}}, {"@type": "Question", "name": "How do I fix '. matched any character instead of a dot'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Dot is a metacharacter meaning any character. Fix: Escape it as \\. when you mean a literal period."}}, {"@type": "Question", "name": "How do I fix '-o output has duplicates inflating counts'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Overlapping or repeated matches on one line each print. Fix: Pipe through sort -u when you need distinct values."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>Regular Expressions &amp; grep</span></nav>
+    <div class="page-header"><h1>Regular Expressions and Precise grep Pattern Matching</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">grep -E</span><span class="tag">anchors</span><span class="tag">character classes</span><span class="tag">PCRE</span></div>
+    </div>
+
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#learning-objectives">Learning Objectives</a></li>
+<li><a href="#objective">Objective &amp; Context</a></li>
+<li><a href="#environment">Environment &amp; Prerequisites</a></li>
+<li><a href="#steps">Step-by-Step Execution</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#validation">Validation &amp; Testing</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#key-takeaways">Key Takeaways</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    <section><p class="lead">I built precise extended regular expressions with grep to extract IPs, error codes, and tokens from logs and source. Anchoring patterns and using character classes turned broad, false-positive-heavy searches into exact matches.</p></section>
+
+    <section id="objective"><h2>Objective &amp; Context</h2>
+      <p>Regex is the universal text-matching language across grep, sed, and code. This lab develops ERE fluency, anchors, classes, quantifiers, and groups, the precision tool behind log triage and the Python string lab.</p></section>
+
+    <div class="lab-objectives" id="learning-objectives"><h3>Learning Objectives</h3>
+    <ul>
+      <li>Write ERE patterns with anchors, classes, quantifiers, and groups.</li>
+      <li>Extract matches with grep -o and count them accurately.</li>
+      <li>Anchor patterns to line starts, ends, and word boundaries.</li>
+      <li>Search case-insensitively with context lines using -i and -C.</li>
+      <li>Choose between basic, extended, and Perl regex modes deliberately.</li>
+    </ul></div>
+
+    <section id="environment"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+    <ul>
+      <li>Linux with GNU grep (supports -E and -P; verify with <code>grep --version</code>).</li>
+      <li>Sample logs containing IP addresses and HTTP status codes.</li>
+      <li>A regex reference for ERE syntax (kept open while you practice).</li>
+      <li>Familiarity with the file filters lab helps.</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="Pattern matching pipeline">
+flowchart LR
+  In[Text] --> A[anchor ^ $]
+  A --> C[class + quantifier]
+  C --> G[capture group]
+  G --> M[matched lines]
+      </div>
+    </section>
+
+    <section id="steps"><h2>Step-by-Step Execution</h2>
+      <h3>1. Match IPv4 addresses</h3>
+      <div class="command-block"><div class="command"><code>grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' access.log | sort -u</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>198.51.100.7
+203.0.113.45</code></pre>
+      <p class="lab-step-note">What this teaches: The -o flag prints only the matched portion; -E enables extended syntax so {1,3} and groups work without backslashes; sort -u deduplicates the extracted addresses.</p>
+    <h3>2. Anchor to whole-line status codes</h3>
+      <div class="command-block"><div class="command"><code>grep -E ' (4[0-9]{2}|5[0-9]{2}) ' access.log</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>203.0.113.45 - - [17/Jun/2026:09:40:11] "GET /old-page HTTP/1.1" 404 512
+198.51.100.7 - - [17/Jun/2026:09:41:02] "POST /api/login HTTP/1.1" 503 128</code></pre>
+      <p class="lab-step-note">What this teaches: Spaces around the group anchor the match to the status field so a 404 inside a URL or timestamp cannot false-positive; alternation (4xx|5xx) covers both error classes in one pattern.</p>
+    <h3>3. Case-insensitive context search</h3>
+      <div class="command-block"><div class="command"><code>grep -iC2 'failed password' /var/log/auth.log</code></div></div>
+<p class="lab-output-label">Expected output:</p><pre><code>Jun 17 09:44:10 srv01 sshd[2101]: Failed password for invalid user admin
+Jun 17 09:44:10 srv01 sshd[2101]: from 203.0.113.45 port 51234
+Jun 17 09:44:11 srv01 sshd[2101]: Failed password for invalid user admin
+--
+Jun 17 09:44:12 srv01 sshd[2101]: from 198.51.100.9 port 60112</code></pre>
+      <p class="lab-step-note">What this teaches: -i ignores case so FAILED and failed both match; -C2 prints two lines of context around each hit, revealing the source IP that a bare match would hide.</p>
+    </section>
+
+    <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>
+      <p>Regular expressions describe a set of strings, and the engine tests input against that description left to right. Anchors (^, $) pin the match to positions, character classes ([0-9]) define allowed symbols at one position, and quantifiers ({1,3}, *, +) control repetition. Groups with parentheses both group alternations and capture submatches for backreferences.</p>
+      <p>grep offers three dialects: basic (BRE, the default, where + and ? need backslashes), extended (ERE with -E, the modern readable default), and Perl-compatible (PCRE with -P, adding lookarounds and \d shorthands). Choosing -E deliberately avoids the backslash soup of BRE while staying portable, since -P is a GNU extension other greps may lack.</p>
+      <p>Precision matters because logs are adversarial: IPs appear inside longer digit runs, status codes hide in URLs, and case varies. Anchoring to field boundaries, extracting with -o, and validating against known-bad lines turns regex from guesswork into a reliable filter you can pipe into the frequency idioms from the filters lab.</p>
+    </div>
+    <div class="mermaid" role="img" aria-label="Regex match anatomy">
+flowchart LR
+  A["^ anchor"] --> B["[0-9] class"]
+  B --> C["{1,3} quantifier"]
+  C --> D["\. literal dot"]
+  D --> E["(...) group"]
+  E --> F["$ anchor"]
+  style C fill:#1a3a5a,stroke:#4da3ff,color:#fff
+      </div>
+    </section>
+
+    <section id="validation"><h2>Validation &amp; Testing</h2>
+      <p>Run the IP and status-code patterns against a known log and confirm matches against a manual count, checking for false positives. Pass criteria: patterns match exactly the intended tokens with anchors preventing partial or stray matches.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+    <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>Pattern with + or ? matches literally</td><td>BRE is active; those are literal characters without backslashes</td><td>Use grep -E for extended syntax</td></tr>
+      <tr><td>grep -P warns it is experimental or missing</td><td>PCRE support is a GNU extension, absent on BSD/macOS grep</td><td>Rewrite with -E, or install pcre2grep for portability</td></tr>
+      <tr><td>Match includes trailing characters you did not want</td><td>A greedy quantifier consumed more than intended</td><td>Anchor the end ($ or a delimiter) or use a negated class like [^ ]*</td></tr>
+      <tr><td>. matched any character instead of a dot</td><td>Dot is a metacharacter meaning any character</td><td>Escape it as \. when you mean a literal period</td></tr>
+      <tr><td>-o output has duplicates inflating counts</td><td>Overlapping or repeated matches on one line each print</td><td>Pipe through sort -u when you need distinct values</td></tr>
+      <tr><td>Case variations slip through</td><td>Pattern assumed one casing</td><td>Add -i, or write explicit classes like [Ff]ailed</td></tr>
+    </tbody></table>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Too many matches:</strong> anchor with <code>^</code>/<code>$</code> or word boundaries to tighten scope.</li>
+        <li><strong>BRE vs ERE:</strong> use <code>-E</code> for <code>+</code>/<code>?</code>/<code>|</code> without backslashes.</li>
+        <li><strong>Greedy capture:</strong> grep is line-oriented; for multiline or lazy matching use <code>-P</code> (PCRE).</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Extracted unique IPs from logs with one anchored pattern.</li>
+        <li>Isolated 4xx/5xx errors precisely with alternation.</li>
+        <li>Reduced false positives by anchoring and using classes.</li>
+        <li>Built reusable patterns shared with the sed/awk lab.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways" id="key-takeaways"><h3>Key Takeaways</h3>
+    <ul>
+      <li>Use grep -E for readable extended regex; reserve -P for lookarounds.</li>
+      <li>Anchor patterns to field boundaries to kill false positives.</li>
+      <li>-o extracts matches; -c counts lines, not occurrences.</li>
+      <li>Escape literal dots and pin quantifier ranges to avoid greedy surprises.</li>
+      <li>Context flags (-A/-B/-C) turn isolated hits into actionable evidence.</li>
+    </ul></div>
+
+    <section id="practice-challenges"><h2>Practice Challenges</h2>
+    <div class="lab-challenge"><h4>Challenge 1: Extract clean IPv4s</h4><p>Goal: pull only valid dotted-quad IPs from a noisy log without matching version strings like 1.2.3.4.5 or timestamps.</p><p><strong>Hint:</strong> anchor each octet group with word boundaries or surrounding delimiters.</p></div>
+    <div class="lab-challenge"><h4>Challenge 2: Brute-force hunter</h4><p>Goal: find source IPs with more than 10 failed SSH passwords in auth.log using grep plus the uniq -c frequency chain.</p><p><strong>Hint:</strong> extract the IP field from failed password lines first.</p></div>
+    </section>
+
+    <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="sed-awk.html">sed &amp; awk</a></li>
+        <li><a href="file-filters.html">File Filters &amp; Text Processing</a></li>
+        <li><a href="../python/string-manipulation.html">Python String Manipulation</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

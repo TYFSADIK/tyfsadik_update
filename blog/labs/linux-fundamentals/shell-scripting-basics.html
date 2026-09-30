@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shell Scripting Basics | Bash, Variables &amp; Conditionals</title>
+  <meta name="description" content="Write safe, fail-fast Bash scripts: strict mode, quoting, variables, conditionals, and shellcheck linting. The foundation for all Linux automation labs.">
+  <meta name="keywords" content="bash scripting tutorial, shell script basics, set -euo pipefail, shellcheck, linux automation">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-fundamentals/shell-scripting-basics.html">
+  <meta property="og:title" content="Shell Scripting Basics | Bash, Variables &amp; Conditionals">
+  <meta property="og:description" content="Write safe, fail-fast Bash scripts: strict mode, quoting, variables, conditionals, and shellcheck linting. The foundation for all Linux automation labs.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-fundamentals/shell-scripting-basics.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Shell Scripting Basics | Bash, Variables &amp; Conditionals">
+  <meta name="twitter:description" content="Write safe, fail-fast Bash scripts: strict mode, quoting, variables, conditionals, and shellcheck linting. The foundation for all Linux automation labs.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Shell Scripting Basics with Safe Bash", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-02-09", "dateModified": "2026-09-29", "proficiencyLevel": "Beginner", "dependencies": "Bash, shellcheck", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux fundamentals and command-line skills"}</script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Shell Scripting Basics with Safe, Fail-Fast Bash",
+    "description": "Write safe, fail-fast Bash scripts: strict mode, quoting, variables, conditionals, and shellcheck linting. The foundation for all Linux automation labs.",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "dateModified": "2026-09-29",
+    "step": [
+      {"@type": "HowToStep", "name": "Strict-mode script skeleton", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/shell-scripting-basics.html#steps"},
+      {"@type": "HowToStep", "name": "Lint before running", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/shell-scripting-basics.html#steps"},
+      {"@type": "HowToStep", "name": "Run and check exit status", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/shell-scripting-basics.html#steps"}
+    ]
+  }</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Linux Fundamentals", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/index.html"}, {"@type": "ListItem", "position": 4, "name": "Shell Scripting Basics", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/shell-scripting-basics.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Script fails on an unset variable'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: set -u treats it as an error, which is the point. Fix: Use ${VAR:-default} for optional values or export the variable first."}}, {"@type": "Question", "name": "How do I fix 'set -e did not stop on a failing command'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The command was in a conditional or after && / ||. Fix: Check the status explicitly with if ! cmd, or restructure the logic."}}, {"@type": "Question", "name": "How do I fix 'Pipeline hid a failure'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Without pipefail only the last stage's status counts. Fix: Keep set -o pipefail in every script header."}}, {"@type": "Question", "name": "How do I fix 'shellcheck SC2086: quote this'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: An unquoted expansion that will word-split. Fix: Wrap in double quotes: \"$var\"."}}, {"@type": "Question", "name": "How do I fix './script.sh: permission denied'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The file lacks the execute bit. Fix: Run chmod +x script.sh, or invoke with bash script.sh."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>Shell Scripting Basics</span></nav>
+    <div class="page-header"><h1>Shell Scripting Basics with Safe, Fail-Fast Bash</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Linux</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">bash</span><span class="tag">set -euo pipefail</span><span class="tag">conditionals</span><span class="tag">shellcheck</span></div>
+    </div>
+
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#learning-objectives">Learning Objectives</a></li>
+<li><a href="#objective">Objective &amp; Context</a></li>
+<li><a href="#environment">Environment &amp; Prerequisites</a></li>
+<li><a href="#steps">Step-by-Step Execution</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#validation">Validation &amp; Testing</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#key-takeaways">Key Takeaways</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    <section><p class="lead">I wrote reliable Bash scripts using a strict mode (<code>set -euo pipefail</code>), quoted variables, and conditionals, then linted with shellcheck. Fail-fast settings made scripts abort on the first error instead of silently continuing in a broken state.</p></section>
+
+    <section id="objective"><h2>Objective &amp; Context</h2>
+      <p>Most shell bugs come from unquoted variables and ignored errors. This lab establishes a safe scripting baseline and static analysis, the foundation the advanced scripting and sysadmin labs build on.</p></section>
+
+    <div class="lab-objectives" id="learning-objectives"><h3>Learning Objectives</h3>
+    <ul>
+      <li>Write a strict-mode Bash skeleton with set -euo pipefail and a safe IFS.</li>
+      <li>Quote variables correctly to survive spaces and empty values.</li>
+      <li>Use positional parameters with default and required-value patterns.</li>
+      <li>Write conditionals and loops that handle errors explicitly.</li>
+      <li>Lint scripts with shellcheck and interpret exit statuses.</li>
+    </ul></div>
+
+    <section id="environment"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+    <ul>
+      <li>Bash 5.x (check with <code>bash --version</code>) and shellcheck: <code>sudo apt install -y shellcheck</code> or <code>sudo dnf install -y ShellCheck</code>.</li>
+      <li>A small task to automate, such as archiving a directory.</li>
+      <li>A scratch directory for test scripts: <code>mkdir -p ~/lab/scripts</code>.</li>
+      <li>Comfort with basic commands and redirection from earlier labs.</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="Script lint and run flow">
+flowchart LR
+  W[Write script] --> SC[shellcheck]
+  SC -->|clean| R[run with strict mode]
+  SC -->|warnings| W
+  R --> E{error?}
+  E -->|yes| Abort[abort + nonzero exit]
+      </div>
+    </section>
+
+    <section id="steps"><h2>Step-by-Step Execution</h2>
+      <h3>1. Strict-mode script skeleton</h3>
+<pre><code class="language-bash">#!/usr/bin/env bash
+set -euo pipefail
+IFS=$'\n\t'
+target="${1:?usage: backup.sh DIR}"
+tar -czf "backup-$(date +%F).tgz" "$target"</code></pre>
+      <p class="lab-output-label">Expected output (the script itself is the artifact):</p><pre><code>(script saved as backup.sh and made executable)
+$ ls -l backup.sh
+-rwxr-xr-x 1 taki taki 168 Jun 17 09:50 backup.sh</code></pre>
+      <p class="lab-step-note">What this teaches: set -euo pipefail makes the script exit on any error, undefined variable, or failed pipe stage; ${1:?...} turns a missing argument into a usage error instead of silent misbehavior.</p>
+    <h3>2. Lint before running</h3>
+      <div class="command-block"><div class="command"><code>shellcheck backup.sh</code></div></div>
+      <p class="lab-step-note">What this teaches: shellcheck performs static analysis without running the code, catching quoting bugs, unreachable code, and Bashisms before they become 2 AM incidents.</p>
+    <h3>3. Run and check exit status</h3>
+      <div class="command-block"><div class="command"><code>chmod +x backup.sh &amp;&amp; ./backup.sh ~/lab/data; echo "exit=$?"</code></div></div>
+<p class="lab-output-label">Expected output:</p><pre><code>exit=0</code></pre>
+      <p class="lab-step-note">What this teaches: echo $? (here exit=$?) inspects the exit status immediately; 0 means success. Use a directory you own for the first run: archiving /etc as a non-root user fills the output with permission-denied warnings and a nonzero exit. Checking statuses explicitly is what separates scripts from hopeful typing.</p>
+    <h3>4. Guard with a conditional and loop over arguments</h3>
+<pre><code class="language-bash">#!/usr/bin/env bash
+set -euo pipefail
+for target in "$@"; do
+  if [[ -d "$target" ]]; then
+    tar -czf "backup-$(basename "$target")-$(date +%F).tgz" "$target"
+  else
+    echo "skip: $target is not a directory" &gt;&amp;2
+  fi
+done</code></pre>
+      <p class="lab-output-label">Expected output:</p><pre><code>$ ./backup-multi.sh ~/lab/data /nope
+skip: /nope is not a directory</code></pre>
+      <p class="lab-step-note">What this teaches: [[ -d ... ]] tests explicitly instead of letting tar fail obscurely, and "$@" loops over every argument safely quoted. Sending the skip message to stderr (&gt;&amp;2) keeps diagnostics out of any piped stdout. This conditional-plus-loop pattern is the backbone of most batch admin scripts.</p>
+    </section>
+
+    <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>
+      <p>Most shell bugs come from two defaults: unquoted variables that word-split on spaces, and ignored failures that let a script continue after a command broke. Strict mode attacks both at the source. set -e aborts on the first failing command, -u turns unset variables into errors, and -o pipefail propagates failures through pipelines that would otherwise mask them with the last command's status.</p>
+      <p>Quoting is the other half of safety. "$var" preserves the variable as exactly one word even when it contains spaces; $var without quotes splits and globs. The rule is simple: quote every expansion unless you specifically want splitting, and shellcheck will remind you whenever you forget.</p>
+      <p>shellcheck exists because Bash fails silently in creative ways. Running it before every execution builds a lint-first habit: the analyzer knows hundreds of pitfalls (from useless cat to unquoted $1) and explains each with a wiki link. Combined with testing exit codes, it turns scripting from folklore into engineering.</p>
+    </div>
+    <div class="mermaid" role="img" aria-label="Strict mode failure handling">
+flowchart TD
+  S["Script starts: set -euo pipefail"] --> C1["Command runs"]
+  C1 -->|"exit 0"| C2["Next command"]
+  C1 -->|"exit nonzero"| X["Abort immediately"]
+  C1 -->|"unset variable"| U["Error: unbound variable"]
+  U --> X
+  style X fill:#4a1a1a,stroke:#ff5555,color:#fff
+      </div>
+    </section>
+
+    <section id="validation"><h2>Validation &amp; Testing</h2>
+      <p>Call the script with a missing argument and an invalid path and confirm it aborts with a clear non-zero exit. Pass criteria: shellcheck reports clean, undefined variables fail under <code>-u</code>, and errors abort under <code>-e</code>.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+    <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>Script fails on an unset variable</td><td>set -u treats it as an error, which is the point</td><td>Use ${VAR:-default} for optional values or export the variable first</td></tr>
+      <tr><td>set -e did not stop on a failing command</td><td>The command was in a conditional or after &amp;&amp; / ||</td><td>Check the status explicitly with if ! cmd, or restructure the logic</td></tr>
+      <tr><td>Pipeline hid a failure</td><td>Without pipefail only the last stage's status counts</td><td>Keep set -o pipefail in every script header</td></tr>
+      <tr><td>shellcheck SC2086: quote this</td><td>An unquoted expansion that will word-split</td><td>Wrap in double quotes: "$var"</td></tr>
+      <tr><td>./script.sh: permission denied</td><td>The file lacks the execute bit</td><td>Run chmod +x script.sh, or invoke with bash script.sh</td></tr>
+      <tr><td>Bad interpreter error</td><td>The shebang points to a missing path or has CRLF line endings</td><td>Use #!/usr/bin/env bash and convert line endings with dos2unix</td></tr>
+    </tbody></table>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Word splitting:</strong> always quote <code>"$var"</code>; set IFS deliberately.</li>
+        <li><strong>Silent failures:</strong> <code>set -e</code> plus <code>pipefail</code> surfaces errors in pipelines.</li>
+        <li><strong>Unset variable crashes:</strong> provide defaults with <code>${var:-default}</code>.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Adopted fail-fast strict mode as the script default.</li>
+        <li>Caught common bugs pre-run with shellcheck.</li>
+        <li>Eliminated word-splitting issues through consistent quoting.</li>
+        <li>Returned meaningful exit codes for pipeline integration.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways" id="key-takeaways"><h3>Key Takeaways</h3>
+    <ul>
+      <li>Start every script with set -euo pipefail; it converts silent failures into loud ones.</li>
+      <li>Quote every variable expansion unless you explicitly want word splitting.</li>
+      <li>Use ${1:?...} to demand required arguments with a usage message.</li>
+      <li>Lint with shellcheck before running, not after debugging.</li>
+      <li>Exit statuses are data: check $? or branch on commands directly.</li>
+    </ul></div>
+
+    <section id="practice-challenges"><h2>Practice Challenges</h2>
+    <div class="lab-challenge"><h4>Challenge 1: Fail-fast archiver</h4><p>Goal: extend backup.sh to refuse archiving when the target directory does not exist, exiting with status 2 and a clear message.</p><p><strong>Hint:</strong> test with [[ -d $target ]] before tar runs.</p></div>
+    <div class="lab-challenge"><h4>Challenge 2: Lint clean</h4><p>Goal: write a 15-line script that passes shellcheck with zero warnings on the first run.</p><p><strong>Hint:</strong> quote everything, prefer [[ ]] over [ ], and avoid backticks.</p></div>
+    </section>
+
+    <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="advanced-shell-scripting.html">Advanced Shell Scripting</a></li>
+        <li><a href="sed-awk.html">sed &amp; awk</a></li>
+        <li><a href="cron-jobs.html">Cron Jobs &amp; Scheduling</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Python Date Calculator: datetime &amp; Timezones | TYFSADIK</title>
+  <meta name="keywords" content="python datetime, timezone, zoneinfo, timedelta, DST, date arithmetic">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Python Date Calculator: datetime &amp; Timezones | TYFSADIK">
+  <meta property="og:description" content="Perform timezone-aware date arithmetic with datetime, timedelta, and zoneinfo, handling DST transitions correctly in a date calculator without subtle bugs.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/python/date-calculator.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Python Date Calculator: datetime &amp; Timezones | TYFSADIK">
+  <meta name="twitter:description" content="Perform timezone-aware date arithmetic with datetime, timedelta, and zoneinfo, handling DST transitions correctly in a date calculator without subtle bugs.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="description" content="Perform timezone-aware date arithmetic with datetime, timedelta, and zoneinfo, handling DST transitions correctly in a date calculator without subtle bugs.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/python/date-calculator.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Building a Date Calculator in Python", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-04-08", "dateModified": "2026-09-29", "proficiencyLevel": "Beginner", "dependencies": "Python 3.11, datetime, zoneinfo", "articleSection": "Python", "learningResourceType": "Hands-on lab", "teaches": "Python programming"}</script>
+  <script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "Compute a future date in a timezone",
+      "text": "Compute a future date in a timezone"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Difference between two dates",
+      "text": "Difference between two dates"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Format the output",
+      "text": "Format the output"
+    }
+  ],
+  "url": "https://tyfsadik.org/about.html"
+}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Python", "item": "https://tyfsadik.org/blog/labs/python/index.html"}, {"@type": "ListItem", "position": 4, "name": "Date Calculator Script", "item": "https://tyfsadik.org/blog/labs/python/date-calculator.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'TypeError: can't compare offset-naive and offset-aware'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: mixing naive and aware datetimes. Fix: make both aware with .replace(tzinfo=...) or ZoneInfo at construction."}}, {"@type": "Question", "name": "How do I fix 'ZoneInfoNotFoundError'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the IANA database is missing (minimal containers, some Windows setups). Fix: pip install tzdata as a fallback."}}, {"@type": "Question", "name": "How do I fix 'result is an hour off after DST'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: arithmetic done on naive datetimes across a transition. Fix: do all math on aware datetimes; only format at the end."}}, {"@type": "Question", "name": "How do I fix 'ambiguous time during fall-back'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the same wall-clock hour occurs twice. Fix: disambiguate with the fold attribute (fold=0 first occurrence, fold=1 second)."}}, {"@type": "Question", "name": "How do I fix '%Z prints empty'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the datetime is naive or the tzinfo lacks a name. Fix: ensure ZoneInfo is attached before formatting."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/python/index.html">Python</a> &rsaquo; <span>Date Calculator Script</span></nav>
+    <div class="page-header"><h1>Date Calculator in Python with datetime, timedelta, and zoneinfo</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Python</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">datetime</span><span class="tag">timedelta</span><span class="tag">zoneinfo</span><span class="tag">strftime</span></div>
+    </div>
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+      <li><a href="#objective-context">Objective &amp; Context</a></li>
+      <li><a href="#environment-prerequisites">Environment &amp; Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation &amp; Testing</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#takeaways">Key Takeaways</a></li>
+      <li><a href="#challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+    </ol></nav>
+
+    <section><p class="lead">I built a date calculator that performs timezone-aware arithmetic with datetime, timedelta, and the zoneinfo database, correctly handling daylight saving transitions. Using aware datetimes eliminated the off-by-an-hour bugs that plague naive timestamp math.</p></section>
+
+    <section><h2 id="objective-context">Objective &amp; Context</h2>
+      <p>Date math is deceptively error-prone: naive datetimes ignore timezones and DST. This lab computes durations and future dates with aware datetimes and zoneinfo, the correctness pattern behind scheduling and log-timestamp normalization.</p></section>
+    <div class="lab-objectives"><h3>Learning Objectives</h3><ul>
+      <li>Create timezone-aware datetimes with zoneinfo.</li>
+      <li>Add and subtract durations with timedelta.</li>
+      <li>Compute differences between dates correctly.</li>
+      <li>Format output with strftime.</li>
+      <li>Avoid naive/aware mixing bugs and DST off-by-one-hour errors.</li>
+    </ul></div>
+
+    <section><h2 id="environment-prerequisites">Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3><ul>
+      <li><code>Python 3.11</code> with <code>datetime</code> and <code>zoneinfo</code> (standard library)</li>
+      <li>The system tz database available (Linux ships it; Windows may need <code>tzdata</code>)</li>
+      <li>Test cases spanning a DST boundary</li>
+      <li>Assumed skill: basic Python syntax</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="Timezone-aware date arithmetic">
+flowchart LR
+  N[now in zone] --> A[aware datetime]
+  A --> D[+ timedelta]
+  D --> C{DST boundary?}
+  C -->|handled by zoneinfo| R[correct result]
+      </div>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <h3>1. Compute a future date in a timezone</h3>
+<pre><code class="language-python">from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+now = datetime.now(ZoneInfo("America/Toronto"))
+due = now + timedelta(days=30)
+print("now:", now.strftime("%Y-%m-%d %H:%M %Z"))
+print("due:", due.strftime("%Y-%m-%d %H:%M %Z"))</code></pre>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>now: 2026-06-17 09:14 EDT
+due: 2026-07-17 09:14 EDT</code></pre>
+      <p class="lab-step-note">What this teaches: Attaching ZoneInfo at construction makes the datetime aware from birth; arithmetic then respects DST transitions instead of blindly adding 24-hour days. (Your "now" line shows the current time; the "due" line is exactly 30 days later.)</p>
+      <h3>2. Difference between two dates</h3>
+      <div class="command-block"><div class="command"><code>python -c "from datetime import date; print((date(2026,12,31)-date(2026,6,17)).days)"</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>197</code></pre>
+      <p class="lab-step-note">What this teaches: Subtracting two dates yields a timedelta whose .days attribute is the calendar difference; no manual month-length math is needed.</p></div>
+      <h3>3. Format the output</h3>
+      <div class="command-block"><div class="command"><code>python -c "from datetime import datetime; from zoneinfo import ZoneInfo; d=datetime(2026,6,17,9,14,tzinfo=ZoneInfo('America/Toronto')); print(d.strftime('%Y-%m-%d %H:%M %Z'))"</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>2026-06-17 09:14 EDT</code></pre>
+      <p class="lab-step-note">What this teaches: strftime renders the aware datetime with its zone abbreviation, so the output is unambiguous about which wall-clock time is meant. A fixed datetime is used here (not <code>now()</code>) so the expected output is deterministic; <code>%Z</code> prints empty on a naive datetime, which is exactly the bug this guards against.</p></div>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+      <div class="lab-explainer"><h3>How It Works</h3>
+      <p>Naive datetimes have no timezone information and aware datetimes do; Python refuses to mix them in arithmetic because the result would be meaningless. Making every datetime aware at creation time eliminates an entire class of comparison bugs.</p>
+      <p>zoneinfo reads the IANA timezone database, which encodes the full history of DST rules per region. When you add a timedelta across a spring-forward transition, the library adjusts the wall-clock result so 'same time tomorrow' stays correct.</p>
+      <p>The classic bug this lab prevents is the off-by-an-hour error: computing a deadline with naive datetimes across a DST boundary silently shifts the real instant. Aware datetimes plus timedelta keep the instant stable while the wall clock follows local rules.</p>
+    </div>
+      <div class="mermaid" role="img" aria-label="Timezone-aware date arithmetic">
+flowchart LR
+  N["datetime.now<br/>(ZoneInfo)"] --> A["aware datetime"]
+  A --> T["+ timedelta(days=30)"]
+  T --> D["DST-adjusted<br/>future date"]
+  D --> F["strftime output"]
+      </div>
+    </section>
+
+    <section><h2 id="validation-testing">Validation &amp; Testing</h2>
+      <p>Add an interval that crosses the spring-forward DST change and confirm the wall-clock result is correct. Pass criteria: aware datetimes used throughout, DST handled by zoneinfo, and day-count differences match a manual calendar check.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Off-by-one-hour:</strong> never mix naive and aware datetimes; localize first.</li>
+        <li><strong>zoneinfo missing:</strong> install <code>tzdata</code> where the OS lacks the tz database.</li>
+        <li><strong>Wrong DST:</strong> use IANA names (America/Toronto), not fixed UTC offsets.</li>
+      </ul>
+    </details>
+
+    <section><h2 id="troubleshooting">Troubleshooting</h2>
+      <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+        <tr><td>TypeError: can't compare offset-naive and offset-aware</td><td>mixing naive and aware datetimes</td><td>make both aware with .replace(tzinfo=...) or ZoneInfo at construction</td></tr>
+        <tr><td>ZoneInfoNotFoundError</td><td>the IANA database is missing (minimal containers, some Windows setups)</td><td>pip install tzdata as a fallback</td></tr>
+        <tr><td>result is an hour off after DST</td><td>arithmetic done on naive datetimes across a transition</td><td>do all math on aware datetimes; only format at the end</td></tr>
+        <tr><td>ambiguous time during fall-back</td><td>the same wall-clock hour occurs twice</td><td>disambiguate with the fold attribute (fold=0 first occurrence, fold=1 second)</td></tr>
+        <tr><td>%Z prints empty</td><td>the datetime is naive or the tzinfo lacks a name</td><td>ensure ZoneInfo is attached before formatting</td></tr>
+      </tbody></table>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Eliminated off-by-an-hour bugs with timezone-aware datetimes.</li>
+        <li>Handled DST transitions correctly via zoneinfo.</li>
+        <li>Computed accurate day-count differences across months.</li>
+        <li>Standardized IANA timezone names over fixed offsets.</li>
+      </ul>
+    </section>
+
+    <section class="lab-takeaways"><h2 id="takeaways">Key Takeaways</h2><ul>
+        <li>Always work with timezone-aware datetimes; naive datetimes are a bug source.</li>
+        <li>zoneinfo plus the IANA database handles DST history correctly.</li>
+        <li>timedelta arithmetic on aware datetimes survives DST transitions.</li>
+        <li>Python refuses naive/aware mixing: treat that TypeError as a helpful guardrail.</li>
+        <li>Format with strftime only at the boundary, after all math is done.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="challenges">Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: DST boundary proof</h4><p><strong>Goal:</strong> Pick the 2026 spring-forward date for America/Toronto and show that now + timedelta(days=1) keeps the same wall-clock time.</p><p><strong>Hint:</strong> Construct both datetimes explicitly with ZoneInfo and compare .hour before and after.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: Countdown formatter</h4><p><strong>Goal:</strong> Write a function that takes two aware datetimes and returns 'X days, Y hours, Z minutes' until the later one.</p><p><strong>Hint:</strong> Subtract to get a timedelta, then use .days and .seconds to split the parts.</p></div>
+    </section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="cli-tools-argparse.html">CLI Tools with argparse</a></li>
+        <li><a href="string-manipulation.html">String Manipulation</a></li>
+        <li><a href="control-flow.html">Control Flow</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

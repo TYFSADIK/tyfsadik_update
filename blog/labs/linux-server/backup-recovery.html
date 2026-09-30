@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linux Backup &amp; Recovery: rsync, tar, restic | TYFSADIK</title>
+  <meta name="description" content="Back up Linux servers with restic: initialize encrypted repositories, take deduplicated snapshots, enforce retention with prune, and rehearse restores.">
+  <meta name="keywords" content="linux backup restic tutorial, encrypted backups, restic retention prune, restore drill linux, Linux system administration, server hardening guide">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-server/backup-recovery.html">
+  <meta property="og:title" content="Linux Backup &amp; Recovery: rsync, tar, restic | TYFSADIK">
+  <meta property="og:description" content="Back up Linux servers with restic: initialize encrypted repositories, take deduplicated snapshots, enforce retention with prune, and rehearse restores.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-server/backup-recovery.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Linux Backup &amp; Recovery: rsync, tar, restic | TYFSADIK">
+  <meta name="twitter:description" content="Back up Linux servers with restic: initialize encrypted repositories, take deduplicated snapshots, enforce retention with prune, and rehearse restores.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Linux Backup and Recovery with restic", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-24", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "rsync, tar, restic", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux server administration"}</script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Linux Backup and Recovery with restic and a Restore Drill",
+    "description": "Back up Linux servers with restic: initialize encrypted repositories, take deduplicated snapshots, enforce retention with prune, and rehearse restores.",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "dateModified": "2026-09-29",
+    "step": [
+      {"@type": "HowToStep", "name": "Initialize an encrypted repository", "url": "https://tyfsadik.org/blog/labs/linux-server/backup-recovery.html#steps"},
+      {"@type": "HowToStep", "name": "Take a snapshot", "url": "https://tyfsadik.org/blog/labs/linux-server/backup-recovery.html#steps"},
+      {"@type": "HowToStep", "name": "Apply a retention policy", "url": "https://tyfsadik.org/blog/labs/linux-server/backup-recovery.html#steps"},
+      {"@type": "HowToStep", "name": "Run a restore drill", "url": "https://tyfsadik.org/blog/labs/linux-server/backup-recovery.html#steps"},
+      {"@type": "HowToStep", "name": "Copy snapshots to a second, offsite repository", "url": "https://tyfsadik.org/blog/labs/linux-server/backup-recovery.html#steps"}
+    ]
+  }</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Linux Server", "item": "https://tyfsadik.org/blog/labs/linux-server/index.html"}, {"@type": "ListItem", "position": 4, "name": "Backup & Recovery", "item": "https://tyfsadik.org/blog/labs/linux-server/backup-recovery.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'restic: wrong password'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: RESTIC_PASSWORD_FILE points at the wrong file or changed. Fix: Verify the file path and contents; there is no recovery without the password."}}, {"@type": "Question", "name": "How do I fix 'Backup extremely slow on first run'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Initial snapshot reads everything. Fix: Expected once; later runs are incremental. Exclude caches and tmp."}}, {"@type": "Question", "name": "How do I fix 'Prune runs out of memory'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Large repos need RAM for repacking. Fix: Prune more often with smaller policies, or add --max-unused."}}, {"@type": "Question", "name": "How do I fix 'Snapshot missing expected files'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Include paths wrong or permission denied during backup. Fix: Check the backup log for errors and verify paths with restic ls."}}, {"@type": "Question", "name": "How do I fix 'Repo lock contention'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Concurrent restic processes on one repo. Fix: Serialize with flock, or use restic unlock after a crashed run."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Backup &amp; Recovery</span></nav>
+    <div class="page-header"><h1>Linux Backup and Recovery with restic and a Restore Drill</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">restic</span><span class="tag">rsync</span><span class="tag">3-2-1</span><span class="tag">restore drill</span></div>
+    </div>
+
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#learning-objectives">Learning Objectives</a></li>
+<li><a href="#architecture">Architecture Overview</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#steps">Step-by-Step Execution</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#validation">Testing &amp; Validation</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#extensions">Extension Ideas</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#key-takeaways">Key Takeaways</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    <section><p class="lead">You will build an encrypted, deduplicated backup with restic and prove it works with an actual restore. By the end you will follow the <span class="glossary-term" data-definition="Keep 3 copies of data, on 2 different media, with 1 copy offsite.">3-2-1 rule</span> and have a verified recovery path, not just hope.</p></section>
+
+    <div class="learning-objectives lab-objectives" id="learning-objectives"><h2>Learning Objectives</h2>
+      <ul>
+        <li>Initialize an encrypted restic repository.</li>
+        <li>Take scheduled, deduplicated snapshots.</li>
+        <li>Restore data and verify integrity.</li>
+        <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> a server plus an offsite/secondary backup target.</li>
+      </ul>
+    </div>
+
+    <section id="architecture"><h2>Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="3-2-1 backup flow with restic">
+graph LR
+  Src[Server data] -->|restic backup| Local[(Local repo)]
+  Local -->|restic copy| Off[(Offsite repo)]
+  Off -->|restic restore| Test[Restore drill]
+      </div>
+    </section>
+
+    <section id="environment"><h2>Environment Setup</h2>
+      <p><strong>You will need:</strong> restic installed and a backup target (local disk plus an offsite location such as object storage).</p>
+      <p><strong>Before you begin:</strong> store the repository password in a secret manager, losing it means losing access to backups.</p>
+    </section>
+
+    <div class="lab-prereqs" id="prerequisites"><h3>Prerequisites</h3>
+    <ul>
+      <li>Linux with restic installed (<code>sudo apt install -y restic</code>) and a backup target disk or path.</li>
+      <li>Root or sudo access for reading /etc and /srv.</li>
+      <li>A password file for the repository encryption key, kept outside the backup.</li>
+      <li>Decide what to back up (/etc and /srv used here) and a retention goal.</li>
+    </ul></div>
+
+    <section id="steps"><h2>Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Initialize an encrypted repository</strong>
+          <p>restic encrypts and deduplicates at the repo level, so backups are private and space-efficient.</p>
+          <div class="command-block" data-copy><div class="command"><code>openssl rand -base64 32 | tr -d '\n' &gt; /root/.restic-pass &amp;&amp; chmod 600 /root/.restic-pass &amp;&amp; export RESTIC_PASSWORD_FILE=/root/.restic-pass &amp;&amp; restic -r /backup/repo init</code></div><div class="note">[ROOT REQUIRED] Creates an encrypted restic repository.
+          <p class="lab-output-label">Expected output:</p><pre><code>created restic repository 9c2a1f3e at /backup/repo
+Please note that knowledge of your password is required to access the repository.</code></pre>
+          <p class="lab-step-note">What this teaches: restic init creates the repo structure; all data is encrypted client-side with the password, so the storage backend never sees plaintext.</p></div></div>
+          <p><strong>Session note:</strong> the password file must exist before <code>init</code>, and every restic command in steps 02 to 05 reads <code>RESTIC_PASSWORD_FILE</code> from the environment. Run those commands in this same shell, or add <code>export RESTIC_PASSWORD_FILE=/root/.restic-pass</code> to <code>/root/.bashrc</code> so future shells and scheduled jobs authenticate. Mode 600 keeps the file readable by root alone; keep it outside every backup set. Alternatively, pass <code>--password-file /root/.restic-pass</code> before the subcommand on each invocation.</p>
+        </div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Take a snapshot</strong>
+          <div class="command-block" data-copy><div class="command"><code>restic -r /backup/repo backup /etc /srv --tag daily</code>
+          <p class="lab-output-label">Expected output:</p><pre><code>Files:           142 new,     0 changed,     0 unmodified
+Dirs:             18 new,     0 changed,     0 unmodified
+snapshot 3f8b2d1a saved</code></pre>
+          <p class="lab-step-note">What this teaches: Snapshots are deduplicated and tagged; repeated backups transfer only changed blocks, making daily snapshots cheap.</p></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Apply a retention policy</strong>
+          <p>Pruning keeps storage bounded while retaining enough history to recover.</p>
+          <div class="command-block" data-copy><div class="command"><code>restic -r /backup/repo forget --keep-daily 7 --keep-weekly 4 --prune</code>
+          <p class="lab-output-label">Expected output:</p><pre><code>Applying Policy: keep 7 daily, 4 weekly snapshots
+keep 11 snapshots:
+remove 2 snapshots:
+prune: removing obsolete packs</code></pre>
+          <p class="lab-step-note">What this teaches: forget applies the retention policy (--keep-daily/weekly) and --prune reclaims space; without pruning, storage grows forever.</p></div></div>
+        </div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Run a restore drill</strong>
+          <p class="lab-output-label">Expected output:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">#</span> <span class="input">restic -r /backup/repo restore latest --target /tmp/restore --include /etc/hostname</span></div>
+            <div class="terminal-output">restoring &lt;Snapshot 9c2a1f&gt; to /tmp/restore
+Summary: Restored 1 files (17 B) in 0:00</div>
+          </div>
+          <p class="lab-step-note">What this teaches: Restoring to a separate target with --include proves the backup is readable; untested backups are just hope with extra steps.</p></div></div>
+        <div class="step"><div class="step-num">05</div><div class="step-body"><strong>Copy snapshots to a second, offsite repository</strong>
+          <p>One local repository is only one copy. The 3-2-1 rule needs a second repository on different media, with one copy offsite. Initialize a second repo on the offsite target and copy every snapshot into it. In this lab a mounted disk at <code>/mnt/offsite</code> stands in for the offsite target, but a second folder on the <em>same</em> physical disk does not satisfy 3-2-1: in production the second repo lives on genuinely separate media or another site, for example <code>restic -r sftp:backup@backup-host:/srv/restic/repo init</code> followed by the same <code>copy --from-repo</code> invocation. Both repos share the same password file in this lab, which is why the copy command passes <code>--from-password-file</code> for the source repo explicitly.</p>
+          <p class="code-label">INIT THE OFFSITE REPO AND COPY SNAPSHOTS</p>
+          <div class="command-block" data-copy><div class="command"><code>mkdir -p /mnt/offsite &amp;&amp; restic -r /mnt/offsite/repo init &amp;&amp; restic -r /mnt/offsite/repo copy --from-repo /backup/repo --from-password-file /root/.restic-pass</code></div><div class="note">[ROOT REQUIRED] Initializes the second repository and copies all snapshots into it.
+          <p class="lab-output-label">Expected output:</p><pre><code>snapshot 3f8b2d1a of (1/1) saved</code></pre>
+          <p class="lab-step-note">What this teaches: restic copy moves snapshots between repositories without re-reading source data. The offsite repo is now an independent, encrypted second copy, which is what makes the 3-2-1 claim in this lab real. Repeat the copy, or schedule it, after each backup so the offsite copy stays current.</p></div></div>
+          <p>Confirm the copy landed in the second repository:</p>
+          <div class="command-block" data-copy><div class="command"><code>restic -r /mnt/offsite/repo snapshots</code>
+          <p class="lab-output-label">Expected output:</p><pre><code>ID        Time                 Host        Tags        Paths
+---------------------------------------------------------------
+3f8b2d1a  2026-09-29 10:15:02  server      daily       /etc /srv
+
+1 snapshots</code></pre>
+          <p class="lab-step-note">What this teaches: restic snapshots lists what a repository actually holds; checking the offsite repo closes the loop on the second copy.</p></div></div>
+        </div></div>
+      </div>
+    </section>
+
+    <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>
+      <p>restic uses content-defined chunking: files are split into variable-size blocks, each hashed, and only new hashes are stored. Identical blocks across files and snapshots are stored once, which is why daily snapshots of /etc cost almost nothing after the first. Encryption is applied before anything leaves the host, so untrusted storage (S3, SFTP, a USB disk) is safe.</p>
+      <p>Retention is a policy, not an accident. --keep-daily 7 --keep-weekly 4 declares how much history matters; forget selects which snapshots to drop and --prune repacks the repo to reclaim the space. Without this loop, every backup system eventually fills its disk and fails at the worst moment.</p>
+      <p>The restore drill is the actual deliverable. Backups fail in boring ways (wrong include paths, expired credentials, corrupted repos), and only a rehearsed restore to an alternate target proves recoverability. Scheduling the drill is as important as scheduling the backup.</p>
+    </div>
+    </section>
+
+    <section><h2>Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Backup workflow progress">
+graph LR
+  A[01 Init repo] -->|done| B[02 Snapshot]
+  B -->|done| C[03 Retention]
+  C -->|done| D[04 Restore drill]
+  D -->|done| E[05 Offsite copy]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style E fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section id="validation"><h2>Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>restic -r /backup/repo check &amp;&amp; diff /etc/hostname /tmp/restore/etc/hostname</code></div></div>
+      <p>The repository check should report no errors and the diff should be empty. If both pass, your backups are recoverable, not just present.</p>
+          <p><code>restic check</code> validates the repository structure and indexes, which is fast but does not re-read every data blob. For a stronger and slower verification, run <code>restic -r /backup/repo check --read-data</code> periodically: it reads all pack files and catches bit rot that a metadata-only check misses. On large repos, <code>check --read-data-subset 10%</code> verifies a different tenth of the data on each run.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+    <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>restic: wrong password</td><td>RESTIC_PASSWORD_FILE points at the wrong file or changed</td><td>Verify the file path and contents; there is no recovery without the password</td></tr>
+      <tr><td>Backup extremely slow on first run</td><td>Initial snapshot reads everything</td><td>Expected once; later runs are incremental. Exclude caches and tmp</td></tr>
+      <tr><td>Prune runs out of memory</td><td>Prune loads indexes into RAM and repacks data; very large repos can exhaust memory</td><td>Prune more often with smaller policies, cap repack batch size with --max-repack-size, or run prune on a host with more RAM. Note: --max-unused sets how much unused data is tolerated before repacking; it is not a memory limit</td></tr>
+      <tr><td>Snapshot missing expected files</td><td>Include paths wrong or permission denied during backup</td><td>Check the backup log for errors and verify paths with restic ls</td></tr>
+      <tr><td>Repo lock contention</td><td>Concurrent restic processes on one repo</td><td>Serialize with flock, or use restic unlock after a crashed run</td></tr>
+      <tr><td>Restore target permission errors</td><td>Running restore as the wrong user</td><td>Match ownership with the original, or restore as root and chown after</td></tr>
+    </tbody></table>
+    </section>
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Wrong password:</strong> restic cannot recover without the repo password; store it safely and redundantly.</li>
+        <li><strong>Repo locked:</strong> a previous run was interrupted; run <code>restic unlock</code>.</li>
+        <li><strong>Slow first backup:</strong> initial snapshots are full; later ones dedupe and are fast.</li>
+      </ul>
+    </details>
+
+    <section id="extensions"><h2>Extension Ideas</h2>
+      <ul>
+        <li>Schedule backups with a <a href="cron-scheduling.html">systemd timer</a>.</li>
+        <li>Copy to offsite object storage to complete the 3-2-1 rule.</li>
+        <li>Compare with database-aware backups in <a href="../databases/backup-recovery.html">DB Backup &amp; Recovery</a>.</li>
+      </ul>
+    </section>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Created encrypted, deduplicated backups with restic.</li>
+        <li>Proved recovery with a real restore drill, not assumptions.</li>
+        <li>Bounded storage with a 7-daily/4-weekly retention policy.</li>
+        <li>Verified repository integrity with <code>restic check</code>.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways" id="key-takeaways"><h3>Key Takeaways</h3>
+    <ul>
+      <li>Encrypt client-side; never trust the storage backend.</li>
+      <li>Deduplication makes frequent snapshots cheap.</li>
+      <li>Retention plus prune keeps storage bounded.</li>
+      <li>A restore drill is the only proof a backup works.</li>
+      <li>Exclude caches and transient data from every backup set.</li>
+    
+      <li>Restore to a scratch target first, never over the live system.</li>
+      <li>Keep one copy offsite; the 3-2-1 rule still applies.</li>
+    </ul></div>
+
+    <section id="practice-challenges"><h2>Practice Challenges</h2>
+    <div class="lab-challenge"><h4>Challenge 1: 3-2-1 drill</h4><p>Goal: back up /etc to two different backends (local disk and SFTP), then restore one file from each and diff against the original.</p><p><strong>Hint:</strong> restic -r selects the repo per command.</p></div>
+    <div class="lab-challenge"><h4>Challenge 2: Retention math</h4><p>Goal: configure keep-daily/weekly/monthly, run forget --dry-run, and explain which snapshots would be dropped and why.</p><p><strong>Hint:</strong> --dry-run plus -v shows the selection.</p></div>
+    </section>
+
+    <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="../databases/backup-recovery.html">Database Backup &amp; Recovery</a></li>
+        <li><a href="cron-scheduling.html">Cron Jobs &amp; Task Scheduling</a></li>
+        <li><a href="../../../work/infrastructure/data-sovereignty-stack.html">Data Sovereignty Stack</a></li>
+        <li><a href="disk-management.html">Disk Management &amp; Partitioning</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

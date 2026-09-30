@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mounting Filesystems: mount, fstab &amp; UUID | TYFSADIK</title>
+  <meta name="description" content="Mount storage reliably on Linux: read UUIDs with blkid, write persistent fstab entries with correct options, and validate every mount without rebooting.">
+  <meta name="keywords" content="linux mount tutorial, fstab UUID, blkid, mount -a validation, persistent mounts">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/linux-fundamentals/mounting-filesystems.html">
+  <meta property="og:title" content="Mounting Filesystems: mount, fstab &amp; UUID | TYFSADIK">
+  <meta property="og:description" content="Mount storage reliably on Linux: read UUIDs with blkid, write persistent fstab entries with correct options, and validate every mount without rebooting.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-fundamentals/mounting-filesystems.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Mounting Filesystems: mount, fstab &amp; UUID | TYFSADIK">
+  <meta name="twitter:description" content="Mount storage reliably on Linux: read UUIDs with blkid, write persistent fstab entries with correct options, and validate every mount without rebooting.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Mounting and Managing Linux Filesystems", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-14", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "util-linux (mount), fstab, systemd", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux fundamentals and command-line skills"}</script>
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "Mounting Filesystems with UUID-Based fstab Entries",
+    "description": "Mount storage reliably on Linux: read UUIDs with blkid, write persistent fstab entries with correct options, and validate every mount without rebooting.",
+    "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
+    "dateModified": "2026-09-29",
+    "step": [
+      {"@type": "HowToStep", "name": "Read the device UUID", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/mounting-filesystems.html#steps"},
+      {"@type": "HowToStep", "name": "Add a UUID fstab entry [ROOT REQUIRED]", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/mounting-filesystems.html#steps"},
+      {"@type": "HowToStep", "name": "Validate without rebooting", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/mounting-filesystems.html#steps"}
+    ]
+  }</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Linux Fundamentals", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/index.html"}, {"@type": "ListItem", "position": 4, "name": "Mounting Filesystems", "item": "https://tyfsadik.org/blog/labs/linux-fundamentals/mounting-filesystems.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Boot drops to emergency shell'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: fstab references a device that is not present. Fix: Comment the line or add nofail, then systemctl default to continue booting."}}, {"@type": "Question", "name": "How do I fix 'mount: can't find UUID'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Typo in the UUID or the device was reformatted. Fix: Re-run blkid and correct the entry; UUIDs change on reformat."}}, {"@type": "Question", "name": "How do I fix 'Wrong filesystem type error'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: TYPE field does not match the actual format. Fix: Check blkid TYPE= and set the fstab field to match (or auto)."}}, {"@type": "Question", "name": "How do I fix 'Mount succeeds but options ignored'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Options field misspelled or unsupported by the fs. Fix: Verify with findmnt -o OPTIONS and check the filesystem's man page."}}, {"@type": "Question", "name": "How do I fix 'Device busy on umount'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: A process holds files open under the mount. Fix: Find it with lsof +D /mnt/point, stop it, then umount."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>Mounting Filesystems</span></nav>
+    <div class="page-header"><h1>Mounting Filesystems with UUID-Based fstab Entries</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">mount</span><span class="tag">fstab</span><span class="tag">UUID</span><span class="tag">blkid</span></div>
+    </div>
+
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#learning-objectives">Learning Objectives</a></li>
+<li><a href="#objective">Objective &amp; Context</a></li>
+<li><a href="#environment">Environment &amp; Prerequisites</a></li>
+<li><a href="#steps">Step-by-Step Execution</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#validation">Validation &amp; Testing</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#key-takeaways">Key Takeaways</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    <section><p class="lead">I mounted filesystems reliably by referencing UUIDs in /etc/fstab instead of device names, then validated mounts without rebooting. UUID-based entries kept boot mounts correct even after disks were reordered or added.</p></section>
+
+    <section id="objective"><h2>Objective &amp; Context</h2>
+      <p>Device names like /dev/sdb are not stable across reboots; UUIDs are. This lab mounts manually, then persists with UUID fstab entries and validates safely, the durable-storage step the LVM and server labs depend on.</p></section>
+
+    <div class="lab-objectives" id="learning-objectives"><h3>Learning Objectives</h3>
+    <ul>
+      <li>Mount and unmount filesystems manually with mount/umount.</li>
+      <li>Read stable device identifiers with blkid.</li>
+      <li>Write correct fstab entries with UUID, options, dump, and pass fields.</li>
+      <li>Validate fstab changes with mount -a and findmnt before rebooting.</li>
+      <li>Diagnose boot failures caused by bad fstab entries.</li>
+    </ul></div>
+
+    <section id="environment"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+    <ul>
+      <li>Linux with util-linux (mount, blkid, findmnt are preinstalled).</li>
+      <li>A spare formatted device or loop file to practice on.</li>
+      <li>Root access to edit /etc/fstab and mount.</li>
+      <li>A backup or snapshot before touching fstab on a real system.</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="UUID-based mount flow">
+flowchart LR
+  B["blkid --> UUID"] --> F["/etc/fstab entry"]
+  F --> V[mount -a validate]
+  V --> Boot[stable boot mount]
+      </div>
+    </section>
+
+    <section id="steps"><h2>Step-by-Step Execution</h2>
+      <h3>1. Read the device UUID</h3>
+      <div class="command-block"><div class="command"><code>blkid /dev/sdb1</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>/dev/sdb1: UUID="a1b2c3d4-..." BLOCK_SIZE="4096" TYPE="ext4" PARTUUID="..."</code></pre>
+      <p class="lab-step-note">What this teaches: blkid reads the filesystem's stored UUID, which never changes when disks are reordered. Device names like /dev/sdb are enumeration order and can shift across reboots.</p>
+    <h3>2. Add a UUID fstab entry [ROOT REQUIRED]</h3>
+      <div class="command-block"><div class="command"><code>UUID=$(blkid -s UUID -o value /dev/sdb1) &amp;&amp; sudo mkdir -p /mnt/data &amp;&amp; echo "UUID=$UUID /mnt/data ext4 defaults,noatime 0 2" | sudo tee -a /etc/fstab</code></div></div>
+      <p class="lab-output-label">Expected output:</p><pre><code>UUID=a1b2c3d4-... /mnt/data ext4 defaults,noatime 0 2</code></pre>
+      <p class="lab-step-note">What this teaches: fstab fields are device, mountpoint, type, options, dump, pass. noatime skips access-time writes for speed; pass 2 orders fsck after the root filesystem. Two gotchas are handled here: the mount point must exist or mount fails (mkdir -p creates it), and a bare <code>sudo echo ... &gt;&gt; /etc/fstab</code> does not work because the shell performs the &gt;&gt; redirection as your user before sudo runs, so piping into sudo tee -a does the privileged append correctly.</p>
+    <h3>3. Validate without rebooting</h3>
+      <div class="command-block"><div class="command"><code>mount -a &amp;&amp; findmnt /mnt/data</code></div></div>
+<p class="lab-output-label">Expected output:</p><pre><code class="language-bash">TARGET   SOURCE     FSTYPE OPTIONS
+/mnt/data /dev/sdb1 ext4   rw,noatime</code></pre>
+      <p class="lab-step-note">What this teaches: mount -a mounts everything in fstab that is not noauto, catching syntax errors now instead of at 3 AM boot; findmnt confirms the live mount matches the intended source and options.</p>
+    </section>
+
+    <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>
+      <p>Mounting grafts a filesystem into the single directory tree at a mount point. The kernel's mount table maps paths to devices, and /etc/fstab is the declarative list the boot process applies. Because device enumeration order is not stable, fstab should identify filesystems by UUID or label, identifiers stored in the filesystem itself.</p>
+      <p>Each fstab line is six fields with distinct jobs: what to mount, where, which filesystem type, mount options, whether dump backs it up (usually 0), and the fsck pass order (root is 1, others 2, 0 to skip). Options like defaults, noatime, and nofail tune behavior; nofail is what keeps a missing USB disk from hanging the boot.</p>
+      <p>Validation without rebooting is the professional habit: mount -a replays fstab against the running system, and findmnt renders the live mount table as a tree for verification. Combined with a pre-edit backup of fstab, this makes storage changes boring, which is exactly what you want.</p>
+    </div>
+    <div class="mermaid" role="img" aria-label="Mount validation flow">
+flowchart LR
+  B["blkid: get UUID"] --> E["Edit /etc/fstab"]
+  E --> K["Backup fstab first"]
+  K --> V["mount -a"]
+  V --> F["findmnt: verify"]
+  F -->|"mismatch"| E
+  style V fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section id="validation"><h2>Validation &amp; Testing</h2>
+      <p>Run <code>mount -a</code> to confirm the fstab entry is valid (no errors), then verify with findmnt. On modern systems you can also run <code>findmnt --verify</code>, which parses fstab and checks every entry (device exists, mount point exists, filesystem type known) without mounting anything, a safe pre-flight check before <code>mount -a</code> touches the live system. Pass criteria: the filesystem mounts via UUID, survives a simulated device reorder, and <code>mount -a</code> reports no errors that would block boot.</p>
+    </section>
+
+    <section id="troubleshooting"><h2>Troubleshooting</h2>
+    <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>Boot drops to emergency shell</td><td>fstab references a device that is not present</td><td>Comment the line or add nofail, then systemctl default to continue booting</td></tr>
+      <tr><td>mount: can't find UUID</td><td>Typo in the UUID or the device was reformatted</td><td>Re-run blkid and correct the entry; UUIDs change on reformat</td></tr>
+      <tr><td>Wrong filesystem type error</td><td>TYPE field does not match the actual format</td><td>Check blkid TYPE= and set the fstab field to match (or auto)</td></tr>
+      <tr><td>Mount succeeds but options ignored</td><td>Options field misspelled or unsupported by the fs</td><td>Verify with findmnt -o OPTIONS and check the filesystem's man page</td></tr>
+      <tr><td>Device busy on umount</td><td>A process holds files open under the mount</td><td>Find it with lsof +D /mnt/point, stop it, then umount</td></tr>
+      <tr><td>Duplicate mount entries</td><td>Same mountpoint listed twice after repeated appends</td><td>Keep one canonical line; comment or remove the stale duplicate</td></tr>
+    </tbody></table>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Boot hangs on bad fstab:</strong> add <code>nofail</code> for non-critical mounts and always test with <code>mount -a</code> first.</li>
+        <li><strong>Wrong device after reboot:</strong> use UUID or LABEL, never /dev/sdX.</li>
+        <li><strong>Permission/owner issues:</strong> set mount options or post-mount chown as needed.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Made boot mounts resilient to device renaming via UUIDs.</li>
+        <li>Validated fstab safely with <code>mount -a</code> before reboot.</li>
+        <li>Applied <code>noatime</code>/<code>nofail</code> options for performance and safety.</li>
+        <li>Confirmed mounts with findmnt rather than assumptions.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways" id="key-takeaways"><h3>Key Takeaways</h3>
+    <ul>
+      <li>Identify filesystems by UUID, never by /dev/sdX names.</li>
+      <li>Know the six fstab fields and what each controls.</li>
+      <li>nofail keeps missing disks from hanging the boot.</li>
+      <li>mount -a plus findmnt validates without rebooting.</li>
+      <li>Back up /etc/fstab before every edit.</li>
+    
+      <li>Pass number 1 is for the root filesystem and 2 for everything else; 0 skips the check.</li>
+      <li>Use x-systemd.mount-timeout to cap how long boot waits on network storage.</li>
+    </ul></div>
+
+    <section id="practice-challenges"><h2>Practice Challenges</h2>
+    <div class="lab-challenge"><h4>Challenge 1: nofail rescue</h4><p>Goal: deliberately add a bogus UUID entry with and without nofail, reboot a test VM, and observe the difference in boot behavior.</p><p><strong>Hint:</strong> snapshot first.</p></div>
+    <div class="lab-challenge"><h4>Challenge 2: Bind mount lab</h4><p>Goal: use a bind mount to expose /srv/data at /var/www/data, persist it in fstab, and explain why the fstab line looks different.</p><p><strong>Hint:</strong> the type field is none and the option is bind.</p></div>
+    </section>
+
+    <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="lvm.html">Logical Volume Management</a></li>
+        <li><a href="../linux-server/mounting-filesystems.html">Server Mounting &amp; Filesystem Management</a></li>
+        <li><a href="hard-soft-links.html">Working with Links</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SQL Constraints &amp; Keys: Full Database Guide | TYFSADIK</title>
+  <meta name="keywords" content="sql constraints, primary key, foreign key, check constraint, unique constraint, data integrity">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="SQL Constraints &amp; Keys: Full Database Guide | TYFSADIK">
+  <meta property="og:description" content="Enforce data integrity at the database layer with primary keys, foreign keys, unique and check constraints that reject invalid data at the schema level.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/databases/constraints-keys.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="SQL Constraints &amp; Keys: Full Database Guide | TYFSADIK">
+  <meta name="twitter:description" content="Enforce data integrity at the database layer with primary keys, foreign keys, unique and check constraints that reject invalid data at the schema level.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="description" content="Enforce data integrity at the database layer with primary keys, foreign keys, unique and check constraints that reject invalid data at the schema level.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/databases/constraints-keys.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "SQL Constraints and Keys for Data Integrity", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-02-04", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "PostgreSQL 16, SQL constraints", "articleSection": "Databases", "learningResourceType": "Hands-on lab", "teaches": "databases and SQL"}</script>
+  <script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "Define keys and a check constraint",
+      "text": "Define keys and a check constraint"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Add a uniqueness rule",
+      "text": "Add a uniqueness rule"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Test rejection of invalid data",
+      "text": "Test rejection of invalid data"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Test foreign key rejection",
+      "text": "Test foreign key rejection"
+    }
+  ],
+  "url": "https://tyfsadik.org/about.html"
+}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Databases", "item": "https://tyfsadik.org/blog/labs/databases/index.html"}, {"@type": "ListItem", "position": 4, "name": "Constraints & Keys", "item": "https://tyfsadik.org/blog/labs/databases/constraints-keys.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'FK creation fails on existing data'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: orphan rows already violate the relationship. Fix: find them with a LEFT JOIN ... WHERE parent.id IS NULL, clean up, then add the constraint."}}, {"@type": "Question", "name": "How do I fix 'UNIQUE violated by concurrent inserts'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: two transactions inserted the same value simultaneously. Fix: the constraint still protects you; handle the error with an upsert (ON CONFLICT)."}}, {"@type": "Question", "name": "How do I fix 'CASCADE deleted more than expected'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: a chain of cascades propagated further than intended. Fix: prefer RESTRICT for destructive paths and delete explicitly in application order."}}, {"@type": "Question", "name": "How do I fix 'CHECK blocks a legitimate edge case'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the rule was stricter than the real domain. Fix: fix the rule, not the data: ALTER the constraint after confirming the business rule."}}, {"@type": "Question", "name": "How do I fix 'constraint names are auto-generated gibberish'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: no explicit name was given. Fix: name constraints (uq_email, invoice_amount_check) so errors are readable."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/databases/index.html">Databases</a> &rsaquo; <span>Constraints &amp; Keys</span></nav>
+    <div class="page-header"><h1>SQL Constraints and Keys for Guaranteed Data Integrity</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Databases</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">PRIMARY KEY</span><span class="tag">FOREIGN KEY</span><span class="tag">UNIQUE</span><span class="tag">CHECK</span></div>
+    </div>
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+      <li><a href="#objective-context">Objective &amp; Context</a></li>
+      <li><a href="#environment-prerequisites">Environment &amp; Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation &amp; Testing</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#takeaways">Key Takeaways</a></li>
+      <li><a href="#challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+    </ol></nav>
+
+    <section><p class="lead">I enforced data integrity at the database layer with primary, foreign, unique, and check constraints rather than trusting application code. Pushing validation into the schema guaranteed correctness even when multiple clients write concurrently.</p></section>
+
+    <section><h2 id="objective-context">Objective &amp; Context</h2>
+      <p>Constraints are the last line of defense for data correctness. This lab applies entity integrity (PK), referential integrity (FK with cascade rules), uniqueness, and domain validation (CHECK), so invalid data is rejected regardless of which client writes it.</p></section>
+    <div class="lab-objectives"><h3>Learning Objectives</h3><ul>
+      <li>Declare primary keys for row identity.</li>
+      <li>Enforce relationships with foreign keys and choose cascade behaviour.</li>
+      <li>Add CHECK constraints for domain rules.</li>
+      <li>Enforce uniqueness with UNIQUE constraints.</li>
+      <li>Verify rejection of invalid data with test inserts.</li>
+    </ul></div>
+
+    <section><h2 id="environment-prerequisites">Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3><ul>
+      <li><code>PostgreSQL 16</code> with a normalized schema</li>
+      <li>Test data including intentionally invalid rows</li>
+      <li>Understanding of cascade vs restrict behaviour</li>
+      <li>Assumed skill: CREATE TABLE basics</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="Constraint enforcement on insert">
+flowchart LR
+  I[INSERT] --> PK{PK unique?}
+  PK -->|no| R[Reject]
+  PK -->|yes| FK{FK exists?}
+  FK -->|no| R
+  FK -->|yes| CK{CHECK passes?}
+  CK -->|no| R
+  CK -->|yes| OK[Commit]
+      </div>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <h3>1. Define keys and a check constraint</h3>
+      <div class="command-block"><div class="command"><code>CREATE TABLE invoice (id SERIAL PRIMARY KEY, amount NUMERIC CHECK (amount &gt; 0), customer_id INT REFERENCES customer(id) ON DELETE RESTRICT);</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>CREATE TABLE</code></pre>
+      <p class="lab-step-note">What this teaches: The PRIMARY KEY gives each row an identity, the CHECK encodes the business rule (amounts must be positive), and the FK ties invoices to real customers.</p></div>
+      <h3>2. Add a uniqueness rule</h3>
+      <div class="command-block"><div class="command"><code>ALTER TABLE customer ADD CONSTRAINT uq_email UNIQUE (email);</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>ALTER TABLE</code></pre>
+      <p class="lab-step-note">What this teaches: Uniqueness on email moves a rule every app would reimplement into the one place that cannot be bypassed: the schema itself.</p></div>
+      <h3>3. Test rejection of invalid data</h3>
+      <div class="command-block"><div class="command"><code>INSERT INTO invoice (amount, customer_id) VALUES (-5, 1);</code></div></div>
+<pre><code class="language-bash">ERROR: new row violates check constraint "invoice_amount_check"</code></pre>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>ERROR: new row violates check constraint "invoice_amount_check"</code></pre>
+      <p class="lab-step-note">What this teaches: The database rejected the bad row before it was stored; this is integrity working as designed, and the error names the exact rule violated. Insert the parent customer row first (or confirm id 1 exists) so this test isolates the CHECK constraint instead of tripping the foreign key on a missing parent.</p></div>
+      <h3>4. Test foreign key rejection</h3>
+      <div class="command-block"><div class="command"><code>INSERT INTO invoice (amount, customer_id) VALUES (100, 9999);</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>ERROR:  insert or update on table "invoice" violates foreign key constraint "invoice_customer_id_fkey"
+DETAIL:  Key (customer_id)=(9999) is not present in table "customer".</code></pre>
+      <p class="lab-step-note">What this teaches: Use an id you have confirmed does not exist (9999 here); the amount passes the CHECK, so the foreign key is the layer that rejects the row. Watching each constraint reject its own class of bad data is how you verify the layers compose correctly.</p></div>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+      <div class="lab-explainer"><h3>How It Works</h3>
+      <p>Constraints push validation into the schema, where every client is subject to them. Application code can be bypassed, forgotten, or duplicated across services; a CHECK constraint cannot be bypassed by any writer, which is why integrity belongs in the database.</p>
+      <p>Foreign keys add referential integrity: an invoice cannot reference a nonexistent customer, and the ON DELETE clause declares what happens to children when a parent goes away. RESTRICT blocks the delete, CASCADE propagates it; the choice encodes business policy.</p>
+      <p>Constraints are also documentation. Reading the DDL tells you the domain rules (amounts positive, emails unique, invoices belong to customers) without hunting through application code, which is why test inserts that provoke each error are part of the lab.</p>
+    </div>
+      <div class="mermaid" role="img" aria-label="Layers of data integrity">
+flowchart TD
+  APP["application code<br/>(bypassable)"] --> DB["database constraints<br/>(unbypassable)"]
+  DB --> PK["PRIMARY KEY<br/>row identity"]
+  DB --> FK["FOREIGN KEY<br/>references hold"]
+  DB --> CK["CHECK / UNIQUE<br/>domain rules"]
+      </div>
+    </section>
+
+    <section><h2 id="validation-testing">Validation &amp; Testing</h2>
+      <p>Attempt inserts that violate each constraint type and confirm the database rejects them. Pass criteria: duplicate PK/UNIQUE rejected, orphan FK rejected, negative amount rejected by CHECK, and valid rows commit.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>FK insert fails:</strong> the referenced parent row must exist first.</li>
+        <li><strong>Cascade surprises:</strong> choose ON DELETE RESTRICT vs CASCADE deliberately.</li>
+        <li><strong>Slow constraint checks:</strong> index the FK columns to speed validation.</li>
+      </ul>
+    </details>
+
+    <section><h2 id="troubleshooting">Troubleshooting</h2>
+      <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+        <tr><td>FK creation fails on existing data</td><td>orphan rows already violate the relationship</td><td>find them with <code>SELECT c.* FROM child c LEFT JOIN parent p ON c.customer_id = p.id WHERE p.id IS NULL;</code>, clean up, then add the constraint</td></tr>
+        <tr><td>UNIQUE violated by concurrent inserts</td><td>two transactions inserted the same value simultaneously</td><td>the constraint still protects you; handle the error with an upsert (ON CONFLICT)</td></tr>
+        <tr><td>CASCADE deleted more than expected</td><td>a chain of cascades propagated further than intended</td><td>prefer RESTRICT for destructive paths and delete explicitly in application order</td></tr>
+        <tr><td>CHECK blocks a legitimate edge case</td><td>the rule was stricter than the real domain</td><td>fix the rule, not the data: ALTER the constraint after confirming the business rule</td></tr>
+        <tr><td>CHECK lets NULLs through</td><td>a CHECK expression that evaluates to NULL (unknown) passes</td><td>add NOT NULL alongside the CHECK when the column must always hold a value</td></tr>
+        <tr><td>constraint names are auto-generated gibberish</td><td>no explicit name was given</td><td>name constraints (uq_email, invoice_amount_check) so errors are readable</td></tr>
+      </tbody></table>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Pushed 100% of integrity rules into the database layer.</li>
+        <li>Rejected invalid rows across PK, FK, UNIQUE, and CHECK in testing.</li>
+        <li>Guaranteed referential integrity with explicit cascade rules.</li>
+        <li>Removed reliance on application code for core validation.</li>
+      </ul>
+    </section>
+
+    <section class="lab-takeaways"><h2 id="takeaways">Key Takeaways</h2><ul>
+        <li>Integrity belongs in the schema: constraints cannot be bypassed by any client.</li>
+        <li>Primary keys identify rows; foreign keys keep relationships honest.</li>
+        <li>CHECK and UNIQUE encode domain rules once, for all writers.</li>
+        <li>Choose ON DELETE behaviour deliberately: RESTRICT is the safe default.</li>
+        <li>Name constraints so violation errors are human-readable.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="challenges">Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Self-referencing table</h4><p><strong>Goal:</strong> Add an employees table where manager_id references employees(id), and decide the ON DELETE rule.</p><p><strong>Hint:</strong> RESTRICT or SET NULL are the sane choices; CASCADE would delete whole org charts.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: Exclusion rule</h4><p><strong>Goal:</strong> Add a constraint that prevents overlapping booking date ranges for the same room.</p><p><strong>Hint:</strong> PostgreSQL exclusion constraints with gist indexes solve this; a plain CHECK cannot see other rows.</p></div>
+    </section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="database-design.html">Database Design &amp; Normalization</a></li>
+        <li><a href="joins-complex-queries.html">JOINs &amp; Complex Queries</a></li>
+        <li><a href="database-admin.html">Database Administration</a></li>
+      
+        <li><a href="database-design.html">Database Design & Normalization</a></li>
+        <li><a href="database-admin.html">Database Administration</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure VNet Deployment: Subnets &amp; Peering | TYFSADIK</title>
+  <meta name="description" content="Build Azure virtual networks from scratch: address planning, subnets, VNet peering, and the non-overlapping CIDR discipline that peering demands of you.">
+  <meta name="keywords" content="Azure VNet, virtual network, subnets, VNet peering, CIDR planning, az network vnet">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Azure VNet Deployment: Subnets &amp; Peering | TYFSADIK">
+  <meta property="og:description" content="Build Azure virtual networks from scratch: address planning, subnets, VNet peering, and the non-overlapping CIDR discipline that peering demands of you.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/cloud-azure/vnet-deployment.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Azure VNet Deployment: Subnets &amp; Peering | TYFSADIK">
+  <meta name="twitter:description" content="Build Azure virtual networks from scratch: address planning, subnets, VNet peering, and the non-overlapping CIDR discipline that peering demands of you.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/cloud-azure/vnet-deployment.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Azure Virtual Network Deployment with Subnets and Peering", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-03-05", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "Azure CLI, Azure Virtual Network", "articleSection": "Cloud", "learningResourceType": "Hands-on lab", "teaches": "Microsoft Azure cloud services"}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "HowTo", "name": "Azure VNet Deployment | Subnets & Peering", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"}, "step": [{"@type": "HowToStep", "name": "Create the VNet and subnets", "url": "https://tyfsadik.org/blog/labs/cloud-azure/vnet-deployment.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Add a second subnet", "url": "https://tyfsadik.org/blog/labs/cloud-azure/vnet-deployment.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Peer two VNets", "url": "https://tyfsadik.org/blog/labs/cloud-azure/vnet-deployment.html#step-by-step-execution"}]}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Cloud & Azure", "item": "https://tyfsadik.org/blog/labs/cloud-azure/index.html"}, {"@type": "ListItem", "position": 4, "name": "Virtual Network Deployment", "item": "https://tyfsadik.org/blog/labs/cloud-azure/vnet-deployment.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Peering stuck at Initiated'?", "acceptedAnswer": {"@type": "Answer", "text": "create the peering in both directions; it requires a pair. Check both sides with az network vnet peering list --vnet-name <vnet>, whichever side is missing a link is the one you still need to create."}}, {"@type": "Question", "name": "How do I fix 'Overlapping address space'?", "acceptedAnswer": {"@type": "Answer", "text": "peered VNets must use non-overlapping CIDR ranges. The error NetcfgAddressPrefixesOverlapForPeering means exactly this. The only clean fix for a true overlap is to recreate one VNet with a different range. Note this is different from growing an address space: adding or removing prefixes on an already-peered VNet is allowed, you then sync the peering so the new ranges propagate."}}, {"@type": "Question", "name": "How do I fix 'No connectivity despite peering'?", "acceptedAnswer": {"@type": "Answer", "text": "check NSGs and that -allow-vnet-access is set. Run az network vnet peering show -n a-to-b --vnet-name vnet-a --query allowVirtualNetworkAccess, if it returns false, update the peering: az network vnet peering update -n a-to-b --vnet-name vnet-a --set allowVirtualNetworkAccess=true."}}, {"@type": "Question", "name": "How do I fix 'Ping fails but SSH works (or vice versa)'?", "acceptedAnswer": {"@type": "Answer", "text": "this is almost never peering. NSG default rules allow all VNet-internal traffic, but a VM-level firewall (e.g. ufw on Ubuntu) or a custom NSG rule may block ICMP while allowing TCP/22. Test with a TCP tool like curl -v telnet://10.1.1.4:22 before blaming the network."}}, {"@type": "Question", "name": "How do I fix 'Cannot add a subnet or extend the address space after peering'?", "acceptedAnswer": {"@type": "Answer", "text": "Azure does not block address-space changes on peered VNets, but the peering must be synced afterward. Update the prefixes with az network vnet update --add addressSpace.addressPrefixes=10.0.4.0/22, then sync the peering (portal: Peering blade, Sync) so the remote side learns the new ranges; until you sync, the new range is unreachable across the peering. Plan the /16 sizing generously at the start anyway, because every change still touches live routing."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/cloud-azure/index.html">Cloud &amp; Azure</a> &rsaquo; <span>Virtual Network Deployment</span></nav>
+    <div class="page-header"><h1>Azure Virtual Network Deployment with Subnets and Peering</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Cloud</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">VNet</span><span class="tag">subnets</span><span class="tag">peering</span><span class="tag">CIDR</span></div>
+    </div>
+<nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#architecture-overview">Architecture Overview</a></li>
+<li><a href="#core-concepts-before-you-start">Core Concepts Before You Start</a></li>
+<li><a href="#environment-setup">Environment Setup</a></li>
+<li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+<li><a href="#step-flow-map">Step Flow Map</a></li>
+<li><a href="#progress-so-far">Progress So Far</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#testing-validation">Testing & Validation</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#extension-ideas">Extension Ideas</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#full-command-recap">Full Command Recap</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    
+
+    <section><p class="lead">You will deploy an Azure Virtual Network with tiered subnets and peer it to a second VNet. By the end you will have a segmented cloud network foundation that VMs and services can join.</p>
+      <p>A Virtual Network (VNet) is the fundamental isolation boundary in Azure networking: every VM, container app, or private endpoint you deploy lives inside one. Getting the address plan right on day one matters because the choices you make here, the VNet CIDR range, how you carve it into subnets, and which VNets are allowed to talk to each other, are painful to change once workloads are running. This lab walks through the entire lifecycle with the Azure CLI: planning a non-overlapping address space, creating the VNet, adding tiered subnets, and connecting two VNets with bidirectional peering so resources can reach each other over the Microsoft backbone instead of the public internet.</p></section>
+
+    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+      <ul>
+        <li>Create a VNet with non-overlapping subnets.</li>
+        <li>Peer two VNets for private connectivity.</li>
+        <li>Verify routing between peered networks.</li>
+        <li>Plan CIDR ranges so VNets can be peered later without renumbering.</li>
+        <li>Interpret peering states (<code>Initiated</code> vs <code>Connected</code>) and diagnose why traffic does not flow.</li>
+        <li><strong>Time:</strong> ~2 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> the Azure CLI configured.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="architecture-overview">Architecture Overview</h2>
+      <p>The lab builds two VNets. <strong>vnet-a</strong> (10.0.0.0/16) holds the application tiers: a <strong>web</strong> subnet for internet-facing or load-balanced front ends and an <strong>app</strong> subnet for middle-tier services that should never be directly exposed. <strong>vnet-b</strong> (10.1.0.0/16) holds the <strong>data</strong> subnet, databases and storage that only the app tier should reach. Splitting data into its own VNet models a common production pattern where the data platform is managed by a different team or subscription and is connected on purpose, not by default.</p>
+      <div class="mermaid" role="img" aria-label="Two peered VNets with tiered subnets">
+graph LR
+  subgraph VNet-A 10.0.0.0/16
+    Web[web 10.0.1.0/24]
+    App[app 10.0.2.0/24]
+  end
+  subgraph VNet-B 10.1.0.0/16
+    Data[data 10.1.1.0/24]
+  end
+  App <-->|peering| Data
+      </div>
+      <p>A few design notes on why it is built this way:</p>
+      <ul>
+        <li><strong>/16 VNets, /24 subnets:</strong> each VNet has 65,536 addresses and each subnet 256 (251 usable, Azure reserves five addresses per subnet for its own routing and DNS). /24 leaves room to grow; you can add dozens more subnets per VNet later.</li>
+        <li><strong>Non-overlapping ranges:</strong> 10.0.0.0/16 and 10.1.0.0/16 share no addresses. VNet peering flat-out refuses overlapping address spaces, so planning this up front is what makes the peering step possible at all.</li>
+        <li><strong>Peering, not a VPN gateway:</strong> peering is free of gateway VMs, keeps traffic on the Microsoft backbone, and adds no bandwidth cap beyond the VMs themselves. A VPN gateway would cost money and add latency for the same east-west traffic.</li>
+        <li><strong>Peering is not transitive:</strong> if you later peer vnet-b to a third vnet-c, vnet-a cannot reach vnet-c through vnet-b unless you add gateway transit or a network virtual appliance. Design for this now, not after the incident.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="core-concepts-before-you-start">Core Concepts Before You Start</h2>
+      <p>Three ideas carry this entire lab. Skim them even if you have touched Azure networking before, most peering failures trace back to one of these being misunderstood.</p>
+      <h3>1. CIDR notation is a contract, not a suggestion</h3>
+      <p>A CIDR block like 10.0.0.0/16 says "the first 16 bits are fixed, the remaining 16 are mine." That gives you 2^16 = 65,536 addresses, from 10.0.0.0 to 10.0.255.255. When you carve a subnet out of it, say 10.0.1.0/24, you are promising Azure that the web tier gets exactly the 256 addresses 10.0.1.0 through 10.0.1.255, and that no other subnet may touch them. Of those 256, Azure reserves five for itself (the network address, broadcast, and three internal addresses for its virtual router and DNS), leaving 251 usable. Two practical consequences:</p>
+      <ul>
+        <li>Subnet prefixes must fit entirely inside the VNet prefix and must not overlap any sibling subnet. Azure enforces both at creation time.</li>
+        <li>VNet prefixes of peered networks must not overlap <em>at all</em>, 10.0.0.0/16 cannot peer with 10.0.0.0/24, even though one "contains" the other. Overlap is overlap.</li>
+      </ul>
+      <p>If binary subnetting is rusty, the only math you need for this lab: a /16 is 256 blocks of /24, and 10.0.x.x and 10.1.x.x never intersect. That is why the design uses them.</p>
+      <h3>2. Subnets are the security and routing boundary</h3>
+      <p>Every NIC in Azure attaches to exactly one subnet, and Network Security Groups (NSGs) attach to subnets (or NICs, but subnet-level is the maintainable pattern). There is no such thing as an NSG on a VNet. This is the whole reason the architecture has three subnets instead of one big /22 per VNet: the tier boundaries are where the firewall rules will live in the follow-up labs. Decide your tiers now; moving a VM between subnets later means stopping it and moving its NIC.</p>
+      <h3>3. Peering is connectivity, not merging</h3>
+      <p>Peering connects two VNets at the fabric level so packets route privately, but the VNets stay separate administrative objects: separate address spaces, separate NSGs, separate DNS zones if you use them. Peering also composes asymmetric flags, <code>allowVirtualNetworkAccess</code>, <code>allowForwardedTraffic</code>, <code>allowGatewayTransit</code>, and <code>useRemoteGateways</code>, each set per direction. This lab uses only the first (allow access); the gateway-transit pair matters later if one VNet owns a VPN/ExpressRoute gateway and the other wants to share it. And remember the golden rule: peering is <strong>non-transitive</strong>. A peered to B and B peered to C does not give A a path to C.</p>
+    </section>
+
+    <section><h2 id="environment-setup">Environment Setup</h2>
+<div class="lab-prereqs"><h3>Prerequisites</h3>
+<ul>
+<li>The Azure CLI configured against your subscription (see the Azure CLI Setup lab).</li>
+<li>An Azure subscription with Contributor access on a resource group.</li>
+<li>Assumed skills: CIDR notation and how IP ranges nest; a pencil-and-paper plan of your address space.</li>
+</ul></div>
+      <p><strong>You will need:</strong> the Azure CLI authenticated with a default resource group set.</p>
+      <p><strong>Before you begin:</strong> plan non-overlapping CIDR ranges; peered VNets cannot overlap.</p>
+      <p>Confirm you are logged in and pointed at the right subscription before creating anything. Networking mistakes are quiet, the CLI will happily deploy into the wrong subscription if you let it.</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az account show --query "{name:name, id:id, state:state}" -o table</span></div>
+        <div class="terminal-output">Name           id                                   state
+-------------  -----------------------------------  --------
+Pay-As-You-Go  11111111-2222-3333-4444-555555555555 Enabled</div>
+      </div>
+      <p>Everything in this lab lives in one resource group so cleanup is a single command at the end. Create it and set it (plus a region) as your CLI defaults so you can stop typing <code>-g</code> on every command:</p>
+      <div class="command-block" data-copy><div class="command"><code>az group create -n tyf-net-rg -l eastus</code></div><div class="note">Creates the lab resource group in East US.</div></div>
+      <div class="command-block" data-copy><div class="command"><code>az configure --defaults group=tyf-net-rg location=eastus</code></div><div class="note">All later commands assume this group and region.</div></div>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az group show -n tyf-net-rg --query provisioningState -o tsv</span></div>
+        <div class="terminal-output">Succeeded</div>
+      </div>
+      <p><strong>Common mistake:</strong> forgetting that <code>az configure --defaults</code> persists across terminal sessions. If a later lab deploys somewhere unexpected, check <code>az configure --list-defaults</code> first.</p>
+      <p><strong>Permissions:</strong> creating VNets and peerings requires the <code>Network Contributor</code> role (or higher) on the resource group, and peering requires it on <em>both</em> VNets. If you are on a shared subscription and step 03 fails with an authorization error, this, not the command syntax, is the first thing to check.</p>
+      <p><strong>Cost:</strong> VNets and subnets are free, and peering has no hourly charge, but data transferred across a peering is billed at both ends, about $0.01/GB each direction for same-region peering. A lab ping test costs fractions of a cent; a production workload moving terabytes does not. The billable items in this lab are the optional test VMs in the validation section, any public IPs they get, and peering data transfer. Peering across <em>regions</em> (global VNet peering) bills per GB at higher zonal rates, irrelevant here, but worth knowing before you copy this pattern across regions.</p>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <p>Before touching the CLI, write the address plan down. This is the artifact you will check every command against, and it is what a reviewer (or future you) needs to understand the network:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">#</span> <span class="input">Address plan - tyf-net-rg, eastus</span></div>
+        <div class="terminal-output">VNet    Address space    Subnet    Prefix        Purpose
+vnet-a  10.0.0.0/16      web       10.0.1.0/24   front-end / load-balanced tier
+vnet-a  10.0.0.0/16      app       10.0.2.0/24   middle tier, no public exposure
+vnet-b  10.1.0.0/16      data      10.1.1.0/24   databases and stateful services</div>
+      </div>
+      <p>Notice what the plan leaves free: 10.0.3.0/24 onward in vnet-a, and almost all of vnet-b. Growth headroom is a design feature, not waste, reserved ranges cost nothing until you allocate them.</p>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Create the VNet and subnets</strong>
+          <p><strong>What:</strong> create vnet-a with its /16 address space and the first subnet (web) in one command. <strong>Why:</strong> <code>az network vnet create</code> requires at least one subnet if you pass subnet flags, so defining the web tier up front saves a second call. The subnet prefix must sit inside the VNet prefix, 10.0.1.0/24 is the first /24 carve-out of 10.0.0.0/16.</p>
+          <div class="command-block" data-copy><div class="command"><code>az network vnet create -n vnet-a --address-prefixes 10.0.0.0/16 --subnet-name web --subnet-prefixes 10.0.1.0/24</code></div></div>
+          <p>The command returns the full VNet object as JSON. The fields worth checking are <code>addressSpace</code> and the subnet's <code>provisioningState</code>:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet show -n vnet-a --query "{prefixes:addressSpace.addressPrefixes, subnets:subnets[].name}" -o json</span></div>
+            <div class="terminal-output">{
+  "prefixes": [
+    "10.0.0.0/16"
+  ],
+  "subnets": [
+    "web"
+  ]
+}</div>
+          </div>
+          <p><strong>How to verify:</strong> <code>az network vnet list -o table</code> should show vnet-a with provisioning state <code>Succeeded</code>. <strong>Common mistake:</strong> typos in the CIDR (e.g. 10.0.0.0/8 when you meant /16) succeed silently, nothing validates your intent, only the syntax. Always echo the address space back with the query above before moving on.</p>
+          <p><strong>DNS comes for free, but know what you got:</strong> unless you pass <code>--dns-servers</code>, every VNet uses Azure-provided DNS (168.63.129.16), which resolves names of resources inside that VNet automatically. It does <em>not</em> resolve names in the peered VNet, name resolution does not ride across peering. After this lab, VMs in vnet-a can ping vnet-b hosts by IP, but resolving their names needs a Private DNS zone linked to both VNets. That is a deliberate follow-up exercise, not a bug.</p>
+          <p><strong>Add tags while you are here.</strong> Networking resources outlive the people who created them, and tags are how the next person learns why a VNet exists:</p>
+          <div class="command-block" data-copy><div class="command"><code>az network vnet update -n vnet-a --set tags.owner=taki tags.env=lab tags.tier=app-platform</code></div><div class="note">Tags are free-form key/value pairs used for ownership, billing, and policy.</div></div>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>{
+  "name": "tyf-vnet",
+  "properties": {
+    "addressSpace": { "addressPrefixes": ["10.1.0.0/16"] },
+    "provisioningState": "Succeeded"
+  }
+}</code></pre>
+<p class="lab-step-note">What this teaches: Address planning is the real deliverable; non-overlapping CIDR ranges are a hard prerequisite for peering and are expensive to fix later.</p></div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Add a second subnet</strong>
+          <p><strong>What:</strong> add the app subnet to vnet-a. <strong>Why:</strong> tiers belong in separate subnets because Network Security Groups and route tables attach to subnets, not to individual VMs. If web and app shared a subnet, you could not write an NSG rule that lets the internet reach web but not app, the segmentation this whole lab is about would be impossible.</p>
+          <div class="command-block" data-copy><div class="command"><code>az network vnet subnet create --vnet-name vnet-a -n app --address-prefixes 10.0.2.0/24</code></div></div>
+          <p>List the subnets to confirm both exist and did not overlap:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet subnet list --vnet-name vnet-a -o table</span></div>
+            <div class="terminal-output">Name    AddressPrefix    PrivateEndpointNetworkPolicies
+------  ---------------  ------------------------------
+app     10.0.2.0/24      Enabled
+web     10.0.1.0/24      Enabled</div>
+          </div>
+          <p><strong>Common mistake:</strong> trying to create a subnet whose range overlaps an existing one (say 10.0.1.128/25) fails with <code>NetcfgSubnetRangesOverlap</code>. Azure checks every new subnet against its siblings, which is your safety net, but the error means you have to pick a free range, so keep a written map of what is allocated.</p>
+          <p><strong>Sizing note:</strong> the error you will hit in real life is not overlap but exhaustion. A /24 with 251 usable IPs sounds like a lot until an AKS node pool or a VM scale set lands in it. If you already know a subnet will host autoscaled compute, give it a /22 or /21 now, resizing a subnet means recreating it, which means evicting everything in it.</p>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ az network vnet subnet list -g tyf-rg --vnet-name tyf-vnet -o table
+Name    AddressPrefix
+------  ---------------
+web     10.1.1.0/24
+app     10.1.2.0/24</code></pre>
+<p class="lab-step-note">What this teaches: Subnets are the unit of segmentation; NSGs and route tables attach there, so tier workloads across subnets from day one.</p></div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Peer two VNets</strong>
+          <p><strong>What:</strong> create the second VNet and connect the two with peering. <strong>Why:</strong> peering is how separate VNets exchange private traffic. One critical detail trips up almost everyone the first time: <strong>peering is a pair of one-way links</strong>. Creating a-to-b alone leaves the peering stuck in the <code>Initiated</code> state; traffic only flows once the reverse link b-to-a also exists and both sides report <code>Connected</code>.</p>
+          <p>First, create vnet-b with its data subnet. Notice the completely different /16, this is the non-overlap requirement in action:</p>
+          <div class="command-block" data-copy><div class="command"><code>az network vnet create -n vnet-b --address-prefixes 10.1.0.0/16 --subnet-name data --subnet-prefixes 10.1.1.0/24</code></div><div class="note">Second VNet with the data tier; ranges must not overlap vnet-a.</div></div>
+          <p>Now create the first half of the peering pair, from vnet-a to vnet-b:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet peering create -n a-to-b --vnet-name vnet-a --remote-vnet vnet-b --allow-vnet-access</span></div>
+            <div class="terminal-output">"peeringState": "Connected"</div>
+          </div>
+          <p><code>--allow-vnet-access</code> is the flag that actually permits traffic between the address spaces; without it the peering exists but drops packets. Then create the reverse direction. Until this command runs, the first peering sits at <code>Initiated</code> and nothing routes:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet peering create -n b-to-a --vnet-name vnet-b --remote-vnet vnet-a --allow-vnet-access</span></div>
+            <div class="terminal-output">"peeringState": "Connected"</div>
+          </div>
+          <p>Confirm both directions finished handshaking, you are looking for <code>Connected</code> on each side:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet peering list --vnet-name vnet-a --query "[].{name:name, state:peeringState, access:allowVirtualNetworkAccess}" -o table</span></div>
+            <div class="terminal-output">Name    State      Access
+------  ---------  --------
+a-to-b  Connected  True</div>
+          </div>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet peering list --vnet-name vnet-b --query "[].{name:name, state:peeringState}" -o table</span></div>
+            <div class="terminal-output">Name    State
+------  ---------
+b-to-a  Connected</div>
+          </div>
+          <p><strong>Common mistake:</strong> creating only one direction and assuming it worked because the command succeeded. The CLI happily creates a half-pair. <strong>How to verify:</strong> a peering stuck at <code>Initiated</code> always means the reverse link is missing, create it, do not delete and retry the existing one.</p>
+          <p><strong>Cross-subscription peering:</strong> when the remote VNet lives in another subscription or resource group, a bare name is ambiguous, so <code>--remote-vnet</code> takes the full resource ID instead. The pattern below resolves the ID dynamically; both directions are still required, and each command runs in the context of the subscription that owns its local VNet:</p>
+          <div class="command-block" data-copy><div class="command"><code>az network vnet peering create -n a-to-b --vnet-name vnet-a --remote-vnet $(az network vnet show -n vnet-b -g other-rg --query id -o tsv) --allow-vnet-access</code></div><div class="note">Use full resource IDs when names alone are not unique.</div></div>
+          <p><strong>One more state worth knowing:</strong> besides <code>Initiated</code> and <code>Connected</code>, the portal sometimes shows a peering as needing a <em>sync</em> after the remote address space changed. If connectivity silently broke after someone edited a peered VNet's ranges, run <code>az network vnet peering sync -n a-to-b --vnet-name vnet-a</code> on both directions to re-push the address space into the effective routes.</p>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ az network vnet peering list -g tyf-rg --vnet-name tyf-vnet -o table
+Name           PeeringState    RemoteVnet
+-------------  --------------  ------------
+tyf-to-branch  Connected       branch-vnet</code></pre>
+<p class="lab-step-note">What this teaches: Peering merges two VNets' routing at the control plane, but it is not transitive; design hub-and-spoke accordingly.</p></div></div>
+      </div>
+    </section>
+<section><h2 id="step-flow-map">Step Flow Map</h2>
+<div class="mermaid" role="img" aria-label="Flow of the lab steps from first to last">
+graph TD
+  S1["Create the VNet and subnets"]
+  S2["Add a second subnet"]
+  S3["Peer two VNets"]
+  S1 --> S2
+  S2 --> S3
+</div>
+<p>Each box is one step in the lab; work them in order, since later steps build on earlier state.</p>
+</section>
+
+    
+
+    <section><h2 id="progress-so-far">Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="VNet deployment progress">
+graph LR
+  A[01 VNet + subnet] -->|done| B[02 Add subnet]
+  B -->|done| C[03 Peering]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+<div class="lab-explainer">
+<p>A virtual network is your private address space in Azure, and the address plan is the real deliverable of this lab. CIDR ranges nest: a /16 contains 256 /24s, and once two VNets peer, their ranges must not overlap, ever. Azure also reserves the first four and the last address of every subnet, so a /24 yields 251 usable addresses, not 256. Getting the plan right on paper before creating anything is the difference between a clean topology and a rebuild.</p>
+<p>Subnets are the unit of segmentation inside a VNet. They do not route between each other through anything you configure: intra-VNet routing is automatic, and segmentation comes from attaching NSGs and route tables at the subnet boundary. Tier your workloads across subnets from day one (web, app, data) because moving a running VM between subnets later is far more painful than planning for it.</p>
+<p>VNet peering merges two VNets at the control plane: each side learns the other's routes, and traffic stays on the Microsoft backbone. Peering is explicitly non-transitive: if A peers with B and B peers with C, A cannot reach C. Hub-and-spoke designs exist precisely because of this property, with the hub (often holding the firewall) peered to every spoke.</p>
+</div>
+</section>
+
+    <section><h2 id="testing-validation">Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>az network vnet peering show -n a-to-b --vnet-name vnet-a --query peeringState -o tsv</code></div></div>
+      <p>You should see <code>Connected</code>. With both directions peered, resources in app and data subnets can reach each other privately.</p>
+      <p>State checks prove the control plane agreed to peer, but they do not prove packets flow. The authoritative data-plane check is the <strong>effective routes</strong> on a network interface. If you have a VM in the app subnet (see the <a href="azure-vm-config.html">Azure VM Configuration</a> lab), look at what its NIC learned from the peering:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network nic show-effective-route-table --ids $(az vm show -n app-vm-01 --query networkProfile.networkInterfaces[0].id -o tsv) -o table</span></div>
+        <div class="terminal-output">Source    State    Address Prefix    Next Hop Type     Next Hop IP
+--------  -------  ----------------  ----------------  -------------
+Default   Active   10.0.0.0/16       VnetLocal
+Default   Active   10.1.0.0/16       VNetPeering
+Default   Active   0.0.0.0/0         Internet</div>
+      </div>
+      <p>The line that matters is <code>10.1.0.0/16 &rarr; VNetPeering</code>: the app subnet now routes the entire vnet-b address space across the peering. No manual route table entries were needed, peering programs these system routes automatically on every subnet in both VNets.</p>
+      <p>For an end-to-end test, deploy a small VM into the data subnet and one into app, then ping or SSH between their <strong>private</strong> IPs:</p>
+      <div class="command-block" data-copy><div class="command"><code>az vm create -n data-vm-01 --image Ubuntu2204 --vnet-name vnet-b --subnet data --size Standard_B1s --admin-username azureuser --generate-ssh-keys</code></div><div class="note">Cheapest test VM; delete it when validation is done.</div></div>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">ssh azureuser@app-vm-01 "ping -c 3 10.1.1.4"</span></div>
+        <div class="terminal-output">3 packets transmitted, 3 received, 0% packet loss, time 2003ms
+rtt min/avg/max/mdev = 1.242/1.389/1.604/0.151 ms</div>
+      </div>
+      <p>Sub-2ms latency between VNets in the same region is the signature of peering on the Microsoft backbone, a path through the public internet would show noticeably higher and more variable times. Note that default NSG rules allow VNet-to-VNet traffic, so this works before you lock anything down; once you attach NSGs in the next lab, expect to re-visit this test.</p>
+      <p>If the ping fails, the next diagnostic layer is the <strong>effective security rules</strong> on the destination NIC, the merged result of every NSG attached to its subnet and NIC:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network nic list-effective-nsg --ids $(az vm show -n data-vm-01 --query networkProfile.networkInterfaces[0].id -o tsv) --query "value[].defaultSecurityRules[?direction=='Inbound'].{name:name, access:access, prefix:sourceAddressPrefix}" -o table</span></div>
+        <div class="terminal-output">Name                     access    prefix
+-------------------------  --------  ----------------------
+AllowVnetInBound           Allow     VirtualNetwork
+AllowAzureLoadBalancer...  Allow     AzureLoadBalancer
+DenyAllInBound             Deny      0.0.0.0/0</div>
+      </div>
+      <p><code>AllowVnetInBound</code> is the default rule doing the heavy lifting: its <code>VirtualNetwork</code> service tag automatically includes peered VNet address spaces, which is why no firewall change was needed for this lab. <code>DenyAllInBound</code> at priority 65500 catches everything else, internet traffic to the data VM is already dropped even without any NSG you wrote.</p>
+      <p><strong>Portal cross-check:</strong> open the resource group in the Azure portal and confirm you can see both VNets, three subnets, and two peering resources. CLI-first labs are faster to repeat, but a quick portal glance catches the "I deployed into the wrong subscription" class of mistake that CLI output will not.</p>
+      <p><strong>Cleanup</strong> when you are done, so test VMs do not bill overnight:</p>
+      <div class="command-block" data-copy><div class="command"><code>az group delete -n tyf-net-rg --yes --no-wait</code></div><div class="note">Deletes the VNets, peerings, subnets, and test VMs in one shot.</div></div>
+    </section>
+<section><h2 id="troubleshooting">Troubleshooting</h2>
+<p>Quick-reference for the failures you are most likely to hit in this lab.</p>
+<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<tr><td>Peering creation fails</td><td>The two address spaces overlap</td><td>Re-plan with non-overlapping ranges; overlapping VNets can never peer, no matter the settings.</td></tr>
+<tr><td>Peering shows Disconnected</td><td>Peering is one-directional until both sides are created</td><td>Create the reverse peering; both directions must exist for traffic to flow.</td></tr>
+<tr><td>Fewer usable IPs than expected</td><td>Azure reserves five addresses per subnet (.0-.3 and the last)</td><td>Account for the reservation in your plan; a /29 leaves only 3 usable addresses.</td></tr>
+<tr><td>Can reach peer A but not peer C through B</td><td>Peering is non-transitive by design</td><td>Peer A directly with C, or route through a hub with gateway transit enabled.</td></tr>
+<tr><td>Name resolution fails across the peer</td><td>Custom DNS not configured on the VNet</td><td>Set the DNS servers on the VNet and restart the VMs to pick them up.</td></tr>
+</tbody></table>
+</section>
+
+    
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Peering stuck at Initiated:</strong> create the peering in both directions; it requires a pair. Check both sides with <code>az network vnet peering list --vnet-name &lt;vnet&gt;</code>, whichever side is missing a link is the one you still need to create.</li>
+        <li><strong>Overlapping address space:</strong> peered VNets must use non-overlapping CIDR ranges. The error <code>NetcfgAddressPrefixesOverlapForPeering</code> means exactly this. The only clean fix is to recreate one VNet with a different range, address spaces of peered VNets cannot be edited in place without removing the peering first.</li>
+        <li><strong>No connectivity despite peering:</strong> check NSGs and that <code>-allow-vnet-access</code> is set. Run <code>az network vnet peering show -n a-to-b --vnet-name vnet-a --query allowVirtualNetworkAccess</code>, if it returns <code>false</code>, update the peering: <code>az network vnet peering update -n a-to-b --vnet-name vnet-a --set allowVirtualNetworkAccess=true</code>.</li>
+        <li><strong>Ping fails but SSH works (or vice versa):</strong> this is almost never peering. NSG default rules allow all VNet-internal traffic, but a VM-level firewall (e.g. <code>ufw</code> on Ubuntu) or a custom NSG rule may block ICMP while allowing TCP/22. Test with a TCP tool like <code>curl -v telnet://10.1.1.4:22</code> before blaming the network.</li>
+        <li><strong>New address range not reachable after peering:</strong> adding prefixes to a peered VNet is allowed, but the peering must be synced before the new range propagates (<code>az network vnet update --add addressSpace.addressPrefixes=10.0.4.0/22</code>, then sync the peering in the portal under Peering). Plan the /16 sizing generously at the start to avoid touching live routing later.</li>
+      </ul>
+    </details>
+
+    <section><h2 id="extension-ideas">Extension Ideas</h2>
+      <ul>
+        <li>Place a VM in a subnet with <a href="azure-vm-config.html">Azure VM Configuration</a>.</li>
+        <li>Control traffic with <a href="nsg-route-tables.html">NSGs &amp; Route Tables</a>.</li>
+        <li>Codify the whole network with <a href="infrastructure-as-code.html">IaC</a>.</li>
+        <li>Add a third VNet and observe first-hand that peering is not transitive, then fix it with a hub-and-spoke design where a hub VNet hosts shared services.</li>
+        <li>Attach an NSG to the data subnet that only accepts traffic from 10.0.2.0/24 (the app tier), and re-run the connectivity test from the web subnet to prove it now fails.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Deployed a VNet with two non-overlapping subnets.</li>
+        <li>Connected two VNets via bidirectional peering.</li>
+        <li>Confirmed the peering reached the Connected state.</li>
+        <li>Built a segmented foundation for cloud workloads.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways"><h3 id="key-takeaways">Key Takeaways</h3>
+      <ul>
+        <li>Address planning is the real deliverable: non-overlapping CIDR ranges are a hard prerequisite for peering and are expensive to fix later.</li>
+        <li>Subnets are the unit of segmentation, NSGs and route tables attach there, so tier your workloads across subnets from day one.</li>
+        <li>Peering is a pair of one-way links; <code>Initiated</code> means the reverse side is missing, and <code>--allow-vnet-access</code> is what actually permits traffic.</li>
+        <li>Peering is not transitive: each pair of VNets that must talk needs its own peering (or a hub-and-spoke design).</li>
+        <li>Verify the data plane, not just the control plane: <code>Connected</code> state plus an effective-route-table entry plus a real ping is the complete proof.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="full-command-recap">Full Command Recap</h2>
+      <p>Every command from this lab in order, assuming the defaults set in Environment Setup. This is the checklist to re-run when reproducing the lab from scratch:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az group create -n tyf-net-rg -l eastus</span></div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet create -n vnet-a --address-prefixes 10.0.0.0/16 --subnet-name web --subnet-prefixes 10.0.1.0/24</span></div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet subnet create --vnet-name vnet-a -n app --address-prefixes 10.0.2.0/24</span></div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet create -n vnet-b --address-prefixes 10.1.0.0/16 --subnet-name data --subnet-prefixes 10.1.1.0/24</span></div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet peering create -n a-to-b --vnet-name vnet-a --remote-vnet vnet-b --allow-vnet-access</span></div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet peering create -n b-to-a --vnet-name vnet-b --remote-vnet vnet-a --allow-vnet-access</span></div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet peering list --vnet-name vnet-a -o table</span></div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az network vnet peering list --vnet-name vnet-b -o table</span></div>
+        <div class="terminal-output"># cleanup
+az group delete -n tyf-net-rg --yes --no-wait</div>
+      </div>
+      <p>Notice what is <em>not</em> in the list: no route tables, no NSGs, no gateway resources. The entire routed, segmented, two-VNet topology is nine commands, because Azure's system routes and default NSG rules do the rest. Everything you add from here, NSGs, route tables, DNS zones, is tightening or extending this baseline, and each of those layers is a follow-up lab.</p>
+    </section>
+
+    <section><h2 id="practice-challenges">Practice Challenges</h2>
+<div class="lab-challenge"><h4>Challenge 1: Plan on paper first</h4><p>Goal: Split a /16 into four /18s on paper, assign each a purpose, then deploy exactly that.</p><p>Hint: Write the ranges down before touching the CLI; the plan is the deliverable.</p></div>
+<div class="lab-challenge"><h4>Challenge 2: Hub and spoke</h4><p>Goal: Build a hub VNet peered to two spokes and prove the spokes cannot reach each other directly.</p><p>Hint: The failed ping between spokes is the proof that peering is non-transitive.</p></div>
+<div class="lab-challenge"><h4>Challenge 3: Custom DNS</h4><p>Goal: Point the VNet at a custom DNS server and verify name resolution from a VM.</p><p>Hint: Run <code>nslookup</code> from the VM; it shows which server answered.</p></div>
+</section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="azure-vm-config.html">Azure VM Configuration</a></li>
+        <li><a href="nsg-route-tables.html">NSGs &amp; Route Tables</a></li>
+        <li><a href="../security/network-security-groups.html">Network Security Groups</a></li>
+      
+        <li><a href="infrastructure-as-code.html">Infrastructure as Code</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

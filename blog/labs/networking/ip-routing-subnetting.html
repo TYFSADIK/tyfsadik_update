@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IP Routing &amp; Subnetting: Networking Lab | TYFSADIK</title>
+  <meta name="description" content="Master IP subnetting and Linux routing: VLSM planning with ipcalc, enabling IP forwarding via sysctl, and managing static routes with hands-on verification.">
+  <meta name="keywords" content="subnetting, CIDR, VLSM, ipcalc, Linux routing, ip route, static routes">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/ip-routing-subnetting.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "IP Routing and Subnetting with CIDR", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-02-11", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "iproute2, ipcalc, Linux IP forwarding", "articleSection": "Networking", "learningResourceType": "Hands-on lab", "teaches": "computer networking fundamentals"}</script>
+  <meta property="og:title" content="IP Routing &amp; Subnetting: Networking Lab | TYFSADIK">
+  <meta property="og:description" content="Master IP subnetting and Linux routing: VLSM planning with ipcalc, enabling IP forwarding via sysctl, and managing static routes with hands-on verification.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/networking/ip-routing-subnetting.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="IP Routing &amp; Subnetting: Networking Lab | TYFSADIK">
+  <meta name="twitter:description" content="Master IP subnetting and Linux routing: VLSM planning with ipcalc, enabling IP forwarding via sysctl, and managing static routes with hands-on verification.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "IP Routing and Subnetting with CIDR on Linux",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "1. Plan subnets with ipcalc",
+      "text": "ipcalc 192.168.10.0/24 --split 60 60"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "2. Enable IP forwarding [PRIVILEGED]",
+      "text": "sysctl -w net.ipv4.ip_forward=1 && echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "3. Add and inspect routes",
+      "text": "ip route add 192.168.10.64/26 via 192.168.10.62 && ip route show"
+    }
+  ]
+}
+  </script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Networking", "item": "https://tyfsadik.org/blog/labs/networking/index.html"}, {"@type": "ListItem", "position": 4, "name": "IP Routing & Subnetting", "item": "https://tyfsadik.org/blog/labs/networking/ip-routing-subnetting.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'No connectivity between subnets'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: IP forwarding disabled or a missing route on one side. Fix: Confirm net.ipv4.ip_forward=1 and that both the router and clients have return routes."}}, {"@type": "Question", "name": "How do I fix 'One direction works, the other does not'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Asymmetric routing: the return path is missing on the far host. Fix: Add the reverse route on the destination network's gateway, not just the source side."}}, {"@type": "Question", "name": "How do I fix 'Wrong route is chosen'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: A less specific route is winning because the intended one was never added. Fix: Run ip route get <dst> to see exactly which route the kernel selects."}}, {"@type": "Question", "name": "How do I fix 'Forwarding works until reboot'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: sysctl -w changed only the runtime value. Fix: Persist the setting in /etc/sysctl.conf or /etc/sysctl.d/."}}, {"@type": "Question", "name": "How do I fix 'Overlapping subnets'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Two subnet plans share addresses, so longest-prefix match behaves unexpectedly. Fix: Re-run ipcalc on the full plan and confirm zero overlap before configuring."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>IP Routing &amp; Subnetting</span></nav>
+    <div class="page-header"><h1>IP Routing and Subnetting with CIDR on Linux</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Networking</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">CIDR</span><span class="tag">ipcalc</span><span class="tag">routing</span><span class="tag">forwarding</span></div>
+    </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
+      <ol>
+      <li><a href="#objective-context">Objective</a></li>
+      <li><a href="#learning-objectives">Learning Objectives</a></li>
+      <li><a href="#environment-prerequisites">Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Steps</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#key-takeaways">Key Takeaways</a></li>
+      <li><a href="#practice-challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+      </ol>
+    </nav>
+
+
+    <section><p class="lead">I subdivided a /24 into role-based CIDR subnets and configured a Linux host as a router to forward traffic between them. Correct subnet sizing and route tables produced verified end-to-end reachability with no overlap or black-hole routes.</p></section>
+
+    <section id="objective-context"><h2>Objective &amp; Context</h2>
+      <p>Subnetting controls broadcast domains and enforces segmentation; routing connects those segments. This lab plans address space with VLSM and turns a multi-homed Linux box into a forwarding router, the foundation for the VLAN and zero-trust segmentation labs.</p></section>    <section id="learning-objectives">
+      <div class="lab-objectives"><h3>Learning Objectives</h3>
+        <ul>
+        <li>Perform VLSM subnet math with ipcalc to carve a /24 into role-based subnets.</li>
+        <li>Enable IPv4 forwarding on Linux persistently via sysctl.</li>
+        <li>Add, inspect, and remove static routes with the ip route commands.</li>
+        <li>Verify bidirectional reachability across routed segments.</li>
+        <li>Explain how subnetting shrinks broadcast domains and enforces segmentation.</li>
+        </ul>
+      </div>
+    </section>
+
+
+    <section id="environment-prerequisites"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+      <ul>
+        <li>A Linux router VM with two interfaces; two client VMs.</li>
+        <li><code>ipcalc</code> for subnet math; iproute2 for routes.</li>
+        <li>A /24 to subdivide (for example 192.168.10.0/24).</li>
+      
+          <li>A Linux router VM with two network interfaces and two client VMs (or network namespaces).</li>
+          <li>iproute2 installed (standard on modern distributions) and ipcalc (sudo apt install -y ipcalc).</li>
+          <li>Privileged access (sudo) to change sysctl settings and the routing table.</li>
+          <li>A /24 to subdivide, for example 192.168.10.0/24.</li>
+          <li>Comfort reading CIDR notation and binary subnet math.</li>
+        </ul>
+      <div class="mermaid" role="img" aria-label="Two subnets joined by a Linux router">
+flowchart LR
+  A[Subnet A<br/>192.168.10.0/26] --> R[Linux Router<br/>ip_forward=1]
+  R --> B[Subnet B<br/>192.168.10.64/26]
+      </div>
+          </div>
+</section>
+
+    <section id="step-by-step-execution"><h2>Step-by-Step Execution</h2>
+      <h3>1. Plan subnets with ipcalc</h3>
+      <div class="command-block"><div class="command"><code>ipcalc 192.168.10.0/24 --split 60 60</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>1. Requested size: 60 hosts
+Netmask:   255.255.255.192 = 26
+Network:   192.168.10.0/26
+HostMin:   192.168.10.1
+HostMax:   192.168.10.62
+Broadcast: 192.168.10.63
+Hosts/Net: 62
+
+2. Requested size: 60 hosts
+Netmask:   255.255.255.192 = 26
+Network:   192.168.10.64/26
+HostMin:   192.168.10.65
+HostMax:   192.168.10.126
+Broadcast: 192.168.10.127
+Hosts/Net: 62</code></pre>
+<p class="lab-step-note">What this teaches: VLSM planning turns a host-count requirement into exact network, broadcast, and usable ranges before anything is configured.</p><p class="lab-step-note">The classic Debian/Ubuntu ipcalc package takes requested host counts with --split (or -s) and rounds each up to the next prefix boundary: 60 hosts rounds up to 64 addresses, a /26. Verify with: sudo apt install -y ipcalc.</p>
+<h3>2. Enable IP forwarding [PRIVILEGED]</h3>
+      <div class="command-block"><div class="command"><code>sysctl -w net.ipv4.ip_forward=1 &amp;&amp; echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>net.ipv4.ip_forward = 1</code></pre>
+<p class="lab-step-note">What this teaches: Linux does not forward packets between interfaces by default; ip_forward is the single switch that makes a host a router.</p><p class="lab-step-note">Repeating the echo appends duplicate lines. Prefer a drop-in file instead: echo 'net.ipv4.ip_forward=1' | sudo tee /etc/sysctl.d/99-router.conf, then sudo sysctl --system.</p>
+<h3>3. Add and inspect routes</h3>
+      <div class="command-block"><div class="command"><code>ip route add 192.168.10.64/26 via 192.168.10.62 &amp;&amp; ip route show</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code class="language-bash">192.168.10.0/26 dev eth0 proto kernel scope link src 192.168.10.62
+192.168.10.64/26 via 192.168.10.62 dev eth0 proto static</code></pre>
+<p class="lab-step-note">What this teaches: the routing table is consulted for every packet, and longest-prefix match decides which route wins.</p>
+</section>    <section id="how-it-works">
+      <div class="lab-explainer"><h3>How It Works</h3>
+        <p>Subnetting borrows host bits to create multiple networks from one block. A /26 splits a /24 into four networks of 62 usable hosts each, and VLSM lets each subnet be sized to its actual need instead of forcing uniform splits. The network address, broadcast address, and usable range all derive mechanically from the prefix length.</p>
+        <p>Routing is the process of selecting an egress interface and next hop for each destination. Linux consults the routing table for every forwarded packet and applies longest-prefix match: among all matching routes, the one with the longest prefix (most specific network) wins. A default route (0.0.0.0/0) matches everything and therefore loses to any more specific entry.</p>
+        <p>Enabling net.ipv4.ip_forward lets the kernel move packets between interfaces, which is what turns a multi-homed host into a router. Static routes are explicit entries added by the administrator; they are simple and predictable but do not adapt to failures, which is the problem dynamic routing protocols solve.</p>
+        <div class="mermaid" role="img" aria-label="Longest-prefix match decision">
+flowchart LR
+  P["Packet to 192.168.10.70"] --> T["Routing table"]
+  T -->|"/26 matches"| R1["via 192.168.10.62"]
+  T -->|"/24 matches"| R2["via 192.168.10.1"]
+  R1 --> W["Winner: longest prefix"]
+        </div>
+      </div>
+    </section>
+
+
+    <section id="validation-testing"><h2>Validation &amp; Testing</h2>
+      <p>From a client in subnet A, ping a client in subnet B and trace the path through the router. Pass criteria: successful cross-subnet ping, the router appears as the first hop, and no overlapping routes exist.</p>
+      <div class="command-block"><div class="command"><code>traceroute 192.168.10.70</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>traceroute to 192.168.10.70 (192.168.10.70), 30 hops max, 60 byte packets
+ 1  192.168.10.1   0.8 ms  0.6 ms  0.5 ms
+ 2  192.168.10.70  1.4 ms  1.1 ms  1.0 ms</code></pre>
+
+    </section>    <section id="troubleshooting">
+      <h2>Troubleshooting</h2>
+      <table class="lab-table">
+        <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>No connectivity between subnets</td><td>IP forwarding disabled or a missing route on one side</td><td>Confirm net.ipv4.ip_forward=1 and that both the router and clients have return routes</td></tr>
+          <tr><td>One direction works, the other does not</td><td>Asymmetric routing: the return path is missing on the far host</td><td>Add the reverse route on the destination network's gateway, not just the source side</td></tr>
+          <tr><td>Wrong route is chosen</td><td>A less specific route is winning because the intended one was never added</td><td>Run ip route get &lt;dst&gt; to see exactly which route the kernel selects</td></tr>
+          <tr><td>Forwarding works until reboot</td><td>sysctl -w changed only the runtime value</td><td>Persist the setting in /etc/sysctl.conf or /etc/sysctl.d/</td></tr>
+          <tr><td>Overlapping subnets</td><td>Two subnet plans share addresses, so longest-prefix match behaves unexpectedly</td><td>Re-run ipcalc on the full plan and confirm zero overlap before configuring</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>No cross-subnet traffic:</strong> confirm <code>ip_forward=1</code> and that clients use the router as gateway.</li>
+        <li><strong>Overlapping subnets:</strong> recompute with ipcalc; overlaps cause unpredictable routing.</li>
+        <li><strong>Asymmetric routing:</strong> ensure return routes exist on both segments.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Segmented one /24 into 2 role-based /26 subnets with zero overlap.</li>
+        <li>Achieved verified bidirectional reachability across segments.</li>
+        <li>Reduced each broadcast domain by roughly 75% versus a flat /24.</li>
+        <li>Documented a reusable VLSM plan for future segments.</li>
+      </ul>
+    </section>    <section id="key-takeaways">
+      <div class="lab-takeaways"><h3>Key Takeaways</h3>
+        <ul>
+        <li>Plan the address space on paper (or with ipcalc) before touching any interface.</li>
+        <li>ip route get is the fastest way to see which route a packet will take.</li>
+        <li>Persist sysctl changes; runtime-only changes vanish on reboot.</li>
+        <li>Every routed path needs a return route: connectivity is always bidirectional.</li>
+        </ul>
+      </div>
+    </section>
+
+
+        <section id="practice-challenges">
+      <h2>Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Add a third subnet</h4><p>Goal: Carve a third /26 for a DMZ out of the same /24 and route it through the Linux router.</p><p>Hint: Re-run ipcalc with three 60-host requests and add routes on both the router and the clients.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: Simulate a failed link</h4><p>Goal: Take down one router interface, observe which routes break, and add a backup static route with a higher metric.</p><p>Hint: Use ip route add ... metric 200 for the backup path and test with ip route get.</p></div>
+    </section>
+<section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="vlan-configuration.html">VLAN Configuration</a></li>
+        <li><a href="routing-switching.html">Routing &amp; Switching</a></li>
+        <li><a href="static-network-config.html">Static Network Configuration</a></li>
+      
+        <li><a href="acl-config.html">Access Control Lists</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

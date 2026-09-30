@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SDN Controllers Explained: Networking Lab | TYFSADIK</title>
+  <meta name="description" content="Program SDN controllers hands-on: Ryu event-driven Python apps and ONOS REST flow programming against Open vSwitch, with controller-side verification.">
+  <meta name="keywords" content="SDN controller, Ryu, ONOS, REST API, packet-in, flow-mod, OpenFlow 1.3">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/networking/sdn-controllers.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "SDN Controllers: Ryu, ONOS, and REST Programmability", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-04-22", "dateModified": "2026-09-29", "proficiencyLevel": "Advanced", "dependencies": "Ryu, ONOS, OpenFlow 1.3, Python", "articleSection": "Networking", "learningResourceType": "Hands-on lab", "teaches": "computer networking fundamentals"}</script>
+  <meta property="og:title" content="SDN Controllers Explained: Networking Lab | TYFSADIK">
+  <meta property="og:description" content="Program SDN controllers hands-on: Ryu event-driven Python apps and ONOS REST flow programming against Open vSwitch, with controller-side verification.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/networking/sdn-controllers.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="SDN Controllers Explained: Networking Lab | TYFSADIK">
+  <meta name="twitter:description" content="Program SDN controllers hands-on: Ryu event-driven Python apps and ONOS REST flow programming against Open vSwitch, with controller-side verification.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "SDN Controllers: Programming Flows with Ryu and ONOS",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "1. Run a Ryu learning-switch app",
+      "text": "ryu-manager ryu.app.simple_switch_13 --ofp-tcp-listen-port 6653"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "2. Push a flow via the ONOS REST API",
+      "text": "curl -u onos:rocks -X POST http://127.0.0.1:8181/onos/v1/flows/of:0000000000000001 -d @flow.json"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "3. Verify devices and flows are managed",
+      "text": "curl -s -u onos:rocks http://127.0.0.1:8181/onos/v1/devices | jq '.devices[].id'"
+    }
+  ]
+}
+  </script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Networking", "item": "https://tyfsadik.org/blog/labs/networking/index.html"}, {"@type": "ListItem", "position": 4, "name": "SDN Controllers", "item": "https://tyfsadik.org/blog/labs/networking/sdn-controllers.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Ryu starts but switches never appear'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Switches pointing at the wrong controller IP/port. Fix: Confirm ovs-vsctl get-controller and that ryu-manager listens on 6653."}}, {"@type": "Question", "name": "How do I fix 'ONOS REST returns 401'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Wrong credentials or the onos:rocks default was changed. Fix: Check the karaf users configuration and test with curl -v."}}, {"@type": "Question", "name": "How do I fix 'Flow POST returns 400'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Malformed flow JSON (bad device ID format or missing criteria). Fix: Validate the device ID exists via GET /devices and compare against a working example."}}, {"@type": "Question", "name": "How do I fix 'Flows installed but traffic still floods'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The app also needs to handle the reverse direction or ARP. Fix: The simple switch app learns both directions; custom apps must install symmetric flows."}}, {"@type": "Question", "name": "How do I fix 'Controller CPU spikes on ping sweeps'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Every new flow triggers a packet-in (reactive storm). Fix: Add proactive flows for known traffic or rate-limit packet-ins at the switch."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>SDN Controllers</span></nav>
+    <div class="page-header"><h1>SDN Controllers: Programming Flows with Ryu and ONOS</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Networking</span><span class="lab-time">~6 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Ryu</span><span class="tag">ONOS</span><span class="tag">REST API</span><span class="tag">OpenFlow</span></div>
+    </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
+      <ol>
+      <li><a href="#objective-context">Objective</a></li>
+      <li><a href="#learning-objectives">Learning Objectives</a></li>
+      <li><a href="#environment-prerequisites">Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Steps</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#key-takeaways">Key Takeaways</a></li>
+      <li><a href="#practice-challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+      </ol>
+    </nav>
+
+
+    <section><p class="lead">I deployed Ryu and ONOS controllers and programmed forwarding behaviour through a Python application and the northbound REST API. Centralizing logic in the controller replaced per-switch configuration with one programmable control point for the whole fabric.</p></section>
+
+    <section id="objective-context"><h2>Objective &amp; Context</h2>
+      <p>The controller is the brain of an SDN fabric. This lab writes a Ryu app that reacts to packet-in events and pushes flows, then drives ONOS through REST, demonstrating both event-driven and declarative control models on the topology from the SDN concepts lab.</p></section>    <section id="learning-objectives">
+      <div class="lab-objectives"><h3>Learning Objectives</h3>
+        <ul>
+        <li>Run a Ryu learning-switch application against OVS switches.</li>
+        <li>Push flows to ONOS through its REST API.</li>
+        <li>Verify managed devices and installed flows from the controller side.</li>
+        <li>Contrast event-driven (Ryu) and declarative (ONOS intent/REST) control models.</li>
+        <li>Explain packet-in handling and flow-mod installation.</li>
+        </ul>
+      </div>
+    </section>
+
+
+    <section id="environment-prerequisites"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+      <ul>
+        <li>Ryu and/or ONOS installed; Mininet with OVS switches.</li>
+        <li>Python 3 for the Ryu app; curl for ONOS REST.</li>
+        <li>OpenFlow 1.3 connectivity on port 6653.</li>
+      
+          <li>Ryu and/or ONOS installed (Ryu via pip, ONOS as a distribution).</li>
+          <li>Mininet with OVS switches connected to the controller.</li>
+          <li>Python 3 for the Ryu application.</li>
+          <li>curl and jq for ONOS REST calls.</li>
+          <li>OpenFlow 1.3 connectivity on port 6653.</li>
+        </ul>
+      <div class="mermaid" role="img" aria-label="Controller pushing flows to switches">
+flowchart TB
+  A[Ryu/ONOS App] --> Ctl[Controller core]
+  Ctl -->|packet-in| A
+  Ctl -->|flow-mod| S1[OVS s1]
+  Ctl -->|flow-mod| S2[OVS s2]
+      </div>
+          </div>
+</section>
+
+    <section id="step-by-step-execution"><h2>Step-by-Step Execution</h2>
+      <h3>1. Run a Ryu learning-switch app</h3>
+      <div class="command-block"><div class="command"><code>ryu-manager ryu.app.simple_switch_13 --ofp-tcp-listen-port 6653</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>loading app ryu.app.simple_switch_13
+loading app ryu.controller.ofp_handler
+instantiating app ryu.app.simple_switch_13 of SimpleSwitch13
+instantiating app ryu.controller.ofp_handler of OFPHandler</code></pre>
+<p class="lab-step-note">What this teaches: a Ryu app is an event loop: packet-in events arrive, and the app answers with flow-mods.</p>
+<p class="lab-step-note">ryu-manager blocks in the foreground; the four lines above are its success signal. Ryu 4.x targets Python 3.6 to 3.10, so on a modern distribution use a virtualenv with Python 3.10 or expect dependency breakage. Connect a Mininet switch to port 6653 and watch packet-in handling begin in the logs.</p>
+<h3>2. Push a flow via the ONOS REST API</h3>
+      <div class="command-block"><div class="command"><code>curl -u onos:rocks -H 'Content-Type: application/json' -X POST http://127.0.0.1:8181/onos/v1/flows/of:0000000000000001 -d @flow.json</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>{"flows":[{"id":"281475399122950","deviceId":"of:0000000000000001","state":"PENDING_ADD","life":0,"packets":0,"bytes":0,"lastSeen":0,"priority":40000,"timeout":0,"isPermanent":true,"tableId":"0","selector":{"criteria":[{"type":"IN_PORT","port":"1"}]},"treatment":{"instructions":[{"type":"OUTPUT","port":"2"}]}}]}</code></pre>
+<p class="lab-step-note">What this teaches: ONOS exposes the same forwarding intent as REST resources, so any automation can program the fabric.</p>
+<p class="lab-output-label">File content (save as flow.json before posting):</p>
+<pre><code class="language-json">{
+  "flows": [
+    {
+      "priority": 40000,
+      "timeout": 0,
+      "isPermanent": true,
+      "deviceId": "of:0000000000000001",
+      "treatment": { "instructions": [ { "type": "OUTPUT", "port": "2" } ] },
+      "selector": { "criteria": [ { "type": "IN_PORT", "port": "1" } ] }
+    }
+  ]
+}</code></pre>
+<p class="lab-step-note">Without -H 'Content-Type: application/json', ONOS rejects the body. onos:rocks are the lab defaults; change them before any shared deployment. The deviceId must match a device ONOS actually manages (check GET /onos/v1/devices first), or the flow stays in PENDING_ADD forever.</p>
+<h3>3. Verify devices and flows are managed</h3>
+      <div class="command-block"><div class="command"><code>curl -s -u onos:rocks http://127.0.0.1:8181/onos/v1/devices | jq '.devices[].id'</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code class="language-bash">"of:0000000000000001"
+"of:0000000000000002"</code></pre>
+<p class="lab-step-note">What this teaches: the controller's device and flow inventory is the source of truth for what the network is doing.</p>
+</section>    <section id="how-it-works">
+      <div class="lab-explainer"><h3>How It Works</h3>
+        <p>A controller is an event-driven program sitting above the switches. When a switch sees a packet it cannot handle, it sends a packet-in to the controller; the controller's application logic decides what to do and replies with flow-mods that install forwarding entries. Ryu makes this explicit: you write Python handlers for OpenFlow events.</p>
+        <p>ONOS takes a more declarative, distributed approach: applications express intents (connectivity between endpoints, with constraints), and the framework compiles intents into flow rules across devices. The REST API exposes devices, links, hosts, flows, and intents as resources, which is what automation and orchestrators consume.</p>
+        <p>Both models converge on the same datapath: prioritized match-action entries in switch flow tables. The controller is the only writer that matters, so consistency, scale-out (clustering), and the behavior of switches during controller outages are the central design questions for any deployment.</p>
+        <div class="mermaid" role="img" aria-label="Controller event loop">
+flowchart LR
+  SW["OVS switch"] -->|"packet-in"| APP["Controller app"]
+  APP -->|"flow-mod"| SW
+  APP -->|"REST"| OPS["Operator / automation"]
+  OPS -->|"intent"| APP
+        </div>
+      </div>
+    </section>
+
+
+    <section id="validation-testing"><h2>Validation &amp; Testing</h2>
+      <p>Run <code>pingall</code> in Mininet and confirm the controller installs flows reactively (Ryu) or that REST-pushed flows appear in the switch (ONOS). Pass criteria: full reachability driven by controller-installed flows, visible in dump-flows.</p>
+    </section>    <section id="troubleshooting">
+      <h2>Troubleshooting</h2>
+      <table class="lab-table">
+        <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>Ryu starts but switches never appear</td><td>Switches pointing at the wrong controller IP/port</td><td>Confirm ovs-vsctl get-controller and that ryu-manager listens on 6653</td></tr>
+          <tr><td>ONOS REST returns 401</td><td>Wrong credentials or the onos:rocks default was changed</td><td>Check the karaf users configuration and test with curl -v</td></tr>
+          <tr><td>Flow POST returns 400</td><td>Malformed flow JSON (bad device ID format or missing criteria)</td><td>Validate the device ID exists via GET /devices and compare against a working example</td></tr>
+          <tr><td>Flows installed but traffic still floods</td><td>The app also needs to handle the reverse direction or ARP</td><td>The simple switch app learns both directions; custom apps must install symmetric flows</td></tr>
+          <tr><td>Controller CPU spikes on ping sweeps</td><td>Every new flow triggers a packet-in (reactive storm)</td><td>Add proactive flows for known traffic or rate-limit packet-ins at the switch</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>App not receiving events:</strong> confirm switches connect on 6653 and speak OpenFlow 1.3.</li>
+        <li><strong>ONOS REST 401:</strong> use the correct credentials and enable required apps (openflow, fwd).</li>
+        <li><strong>Flows not applied:</strong> validate the JSON deviceId and selector/treatment fields.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Centralized forwarding logic for a multi-switch fabric in one controller.</li>
+        <li>Programmed flows via both event-driven Python and declarative REST.</li>
+        <li>Achieved full fabric reachability driven entirely by controller flows.</li>
+        <li>Replaced per-switch config with a single programmable control point.</li>
+      </ul>
+    </section>    <section id="key-takeaways">
+      <div class="lab-takeaways"><h3>Key Takeaways</h3>
+        <ul>
+        <li>Ryu teaches the event model; ONOS teaches the intent and API model.</li>
+        <li>Both ultimately write the same OpenFlow entries into switch tables.</li>
+        <li>Verify from the controller inventory, not just from ping results.</li>
+        <li>Reactive control scales poorly under scan-like traffic; go proactive for known flows.</li>
+        </ul>
+      </div>
+    </section>
+
+
+        <section id="practice-challenges">
+      <h2>Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Write a firewall app</h4><p>Goal: Extend the Ryu learning switch to drop all traffic to one host while forwarding everything else.</p><p>Hint: Install a high-priority drop flow matching nw_dst of the target in the packet-in handler.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: Intent-based connectivity</h4><p>Goal: Use the ONOS intent REST API to request host-to-host connectivity instead of raw flows.</p><p>Hint: POST to /onos/v1/intents with type HostToHostIntent and watch ONOS compile it to flows.</p></div>
+    </section>
+<section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="openflow-protocol.html">OpenFlow Protocol</a></li>
+        <li><a href="sdn-concepts.html">SDN Concepts</a></li>
+        <li><a href="network-function-virtualization.html">Network Function Virtualization</a></li>
+      </ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Database Backup &amp; Recovery: pg_dump, PITR | TYFSADIK</title>
+  <meta name="keywords" content="postgresql backup, pg_dump, pg_basebackup, point-in-time recovery, PITR, RPO RTO">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Database Backup &amp; Recovery: pg_dump, PITR | TYFSADIK">
+  <meta property="og:description" content="Implement PostgreSQL backups with pg_dump and WAL-based point-in-time recovery, then test restores against defined RPO and RTO targets with restore drills.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/databases/backup-recovery.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Database Backup &amp; Recovery: pg_dump, PITR | TYFSADIK">
+  <meta name="twitter:description" content="Implement PostgreSQL backups with pg_dump and WAL-based point-in-time recovery, then test restores against defined RPO and RTO targets with restore drills.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="description" content="Implement PostgreSQL backups with pg_dump and WAL-based point-in-time recovery, then test restores against defined RPO and RTO targets with restore drills.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/databases/backup-recovery.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Database Backup and Recovery with pg_dump and PITR", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-04-01", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "PostgreSQL 16, pg_dump, WAL archiving", "articleSection": "Databases", "learningResourceType": "Hands-on lab", "teaches": "databases and SQL"}</script>
+  <script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "Logical backup with pg_dump",
+      "text": "Logical backup with pg_dump"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Base backup for PITR",
+      "text": "Base backup for PITR"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Restore and verify",
+      "text": "Restore and verify"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Configure WAL archiving",
+      "text": "Configure WAL archiving"
+    }
+  ],
+  "url": "https://tyfsadik.org/about.html"
+}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Databases", "item": "https://tyfsadik.org/blog/labs/databases/index.html"}, {"@type": "ListItem", "position": 4, "name": "Backup & Recovery", "item": "https://tyfsadik.org/blog/labs/databases/backup-recovery.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'pg_basebackup fails: WAL streaming error'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: replication permission missing or max_wal_senders too low. Fix: grant REPLICATION and raise max_wal_senders, then retry."}}, {"@type": "Question", "name": "How do I fix 'restore is slower than the RTO allows'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: single-threaded restore of a huge dump. Fix: use pg_restore -j for parallel jobs on custom-format dumps."}}, {"@type": "Question", "name": "How do I fix 'WAL archive filled the disk'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: archive_command succeeded but old segments were never cleaned. Fix: set up WAL retention with archive_cleanup_command or a standby consuming them."}}, {"@type": "Question", "name": "How do I fix 'dump restores with owner errors'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: roles from production do not exist in the test cluster. Fix: restore with --no-owner or create the roles first."}}, {"@type": "Question", "name": "How do I fix 'PITR misses the target time'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the needed WAL segment was already recycled. Fix: keep wal_keep_size adequate or use a replication slot so segments are retained."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/databases/index.html">Databases</a> &rsaquo; <span>Backup &amp; Recovery</span></nav>
+    <div class="page-header"><h1>Database Backup and Recovery with pg_dump and Point-in-Time Recovery</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Databases</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">pg_dump</span><span class="tag">WAL</span><span class="tag">PITR</span><span class="tag">RPO/RTO</span></div>
+    </div>
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+      <li><a href="#objective-context">Objective &amp; Context</a></li>
+      <li><a href="#environment-prerequisites">Environment &amp; Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation &amp; Testing</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#takeaways">Key Takeaways</a></li>
+      <li><a href="#challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+    </ol></nav>
+
+    <section><p class="lead">I implemented both logical backups with pg_dump and physical point-in-time recovery via WAL archiving, then tested restores against defined RPO and RTO targets. A backup is only real once its restore is verified, so every backup type was exercised end to end.</p></section>
+
+    <section><h2 id="objective-context">Objective &amp; Context</h2>
+      <p>Backups exist to be restored. This lab pairs logical dumps (portable, slow) with WAL-based PITR (granular, fast recovery to a timestamp), defining recovery point and recovery time objectives and proving them with actual restores.</p></section>
+    <div class="lab-objectives"><h3>Learning Objectives</h3><ul>
+      <li>Take logical backups with pg_dump in custom format.</li>
+      <li>Take base backups with pg_basebackup for PITR.</li>
+      <li>Configure WAL archiving for point-in-time recovery.</li>
+      <li>Restore to a test database and verify row counts.</li>
+      <li>Validate restores against RPO and RTO targets.</li>
+    </ul></div>
+
+    <section><h2 id="environment-prerequisites">Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3><ul>
+      <li><code>PostgreSQL 16</code> with WAL archiving configured</li>
+      <li>Backup storage separate from the data volume</li>
+      <li>Defined RPO/RTO targets to validate against</li>
+      <li>Assumed skill: psql basics and Linux file management</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="Backup and PITR recovery flow">
+flowchart LR
+  B[Base backup] --> W[WAL archive stream]
+  W --> R[Restore base]
+  R --> P[Replay WAL to timestamp]
+  P --> V[Verified database]
+      </div>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <h3>1. Logical backup with pg_dump</h3>
+      <div class="command-block"><div class="command"><code>pg_dump -Fc appdb -f /backups/appdb-$(date +%F).dump</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>(dump file written to /backups/)</code></pre>
+      <p class="lab-step-note">What this teaches: Custom format (-Fc) compresses and allows selective restore; the date-stamped filename makes retention and rotation trivial.</p></div>
+      <h3>2. Base backup for PITR</h3>
+      <div class="command-block"><div class="command"><code>pg_basebackup -D /backups/base -Fp -Xs -P</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>(base backup streamed to /backups/base)</code></pre>
+      <p class="lab-step-note">What this teaches: pg_basebackup copies the data directory while -X stream includes the WAL needed for consistency; together with archived WAL this enables PITR. Streaming mode opens two WAL sender connections (one for the backup, one for the WAL stream), so set <code>max_wal_senders</code> to at least 2 and run the command as a superuser or a role with the REPLICATION attribute.</p></div>
+      <h3>3. Restore and verify</h3>
+      <div class="command-block"><div class="command"><code>createdb appdb_test &amp;&amp; pg_restore -d appdb_test /backups/appdb-2026-06-17.dump &amp;&amp; psql appdb_test -c "SELECT count(*) FROM orders;"</code></div></div>
+<pre><code class="language-bash"> count
+-------
+ 81234</code></pre>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code> count
+-------
+ 81234</code></pre>
+      <p class="lab-step-note">What this teaches: Restoring into appdb_test (never production) and counting rows proves the backup is restorable; a backup without a tested restore is a hope, not a plan. pg_restore -d connects to an existing database, so createdb runs first; the -C flag is the alternative when you want the dump to create the database itself.</p></div>
+      <h3>4. Configure WAL archiving</h3>
+      <div class="command-block"><div class="command"><code>ALTER SYSTEM SET archive_mode = 'on'; ALTER SYSTEM SET archive_command = 'test ! -f /backups/wal/%f &amp;&amp; cp %p /backups/wal/%f';</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>ALTER SYSTEM
+ALTER SYSTEM</code></pre>
+      <p class="lab-step-note">What this teaches: archive_mode only takes effect at server start, so a restart is required after setting it; archive_command then runs once per completed WAL segment. Verify with <code>SELECT * FROM pg_stat_archiver;</code> and confirm last_failed_time stays empty after the next checkpoint.</p></div>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+      <div class="lab-explainer"><h3>How It Works</h3>
+      <p>Logical backups (pg_dump) export SQL or an archive of the database contents; they are portable across versions and good for single-database restores. Physical backups (pg_basebackup) copy the data files and are faster for full-cluster recovery.</p>
+      <p>Point-in-time recovery combines a base backup with the continuous WAL stream. Because WAL records every change, replaying it from the base backup's checkpoint lets you restore to any moment, which is how you recover from a 2pm accidental DROP TABLE using the 2am base backup.</p>
+      <p>RPO (how much data you can lose) and RTO (how fast you must recover) turn backups into engineering targets. WAL archiving gives a small RPO, tested restore runbooks give a predictable RTO, and only rehearsed restores prove either number is real.</p>
+    </div>
+      <div class="mermaid" role="img" aria-label="Backup and point-in-time recovery">
+flowchart LR
+  D["production DB"] --> L["pg_dump<br/>logical backup"]
+  D --> B["pg_basebackup<br/>+ WAL archive"]
+  B --> PITR["replay WAL to<br/>any point in time"]
+  L --> R["restore to<br/>appdb_test"]
+  PITR --> V["verify: row counts,<br/>RPO/RTO met"]
+      </div>
+    </section>
+
+    <section><h2 id="validation-testing">Validation &amp; Testing</h2>
+      <p>Restore to a scratch database and to a specific point in time, then compare row counts and checksums against the source. Pass criteria: restores complete within the RTO, data loss stays within the RPO, and verification queries match expected values.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Untested backups:</strong> schedule periodic restore drills; an unverified backup is a guess.</li>
+        <li><strong>WAL gap:</strong> ensure continuous archiving; a missing segment breaks PITR.</li>
+        <li><strong>Slow restore:</strong> parallelize with <code>pg_restore -j</code> on multi-core hosts.</li>
+      </ul>
+    </details>
+
+    <section><h2 id="troubleshooting">Troubleshooting</h2>
+      <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+        <tr><td>pg_basebackup fails: WAL streaming error</td><td>replication permission missing or max_wal_senders too low</td><td>grant REPLICATION and raise max_wal_senders, then retry</td></tr>
+        <tr><td>restore is slower than the RTO allows</td><td>single-threaded restore of a huge dump</td><td>use pg_restore -j for parallel jobs on custom-format dumps</td></tr>
+        <tr><td>WAL archive filled the disk</td><td>archive_command succeeded but old segments were never cleaned</td><td>set up WAL retention with archive_cleanup_command or a standby consuming them</td></tr>
+        <tr><td>dump restores with owner errors</td><td>roles from production do not exist in the test cluster</td><td>restore with --no-owner or create the roles first</td></tr>
+        <tr><td>PITR misses the target time</td><td>the needed WAL segment was already recycled</td><td>keep wal_keep_size adequate or use a replication slot so segments are retained</td></tr>
+      </tbody></table>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Verified restores for both logical dumps and WAL-based PITR.</li>
+        <li>Met the defined RTO on test restores from cold backup.</li>
+        <li>Kept potential data loss within the RPO via continuous WAL archiving.</li>
+        <li>Validated restored data with row-count and checksum checks.</li>
+      </ul>
+    </section>
+
+    <section class="lab-takeaways"><h2 id="takeaways">Key Takeaways</h2><ul>
+        <li>Logical backups are portable; base backups plus WAL enable point-in-time recovery.</li>
+        <li>WAL archiving is what makes RPO small: every change is recorded.</li>
+        <li>Always restore into a test database and verify row counts.</li>
+        <li>Measure restore time against your RTO; tune with parallel pg_restore.</li>
+        <li>An untested backup is a hope, not a plan: rehearse restores regularly.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="challenges">Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: PITR drill</h4><p><strong>Goal:</strong> Create a table, note the time, drop it, then recover it to a minute before the drop using WAL replay.</p><p><strong>Hint:</strong> Restore the base backup to a new cluster and set recovery_target_time just before the DROP.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: RTO measurement</h4><p><strong>Goal:</strong> Time a full pg_restore of your dump with -j4 vs -j1 and record the speedup.</p><p><strong>Hint:</strong> Custom format (-Fc) is required for parallel restore; directory format (-Fd) parallelizes too.</p></div>
+    </section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="database-admin.html">Database Administration</a></li>
+        <li><a href="../linux-server/backup-recovery.html">Linux Backup &amp; Recovery</a></li>
+        <li><a href="../../../work/infrastructure/data-sovereignty-stack.html">Data Sovereignty Stack</a></li>
+      
+        <li><a href="database-admin.html">Database Administration</a></li>
+        <li><a href="cloud-database-config.html">Cloud Database Configuration</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

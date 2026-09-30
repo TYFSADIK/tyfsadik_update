@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure CLI: Login, Subscriptions &amp; Defaults | TYFSADIK</title>
+  <meta name="description" content="Install and configure the Azure CLI: authenticate with Entra ID, pin the right subscription, set defaults, and create a least-privilege service principal.">
+  <meta name="keywords" content="Azure CLI, az login, Azure subscription, service principal, az configure defaults, Entra ID authentication">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Azure CLI: Login, Subscriptions &amp; Defaults | TYFSADIK">
+  <meta property="og:description" content="Install and configure the Azure CLI: authenticate with Entra ID, pin the right subscription, set defaults, and create a least-privilege service principal.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/cloud-azure/azure-cli-setup.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Azure CLI: Login, Subscriptions &amp; Defaults | TYFSADIK">
+  <meta name="twitter:description" content="Install and configure the Azure CLI: authenticate with Entra ID, pin the right subscription, set defaults, and create a least-privilege service principal.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/cloud-azure/azure-cli-setup.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Azure CLI Setup and Authentication", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-03-03", "dateModified": "2026-09-29", "proficiencyLevel": "Beginner", "dependencies": "Azure CLI 2.5x", "articleSection": "Cloud", "learningResourceType": "Hands-on lab", "teaches": "Microsoft Azure cloud services"}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "HowTo", "name": "Azure CLI Setup | Login, Subscriptions & Defaults", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"}, "step": [{"@type": "HowToStep", "name": "Authenticate", "url": "https://tyfsadik.org/blog/labs/cloud-azure/azure-cli-setup.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Select the subscription", "url": "https://tyfsadik.org/blog/labs/cloud-azure/azure-cli-setup.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Set defaults to shorten commands", "url": "https://tyfsadik.org/blog/labs/cloud-azure/azure-cli-setup.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Create a service principal for automation", "url": "https://tyfsadik.org/blog/labs/cloud-azure/azure-cli-setup.html#step-by-step-execution"}]}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Cloud & Azure", "item": "https://tyfsadik.org/blog/labs/cloud-azure/index.html"}, {"@type": "ListItem", "position": 4, "name": "Azure CLI Setup", "item": "https://tyfsadik.org/blog/labs/cloud-azure/azure-cli-setup.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'az: command not found'?", "acceptedAnswer": {"@type": "Answer", "text": "the CLI is not on PATH; reinstall or restart your shell."}}, {"@type": "Question", "name": "How do I fix 'Wrong subscription used'?", "acceptedAnswer": {"@type": "Answer", "text": "always confirm with az account show before deploying."}}, {"@type": "Question", "name": "How do I fix 'SP secret printed once'?", "acceptedAnswer": {"@type": "Answer", "text": "store it immediately in a secret manager; it is not retrievable later."}}, {"@type": "Question", "name": "How do I fix 'Browser login fails behind a proxy or WAM errors on Windows'?", "acceptedAnswer": {"@type": "Answer", "text": "bypass the Windows broker with az config set core.enable_broker_on_windows=false, or fall back to az login --use-device-code, which works through any browser on any device."}}, {"@type": "Question", "name": "How do I fix 'az account set fails with \"The subscription ... could not be found\"'?", "acceptedAnswer": {"@type": "Answer", "text": "the name is case-sensitive and must match exactly, copy it from az account list -o table, and quote names that contain spaces."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/cloud-azure/index.html">Cloud &amp; Azure</a> &rsaquo; <span>Azure CLI Setup</span></nav>
+    <div class="page-header"><h1>Azure CLI Setup: Authenticate and Configure Defaults</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Cloud</span><span class="lab-time">~1 hour</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">az login</span><span class="tag">subscriptions</span><span class="tag">defaults</span><span class="tag">service principal</span></div>
+    </div>
+<nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#architecture-overview">Architecture Overview</a></li>
+<li><a href="#environment-setup">Environment Setup</a></li>
+<li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+<li><a href="#step-flow-map">Step Flow Map</a></li>
+<li><a href="#progress-so-far">Progress So Far</a></li>
+<li><a href="#reading-cli-output-formats-and-jmespath">Reading CLI Output: Formats and JMESPath</a></li>
+<li><a href="#where-the-cli-stores-its-state">Where the CLI Stores Its State</a></li>
+<li><a href="#using-the-service-principal-in-scripts-and-ci">Using the Service Principal in Scripts and CI</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#testing-validation">Testing & Validation</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#extension-ideas">Extension Ideas</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    
+
+    <section><p class="lead">You will install the Azure CLI, authenticate, select the right subscription, and set defaults so later commands are short and safe. By the end you will have a reproducible az workflow ready for every other Azure lab.</p>
+      <p>This is deliberately the <em>first</em> lab in the Cloud &amp; Azure series, because every other lab assumes you can already run <code>az</code> commands against the correct subscription. Getting this foundation right prevents the two most common beginner disasters: deploying resources into the wrong subscription (surprise billing) and typing the same long flags on every command (typos and drift). We will also create a service principal now so that when you reach the DevOps labs you already have a non-human identity ready for CI/CD.</p>
+    </section>
+
+    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+      <ul>
+        <li>Authenticate interactively and view your subscriptions.</li>
+        <li>Set the active subscription and default resource group/location.</li>
+        <li>Create a service principal for automation.</li>
+        <li><strong>Time:</strong> ~1 hour &middot; <strong>Difficulty:</strong> Beginner &middot; <strong>Prereqs:</strong> an Azure account.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="architecture-overview">Architecture Overview</h2>
+      <div class="mermaid" role="img" aria-label="Azure CLI authentication to subscription">
+graph LR
+  You[You] -->|az login| AAD[Microsoft Entra ID]
+  AAD -->|token| CLI[Azure CLI]
+  CLI -->|set subscription| Sub[Subscription]
+  CLI -->|create SP| SP[Service Principal for automation]
+      </div>
+      <p>The flow is simple but worth understanding. When you run <code>az login</code>, the CLI never sees your password, it opens a browser window where you authenticate directly against <strong>Microsoft Entra ID</strong> (formerly Azure Active Directory). Entra ID returns an access token and a refresh token, which the CLI caches locally under <code>~/.azure</code>. Every subsequent command attaches that token to calls against the Azure Resource Manager (ARM) API.</p>
+      <p>A single Entra ID account can have access to multiple <strong>subscriptions</strong> (billing and quota boundaries). The CLI always executes against exactly one active subscription at a time, which is why selecting it explicitly, instead of trusting whatever happens to be the default, is a core habit in this lab. Finally, the service principal you create is a second, non-human identity in the same tenant, scoped to only the permissions your automation needs.</p>
+    </section>
+
+    <section><h2 id="environment-setup">Environment Setup</h2>
+<div class="lab-prereqs"><h3>Prerequisites</h3>
+<ul>
+<li>Windows 10/11, macOS, or a mainstream Linux distribution with a terminal you can open.</li>
+<li>Azure CLI 2.5x (install per platform), an Azure account (the free tier works), and a browser for the interactive login.</li>
+<li>Assumed skills: opening a terminal, running commands, and copying values between windows.</li>
+</ul></div>
+      <p><strong>You will need:</strong> the Azure CLI (<a href="https://learn.microsoft.com/cli/azure/install-azure-cli" target="_blank" rel="noopener">install docs</a>) and an Azure account.</p>
+      <p><strong>Before you begin:</strong> know which subscription you should deploy into to avoid surprise billing. If you only have one, note its name anyway, you will type it in Step 02.</p>
+      <p>Install the CLI using your platform's package manager rather than a manual download, so updates arrive automatically:</p>
+<pre><code class="language-bash"># Windows (elevated PowerShell)
+winget install -e --id Microsoft.AzureCLI
+
+# macOS
+brew update &amp;&amp; brew install azure-cli
+
+# Debian/Ubuntu
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash</code></pre>
+      <p>After installing, open a <strong>new</strong> terminal session (so the updated PATH is picked up) and verify the installation. The version check confirms the binary runs and shows which components are installed:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az version</span></div>
+        <div class="terminal-output">{
+  "azure-cli": "2.67.0",
+  "azure-cli-core": "2.67.0",
+  "azure-cli-telemetry": "1.1.0",
+  "extensions": {}
+}</div>
+      </div>
+      <p>Anything in the 2.5x-2.6x range is fine for this lab. If <code>az version</code> works, your PATH is correct and you can move on. <strong>Common mistake:</strong> running the verify command in the same terminal window that was open during the install, the shell caches the old PATH, so it reports <code>az: command not found</code> even though the install succeeded.</p>
+      <p>Three optional quality-of-life settings worth deciding up front. First, the CLI sends anonymous usage telemetry by default; on a lab machine this is harmless, but know how to turn it off. Second, the CLI can prompt to upgrade itself mid-command, which is distracting in scripts, control it explicitly. Third, tab completion saves real time once commands get long:</p>
+<pre><code class="language-bash"># Disable telemetry (optional)
+az config set core.collect_telemetry=false
+
+# Never auto-upgrade mid-command; upgrade deliberately instead
+az config set auto-upgrade.enable=no
+az upgrade --yes   # run this yourself when you choose to; without --yes it prompts for confirmation
+
+# Enable tab completion for bash/zsh (adds a line to your shell profile)
+az completion</code></pre>
+      <p>All of these write to the same <code>~/.azure/config</code> file you will see again in Step 03, so there is one place to audit your CLI's behavior.</p>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Authenticate</strong>
+          <p><code>az login</code> starts an interactive OAuth flow. On a machine with a browser it opens your default browser; on a headless server it prints a device-code URL instead. Sign in with the account that owns your Azure subscription. After a successful login the CLI prints a JSON array of every subscription your account can see, read it, because it tells you exactly which subscription landed as the default.</p>
+          <div class="command-block" data-copy><div class="command"><code>az login</code></div><div class="note">Opens a browser to sign in to Microsoft Entra ID.</div></div>
+          <p>Expected output (abbreviated, one object per subscription):</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az login</span></div>
+            <div class="terminal-output">A web browser has been opened at https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize
+[
+  {
+    "cloudName": "AzureCloud",
+    "homeTenantId": "9b1e5f2a-....",
+    "id": "a1b2c3d4-0000-1111-2222-333344445555",
+    "isDefault": true,
+    "name": "Pay-As-You-Go",
+    "state": "Enabled",
+    "tenantId": "9b1e5f2a-...."
+  }
+]</div>
+          </div>
+          <p><strong>How to verify:</strong> run <code>az account show</code> immediately. If it returns subscription JSON (instead of an error like <code>Please run 'az login'</code>), your token cache is working.</p>
+          <div class="command-block" data-copy><div class="command"><code>az account show --query "{Name:name, Id:id, Tenant:tenantId}" -o table</code></div></div>
+          <p><strong>Common mistake:</strong> if your account belongs to multiple Entra ID tenants (for example a work tenant and a personal tenant), <code>az login</code> may sign you into the wrong one. Pin the tenant explicitly with <code>az login --tenant &lt;tenant-id-or-domain&gt;</code>. On a headless Linux box with no browser, use <code>az login --use-device-code</code> and complete the flow from any device.</p>
+          <p><strong>Security note worth remembering:</strong> the tokens from this login are cached on disk under <code>~/.azure</code> (on Linux/macOS) or <code>%USERPROFILE%\.azure</code> (on Windows), protected only by your user account's file permissions. Anyone who can read your home directory can act as you in Azure until the tokens expire. On a shared or lab machine, run <code>az logout</code> when you are done, it clears the cache, and Step 01 is cheap to repeat.</p>
+        
+<p class="lab-step-note">What this teaches: Interactive login never exposes your password to the CLI; the browser talks to Entra ID and the CLI only caches the resulting tokens.</p></div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Select the subscription</strong>
+          <p>Even if you only have one subscription, make the selection explicit. Commands like <code>az group create</code> never ask which subscription to use, they silently target whatever is active, and the active subscription persists across terminal sessions. Setting it by name is safer than by ID because a typo in a name fails loudly, while a pasted GUID from the wrong subscription can look plausible.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az account list -o table &amp;&amp; az account set --subscription "Pay-As-You-Go"</span></div>
+            <div class="terminal-output">Name             IsDefault
+Pay-As-You-Go    True</div>
+          </div>
+          <p><code>az account set</code> produces no output on success, silence is normal. Confirm the switch took effect by checking the <code>isDefault</code> flag:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az account list -o table --query "[].{Name:name, IsDefault:isDefault, State:state}"</span></div>
+            <div class="terminal-output">Name             IsDefault    State
+---------------  -----------  -------
+Pay-As-You-Go    True         Enabled
+Visual Studio    False        Enabled</div>
+          </div>
+          <p><strong>Common mistake:</strong> confusing <code>az account set</code> (chooses which subscription commands target) with subscription <em>permissions</em>. If a subscription shows <code>State: Disabled</code> or is missing from the list entirely, that is a billing or RBAC issue on the account, not a CLI problem, no amount of re-login will fix it.</p>
+          <p>To see exactly what you are allowed to do in the active subscription, list your own role assignments. On a personal account you will see <code>Owner</code>; on a work or school account you may only have <code>Reader</code>, which is enough to follow along with every <code>show</code>/<code>list</code> command here but not the creates:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az role assignment list --assignee $(az ad signed-in-user show --query id -o tsv) --query "[].{Role:roleDefinitionName, Scope:scope}" -o table</span></div>
+            <div class="terminal-output">Role    Scope
+------  -----------------------------------------------
+Owner   /subscriptions/a1b2c3d4-0000-1111-2222-333344445555</div>
+          </div>
+        
+<p class="lab-step-note">What this teaches: Selecting the subscription explicitly is the habit that prevents surprise bills; the active subscription persists across sessions.</p></div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Set defaults to shorten commands</strong>
+          <p>Almost every <code>az</code> command needs a resource group (<code>-g</code>) and often a location (<code>-l</code>). <code>az configure --defaults</code> stores these in <code>~/.azure/config</code> so you can omit them. This is not just convenience: it makes scripts reproducible and removes a whole class of "forgot the flag, deployed to the wrong region" errors. Note that defaults live on <em>this machine only</em>, a teammate running the same script elsewhere needs the same config or the explicit flags.</p>
+          <div class="command-block" data-copy><div class="command"><code>az configure --defaults group=tyf-rg location=eastus</code></div></div>
+          <p>The command is silent on success. Read the defaults back to verify they were written:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az config get defaults -o table</span></div>
+            <div class="terminal-output">Name              Value    Source
+----------------  -------  -------------
+defaults.group    tyf-rg   /home/taki/.azure/config
+defaults.location eastus   /home/taki/.azure/config</div>
+          </div>
+          <p><strong>How to verify:</strong> the real test is behavioral, after Step 04 validation, <code>az group show -n tyf-rg</code> should work without any location or subscription flags. <strong>Common mistake:</strong> setting a default resource group that does not exist yet. Defaults are just strings; the CLI will not create the group for you, and the first command that relies on the default will fail with <code>ResourceGroupNotFound</code> until you create it (we do that in the validation step).</p>
+          <p>Two more things worth knowing about defaults. First, an explicit flag always wins over a default, <code>az group create -n other-rg</code> ignores <code>defaults.group</code> entirely, so defaults never trap you. Second, choosing a location is a real decision: it determines data residency, latency, and which VM sizes are available. List what your subscription offers before committing to one:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az account list-locations --query "[?metadata.regionType=='Physical'].{Name:name, DisplayName:displayName}" -o table | head -8</span></div>
+            <div class="terminal-output">Name           DisplayName
+-------------  -------------------
+eastus         East US
+eastus2        East US 2
+canadacentral  Canada Central
+canadaeast     Canada East
+westus2        West US 2
+westeurope     West Europe</div>
+          </div>
+          <p>For a Canadian lab, <code>canadacentral</code> (Toronto) keeps data in-country; this lab uses <code>eastus</code> purely because it has the broadest service availability. Pick one, set it as your default, and stay consistent across labs so resource groups and networks line up.</p>
+        
+<p class="lab-step-note">What this teaches: Defaults live in <code>~/.azure/config</code> on this machine only; they shorten commands but never substitute for knowing where a command lands.</p></div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Create a service principal for automation</strong>
+          <p>A <span class="glossary-term" data-definition="A non-human identity in Entra ID used by scripts and pipelines to authenticate to Azure.">service principal</span> lets pipelines authenticate without your personal account. Your interactive login from Step 01 is tied to you as a person, it expires, requires MFA, and should never be pasted into a CI system. The service principal we create here gets the <code>Contributor</code> role scoped to <em>one subscription only</em>, following least privilege: it can manage resources in that subscription but cannot touch billing, other subscriptions, or Entra ID itself.</p>
+          <div class="command-block" data-copy><div class="command"><code>az ad sp create-for-rbac --name tyf-ci --role Contributor --scopes /subscriptions/$(az account show --query id -o tsv)</code></div></div>
+          <p>The output is shown <strong>exactly once</strong>. The <code>password</code> field is the client secret, it is not stored anywhere retrievable, so capture it now into a password manager or secret store:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az ad sp create-for-rbac --name tyf-ci --role Contributor --scopes /subscriptions/$(az account show --query id -o tsv)</span></div>
+            <div class="terminal-output">{
+  "appId": "b2c3d4e5-1111-2222-3333-444455556666",
+  "displayName": "tyf-ci",
+  "password": "EXAMPLE~8xQ~secret~value~shown~once",
+  "tenant": "9b1e5f2a-...."
+}</div>
+          </div>
+          <p>The three fields map directly onto a login: <code>appId</code> is the username, <code>password</code> is the secret, and <code>tenant</code> identifies the directory. Verify the principal can actually authenticate before you trust it in a pipeline:</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az login --service-principal -u b2c3d4e5-1111-2222-3333-444455556666 -p "EXAMPLE~8xQ~secret~value~shown~once" --tenant 9b1e5f2a-.... --query "[].name" -o tsv</span></div>
+            <div class="terminal-output">Pay-As-You-Go</div>
+          </div>
+          <p>Log back in as yourself afterwards (<code>az login</code>) so your interactive identity is active for the rest of the lab. <strong>Common mistake:</strong> leaving the secret in your shell history or a script in a git repo. Clear it from history (<code>history -d &lt;line&gt;</code> or start the command with a leading space) and treat any committed secret as compromised, rotate it with <code>az ad sp credential reset</code>.</p>
+          <p><strong>Lifecycle note:</strong> secrets created by <code>create-for-rbac</code> expire (default one year). A pipeline that works today and dies next March with <code>AADSTS7000222</code> (expired client secret) is a classic. Put the expiry date in your calendar, and rotate on a schedule rather than after an outage:</p>
+<pre><code class="language-bash"># See when the current credential expires
+az ad app credential list --id b2c3d4e5-1111-2222-3333-444455556666 --query "[].endDateTime" -o tsv
+
+# Rotate: create a new secret, update the pipeline, THEN delete the old one
+az ad sp credential reset --id b2c3d4e5-1111-2222-3333-444455556666</code></pre>
+          <p>Rotation order matters: deploy the new secret to your pipeline first, verify a run succeeds, and only then remove the old credential, doing it in the other order guarantees downtime.</p>
+          <p><strong>Scoping note:</strong> we scoped the role to the whole subscription because this lab's later exercises touch multiple resource groups. In production you would narrow it further, <code>--scopes /subscriptions/&lt;sub&gt;/resourceGroups/tyf-rg</code> limits the principal to a single resource group, and a role like <code>Contributor</code> on that scope means even a leaked secret cannot reach anything outside it.</p>
+        
+<p class="lab-step-note">What this teaches: A service principal gives automation its own identity with its own least-privilege scope, separate from your personal account.</p></div></div>
+      </div>
+    </section>
+<section><h2 id="step-flow-map">Step Flow Map</h2>
+<div class="mermaid" role="img" aria-label="Flow of the lab steps from first to last">
+graph TD
+  S1["Authenticate"]
+  S2["Select the subscription"]
+  S3["Set defaults to shorten commands"]
+  S4["Create a service principal for automation"]
+  S1 --> S2
+  S2 --> S3
+  S3 --> S4
+</div>
+<p>Each box is one step in the lab; work them in order, since later steps build on earlier state.</p>
+</section>
+
+    
+
+    <section><h2 id="progress-so-far">Progress So Far</h2>
+      <div class="mermaid" role="img" aria-label="Azure CLI setup progress">
+graph LR
+  A[01 Login] -->|done| B[02 Subscription]
+  B -->|done| C[03 Defaults]
+  C -->|done| D[04 Service principal]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+      <p>All four stages are complete: you hold a cached token for your account, the CLI is pinned to the intended subscription, defaults shorten every future command, and a least-privilege service principal exists for automation. The only thing left is to prove the whole chain works end to end.</p>
+    </section>
+
+    <section><h2 id="reading-cli-output-formats-and-jmespath">Reading CLI Output: Formats and JMESPath</h2>
+      <p>Everything in this lab (and every later one) gets easier once you control what the CLI prints. Every <code>az</code> command accepts an <code>-o</code> / <code>--output</code> flag with four formats you will actually use: <code>json</code> (the default, complete, best for piping to files), <code>table</code> (human-readable summary), <code>tsv</code> (tab-separated values with no headers, ideal for shell variables), and <code>jsonc</code> (colorized JSON for reading). The same command in three formats:</p>
+<pre><code class="language-bash">az account show                        # full JSON document
+az account show -o table               # one readable row
+az account show --query id -o tsv      # just the subscription GUID, nothing else</code></pre>
+      <p>The <code>--query</code> flag uses <strong>JMESPath</strong>, a query language for JSON, and it is the single most useful skill for scripting with <code>az</code>. Two patterns cover most daily work: renaming and reshaping fields into a clean table, and filtering a list down to matching items:</p>
+<pre><code class="language-bash"># Reshape: pick and rename fields for a table
+az account list --query "[].{Subscription:name, ID:id, Default:isDefault}" -o table
+
+# Filter: only enabled subscriptions, and only their names
+az account list --query "[?state=='Enabled'].name" -o tsv</code></pre>
+      <p>The <code>tsv</code> pattern is how you capture values into shell variables without parsing JSON yourself, you already used it in Step 04, where <code>$(az account show --query id -o tsv)</code> fed the subscription ID into the <code>--scopes</code> argument:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">SUB=$(az account show --query id -o tsv) &amp;&amp; echo "/subscriptions/$SUB"</span></div>
+        <div class="terminal-output">/subscriptions/a1b2c3d4-0000-1111-2222-333344445555</div>
+      </div>
+      <p><strong>Common mistake:</strong> forgetting <code>-o tsv</code> inside <code>$()</code>. Without it the variable contains a JSON string <em>with quotes</em> (<code>"a1b2c3d4-..."</code>), and the quotes silently corrupt whatever you build from it, resource IDs that almost-but-not-quite match are a miserable thing to debug.</p>
+    </section>
+
+    <section><h2 id="where-the-cli-stores-its-state">Where the CLI Stores Its State</h2>
+      <p>Everything you configured in this lab lives in one directory, and knowing its layout turns "the CLI is acting weird" from superstition into debugging. On Linux/macOS it is <code>~/.azure</code>; on Windows, <code>%USERPROFILE%\.azure</code>. The contents that matter:</p>
+      <ul>
+        <li><code>config</code>, your defaults from Step 03 plus telemetry/upgrade settings, in plain INI format. Safe to read and hand-edit.</li>
+        <li><code>azureProfile.json</code>, which account and subscription are active. Deleting it is a crude but effective "log out".</li>
+        <li><code>msal_token_cache.json</code> (or the <code>msal_cache</code>/service-principal entries), the actual tokens. Treat this like a password file: never commit it, never sync it to cloud storage, never copy it to another machine.</li>
+        <li><code>logs/</code>, command history when logging is enabled. Note that failed commands can land here with their arguments, another reason secrets belong in variables, not on command lines.</li>
+      </ul>
+      <p>A fast way to confirm what is actually on disk:</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">ls -la ~/.azure | head -8</span></div>
+        <div class="terminal-output">drwx------  12 taki  staff   384 Mar  3 10:14 .
+-rw-------   1 taki  staff   214 Mar  3 10:14 azureProfile.json
+-rw-------   1 taki  staff   389 Mar  3 09:58 config
+-rw-------   1 taki  staff  8122 Mar  3 10:14 msal_token_cache.json</div>
+      </div>
+      <p>Notice the permissions: <code>0600</code> on the token cache and profile, <code>0700</code> on the directory. If you ever see these files world-readable, something (often an over-eager <code>chmod -R</code>) has weakened them, fix with <code>chmod 700 ~/.azure &amp;&amp; chmod 600 ~/.azure/*.json</code>.</p>
+    </section>
+
+    <section><h2 id="using-the-service-principal-in-scripts-and-ci">Using the Service Principal in Scripts and CI</h2>
+      <p>The point of Step 04 was to stop pasting credentials into command lines. In real automation, the three values (<code>appId</code>, <code>password</code>, <code>tenant</code>) travel as environment variables or CI secrets, never as literals in a script. The standard variable names the Azure tooling ecosystem expects:</p>
+<pre><code class="language-bash"># Store in a CI secret store or a local .env that is git-ignored - never in the repo
+export AZURE_CLIENT_ID="b2c3d4e5-1111-2222-3333-444455556666"
+export AZURE_CLIENT_SECRET="EXAMPLE~8xQ~secret~value~shown~once"
+export AZURE_TENANT_ID="9b1e5f2a-...."
+export AZURE_SUBSCRIPTION_ID="a1b2c3d4-0000-1111-2222-333344445555"</code></pre>
+      <p>A script then logs in non-interactively without exposing the secret in its process arguments (which any user on the box could read via <code>ps</code>):</p>
+<pre><code class="language-bash">#!/usr/bin/env bash
+set -euo pipefail
+
+: "${AZURE_CLIENT_ID:?set AZURE_CLIENT_ID}"      # fail fast if a secret is missing
+: "${AZURE_CLIENT_SECRET:?set AZURE_CLIENT_SECRET}"
+: "${AZURE_TENANT_ID:?set AZURE_TENANT_ID}"
+
+az login --service-principal \
+  -u "$AZURE_CLIENT_ID" \
+  -p "$AZURE_CLIENT_SECRET" \
+  --tenant "$AZURE_TENANT_ID" \
+  -o none        # don't echo subscription JSON (and token context) into CI logs
+
+az account set --subscription "$AZURE_SUBSCRIPTION_ID"
+echo "Authenticated as: $(az ad signed-in-user show --query userPrincipalName -o tsv 2&gt;/dev/null || echo $AZURE_CLIENT_ID)"</code></pre>
+      <p>Two details here are deliberate. <code>-o none</code> suppresses output because CI logs are often retained and broadly visible; and the <code>: "${VAR:?}"</code> guards turn a confusing downstream auth failure into an immediate, readable error. In GitHub Actions you will skip this entirely and use the <code>azure/login</code> action with OIDC federation, no stored secret at all, which the DevOps lab covers.</p>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+<div class="lab-explainer">
+<p>The Azure CLI is a Python program that translates each <code>az</code> command into one or more HTTPS calls against the Azure Resource Manager REST API. It never talks to your resources directly; it authenticates, attaches a bearer token to an API request, and prints the JSON response. Understanding this explains almost every behavior in the lab: why login is separate from subscription selection, why output formats are just views over JSON, and why a failing command usually means the API rejected the request.</p>
+<p>Authentication uses OAuth 2.0 against Microsoft Entra ID. In the interactive flow, your browser handles the sign-in and Entra ID hands tokens back to the CLI, which caches them under <code>~/.azure</code> using MSAL. The CLI never sees your password, but the cached tokens are as powerful as your account until they expire, which is why file permissions on that directory matter and why <code>az logout</code> exists.</p>
+<p>Everything after login is scoping. The subscription is the billing and quota boundary the API bills against; the resource group is the lifecycle boundary; the location is the region. Defaults stored in <code>~/.azure/config</code> are pure client-side convenience: they fill in flags you omit, they never change what the API allows, and an explicit flag always wins over a default.</p>
+</div>
+</section>
+
+    <section><h2 id="testing-validation">Testing &amp; Validation</h2>
+      <p>Validation has two parts: confirm <em>who</em> the CLI thinks you are and <em>where</em> commands will land, then exercise the defaults by creating a real resource. The resource group created here is the same <code>tyf-rg</code> referenced by later labs, so this step doubles as scaffolding.</p>
+      <div class="command-block" data-copy><div class="command"><code>az account show -o table &amp;&amp; az group create -n tyf-rg -l eastus</code></div></div>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az account show -o table</span></div>
+        <div class="terminal-output">EnvironmentName    IsDefault    Name           State    TenantId
+-----------------  -----------  -------------  -------  ----------------
+AzureCloud         True         Pay-As-You-Go  Enabled  9b1e5f2a-....</div>
+      </div>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az group create -n tyf-rg -l eastus</span></div>
+        <div class="terminal-output">{
+  "id": "/subscriptions/a1b2c3d4-.../resourceGroups/tyf-rg",
+  "location": "eastus",
+  "name": "tyf-rg",
+  "properties": {
+    "provisioningState": "Succeeded"
+  }
+}</div>
+      </div>
+      <p>You should see your active subscription and a created resource group using your defaults. If so, your CLI is ready. Three final checks worth running once, so you know what "healthy" looks like before something breaks in a later lab:</p>
+<pre><code class="language-bash"># 1. The resource group exists in the expected region
+az group show -n tyf-rg --query "{Name:name, Location:location, State:properties.provisioningState}" -o table
+
+# 2. The service principal's role assignment is active
+az role assignment list --assignee b2c3d4e5-1111-2222-3333-444455556666 -o table
+
+# 3. No stale defaults pointing somewhere unexpected
+az config get defaults -o table</code></pre>
+      <p>Check 2 should show exactly one <code>Contributor</code> assignment scoped to your subscription, nothing broader. If any check surprises you, stop and fix it now; every later lab builds on this state.</p>
+      <p><strong>Cost note:</strong> an empty resource group is free, it is a container, not a billable resource. Only the resources you later put inside <code>tyf-rg</code> (VMs, networks, storage) generate charges. The service principal is also free; Entra ID app registrations cost nothing at this scale. So nothing in this lab needs cleanup, and leaving <code>tyf-rg</code> in place is intentional: later labs deploy into it. If you ever do want a clean slate, deleting the group deletes everything inside it in one shot:</p>
+      <div class="command-block" data-copy><div class="command"><code>az group delete -n tyf-rg --yes --no-wait</code></div><div class="note">Destructive: removes the group and every resource inside it. Not needed for this lab.</div></div>
+    </section>
+<section><h2 id="troubleshooting">Troubleshooting</h2>
+<p>Quick-reference for the failures you are most likely to hit in this lab.</p>
+<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<tr><td><code>az: command not found</code></td><td>The installer updated PATH but the current shell still has the old one</td><td>Open a new terminal session, then verify with <code>az version</code>.</td></tr>
+<tr><td>Login lands in the wrong tenant</td><td>The account exists in multiple Entra ID tenants</td><td>Pin it with <code>az login --tenant &lt;tenant-id-or-domain&gt;</code>.</td></tr>
+<tr><td>Subscription missing from the list</td><td>Disabled subscription or insufficient RBAC, not a CLI bug</td><td>Check the portal; no re-login will conjure access you do not have.</td></tr>
+<tr><td>Defaults seem to be ignored</td><td>An explicit flag always overrides a default</td><td>Run <code>az config get defaults</code> to see what is actually stored.</td></tr>
+<tr><td>Service principal login fails months later</td><td>The client secret expired (default lifetime is one year)</td><td>Rotate with <code>az ad sp credential reset</code> and update the stored secret.</td></tr>
+<tr><td>Browser login fails on Windows with a broker error</td><td>The Web Account Manager broker intercepting the flow</td><td>Set <code>core.enable_broker_on_windows=false</code> or fall back to <code>az login --use-device-code</code>.</td></tr>
+</tbody></table>
+</section>
+
+    
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>az: command not found:</strong> the CLI is not on PATH; reinstall or restart your shell.</li>
+        <li><strong>Wrong subscription used:</strong> always confirm with <code>az account show</code> before deploying.</li>
+        <li><strong>SP secret printed once:</strong> store it immediately in a secret manager; it is not retrievable later.</li>
+        <li><strong>Browser login fails behind a proxy or WAM errors on Windows:</strong> bypass the Windows broker with <code>az config set core.enable_broker_on_windows=false</code>, or fall back to <code>az login --use-device-code</code>, which works through any browser on any device.</li>
+        <li><strong>az account set fails with "The subscription ... could not be found":</strong> the name is case-sensitive and must match exactly, copy it from <code>az account list -o table</code>, and quote names that contain spaces.</li>
+        <li><strong>Insufficient privileges to create a service principal:</strong> your Entra ID role (not your subscription role) controls this. If the tenant restricts app registrations, ask an admin to enable "Users can register applications" or have them create the SP and hand you the credentials.</li>
+      </ul>
+    </details>
+
+    <section><h2 id="extension-ideas">Extension Ideas</h2>
+      <ul>
+        <li>Deploy your first network in <a href="vnet-deployment.html">Virtual Network Deployment</a>.</li>
+        <li>Use the service principal in <a href="../devops/github-actions.html">GitHub Actions</a>.</li>
+        <li>Codify everything with <a href="infrastructure-as-code.html">Infrastructure as Code</a>.</li>
+        <li>Script the whole setup: put Steps 01-03 into a <code>setup-az.sh</code> that checks <code>az account show</code> first and exits early if already configured, idempotent setup scripts pay off every time you rebuild a machine.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Authenticated and confirmed the correct subscription.</li>
+        <li>Set defaults that shorten and de-risk every later command.</li>
+        <li>Created a least-privilege service principal for automation.</li>
+        <li>Validated by creating a resource group from defaults.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways"><h3 id="key-takeaways">Key Takeaways</h3>
+      <ul>
+        <li><code>az login</code> authenticates you to Entra ID, not to a subscription, always follow it with an explicit <code>az account set</code> and verify with <code>az account show</code>.</li>
+        <li><code>az configure --defaults</code> stores group/location per machine in <code>~/.azure/config</code>; it shortens commands but never substitutes for knowing where a command will land.</li>
+        <li>A service principal's secret is displayed exactly once. Capture it immediately, scope it to the smallest possible target, and rotate it if it ever touches a repo or log.</li>
+        <li>Every <code>az</code> mutation silently targets the active subscription, make <code>az account show</code> a reflex before any create or delete.</li>
+        <li>Validate your toolchain once, early: a healthy <code>az version</code> + <code>az account show</code> + <code>az group show</code> baseline makes later failures much easier to isolate.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="practice-challenges">Practice Challenges</h2>
+<div class="lab-challenge"><h4>Challenge 1: Script the whole setup</h4><p>Goal: Write <code>setup-az.sh</code> that checks <code>az account show</code> first and exits early if already configured, then sets the subscription and defaults.</p><p>Hint: Use <code>set -euo pipefail</code> and quote every variable; idempotent scripts pay off each time you rebuild a machine.</p></div>
+<div class="lab-challenge"><h4>Challenge 2: Scope a principal to one resource group</h4><p>Goal: Create a second service principal whose Contributor role is scoped to <code>tyf-rg</code> only, then prove it cannot list another group.</p><p>Hint: Pass the full resource group ID to <code>--scopes</code> and test the boundary deliberately.</p></div>
+<div class="lab-challenge"><h4>Challenge 3: Build a subscription report with JMESPath</h4><p>Goal: Output name, id, and state for every subscription using a single <code>az account list</code> pipeline.</p><p>Hint: Combine <code>--query</code> reshaping with <code>-o tsv</code>; tsv with no headers is made for this.</p></div>
+</section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="vnet-deployment.html">Virtual Network Deployment</a></li>
+        <li><a href="azure-vm-config.html">Azure VM Configuration</a></li>
+        <li><a href="infrastructure-as-code.html">Infrastructure as Code</a></li>
+      
+        <li><a href="cost-management.html">Azure Cost Management</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

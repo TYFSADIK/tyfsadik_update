@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Git Workflow for Python: Branches, Hooks &amp; CI | TYFSADIK</title>
+  <meta name="keywords" content="git python, pre-commit hooks, ruff, .gitignore, python workflow, pytest">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Git Workflow for Python: Branches, Hooks &amp; CI | TYFSADIK">
+  <meta property="og:description" content="Set up a disciplined Git workflow for Python: .gitignore for venvs, feature branches, and pre-commit hooks running ruff and pytest for solo and team work.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/python/git-workflow-python.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Git Workflow for Python: Branches, Hooks &amp; CI | TYFSADIK">
+  <meta name="twitter:description" content="Set up a disciplined Git workflow for Python: .gitignore for venvs, feature branches, and pre-commit hooks running ruff and pytest for solo and team work.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="description" content="Set up a disciplined Git workflow for Python: .gitignore for venvs, feature branches, and pre-commit hooks running ruff and pytest for solo and team work.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/python/git-workflow-python.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Git Workflow for Python Projects", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-21", "dateModified": "2026-09-29", "proficiencyLevel": "Beginner", "dependencies": "Git, pre-commit, ruff, pytest", "articleSection": "Python", "learningResourceType": "Hands-on lab", "teaches": "Python programming"}</script>
+  <script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "Ignore venv and caches",
+      "text": "Ignore venv and caches"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Install pre-commit hooks",
+      "text": "Install pre-commit hooks"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Work on a feature branch",
+      "text": "Work on a feature branch"
+    }
+  ],
+  "url": "https://tyfsadik.org/about.html"
+}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Python", "item": "https://tyfsadik.org/blog/labs/python/index.html"}, {"@type": "ListItem", "position": 4, "name": "Git Workflow for Python", "item": "https://tyfsadik.org/blog/labs/python/git-workflow-python.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'hooks run on every file and feel slow'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: pre-commit defaults to staged files only; --all-files was explicit here. Fix: normal commits check just staged files, which stays fast."}}, {"@type": "Question", "name": "How do I fix 'hook fails on files you did not touch'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the hook ran repo-wide via run --all-files. Fix: run pre-commit run --all-files once to baseline, then let per-commit runs stay scoped."}}, {"@type": "Question", "name": "How do I fix 'secret committed before .gitignore existed'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: gitignore does not untrack already-tracked files. Fix: git rm --cached the file, then rotate the secret; it lives in history otherwise."}}, {"@type": "Question", "name": "How do I fix 'pytest passes locally but hook fails'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the hook uses an isolated environment with different deps. Fix: mirror hook deps in requirements and run pytest the same way CI does."}}, {"@type": "Question", "name": "How do I fix 'branch pushed but PR checks never run'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the remote has no workflow or the branch is not the PR head. Fix: open the PR from the feature branch and confirm Actions picked it up."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/python/index.html">Python</a> &rsaquo; <span>Git Workflow for Python</span></nav>
+    <div class="page-header"><h1>Git Workflow for Python: Branches, Hooks, and Quality Gates</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Python</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Git</span><span class="tag">pre-commit</span><span class="tag">ruff</span><span class="tag">pytest</span></div>
+    </div>
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+      <li><a href="#objective-context">Objective &amp; Context</a></li>
+      <li><a href="#environment-prerequisites">Environment &amp; Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation &amp; Testing</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#takeaways">Key Takeaways</a></li>
+      <li><a href="#challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+    </ol></nav>
+
+    <section><p class="lead">I set up a disciplined Git workflow for Python work with a proper .gitignore, feature branches, and pre-commit hooks running ruff and pytest. Automated gates blocked unlinted or failing code from ever reaching a commit.</p></section>
+
+    <section><h2 id="objective-context">Objective &amp; Context</h2>
+      <p>Version control discipline prevents broken history and accidental secret commits. This lab pairs branch-per-change workflow with pre-commit automation so quality checks run locally before code is shared, the foundation for the DevOps CI labs.</p></section>
+    <div class="lab-objectives"><h3>Learning Objectives</h3><ul>
+      <li>Write a .gitignore that excludes venvs, caches, and secrets.</li>
+      <li>Install pre-commit hooks that run ruff and pytest.</li>
+      <li>Work on feature branches with clear naming.</li>
+      <li>Block unlinted or failing code from being committed.</li>
+      <li>Push a branch and follow the PR flow.</li>
+    </ul></div>
+
+    <section><h2 id="environment-prerequisites">Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3><ul>
+      <li><code>Git 2.4x</code> and a Python project with a venv</li>
+      <li><code>pre-commit</code>, <code>ruff</code>, and <code>pytest</code> installed</li>
+      <li>A remote repository for the push/PR flow</li>
+      <li>Assumed skill: basic git add/commit and Python fundamentals</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="Feature branch and pre-commit gate flow">
+flowchart LR
+  B[feature branch] --> E[edit + add]
+  E --> H{pre-commit<br/>ruff + pytest}
+  H -->|fail| E
+  H -->|pass| C[commit]
+  C --> PR[push + PR]
+      </div>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <h3>1. Ignore venv and caches</h3>
+      <div class="command-block"><div class="command"><code>printf ".venv/\n__pycache__/\n*.pyc\n.env\n" > .gitignore</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>(no output; .gitignore written)</code></pre>
+      <p class="lab-step-note">What this teaches: Ignoring .venv/, __pycache__/, and .env keeps the repo to source only; a committed venv bloats clones and breaks across platforms.</p></div>
+      <h3>2. Install pre-commit hooks</h3>
+      <div class="command-block"><div class="command"><code>cat &gt; .pre-commit-config.yaml &lt;&lt;'EOF'
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.0
+    hooks:
+      - id: ruff
+      - id: ruff-format
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: pytest -q
+        language: system
+        pass_filenames: false
+        always_run: true
+EOF
+pre-commit install &amp;&amp; pre-commit run --all-files</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>ruff.....Passed
+pytest...Passed</code></pre>
+      <p class="lab-step-note">What this teaches: Hooks run the linters and tests on every commit attempt; a failure aborts the commit, which is the gate doing its job. The config file is the part beginners miss: without it, <code>pre-commit install</code> has nothing to hook. Pin the ruff rev so every machine runs the same linter version.</p></div>
+      <h3>3. Work on a feature branch</h3>
+      <div class="command-block"><div class="command"><code>git switch -c feat/parser &amp;&amp; git add -A &amp;&amp; git commit -m "add argument parser"</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>[feat/parser 9c2a1f] add argument parser</code></pre>
+      <p class="lab-step-note">What this teaches: The branch name describes the work and the commit message uses the imperative mood; both make history readable months later. <code>git add -A</code> stages new files too, which plain <code>git commit -am</code> would silently skip (the <code>-a</code> flag only stages tracked modifications).</p></div>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+      <div class="lab-explainer"><h3>How It Works</h3>
+      <p>pre-commit hooks are scripts Git runs at commit time; if any hook exits nonzero, the commit aborts. Running ruff (lint) and pytest (tests) as hooks moves quality gates left, catching problems in seconds instead of in CI minutes later.</p>
+      <p>.gitignore patterns keep generated artifacts out of version control. Virtual environments, bytecode caches, and .env files are all reproducible or secret, so committing them is pure cost: bigger clones, merge conflicts in generated files, and leaked secrets.</p>
+      <p>Feature branches isolate work in progress from main. Short-lived branches merged via pull request give every change a review point and a CI run, which is the workflow that scales from solo projects to teams without changing shape.</p>
+    </div>
+      <div class="mermaid" role="img" aria-label="Gated commit workflow">
+flowchart LR
+  E["edit code"] --> A["git add"]
+  A --> H["pre-commit hooks<br/>ruff + pytest"]
+  H -->|"pass"| C["commit on<br/>feature branch"]
+  H -->|"fail"| F["fix, retry"]
+  C --> PR["push + pull request"]
+      </div>
+    </section>
+
+    <section><h2 id="validation-testing">Validation &amp; Testing</h2>
+      <p>Introduce a lint error and a failing test, then attempt a commit. Pass criteria: the commit is blocked by the hook, and only passes once both ruff and pytest are green; <code>.venv</code> and <code>.env</code> never appear in <code>git status</code>.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Hooks not running:</strong> re-run <code>pre-commit install</code> after cloning.</li>
+        <li><strong>Secret committed:</strong> add it to .gitignore and rewrite history with filter-repo.</li>
+        <li><strong>Slow hooks:</strong> scope pytest to changed files in CI, full suite on push.</li>
+      </ul>
+    </details>
+
+    <section><h2 id="troubleshooting">Troubleshooting</h2>
+      <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+        <tr><td>hooks run on every file and feel slow</td><td>pre-commit defaults to staged files only; --all-files was explicit here</td><td>normal commits check just staged files, which stays fast</td></tr>
+        <tr><td>hook fails on files you did not touch</td><td>the hook ran repo-wide via run --all-files</td><td>run pre-commit run --all-files once to baseline, then let per-commit runs stay scoped</td></tr>
+        <tr><td>secret committed before .gitignore existed</td><td>gitignore does not untrack already-tracked files</td><td>git rm --cached the file, then rotate the secret; it lives in history otherwise</td></tr>
+        <tr><td>pytest passes locally but hook fails</td><td>the hook uses an isolated environment with different deps</td><td>mirror hook deps in requirements and run pytest the same way CI does</td></tr>
+        <tr><td>branch pushed but PR checks never run</td><td>the remote has no workflow or the branch is not the PR head</td><td>open the PR from the feature branch and confirm Actions picked it up</td></tr>
+      </tbody></table>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Blocked 100% of unlinted/failing commits via pre-commit gates.</li>
+        <li>Prevented venv and secret files from entering version control.</li>
+        <li>Standardized branch-per-change with PR review.</li>
+        <li>Cut review churn by catching issues before push.</li>
+      </ul>
+    </section>
+
+    <section class="lab-takeaways"><h2 id="takeaways">Key Takeaways</h2><ul>
+        <li>.gitignore is a hygiene contract: source in, artifacts and secrets out.</li>
+        <li>Pre-commit hooks with ruff and pytest block bad code before it becomes a commit.</li>
+        <li>Feature branches keep main releasable and give every change a review point.</li>
+        <li>A failing hook is the gate working, not an annoyance to bypass.</li>
+        <li>Rotate any secret that ever reached a commit; gitignore cannot rewrite history.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="challenges">Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Secret scanner hook</h4><p><strong>Goal:</strong> Add a pre-commit hook that rejects commits containing strings like AKIA or -----BEGIN PRIVATE KEY-----.</p><p><strong>Hint:</strong> Use a local hook with a small Python script and files: matching .py; test it with a staged fixture.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: Branch naming lint</h4><p><strong>Goal:</strong> Add a hook or alias that rejects branch names not matching feat/, fix/, or docs/ prefixes.</p><p><strong>Hint:</strong> A pre-push hook can inspect git rev-parse --abbrev-ref HEAD before the push leaves.</p></div>
+    </section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="python-fundamentals.html">Python Fundamentals</a></li>
+        <li><a href="../devops/git-fundamentals.html">Git Fundamentals</a></li>
+        <li><a href="../devops/cicd-pipeline.html">Full CI/CD Pipeline</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Incident Response Procedures: Security Lab | TYFSADIK</title>
+  <meta name="description" content="Run incident response hands-on with the NIST SP 800-61 lifecycle: detection, triage, volatile evidence capture, containment, eradication, and lessons learned.">
+  <meta name="keywords" content="incident response, NIST SP 800-61, runbook, containment, eradication, Splunk, chain of custody">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/security/incident-response-procedures.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Incident Response Procedures: NIST SP 800-61 Lifecycle", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-05-06", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "NIST SP 800-61, Splunk, MITRE ATT&CK", "articleSection": "Security", "learningResourceType": "Hands-on lab", "teaches": "cybersecurity and security operations"}</script>
+  <meta property="og:title" content="Incident Response Procedures: Security Lab | TYFSADIK">
+  <meta property="og:description" content="Run incident response hands-on with the NIST SP 800-61 lifecycle: detection, triage, volatile evidence capture, containment, eradication, and lessons learned.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/security/incident-response-procedures.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Incident Response Procedures: Security Lab | TYFSADIK">
+  <meta name="twitter:description" content="Run incident response hands-on with the NIST SP 800-61 lifecycle: detection, triage, volatile evidence capture, containment, eradication, and lessons learned.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "Incident Response Procedures Built on the NIST SP 800-61 Lifecycle",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "1. Detection: a Splunk correlation search",
+      "text": "index=auth action=failure | stats count by src_ip | where count > 20"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "2. Triage: enrich and classify severity",
+      "text": "splunk search \"src_ip=203.0.113.45\" -maxout 100 | lookup threat_intel ip"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "3. Evidence capture: volatile data before the network pull",
+      "text": "sudo avml /evidence/IR-2026-0142/fs01_20260617.mem # memory, ~seconds ss -tulpen > /evidence/IR-2026-0142/fs01_netstat.txt # live connections who -a > /evidence/IR-2026-0142/fs01_sessions.txt # active"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "4. Containment: isolate the host",
+      "text": "sudo nft add rule inet filter output ip daddr != 192.168.10.0/24 drop # requires root, nftables package, and an existing inet filter table with an output chain"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "5. Eradication & recovery: close the door, then rebuild trust",
+      "text": "# Disable, then reset, the compromised account (domain controller) Disable-ADAccount -Identity j.chen Set-ADAccountPassword -Identity j.chen -Reset -NewPassword (Read-Host -AsSecureString) # Sweep for"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "6. Post-incident: timeline, metrics, and playbook updates",
+      "text": "index=auth (src_ip=203.0.113.45 OR user=j.chen) | stats min(_time) AS first_seen max(_time) AS last_seen by action | eval first_seen=strftime(first_seen,\"%F %T\")"
+    }
+  ]
+}
+  </script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Security", "item": "https://tyfsadik.org/blog/labs/security/index.html"}, {"@type": "ListItem", "position": 4, "name": "Incident Response Procedures", "item": "https://tyfsadik.org/blog/labs/security/incident-response-procedures.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Splunk search returns nothing during a known incident'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Wrong index, time range, or sourcetype in the query. Fix: Verify the data is onboarded with a broad index=* search before narrowing."}}, {"@type": "Question", "name": "How do I fix 'Memory capture tool fails on the host'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Kernel version mismatch or missing dependencies for AVML/LiME. Fix: Fall back to the hypervisor snapshot as the memory source and document the substitution."}}, {"@type": "Question", "name": "How do I fix 'Isolation rule blocks the responder too'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: The nftables rule dropped the management path along with the attacker. Fix: Always exempt the management subnet and test the rule from a second session first."}}, {"@type": "Question", "name": "How do I fix 'Persistence reappears after cleanup'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: Missed a foothold: cron, systemd unit, or authorized_keys entry. Fix: Re-run the full persistence sweep from step 5 and diff against a known-good baseline."}}, {"@type": "Question", "name": "How do I fix 'Stakeholders were not informed'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: No communications plan or unclear severity ownership. Fix: Define the notification matrix in preparation, not during the incident."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="contact-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Incident Response Procedures</span></nav>
+    <div class="page-header"><h1>Incident Response Procedures Built on the NIST SP 800-61 Lifecycle</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Security</span><span class="lab-time">~6 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">NIST 800-61</span><span class="tag">Splunk</span><span class="tag">triage</span><span class="tag">playbooks</span></div>
+    </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
+      <ol>
+      <li><a href="#objective-context">Objective</a></li>
+      <li><a href="#learning-objectives">Learning Objectives</a></li>
+      <li><a href="#environment-prerequisites">Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Steps</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#key-takeaways">Key Takeaways</a></li>
+      <li><a href="#practice-challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+      </ol>
+    </nav>
+
+
+    <section><p class="lead">I built documented incident response playbooks around the four-phase NIST SP 800-61 lifecycle and drove triage from Splunk correlation searches. Codifying the workflow brought mean time to detect below 15 minutes for high-fidelity alert classes in the lab's tabletop runs.</p>
+      <p>Most first-time responders do not fail on tooling, they fail on process. Under pressure, people skip evidence capture, contain the wrong host, or reboot a machine that still holds volatile memory. This lab exists to remove improvisation: every phase of the NIST SP 800-61 lifecycle is written down as a runbook with explicit inputs, decision points, commands, and exit criteria, so a tired analyst at 3 a.m. produces the same quality of response as a senior engineer at noon.</p>
+      <p>The scenario thread running through the steps below is a realistic one: an externally sourced password-spraying campaign succeeds against a single account, the attacker logs in over VPN, and begins staging data on an internal file server. Each step shows the exact search, command, or action, the output you should expect, and the mistake most people make at that point.</p>
+    </section>
+
+    <section id="objective-context"><h2>Objective &amp; Context</h2>
+      <p>Ad-hoc response loses time and evidence. This lab turns the NIST SP 800-61 phases, Preparation, Detection &amp; Analysis, Containment/Eradication/Recovery, and Post-Incident, into repeatable runbooks with explicit decision points and evidence-handling rules.</p>
+      <p>Two attack patterns anchor the playbooks, chosen because they exercise both ends of the severity spectrum:</p>
+      <ul>
+        <li><strong>T1078 Valid Accounts</strong>, anomalous logon correlation as a primary detection.</li>
+        <li><strong>T1486 Data Encrypted for Impact</strong>, ransomware playbook with isolation-first containment.</li>
+      </ul>
+      <p>Valid-account abuse (T1078) is the detection challenge: the attacker is using legitimate credentials, so nothing trips a signature. Detection has to come from <em>behavioral</em> correlation, failure bursts followed by success, logons at unusual hours, or a source IP touching accounts it has never touched. Ransomware (T1486) is the opposite problem: detection is usually trivial (the victim calls you), but the containment decision, isolate now versus capture volatile evidence first, is time-critical and irreversible. Writing both playbooks forces you to think about severity-driven branching rather than a single linear flow.</p>
+      <p>The playbooks cover twelve incident types in total, phishing, malware detonation, credential abuse, ransomware, insider misuse, lost devices, web defacement, DDoS, data exposure, rogue devices, third-party compromise, and denial of access, but all twelve reduce to the same skeleton: detect, classify, decide evidence-versus-containment, execute, document, review. The scenario below walks that skeleton end to end for the credential-abuse case.</p>
+      <div class="mermaid" role="img" aria-label="NIST 800-61 incident response lifecycle">
+flowchart LR
+  P[Preparation] --> D[Detection & Analysis]
+  D --> C[Containment]
+  C --> E[Eradication]
+  E --> R[Recovery]
+  R --> L[Post-Incident Review]
+  L --> P
+      </div>
+      <p>The loop back from Post-Incident Review to Preparation is the part teams skip and later regret. Every tabletop and every real incident in this lab ends with concrete updates, a tuned threshold, a new lookup column, an amended isolation procedure, committed back into the playbooks before the case is closed.</p>
+    </section>    <section id="learning-objectives">
+      <div class="lab-objectives"><h3>Learning Objectives</h3>
+        <ul>
+        <li>Run a Splunk correlation search to detect brute-force activity.</li>
+        <li>Triage findings by enriching with threat intel and classifying severity.</li>
+        <li>Capture volatile evidence (memory, connections) before containment.</li>
+        <li>Isolate a host with nftables without destroying evidence.</li>
+        <li>Eradicate persistence and recover the host to a trusted state.</li>
+        <li>Produce a post-incident timeline, metrics, and playbook updates.</li>
+        </ul>
+      </div>
+    </section>
+
+
+    <section id="environment-prerequisites"><h2>Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3>
+      <ul>
+        <li>Splunk with endpoint and auth log sources onboarded via universal forwarders.</li>
+        <li>An asset inventory and a defined severity matrix (SEV1 to SEV4).</li>
+        <li>A chain-of-custody template and an out-of-band communications plan.</li>
+        <li>A file server and two workstations as the lab victim infrastructure.</li>
+        <li>Sudo access on lab hosts for evidence collection and containment.</li>
+      </ul>
+      <p>Concretely, the lab stands on a small but representative stack: one Splunk Enterprise instance (single-node is fine) ingesting Linux <code>/var/log/auth.log</code> and Windows Security event logs via universal forwarders; a file server and two workstations to act as victims; and a Kali box that plays the attacker. The asset inventory is a CSV lookup, hostname, IP, owner, criticality, because triage questions like "who owns this host and is it production?" must be answerable in seconds, not emails.</p>
+      <p>The forwarder configuration on the Linux hosts is minimal, one <code>inputs.conf</code> stanza per log source, with the index and sourcetype pinned so the correlation searches later can rely on them:</p>
+      <div class="command-block"><div class="command"><code># /opt/splunkforwarder/etc/system/local/inputs.conf
+[monitor:///var/log/auth.log]
+index = auth
+sourcetype = linux_secure
+disabled = 0</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>(no output; this is a configuration file snippet, restart the forwarder to apply it)</code></pre>
+
+      <p>The IR toolkit itself is staged in advance, on a dedicated jump box in the <code>192.168.10.0/24</code> management subnet, never downloaded mid-incident from a machine that may already be compromised:</p>
+      <ul>
+        <li><strong>AVML</strong> (or LiME) for memory capture on Linux; WinPmem on the Windows side.</li>
+        <li><strong>Statically-linked coreutils</strong> (ss, ps, ls) so collection does not depend on libraries an attacker may have trojaned.</li>
+        <li><strong>Write-blocked evidence share</strong> mounted read-only everywhere except the collection window.</li>
+        <li><strong>Printed playbooks and contact tree</strong>, ransomware incidents are exactly when the wiki hosting your runbooks may be unavailable.</li>
+      </ul>
+      <p>The severity matrix is defined up front so classification is a lookup, not a debate:</p>
+      <ul>
+        <li><strong>SEV1</strong>, active compromise of a production system or confirmed data exfiltration; immediate isolation, all-hands bridge.</li>
+        <li><strong>SEV2</strong>, confirmed malicious activity contained to non-production or a single user; isolate within the hour.</li>
+        <li><strong>SEV3</strong>, suspicious activity, unconfirmed; monitored analysis with heightened logging.</li>
+        <li><strong>SEV4</strong>, policy violations or noise; document and tune.</li>
+      </ul>
+      <p>Before touching any detection logic, verify that logs are actually flowing. A correlation search over an empty index is the most common silent failure in this lab:</p>
+      <div class="command-block"><div class="command"><code>| metadata type=hosts index=auth index=wineventlog | eval age=now()-lastTime | where age &lt; 900</code></div></div>
+<pre><code class="language-bash">host                lastTime     age
+fs01.lab.local      1747523145   62
+ws-20-15.lab.local  1747523139   68
+dc01.lab.local      1747523147   60</code></pre>
+      <p><strong>Common mistake:</strong> assuming the forwarders are healthy because they were healthy at install time. <strong>Verify:</strong> every host you expect appears above with an age under 15 minutes. A missing host means a dead forwarder or a broken inputs.conf, fix ingestion before writing a single detection.</p>
+          </div>
+</section>
+
+    <section><h2>Methodology</h2>
+      <h3>Why severity drives the path</h3>
+      <p>Each playbook branches on severity: SEV1 (active compromise) triggers immediate isolation, while SEV3 follows monitored analysis. This prevents over-reacting to noise and under-reacting to real intrusions.</p>
+      <p>The branching matters because the two failure modes are asymmetric in cost. Isolating a production file server on a false positive costs the business real money and burns the incident team's credibility; <em>not</em> isolating during a real ransomware detonation can cost the entire network. The runbooks resolve this with an explicit evidence-versus-containment rule: for SEV1 on ransomware-class incidents, isolate first and accept the volatile-evidence loss; for credential-abuse incidents where the host is stable, capture volatile data (memory, active connections, logged-on sessions) <em>before</em> pulling the network, because that evidence is often the only record of what the attacker actually did.</p>
+      <h3>Communications: who needs to know, and when</h3>
+      <p>SEV1 opens an incident bridge within 15 minutes of classification and posts status updates on a fixed cadence, every 30 minutes for SEV1, hourly for SEV2, so leadership never has to ask "what is happening," which is the single biggest time sink in real incidents. Crucially, comms for a suspected account-compromise incident run out-of-band (a pre-registered Signal group and personal phone numbers), because announcing the response over corporate email or chat tells an attacker who is watching those channels exactly what you know.</p>
+<pre><code class="language-text">[IR-2026-0142 | SEV1 | Update 2 | 03:45 UTC]
+Situation:  Spray attack from 203.0.113.45; 1 success (j.chen) on fs01.
+Actions:    Volatile evidence captured 03:41; host isolated 03:44.
+Next:       Credential rotation + persistence sweep; next update 04:15.
+Impact:     File services unaffected; no confirmed exfiltration yet.</code></pre>
+      <h3>Evidence handling and chain of custody</h3>
+      <p>Every artifact collected during an incident follows the same custody rules: a unique evidence ID (<code>CASE-HOST-SEQ</code>), the collector's name, UTC timestamps, the tool and version used, and a SHA-256 hash taken at collection time. The custody form itself is a template, filled in per artifact, and it travels with the evidence:</p>
+<pre><code class="language-text">Evidence ID:   IR-2026-0142-fs01-003
+Description:   Volatile memory image (AVML 0.14.0)
+Collected by:  T. Sadik            UTC: 2026-06-17 03:41:07
+Source host:   fs01.lab.local (192.168.20.15)
+SHA-256:       9f2c...a41b
+Custody log:   03:41 collected -&gt; 03:55 copied to analysis share
+               -&gt; 04:02 hash re-verified (match)</code></pre>
+      <p>The second methodological choice is that every decision point produces an artifact. Classification produces a severity tag on the case; containment produces a timestamped isolation record; eradication produces a list of removed persistence mechanisms. If a step did not produce an artifact, it did not happen, this is what makes the post-incident review honest and the MTTD/MTTR metrics measurable rather than vibes.</p>
+    </section>
+
+    <section id="step-by-step-execution"><h2>Step-by-Step Execution</h2>
+
+      <h3>1. Detection: a Splunk correlation search</h3>
+      <p>The detection goal is a burst of authentication failures from one source, the fingerprint of password spraying or brute force. The naive version of this search counts failures per source IP and fires above a fixed threshold:</p>
+      <div class="command-block"><div class="command"><code>index=auth action=failure | stats count by src_ip | where count > 20</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>src_ip          count
+203.0.113.45    87
+198.51.100.23   31</code></pre>
+
+      <p>That works, but it has a blind spot: a low-and-slow spray of 20 failures over six hours is very different from 20 failures in one minute. The production version buckets events into a 15-minute window, tracks distinct targeted accounts (spraying hits many accounts once; brute force hammers one account many times), and appends a success check, one success after a failure burst is the signal that matters most:</p>
+      <div class="command-block"><div class="command"><code>index=auth earliest=-15m
+| stats count(eval(action="failure")) AS fails,
+        dc(user) AS users_targeted,
+        count(eval(action="success")) AS successes by src_ip
+| where fails &gt; 20 OR (fails &gt; 10 AND successes &gt; 0)</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code class="language-bash">src_ip          fails  users_targeted  successes
+203.0.113.45    312    47              1</code></pre>
+      <p>Save this as a scheduled search (cron <code>*/5 * * * *</code>, 15-minute window) with a trigger action that opens a case and pages on-call only when <code>successes &gt; 0</code>; failure-only bursts go to a review queue. That single condition is what keeps the pager quiet at night while still catching the spray that worked. The saved search stanza in <code>savedsearches.conf</code> looks like this:</p>
+<pre><code class="language-ini">[Auth - Spray Burst with Success]
+search = index=auth earliest=-15m | stats ... (as above)
+cron_schedule = */5 * * * *
+dispatch.earliest_time = -15m
+alert_condition = search successes &gt; 0
+alert.suppress = 1
+alert.suppress.period = 3600
+alert.suppress.fields = src_ip</code></pre>
+      <p>Throttling (<code>alert.suppress</code>) per source IP prevents one noisy incident from paging fifty times; one page per source per hour is enough, the case accumulates the rest. A baseline report run weekly (<code>stats avg(fails) max(fails) by src_ip</code> over 30 days) is how the threshold of 20 was chosen, it sits at roughly three standard deviations above the noisiest legitimate source in this environment.</p>
+      <p><strong>Common mistake:</strong> alerting on the raw threshold without a time window, so a legitimate service account with a cached stale password pages the team every morning. <strong>Verify:</strong> run the search manually over the last 24 hours, you should see your known noise sources (they belong in a suppression list) and nothing unexpected.</p>
+<p class="lab-step-note">What this teaches: detection is a query plus a threshold; the correlation search turns log noise into a countable signal.</p>
+<h3>2. Triage: enrich and classify severity</h3>
+      <p>Detection tells you something fired; triage decides what it is. The enrichment pass answers three questions in under five minutes: <em>Is the source known-bad?</em> (threat intel lookup), <em>What did it touch?</em> (account and host inventory lookup), and <em>Did anything succeed?</em> (the success event itself, pivoting to the destination host and session).</p>
+      <div class="command-block"><div class="command"><code>splunk search "src_ip=203.0.113.45" -maxout 100 | lookup threat_intel ip</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>_time                src_ip         threat_match
+2026-09-29 12:01:04  203.0.113.45   yes</code></pre>
+
+      <p>In practice the triage search is a single SPL pipeline that joins all three lookups at once, so the analyst gets one row per incident rather than three separate queries:</p>
+      <div class="command-block"><div class="command"><code>index=auth src_ip=203.0.113.45
+| stats dc(user) AS users values(user) AS accounts count by src_ip dest
+| lookup threat_intel ip AS src_ip OUTPUT reputation category
+| lookup assets ip AS dest OUTPUT owner criticality</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code class="language-bash">src_ip         dest            users  accounts            reputation  criticality
+203.0.113.45   fs01.lab.local  47     {..., j.chen, ...}  malicious   high</code></pre>
+      <p>Before classifying, rule out the two classic false positives: the source being one of your own VPN egress IPs (users mistype passwords in bursts, especially on Monday mornings) and a scheduled service with a stale credential. Both are handled by a suppression lookup of known egress ranges and service accounts, checked <em>before</em> escalation, not after waking up the on-call.</p>
+      <p>The final pivot inspects the successful session itself, which account, from where, logon type. Logon type 10 means RemoteInteractive (typically RDP); it is not VPN by itself, here the <code>Workstation_Name</code> of <code>VPN-GW01</code> corroborates the remote-access path, and that corroboration is what makes it the smoking gun for hands-on activity rather than the type number alone:</p>
+      <div class="command-block"><div class="command"><code>index=wineventlog EventCode=4624 src_ip=203.0.113.45
+| table _time Account_Name Workstation_Name Logon_Type Logon_Process</code></div></div>
+<pre><code class="language-bash">_time                Account_Name  Workstation  Logon_Type  Logon_Process
+2026-06-17 03:12:44  j.chen        VPN-GW01     10          User32</code></pre>
+      <p>Here the source is flagged malicious by threat intel and it reached a high-criticality file server with a successful remote-interactive logon, that is textbook T1078 Valid Accounts, classified <strong>SEV1</strong>. Had the source been an internal scanner with zero successes, this would be SEV3 and would follow the monitored-analysis branch instead. The classification, its justification, and the ATT&amp;CK mapping go into the case record immediately; the playbook you execute next is chosen by this tag.</p>
+      <p><strong>Common mistake:</strong> classifying on the alert volume instead of the outcome, 312 failures <em>feels</em> worse than it is; one success is what makes it SEV1. <strong>Verify:</strong> pull the raw success event and confirm the logon type and destination yourself before escalating; never classify on an aggregate row alone.</p>
+<p class="lab-step-note">What this teaches: triage converts a detection into a severity decision with business context attached.</p>
+<h3>3. Evidence capture: volatile data before the network pull</h3>
+      <p>For a credential-abuse SEV1 on a host that is not actively detonating ransomware, the runbook's evidence-first rule applies: capture what disappears when the power or network drops. Order of volatility (RFC 3227) puts memory, network connections, and logged-on sessions first, disk artifacts survive a reboot, memory does not.</p>
+      <div class="command-block"><div class="command"><code>sudo avml /evidence/IR-2026-0142/fs01_20260617.mem     # memory, ~seconds
+ss -tulpen &gt; /evidence/IR-2026-0142/fs01_netstat.txt   # live connections
+who -a &gt; /evidence/IR-2026-0142/fs01_sessions.txt      # active sessions
+ps auxf &gt; /evidence/IR-2026-0142/fs01_procs.txt        # process tree
+ip neigh show &gt; /evidence/IR-2026-0142/fs01_arp.txt    # ARP cache
+mount | column -t &gt; /evidence/IR-2026-0142/fs01_mounts.txt</code></div></div>
+      <p>Every artifact is hashed at capture time and logged in the chain-of-custody form with collector, timestamp, and tool version, this is what makes the evidence defensible later:</p>
+      <div class="command-block"><div class="command"><code>cd /evidence/IR-2026-0142 &amp;&amp; sha256sum * &gt; SHA256SUMS.txt</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code class="language-bash">9f2c...a41b  fs01_20260617.mem
+1c77...09d2  fs01_netstat.txt
+b4e0...5f88  fs01_sessions.txt</code></pre>
+      <p>Hashes above are truncated for readability; the real <code>SHA256SUMS.txt</code> holds full 64-hex digests. Analysis happens on a copy, never the original. In the memory image from this scenario, a quick <code>strings fs01_20260617.mem | grep -i smbclient</code> pass (and a proper Volatility run later) surfaced an <code>smbclient</code> session to a staging share and a half-finished <code>tar</code> of the finance directory, the difference between "account compromised" and "exfiltration in progress," which changes the legal notification path.</p>
+      <p><strong>Common mistake:</strong> running the capture tools <em>after</em> isolation on a host whose IR tooling phones home or writes to a network share, you have just cut off your own evidence path. <strong>Verify:</strong> <code>sha256sum -c SHA256SUMS.txt</code> re-run on the analysis copy; the memory image size should roughly match installed RAM (AVML images are compressed, so somewhat smaller is normal).</p>
+<p class="lab-step-note">What this teaches: volatile evidence dies at containment, so capture order follows volatility.</p>
+<h3>4. Containment: isolate the host</h3>
+      <p>Containment for this incident means network isolation that preserves the host for forensics, block everything except the IR subnet, so analysts retain reachability but the attacker loses their session and any exfiltration path. On the Linux file server this is an nftables egress rule. This requires root, the <code>nftables</code> package installed, and an existing <code>inet filter</code> table with an <code>output</code> chain (create one first with <code>sudo nft add table inet filter &amp;&amp; sudo nft add chain inet filter output</code> if the lab host has none):</p>
+      <div class="command-block"><div class="command"><code>sudo nft add rule inet filter output ip daddr != 192.168.10.0/24 drop  # [PRIVILEGED]</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code class="language-bash">(no output on success; the case record "[SEV1] host 192.168.20.15 isolated; case IR-2026-0142 opened" is opened separately by the analyst)</code></pre>
+      <p>Two details matter here. First, the rule allows the IR subnet (<code>192.168.10.0/24</code>) rather than a hard down, a total <code>ip link set down</code> is faster to type but leaves you with a host you can no longer examine remotely. Second, for ransomware-class incidents the runbook inverts this: switch-port shutdown or VLAN quarantine executed by the network team, because a software rule on a compromised host cannot be trusted once the attacker has root.</p>
+      <p>The playbook lists the containment options in order of trustworthiness, from most to least: switch-port shutdown (nothing on the host can override it), EDR-initiated network isolation (vendor agent, tamper-resistant but needs the agent alive), then host-based firewall rules like the nftables example, fastest, but only trustworthy while you still trust the kernel on that box.</p>
+      <div class="command-block"><div class="command"><code>sudo nft list chain inet filter output   # verify the rule is installed
+HANDLE=$(sudo nft -a list chain inet filter output | awk '/192.168.10.0\/24 drop/{print $NF}')
+echo "Isolation rule handle: $HANDLE  (save this for rollback)"
+ping -c2 203.0.113.45               # from the host: must fail
+ping -c2 192.168.10.5               # IR jump box: must still work</code></div></div>
+<pre><code class="language-bash">table inet filter {
+    chain output {
+        type filter hook output priority filter; policy accept;
+        ip daddr != 192.168.10.0/24 drop
+    }
+}
+--- 203.0.113.45 ping statistics ---
+2 packets transmitted, 0 received, 100% packet loss</code></pre>
+      <p>Keep the rollback ready before you apply the rule, containment you cannot undo quickly is an outage waiting for a change window. Rule handles are assigned by the kernel, so capture the real one at creation time (printed above) rather than guessing:</p>
+      <div class="command-block"><div class="command"><code>sudo nft delete rule inet filter output handle "$HANDLE"   # handle from the verify step</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>(no output on success)</code></pre>
+
+      <p>The isolation record, timestamp, method, who executed it, verification output, is attached to the case. <strong>Common mistake:</strong> adding the drop rule <em>after</em> a broad accept rule that matches first; nftables evaluates top-down, so a misordered rule silently does nothing. <strong>Verify:</strong> always test with real traffic from the isolated host, not just <code>nft list</code> output.</p>
+<p class="lab-step-note">What this teaches: isolation stops the bleeding while preserving the host for analysis, unlike a wipe.</p>
+<h3>5. Eradication &amp; recovery: close the door, then rebuild trust</h3>
+      <p>Eradication answers "how did they get in and how do we make sure they cannot walk back through the same door." For this scenario that means three concrete actions: rotate the compromised credential (and any account it could reach), kill the attacker's persistence, and patch or reconfigure the exposed path, here, enforcing MFA on the VPN that allowed password-only logon.</p>
+      <div class="command-block"><div class="command"><code># Disable, then reset, the compromised account (domain controller).
+# Run from a management host with the RSAT ActiveDirectory module installed
+# and an account delegated the right to disable accounts and reset passwords
+# (Account Operators level, not Domain Admin).
+Disable-ADAccount -Identity j.chen
+Set-ADAccountPassword -Identity j.chen -Reset -NewPassword (Read-Host -AsSecureString)
+# Sweep for persistence planted during the session
+Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Run*"</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>(no output on success)</code></pre>
+
+      <p>On the Linux side the persistence sweep covers the usual hiding places, cron, SSH keys, and unexpected accounts:</p>
+      <div class="command-block"><div class="command"><code>crontab -l -u j.chen ; ls -la /etc/cron.d/
+grep -v "^#" /home/*/.ssh/authorized_keys 2&gt;/dev/null
+awk -F: '$3 &gt;= 1000 {print $1}' /etc/passwd   # any account you don't recognize?</code></div></div>
+<pre><code class="language-bash"># Splunk confirmation that the account goes quiet after rotation
+index=wineventlog user=j.chen action=success earliest=-1h
+# result: 0 events</code></pre>
+      <p>Recovery is deliberately boring: restore the host to the production VLAN in stages (monitoring-only first, full service after 24 quiet hours), and only after the root cause is closed. If anything needed restoring from backup, the backup is verified <em>before</em> the restore, a clean-room mount and hash check, because restoring yesterday's backup of an already-compromised host just re-installs the attacker. Bringing a host back before the VPN gap is fixed just schedules incident number two.</p>
+      <p><strong>Common mistake:</strong> resetting only the one account that fired the alert. The spray touched 47 accounts; any of them with a weak or reused password is the next incident. <strong>Verify:</strong> the post-rotation search returns zero successful logons, and the correlation search from step 1 shows no further bursts from any source.</p>
+<p class="lab-step-note">What this teaches: eradication removes the attacker's footholds; recovery rebuilds trust in the system.</p>
+<h3>6. Post-incident: timeline, metrics, and playbook updates</h3>
+      <p>The final phase converts the incident into institutional memory. Build the definitive timeline from the same data you triaged with, first failure, success, containment, eradication, recovery, and compute the two numbers the program is judged on:</p>
+      <div class="command-block"><div class="command"><code>index=auth (src_ip=203.0.113.45 OR user=j.chen)
+| stats min(_time) AS first_seen max(_time) AS last_seen by action
+| eval first_seen=strftime(first_seen,"%F %T")</code></div></div>
+<p class="lab-output-label">Expected output:</p>
+<pre><code class="language-bash">MTTD: 11 min  (first spray event -&gt; alert fired)
+MTTC: 26 min  (alert fired -&gt; isolation verified)
+MTTR: 4 h 10 m (alert -&gt; host back in full service)</code></pre>
+      <p>The written report follows a fixed skeleton so reviews are comparable across incidents and nobody invents a format while tired:</p>
+      <ul>
+        <li><strong>Executive summary</strong>, three sentences a director can read: what happened, what it cost, what changed.</li>
+        <li><strong>Timeline</strong>, every event and action with UTC timestamps, from first spray to case close.</li>
+        <li><strong>Root cause</strong>, the VPN's password-only logon path, not "a user had a weak password."</li>
+        <li><strong>Scope</strong>, the full list of 47 sprayed accounts, every host the session touched, data accessed.</li>
+        <li><strong>What worked / what failed</strong>, detection fired in 11 minutes; comms bridge took 25.</li>
+        <li><strong>Action items</strong>, each with a ticket number, owner, and due date.</li>
+      </ul>
+      <p>The lessons-learned review (within five business days, blameless, with everyone who touched the case) produces the artifacts that feed back into Preparation: in this incident, a VPN-MFA gap ticket, a suppression-list entry for the scanner subnet, and a playbook amendment making the "failure burst + any success = page" condition explicit. The case only closes when those items are ticketed and owned.</p>
+      <p><strong>Common mistake:</strong> treating the review as a formality and filing the report without updates, the loop back to Preparation in the lifecycle diagram above then does nothing. <strong>Verify:</strong> every action item has a ticket number and an owner in the report's closing section.</p>
+<p class="lab-step-note">What this teaches: the post-incident review is where the organization actually learns; metrics prove it.</p>
+</section>    <section id="how-it-works">
+      <div class="lab-explainer"><h3>How It Works</h3>
+        <p>NIST SP 800-61 (Revision 2, the current revision) structures incident response into Preparation, Detection and Analysis, Containment/Eradication/Recovery, and Post-Incident Activity. The phases are ordered by dependency: you cannot contain what you have not scoped, and you cannot eradicate what you have not found. Runbooks turn the phases into checklists with explicit decision points so responders act consistently under pressure.</p>
+        <p>Evidence handling follows the order of volatility: memory and network connections first, then disk, then logs. Every artifact gets hashed and logged in the chain of custody, because evidence collected sloppily may be inadmissible or simply untrustworthy when the timeline is reconstructed later.</p>
+        <p>Severity classification drives the response tempo. A SEV1 (active compromise of critical assets) gets the full team immediately; a SEV4 (policy violation with no compromise) gets a ticket. The matrix exists so triage decisions are made by policy, not by whoever happens to be on call.</p>
+        <div class="mermaid" role="img" aria-label="NIST SP 800-61 lifecycle">
+flowchart LR
+  P["Preparation"] --> D["Detection and analysis"]
+  D --> C["Containment"]
+  C --> E["Eradication"]
+  E --> R["Recovery"]
+  R --> L["Lessons learned"]
+  L --> P
+        </div>
+      </div>
+    </section>
+
+
+    <section id="validation-testing"><h2>Validation &amp; Testing</h2>
+      <p>Run a tabletop using a simulated brute-force-then-lateral-movement scenario and time each phase. Pass criteria: detection under 15 minutes, containment decision documented, and a complete post-incident report with lessons learned.</p>
+      <p>The exercise is run with injects on a timer: the facilitator plants the attack telemetry (a scripted spray from the Kali box against the lab domain), starts the clock, and hands the team nothing but the alert. The team must execute steps 1 to 6 above against live data. Timings are captured from the case log, not self-reported, the alert timestamp, the evidence hash timestamps, and the isolation record are all already in the artifacts, which is the payoff of the artifact-per-decision rule. A red-team twist worth including once the basics are solid: one of the 47 sprayed accounts is a honeypot with a deliberately weak password, which tests whether the team scopes beyond the first compromised account in step 5.</p>
+      <p>Scoring rubric used across the tabletops:</p>
+      <ul>
+        <li><strong>Detection &lt; 15 min</strong> from first spray event to acknowledged alert.</li>
+        <li><strong>Correct severity</strong> assigned with a written justification citing the success event.</li>
+        <li><strong>Evidence captured before isolation</strong>, with hashes matching at verification.</li>
+        <li><strong>Containment verified by traffic test</strong>, not assumed from rule listing.</li>
+        <li><strong>Post-incident report complete</strong> with ticketed action items.</li>
+      </ul>
+      <p>Three consecutive passing runs moved the playbooks from draft to operational status; the fourth run introduced the honeypot twist and caught a scoping miss, which is exactly what the exercise is for.</p>
+    </section>    <section id="troubleshooting">
+      <h2>Troubleshooting</h2>
+      <table class="lab-table">
+        <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>Splunk search returns nothing during a known incident</td><td>Wrong index, time range, or sourcetype in the query</td><td>Verify the data is onboarded with a broad index=* search before narrowing</td></tr>
+          <tr><td>Memory capture tool fails on the host</td><td>Kernel version mismatch or missing dependencies for AVML/LiME</td><td>Fall back to the hypervisor snapshot as the memory source and document the substitution</td></tr>
+          <tr><td>Isolation rule blocks the responder too</td><td>The nftables rule dropped the management path along with the attacker</td><td>Always exempt the management subnet and test the rule from a second session first</td></tr>
+          <tr><td>Persistence reappears after cleanup</td><td>Missed a foothold: cron, systemd unit, or authorized_keys entry</td><td>Re-run the full persistence sweep from step 5 and diff against a known-good baseline</td></tr>
+          <tr><td>Stakeholders were not informed</td><td>No communications plan or unclear severity ownership</td><td>Define the notification matrix in preparation, not during the incident</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Alert fatigue:</strong> tune thresholds and add risk-based scoring before escalating.</li>
+        <li><strong>Evidence gaps:</strong> capture volatile data before isolation where SEV permits.</li>
+        <li><strong>Slow triage:</strong> pre-build lookups for threat intel and asset ownership.</li>
+        <li><strong>Correlation search never fires:</strong> check the scheduled search in <code>index=_internal sourcetype=scheduler savedsearch_name="..."</code>, the usual culprits are a time window shorter than the cron interval (events fall through the gap), an index the search-head role cannot read, or a skipped run due to search-head load. Fix the schedule so window length ≥ 2× cron period.</li>
+        <li><strong>Isolation rule has no effect:</strong> nftables evaluates chains top-down, if an earlier rule accepts the traffic, your drop never matches. Confirm order with <code>nft list ruleset</code> and verify with live traffic (ping/curl) from the host, then insert the drop at the top of the chain if needed.</li>
+        <li><strong>Lookup returns nothing in triage:</strong> a stale CSV lookup (<code>| inputlookup threat_intel</code> to inspect) or a field-name mismatch between the search output and the lookup header. The <code>OUTPUT</code> clause silently returns nulls on mismatch, it will not error.</li>
+      </ul>
+    </details>
+
+    <section id="key-results"><h2>Key Results</h2>
+      <ul>
+        <li>Reduced mean time to detect (MTTD) to under 15 minutes for priority alert classes.</li>
+        <li>Documented 4 severity-branched playbooks covering 12 common incident types.</li>
+        <li>Achieved 100% chain-of-custody completion across tabletop exercises.</li>
+        <li>Cut average triage time by roughly 50% with pre-built enrichment lookups.</li>
+      </ul>
+    </section>
+
+    <section id="key-takeaways"><h2>Key Takeaways</h2>
+      <ul>
+        <li>Write the playbook before the incident: decision points, commands, and exit criteria belong on paper, not in someone's head.</li>
+        <li>Detect the outcome, not the volume, "failure burst plus any success" beats a raw failure threshold for both fidelity and pager sanity.</li>
+        <li>Let severity drive the path: isolate-first for destructive attacks, evidence-first for credential abuse, monitored analysis for the unconfirmed.</li>
+        <li>Containment is not done until you have verified it with live traffic from the isolated host.</li>
+        <li>Every step produces an artifact (severity tag, hashes, isolation record, timeline); artifacts are what make metrics and reviews honest.</li>
+        <li>The lifecycle is a loop, an incident that does not update the playbooks is a lesson paid for and never collected.</li>
+      </ul>
+    </section>
+
+        <section id="practice-challenges">
+      <h2>Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Tabletop exercise</h4><p>Goal: Run a 60-minute tabletop of the brute-force scenario with two colleagues playing stakeholder and attacker.</p><p>Hint: Use the step 6 timeline queries as injects and time how long each phase decision takes.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: Write the comms template</h4><p>Goal: Draft the SEV1 notification messages for executives, users, and the security team.</p><p>Hint: Each audience needs impact, action required, and next update time; nothing else.</p></div>
+    </section>
+<section class="related-labs" id="related-labs"><h2>Related Labs</h2>
+      <ul>
+        <li><a href="incident-response-automation.html">Incident Response Automation</a></li>
+        <li><a href="live-box-forensics.html">Live Box Forensics</a></li>
+        <li><a href="automated-soc-pipeline.html">Automated SOC Pipeline</a></li>
+      
+        <li><a href="forensics-timeline.html">Forensics Timeline Analysis</a></li></ul>
+    </section>
+
+</div>
+</div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

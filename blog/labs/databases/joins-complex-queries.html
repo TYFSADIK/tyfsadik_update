@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SQL JOINs &amp; Complex Queries: CTEs, Windows | TYFSADIK</title>
+  <meta name="keywords" content="sql joins, CTE, common table expressions, window functions, ROW_NUMBER, EXPLAIN ANALYZE">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="SQL JOINs &amp; Complex Queries: CTEs, Windows | TYFSADIK">
+  <meta property="og:description" content="Write advanced SQL with JOINs, CTEs, and window functions like ROW_NUMBER, then verify performance with EXPLAIN ANALYZE for real analytics workloads today.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/databases/joins-complex-queries.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="SQL JOINs &amp; Complex Queries: CTEs, Windows | TYFSADIK">
+  <meta name="twitter:description" content="Write advanced SQL with JOINs, CTEs, and window functions like ROW_NUMBER, then verify performance with EXPLAIN ANALYZE for real analytics workloads today.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="description" content="Write advanced SQL with JOINs, CTEs, and window functions like ROW_NUMBER, then verify performance with EXPLAIN ANALYZE for real analytics workloads today.">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/databases/joins-complex-queries.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "SQL JOINs, CTEs, and Window Functions", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-02-11", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "PostgreSQL 16, SQL window functions", "articleSection": "Databases", "learningResourceType": "Hands-on lab", "teaches": "databases and SQL"}</script>
+  <script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "author": {
+    "@type": "Person",
+    "name": "MD. Taki Yasir Faraji Sadik",
+    "url": "https://tyfsadik.org/about.html"
+  },
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "Join and aggregate in a CTE",
+      "text": "Join and aggregate in a CTE"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Rank with a window function",
+      "text": "Rank with a window function"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Verify the plan with the full query",
+      "text": "Verify the plan with the full query"
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Find customers with no invoices (anti-join)",
+      "text": "Find customers with no invoices (anti-join)"
+    }
+  ],
+  "url": "https://tyfsadik.org/about.html"
+}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Databases", "item": "https://tyfsadik.org/blog/labs/databases/index.html"}, {"@type": "ListItem", "position": 4, "name": "JOINs & Complex Queries", "item": "https://tyfsadik.org/blog/labs/databases/joins-complex-queries.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'row counts explode after a join'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: a many-to-many fan-out duplicated rows. Fix: aggregate before joining, or check join keys for duplicates."}}, {"@type": "Question", "name": "How do I fix 'LEFT JOIN dropped rows anyway'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: a WHERE clause on the right table nullified the outer join. Fix: move right-table filters into the ON clause."}}, {"@type": "Question", "name": "How do I fix 'window function ranks globally'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: PARTITION BY was omitted. Fix: add PARTITION BY for per-group ranking; omit it only for global ranking."}}, {"@type": "Question", "name": "How do I fix 'CTE is slow'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: the CTE is referenced twice and recomputed, or it blocks predicate pushdown. Fix: on PostgreSQL 12+ CTEs inline by default; check the plan for double evaluation."}}, {"@type": "Question", "name": "How do I fix 'EXPLAIN estimates wildly off'?", "acceptedAnswer": {"@type": "Answer", "text": "Likely cause: stale table statistics. Fix: run ANALYZE on the tables and re-check the plan."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/databases/index.html">Databases</a> &rsaquo; <span>JOINs &amp; Complex Queries</span></nav>
+    <div class="page-header"><h1>SQL JOINs, CTEs, and Window Functions</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Databases</span><span class="lab-time">~4 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">JOIN</span><span class="tag">CTE</span><span class="tag">window functions</span><span class="tag">EXPLAIN</span></div>
+    </div>
+    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+      <li><a href="#objective-context">Objective &amp; Context</a></li>
+      <li><a href="#environment-prerequisites">Environment &amp; Prerequisites</a></li>
+      <li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#validation-testing">Validation &amp; Testing</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#key-results">Key Results</a></li>
+      <li><a href="#takeaways">Key Takeaways</a></li>
+      <li><a href="#challenges">Practice Challenges</a></li>
+      <li><a href="#related-labs">Related Labs</a></li>
+    </ol></nav>
+
+    <section><p class="lead">I built advanced analytical queries with inner/outer JOINs, common table expressions, and window functions like ROW_NUMBER and running totals. Refactoring nested subqueries into CTEs made queries readable, and EXPLAIN-guided indexing kept them fast.</p></section>
+
+    <section><h2 id="objective-context">Objective &amp; Context</h2>
+      <p>Real reporting needs more than single-table selects. This lab combines JOIN types, recursive and non-recursive CTEs, and partitioned window functions to answer ranking and trend questions without procedural code.</p></section>
+    <div class="lab-objectives"><h3>Learning Objectives</h3><ul>
+      <li>Combine tables with INNER and OUTER joins correctly.</li>
+      <li>Refactor nested subqueries into readable CTEs.</li>
+      <li>Rank and aggregate with window functions (ROW_NUMBER, running totals).</li>
+      <li>Control join order and diagnose fan-out duplication.</li>
+      <li>Verify plans with EXPLAIN ANALYZE.</li>
+    </ul></div>
+
+    <section><h2 id="environment-prerequisites">Environment &amp; Prerequisites</h2>
+      <div class="lab-prereqs"><h3>Prerequisites</h3><ul>
+      <li><code>PostgreSQL 16</code> with a multi-table normalized schema</li>
+      <li>Representative data volume for meaningful plan analysis</li>
+      <li><code>EXPLAIN ANALYZE</code> for verification</li>
+      <li>Assumed skill: SQL fundamentals (SELECT, WHERE, GROUP BY)</li>
+    </ul></div>
+      <div class="mermaid" role="img" aria-label="CTE feeding a window function">
+flowchart LR
+  J[JOINs] --> C[CTE: per-customer totals]
+  C --> W[Window: rank within region]
+  W --> R[Ranked report]
+      </div>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <h3>1. Join and aggregate in a CTE</h3>
+      <div class="command-block"><div class="command"><code>WITH totals AS (SELECT customer_id, SUM(amount) t FROM invoice GROUP BY customer_id) SELECT * FROM totals JOIN customer ON customer.id = totals.customer_id;</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>(customer totals joined to customer rows)</code></pre>
+      <p class="lab-step-note">What this teaches: The CTE names the intermediate result, so the final SELECT reads as intent: aggregate once, then join, instead of a nested subquery puzzle.</p></div>
+      <h3>2. Rank with a window function</h3>
+      <div class="command-block"><div class="command"><code>SELECT name, ROW_NUMBER() OVER (PARTITION BY region ORDER BY total DESC) FROM v_customer_totals;</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>(names ranked 1..N within each region)</code></pre>
+      <p class="lab-step-note">What this teaches: PARTITION BY restarts the numbering per region; without it you get a single global ranking, which answers a different question.</p></div>
+      <h3>3. Verify the plan with the full query</h3>
+      <div class="command-block"><div class="command"><code>EXPLAIN ANALYZE WITH totals AS (SELECT customer_id, SUM(amount) AS t FROM invoice GROUP BY customer_id) SELECT c.name, t.t FROM totals t JOIN customer c ON c.id = t.customer_id ORDER BY t.t DESC LIMIT 5;</code></div></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>Limit  (cost=120.42..120.43 rows=5 width=72) (actual time=1.204..1.210 rows=5 loops=1)
+  ->  Sort  (cost=120.42..122.45 rows=812 width=72) (actual time=1.202..1.205 rows=5 loops=1)
+        Sort Key: t.t DESC
+        Sort Method: top-N heapsort  Memory: 25kB
+        ->  Hash Join  (cost=68.90..118.39 rows=812 width=72) (actual time=0.612..1.051 rows=812 loops=1)
+              Hash Cond: (c.id = t.customer_id)
+              ->  Seq Scan on customer c  (cost=0.00..18.00 rows=500 width=68) (actual time=0.009..0.148 rows=500 loops=1)
+              ->  Hash  (cost=66.87..66.87 rows=812 width=12) (actual time=0.571..0.571 rows=812 loops=1)
+                    Buckets: 1024  Batches: 1  Memory Usage: 47kB
+                    ->  Subquery Scan on t  (cost=64.84..66.87 rows=812 width=12) (actual time=0.301..0.481 rows=812 loops=1)
+                          ->  HashAggregate  (cost=64.84..66.87 rows=812 width=12) (actual time=0.299..0.412 rows=812 loops=1)
+                                Group Key: invoice.customer_id
+                                ->  Index Scan using idx_invoice_customer on invoice  (cost=0.29..52.58 rows=5000 width=12) (actual time=0.018..0.189 rows=5000 loops=1)
+Planning Time: 0.187 ms
+Execution Time: 1.263 ms</code></pre>
+      <p class="lab-step-note">What this teaches: EXPLAIN ANALYZE runs the query and reports actual rows and time per node, not estimates. Read bottom up: the Index Scan feeds the HashAggregate, the CTE result is hashed once, and the top-N sort keeps only 5 rows. The Execution Time line is the wall-clock proof that the plan is healthy.</p></div>
+      <h3>4. Find customers with no invoices (anti-join)</h3>
+      <div class="command-block"><div class="command"><code>SELECT c.name FROM customer c WHERE NOT EXISTS (SELECT 1 FROM invoice i WHERE i.customer_id = c.id);</code></div>
+      <p class="lab-output-label">Expected output:</p>
+      <pre><code>     name
+--------------
+ Acme Imports
+ Beta Retail
+(2 rows)</code></pre>
+      <p class="lab-step-note">What this teaches: NOT EXISTS is the null-safe anti-join. The tempting NOT IN version returns zero rows if any invoice.customer_id is NULL, because the NULL comparison poisons the whole predicate; NOT EXISTS has no such trap.</p></div>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+      <div class="lab-explainer"><h3>How It Works</h3>
+      <p>Joins match rows across tables on key equality, and the join type decides what happens to unmatched rows: INNER drops them, LEFT keeps every left row with NULLs for missing matches. Choosing wrong silently drops or duplicates data, which is why join bugs are data bugs.</p>
+      <p>CTEs (WITH clauses) name intermediate result sets. Beyond readability, they let you build a query in verifiable stages: run each CTE as a standalone SELECT to check its output before composing the final query.</p>
+      <p>Window functions compute across a set of rows related to the current row without collapsing them. ROW_NUMBER() OVER (PARTITION BY region ORDER BY total DESC) ranks within each region while keeping every row, something GROUP BY fundamentally cannot do.</p>
+    </div>
+      <div class="mermaid" role="img" aria-label="Building a complex query in stages">
+flowchart LR
+  C["CTE: totals per<br/>customer"] --> J["JOIN to<br/>customer"]
+  J --> W["window: ROW_NUMBER()<br/>PARTITION BY region"]
+  W --> X["EXPLAIN ANALYZE<br/>verify plan"]
+      </div>
+    </section>
+
+    <section><h2 id="validation-testing">Validation &amp; Testing</h2>
+      <p>Compare CTE-based and subquery-based versions of the same report for identical results and inspect the plan for index use. Pass criteria: matching output, readable CTE structure, and join plans backed by indexes rather than nested loops over large scans.</p>
+    </section>
+
+    <details><summary>Advanced: Troubleshooting</summary>
+      <ul>
+        <li><strong>Slow joins:</strong> ensure both join columns are indexed; watch for missing FK indexes.</li>
+        <li><strong>Wrong row multiplication:</strong> a one-to-many join inflates aggregates; aggregate before joining.</li>
+        <li><strong>CTE materialization:</strong> in some engines CTEs are an optimization fence; test inline vs CTE.</li>
+      </ul>
+    </details>
+
+    <section><h2 id="troubleshooting">Troubleshooting</h2>
+      <table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+        <tr><td>row counts explode after a join</td><td>a many-to-many fan-out duplicated rows</td><td>aggregate before joining, or check join keys for duplicates</td></tr>
+        <tr><td>LEFT JOIN dropped rows anyway</td><td>a WHERE clause on the right table nullified the outer join</td><td>move right-table filters into the ON clause</td></tr>
+        <tr><td>window function ranks globally</td><td>PARTITION BY was omitted</td><td>add PARTITION BY for per-group ranking; omit it only for global ranking</td></tr>
+        <tr><td>CTE is slow</td><td>the CTE is referenced twice and recomputed, or it blocks predicate pushdown</td><td>on PostgreSQL 12+ CTEs inline by default; check the plan for double evaluation</td></tr>
+        <tr><td>EXPLAIN estimates wildly off</td><td>stale table statistics</td><td>run ANALYZE on the tables and re-check the plan</td></tr>
+      </tbody></table>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Replaced nested subqueries with readable CTEs at equal correctness.</li>
+        <li>Answered ranking/trend questions with window functions, no procedural code.</li>
+        <li>Tuned join plans to index-backed hash joins via EXPLAIN ANALYZE.</li>
+        <li>Returned multi-table analytical reports in single-digit milliseconds.</li>
+      </ul>
+    </section>
+
+    <section class="lab-takeaways"><h2 id="takeaways">Key Takeaways</h2><ul>
+        <li>Pick join types deliberately: INNER drops unmatched rows, OUTER keeps them.</li>
+        <li>CTEs turn nested subqueries into named, testable stages.</li>
+        <li>Window functions rank and aggregate without collapsing rows.</li>
+        <li>Fan-out duplication is the classic join bug: aggregate before joining.</li>
+        <li>EXPLAIN ANALYZE shows actual rows and time; trust it over estimates.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="challenges">Practice Challenges</h2>
+      <div class="lab-challenge"><h4>Challenge 1: Top-N per group</h4><p><strong>Goal:</strong> Return the top 3 customers by total per region using ROW_NUMBER() in a CTE, filtering rank &lt;= 3.</p><p><strong>Hint:</strong> Compute the ranking in the CTE, then filter on the rank in the outer query.</p></div>
+      <div class="lab-challenge"><h4>Challenge 2: Running total</h4><p><strong>Goal:</strong> Add a running total of invoice amounts ordered by date with SUM() OVER (ORDER BY ...).</p><p><strong>Hint:</strong> The default frame is UNBOUNDED PRECEDING to CURRENT ROW, which is exactly a running total.</p></div>
+    </section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="sql-fundamentals.html">SQL Fundamentals</a></li>
+        <li><a href="database-design.html">Database Design &amp; Normalization</a></li>
+        <li><a href="database-admin.html">Database Administration</a></li>
+      
+        <li><a href="sql-fundamentals.html">SQL Fundamentals</a></li>
+        <li><a href="database-design.html">Database Design & Normalization</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

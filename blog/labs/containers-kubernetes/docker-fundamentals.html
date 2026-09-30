@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Docker Fundamentals | Images, Containers &amp; Volumes</title>
+  <meta name="description" content="Learn Docker from zero: run containers, inspect them, persist data with volumes, read logs, use exec, manage the lifecycle, and handle images and tags.">
+  <meta name="keywords" content="Docker fundamentals, docker run, containers, volumes, docker images, docker exec, container lifecycle">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Docker Fundamentals | Images, Containers &amp; Volumes">
+  <meta property="og:description" content="Learn Docker from zero: run containers, inspect them, persist data with volumes, read logs, use exec, manage the lifecycle, and handle images and tags.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/containers-kubernetes/docker-fundamentals.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Docker Fundamentals | Images, Containers &amp; Volumes">
+  <meta name="twitter:description" content="Learn Docker from zero: run containers, inspect them, persist data with volumes, read logs, use exec, manage the lifecycle, and handle images and tags.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/containers-kubernetes/docker-fundamentals.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Docker Fundamentals: Images, Containers, and Volumes", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-02-03", "dateModified": "2026-09-29", "proficiencyLevel": "Beginner", "dependencies": "Docker Engine 24.x", "articleSection": "Containers", "learningResourceType": "Hands-on lab", "teaches": "containers and Kubernetes"}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "HowTo", "name": "Docker Fundamentals | Images, Containers & Volumes", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"}, "step": [{"@type": "HowToStep", "name": "Run a container", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/docker-fundamentals.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "List and inspect", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/docker-fundamentals.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Persist data with a volume", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/docker-fundamentals.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Read container logs", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/docker-fundamentals.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Shell into a running container", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/docker-fundamentals.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Stop, start, and remove: the container lifecycle", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/docker-fundamentals.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Inspect container networking", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/docker-fundamentals.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Manage images: tags, layers, and cleanup", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/docker-fundamentals.html#step-by-step-execution"}]}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Containers & Kubernetes", "item": "https://tyfsadik.org/blog/labs/containers-kubernetes/index.html"}, {"@type": "ListItem", "position": 4, "name": "Docker Fundamentals", "item": "https://tyfsadik.org/blog/labs/containers-kubernetes/docker-fundamentals.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'permission denied on docker.sock'?", "acceptedAnswer": {"@type": "Answer", "text": "add your user to the docker group and re-login. The full error is permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock. Run sudo usermod -aG docker $USER, then log out and back in (or newgrp docker). Confirm with groups, docker must appear."}}, {"@type": "Question", "name": "How do I fix 'port already allocated'?", "acceptedAnswer": {"@type": "Answer", "text": "another service uses 8080; map a different host port. Find the squatter with sudo ss -lntp | grep 8080, then either stop it or pick a free host port, e.g. -p 8090:80. A stale container from an earlier attempt is the usual culprit, check docker ps -a first."}}, {"@type": "Question", "name": "How do I fix 'data lost on remove'?", "acceptedAnswer": {"@type": "Answer", "text": "mount a named volume rather than writing inside the container layer. If you already lost data, it is unrecoverable, the writable layer was deleted with the container. Treat this as the lesson it is: anything that matters gets -v name:/path from day one."}}, {"@type": "Question", "name": "How do I fix 'Cannot connect to the Docker daemon'?", "acceptedAnswer": {"@type": "Answer", "text": "the error Is the docker daemon running? means the service is down, not your CLI. Check with sudo systemctl status docker, start it with sudo systemctl start docker, and enable it at boot with sudo systemctl enable docker. On VMs that were suspended or rebooted, this is the most common failure of all."}}, {"@type": "Question", "name": "How do I fix 'container exits immediately after run'?", "acceptedAnswer": {"@type": "Answer", "text": "a container lives only as long as its PID 1 process. If docker ps is empty but docker ps -a shows Exited (1) 3 seconds ago, the app crashed on startup, read docker logs <name> for the actual error. Exited (137) specifically points to the OOM killer; give the VM more memory or set a --memory limit to see it fail predictably."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Docker Fundamentals</span></nav>
+    <div class="page-header"><h1>Docker Fundamentals: Run Your First Container</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-beginner">Beginner</span><span class="lab-category">Containers</span><span class="lab-time">~2 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">Docker</span><span class="tag">images</span><span class="tag">volumes</span><span class="tag">networks</span></div>
+    </div>
+<nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#architecture-overview">Architecture Overview</a></li>
+<li><a href="#environment-setup">Environment Setup</a></li>
+<li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+<li><a href="#step-flow-map">Step Flow Map</a></li>
+<li><a href="#progress-so-far">Progress So Far</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#testing-validation">Testing & Validation</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#extension-ideas">Extension Ideas</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#self-check">Self-Check</a></li>
+<li><a href="#command-quick-reference">Command Quick Reference</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    
+
+    <section><p class="lead">You will install Docker and run, inspect, and persist your first containers. By the end you will understand the difference between an image and a container and keep data alive with volumes.</p>
+      <p>This lab is the foundation for everything else in the Containers &amp; Kubernetes track. Every later lab, building custom images, wiring containers together with networks, composing multi-service stacks, and deploying to Kubernetes, assumes you are comfortable with the core Docker CLI workflow covered here: <code>run</code>, <code>ps</code>, <code>exec</code>, <code>logs</code>, <code>stop</code>, and <code>rm</code>.</p>
+      <p>We use the official <code>nginx:stable</code> image because it is small, starts instantly, and serves real HTTP traffic, which gives us something concrete to verify at every step. Everything you learn transfers directly to databases, application servers, and any other image on Docker Hub.</p>
+    </section>
+
+    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+      <ul>
+        <li>Run and manage containers from public images.</li>
+        <li>Persist data with named volumes.</li>
+        <li>Inspect container networking and logs.</li>
+        <li>Explain the image / container / volume relationship and the container lifecycle.</li>
+        <li>Debug common failures using <code>ps -a</code>, <code>logs</code>, and <code>inspect</code>.</li>
+        <li><strong>Time:</strong> ~2 hours &middot; <strong>Difficulty:</strong> Beginner &middot; <strong>Prereqs:</strong> a Linux host with sudo.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="architecture-overview">Architecture Overview</h2>
+      <p>Three ideas explain almost everything in Docker. A <span class="glossary-term" data-definition="A read-only template containing an app and its dependencies; containers are running instances of an image.">image</span> is the immutable blueprint pulled from a registry such as Docker Hub. A <span class="glossary-term" data-definition="A runnable instance of an image, isolated from the host with its own filesystem, processes, and network stack.">container</span> is a live, isolated process created from that blueprint, you can start many containers from one image. A <span class="glossary-term" data-definition="Docker-managed storage that lives outside any single container, surviving container deletion.">named volume</span> is storage managed by Docker that outlives any individual container, which is how stateful data survives restarts and rebuilds.</p>
+      <div class="mermaid" role="img" aria-label="Docker image to running container with a volume">
+graph LR
+  Reg[(Docker Hub registry)] -->|docker pull| Img[Image]
+  Img -->|docker run| Ctr[Container]
+  Vol[(Named volume)] -->|mount| Ctr
+  You[You] -->|port 8080| Ctr
+      </div>
+      <p>Follow the arrows as you work through the lab: <code>docker run</code> first pulls the image from the registry if it is not cached locally, then creates and starts the container. The <code>-p 8080:80</code> flag publishes the container's internal port 80 onto the host's port 8080, which is the path your browser (or <code>curl</code>) takes to reach nginx. The volume mounts into the container's filesystem at a path you choose, so writes to that path land on durable storage instead of the container's throwaway layer.</p>
+      <div class="note"><strong>Mental model:</strong> an image is like a class, a container is like an object instantiated from it, and a volume is like an external hard drive you plug into whichever object needs it. Deleting the object never wipes the drive.</div>
+    </section>
+
+    <section><h2 id="environment-setup">Environment Setup</h2>
+<div class="lab-prereqs"><h3>Prerequisites</h3>
+<ul>
+<li>Docker Engine 24+ installed and running (<code>docker version</code> shows both client and server).</li>
+<li>A terminal; on Linux, your user in the <code>docker</code> group avoids sudo on every command.</li>
+<li>Assumed skills: basic shell commands; no prior container experience needed.</li>
+</ul></div>
+      <p><strong>You will need:</strong> Docker Engine 24.x (<a href="https://docs.docker.com/engine/install/" target="_blank" rel="noopener">install docs</a>).</p>
+      <p><strong>Before you begin:</strong> add your user to the docker group or prefix commands with sudo.</p>
+      <p>On a fresh Ubuntu or Debian host, the fastest way to a working engine is Docker's convenience script. It detects your distribution, configures the official apt repository, and installs the engine, the CLI, and containerd in one shot. For production servers, follow the manual repository setup in the official docs instead; the script is ideal for a lab VM.</p>
+      <p class="code-label">INSTALL DOCKER ENGINE (UBUNTU/DEBIAN)</p>
+      <pre><code>sudo apt update
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh</code></pre>
+      <p>The Docker daemon runs as root and listens on the Unix socket <code>/var/run/docker.sock</code>. By default only root can talk to it, which is why every tutorial tells you to join the <code>docker</code> group. Membership takes effect only on a fresh login session, so either log out and back in or use <code>newgrp</code> to activate it immediately.</p>
+      <p class="code-label">RUN DOCKER WITHOUT SUDO</p>
+      <pre><code>sudo usermod -aG docker $USER
+newgrp docker   # or log out and back in</code></pre>
+      <p><strong>On macOS or Windows?</strong> Install Docker Desktop instead, it runs the same Linux engine inside a lightweight VM, so every command in this lab works unchanged from your terminal. Two lab-specific notes: on macOS/Windows, the container IP from step 07 is <em>not</em> reachable from the host (the VM sits in between), so stick to the published port (<code>localhost:8080</code>); and the group/socket setup above is unnecessary because Docker Desktop handles permissions for you.</p>
+      <p>Now verify the install end to end. <code>docker version</code> confirms both the CLI and the daemon are alive (you should see a <em>Client</em> and a <em>Server</em> section). <code>docker run hello-world</code> proves the daemon can pull an image from Docker Hub and start a container from it.</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker version --format 'Server: {{.Server.Version}}'</span></div>
+        <div class="terminal-output">Server: 24.0.7</div>
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker run hello-world</span></div>
+        <div class="terminal-output">Unable to find image 'hello-world:latest' locally
+latest: Pulling from library/hello-world
+c1ec31eb5944: Pull complete
+Digest: sha256:d000bc569937abbe195e20322a0bde6b2922d805332fd6d8a68b19f524b7d21d
+Status: Downloaded newer image for hello-world:latest
+
+Hello from Docker!
+This message shows that your installation appears to be working correctly.</div>
+      </div>
+      <div class="note"><strong>Verify:</strong> if <code>docker version</code> shows only a Client section and then a connection error, the daemon is not running, jump to the Troubleshooting section below. If <code>hello-world</code> prints its banner, you are ready for the lab.</div>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Run a container</strong>
+          <p>An <span class="glossary-term" data-definition="A read-only template containing an app and its dependencies; containers are running instances of an image.">image</span> becomes a container the moment you run it.</p>
+          <p>The command below does four things at once. <code>-d</code> runs the container <em>detached</em> so nginx keeps serving in the background instead of tying up your terminal. <code>--name web</code> gives the container a human-friendly handle you will use in every later command (otherwise Docker invents a random name like <code>grumpy_beaver</code>). <code>-p 8080:80</code> publishes the container's internal port 80 to host port 8080, without it, nginx would be reachable only from inside Docker's private network. Finally, <code>nginx:stable</code> is the image reference: the <code>stable</code> tag tracks nginx's stable release line, which moves less often than <code>latest</code> but still floats with each release. For true repeatability you would pin the digest (<code>nginx:stable@sha256:...</code>), an immutable build identifier, as step 08 explains.</p>
+          <div class="command-block" data-copy><div class="command"><code>docker run -d --name web -p 8080:80 nginx:stable</code></div><div class="note">Runs nginx detached, mapping host 8080 to container 80.</div></div>
+          <p>The first run prints pull progress as each image layer downloads, then a long hex string, the full container ID, once the container is up.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker run -d --name web -p 8080:80 nginx:stable</span></div>
+            <div class="terminal-output">Unable to find image 'nginx:stable' locally
+stable: Pulling from library/nginx
+a2abf6c4d29d: Pull complete
+a9edb18cadd1: Pull complete
+589b7251471a: Pull complete
+186b1aaa4aa6: Pull complete
+b4df32aa5a72: Pull complete
+a0d0a0d46f8b: Pull complete
+Digest: sha256:&lt;varies, the stable tag moves with each release&gt;
+Status: Downloaded newer image for nginx:stable
+4f8a1c9e2b7d3a5f6e0c1d2b3a4f5e6d7c8b9a0f1e2d3c4b5a6f7e8d9c0b1a2f3e</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">curl -I http://localhost:8080</span></div>
+            <div class="terminal-output">HTTP/1.1 200 OK
+Server: nginx/1.24.0
+Content-Type: text/html</div>
+          </div>
+          <div class="note"><strong>Common mistake:</strong> forgetting <code>-d</code> leaves nginx running in the foreground and your prompt frozen, press <code>Ctrl+C</code> (which stops the container) or open a second terminal. <strong>Verify:</strong> <code>curl -I http://localhost:8080</code> returns <code>200 OK</code> with <code>Server: nginx</code>.</div>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker run -d --name web -p 8080:80 nginx:stable
+8f2c1a4b5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3</code></pre>
+<p class="lab-step-note">What this teaches: Running a container is starting an isolated process from an image; flags control its network, storage, and lifetime.</p></div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>List and inspect</strong>
+          <p><code>docker ps</code> is your dashboard: it shows every running container with its image, status, published ports, and name. Add <code>-a</code> to also see stopped containers, this is the single most useful flag when debugging, because a container that crashed two seconds after launch is invisible to a plain <code>docker ps</code>.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker ps</span></div>
+            <div class="terminal-output">CONTAINER ID  IMAGE         STATUS         PORTS
+a1b2c3        nginx:stable  Up 5 seconds   0.0.0.0:8080-&gt;80/tcp</div>
+          </div>
+          <p>For the full picture, <code>docker inspect</code> dumps the container's complete configuration as JSON: mounts, environment variables, network settings, restart policy, and more. Piping it through a Go template with <code>--format</code> (or through <code>jq</code>) lets you pull out exactly one field, which is how you will script against Docker later.</p>
+          <p class="code-label">PULL ONE FIELD OUT OF INSPECT</p>
+          <pre><code>docker inspect --format '{{.State.Status}} | {{.Config.Image}} | {{.HostConfig.RestartPolicy.Name}}' web</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker ps --format '{{.Names}} {{.Status}}'
+web Up 10 seconds</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker inspect --format '{{.State.Status}} | {{.Config.Image}}' web</span></div>
+            <div class="terminal-output">running | nginx:stable</div>
+          </div>
+          <div class="note"><strong>Common mistake:</strong> panicking when <code>docker ps</code> comes back empty after a reboot or a crash, containers do not restart by default. <strong>Verify:</strong> the <code>STATUS</code> column says <code>Up</code>; if the container is missing, check <code>docker ps -a</code> for an <code>Exited</code> entry and read its logs (step 04).</div>
+        
+<p class="lab-step-note">What this teaches: Listing and inspecting shows the difference between what you asked for and what Docker actually created.</p></div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Persist data with a volume</strong>
+          <p>Volumes keep data when a container is removed, the key to stateful workloads.</p>
+          <p>Anything a container writes to its own filesystem lives in a writable layer that is <em>destroyed with the container</em>. A named volume is the escape hatch: Docker stores it under <code>/var/lib/docker/volumes/</code> on the host and mounts it into the container at a path you choose. Here we mount a volume called <code>webdata</code> over nginx's document root, <code>/usr/share/nginx/html</code>, so the site's files survive no matter what happens to the container serving them.</p>
+          <div class="command-block" data-copy><div class="command"><code>docker volume create webdata &amp;&amp; docker run -d --name web2 -p 8081:80 -v webdata:/usr/share/nginx/html nginx:stable</code></div><div class="note">Creates the volume, then starts a second nginx with the volume mounted as its web root on host port 8081.</div></div>
+          <p>Now prove persistence. Write a custom page into the volume through <code>web2</code>, confirm it is served, then delete the container entirely and attach the same volume to a brand-new container, <code>web3</code>. If the page is still there, the data lived in the volume, not in the container.</p>
+          <p class="code-label">WRITE, DESTROY, REATTACH</p>
+          <pre><code>docker exec web2 sh -c 'echo "&lt;h1&gt;persisted by webdata&lt;/h1&gt;" &gt; /usr/share/nginx/html/index.html'
+curl -s http://localhost:8081        # shows our custom page
+
+docker rm -f web2                    # container is gone
+docker run -d --name web3 -p 8081:80 -v webdata:/usr/share/nginx/html nginx:stable
+curl -s http://localhost:8081        # still shows our custom page</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker volume create webdata &amp;&amp; docker run -d --name web2 -p 8081:80 -v webdata:/usr/share/nginx/html nginx:stable
+webdata
+9e8d7c6b5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">curl -s http://localhost:8081</span></div>
+            <div class="terminal-output">&lt;h1&gt;persisted by webdata&lt;/h1&gt;</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker volume ls</span></div>
+            <div class="terminal-output">DRIVER    VOLUME NAME
+local     webdata</div>
+          </div>
+          <div class="note"><strong>Common mistake:</strong> writing important data inside the container without a volume and losing it on the next <code>docker rm</code>, every <code>docker rm</code> in this lab would have wiped it. <strong>Verify:</strong> <code>docker volume ls</code> shows <code>webdata</code>, and the custom page survives a full container replacement.</div>
+        
+<p class="lab-step-note">What this teaches: Volumes persist data outside the container's writable layer; without one, data dies with the container.</p></div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Read container logs</strong>
+          <p>Docker captures whatever a container writes to stdout and stderr and stores it per container, so well-behaved images like nginx never need log files on disk. <code>docker logs</code> is how you read that stream. <code>--tail 10</code> shows the last ten lines, <code>-f</code> follows new output live (like <code>tail -f</code>), and <code>--timestamps</code> prefixes each line with an RFC 3339 timestamp, which is invaluable when correlating events across containers.</p>
+          <div class="command-block" data-copy><div class="command"><code>docker logs --tail 10 web</code></div><div class="note">Shows the last ten log lines; add -f to follow live.</div></div>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">curl -s -o /dev/null http://localhost:8080 &amp;&amp; docker logs --tail 2 web</span></div>
+            <div class="terminal-output">172.17.0.1 - - [17/Jun/2026:14:02:11 +0000] "GET / HTTP/1.1" 200 615 "-" "curl/8.5.0"
+172.17.0.1 - - [17/Jun/2026:14:02:19 +0000] "GET / HTTP/1.1" 200 615 "-" "curl/8.5.0"</div>
+          </div>
+          <p>Hit the server once with <code>curl</code>, then read the log: you should see your own request recorded with your client IP (from Docker's bridge network), the path, and the 200 status. This request-then-log loop is the most basic debugging rhythm in container work.</p>
+          <div class="note"><strong>Common mistake:</strong> running <code>docker logs</code> on a container whose app writes to a log file instead of stdout and seeing nothing, the fix is at the image level, not the CLI level. <strong>Verify:</strong> each <code>curl</code> you issue produces exactly one new access-log line.</div>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>/docker-entrypoint.sh: Configuration complete; ready for start up</code></pre>
+<p class="lab-step-note">What this teaches: Logs are the container's stdout and stderr; reading them is the first debugging step for any misbehaving app.</p></div></div>
+        <div class="step"><div class="step-num">05</div><div class="step-body"><strong>Shell into a running container</strong>
+          <p>Sometimes reading logs is not enough and you need to look around inside. <code>docker exec</code> starts an additional process inside an already-running container; combined with <code>-it</code> (interactive TTY) and a shell, it drops you into a live session. This is the container equivalent of SSH, without any SSH server installed.</p>
+          <p class="code-label">OPEN A SHELL IN THE CONTAINER</p>
+          <pre><code>docker exec -it web sh
+# inside the container:
+ls /usr/share/nginx/html
+cat /etc/nginx/conf.d/default.conf
+exit</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker exec hello hostname
+8f2c1a4b5d6e</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker exec -it web sh</span></div>
+            <div class="terminal-output"># ls /usr/share/nginx/html
+50x.html  index.html
+# exit</div>
+          </div>
+          <p>Use this to check config files, test DNS resolution, or verify which process is PID 1. Remember that any changes you make from inside are ephemeral unless they land on a mounted volume, the whole point of step 03.</p>
+          <div class="note"><strong>Common mistake:</strong> assuming <code>bash</code> exists, minimal images (alpine, distroless) ship only <code>sh</code> or no shell at all. Try <code>sh</code> first, and if neither exists the image was never meant to be shelled into. <strong>Verify:</strong> the prompt changes to <code>#</code> and <code>ls /usr/share/nginx/html</code> lists nginx's default pages.</div>
+        
+<p class="lab-step-note">What this teaches: Exec runs a new process inside the container's namespaces; it is for inspection, not for configuration.</p></div></div>
+        <div class="step"><div class="step-num">06</div><div class="step-body"><strong>Stop, start, and remove: the container lifecycle</strong>
+          <p>A container is a process with an on/off switch, not a machine you reinstall. <code>docker stop</code> sends SIGTERM and waits (ten seconds by default) before SIGKILL; <code>docker start</code> resurrects a stopped container with all its filesystem changes and port mappings intact; <code>docker rm</code> deletes the stopped container and its writable layer for good. Knowing the difference saves you from rebuilding containers you could have simply restarted.</p>
+          <p class="code-label">FULL LIFECYCLE IN FOUR COMMANDS</p>
+          <pre><code>docker stop web            # graceful shutdown; curl now fails
+docker ps -a               # web shows "Exited (0)"
+docker start web           # same container back up, port 8080 works again
+docker rm -f web           # force-remove even while running</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker stop hello &amp;&amp; docker rm hello
+hello
+hello</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker stop web &amp;&amp; docker ps -a --filter name=web</span></div>
+            <div class="terminal-output">web
+CONTAINER ID  IMAGE         STATUS                    PORTS  NAMES
+a1b2c3        nginx:stable  Exited (0) 2 seconds ago         web</div>
+          </div>
+          <p>Note the exit code: <code>Exited (0)</code> means the process shut down cleanly. A nonzero code like <code>Exited (1)</code> or <code>Exited (137)</code> (SIGKILL, often the OOM killer) is your first clue when a container will not stay up. Finish by force-removing the container so later labs start from a clean slate; <code>-f</code> combines stop and remove in one step.</p>
+          <div class="note"><strong>Common mistake:</strong> trying <code>docker rm</code> on a running container and getting <code>Error response from daemon: cannot remove container ... container is running</code>, either stop it first or use <code>rm -f</code>. <strong>Verify:</strong> after <code>docker stop</code>, <code>curl localhost:8080</code> fails with <code>connection refused</code>; after <code>docker start</code>, it returns 200 again.</div>
+        
+<p class="lab-step-note">What this teaches: Stop, start, and remove are the lifecycle verbs; removing is what reclaims the writable layer.</p></div></div>
+        <div class="step"><div class="step-num">07</div><div class="step-body"><strong>Inspect container networking</strong>
+          <p>Every container gets its own network namespace and an IP address on one of Docker's virtual networks. Out of the box, containers attach to the default <code>bridge</code> network (subnet <code>172.17.0.0/16</code>) and can reach the internet outbound, but inbound traffic only arrives through ports you explicitly publish with <code>-p</code>. Understanding this split, internal reachability versus published ports, is what makes container networking click.</p>
+          <p class="code-label">LOOK UNDER THE HOOD</p>
+          <pre><code>docker network ls
+docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' web3
+docker network inspect bridge --format '{{range .Containers}}{{.Name}} {{.IPv4Address}}{{"\n"}}{{end}}'</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker port hello
+80/tcp -&gt; 0.0.0.0:8080</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker network ls</span></div>
+            <div class="terminal-output">NETWORK ID     NAME      DRIVER    SCOPE
+b2c3d4e5f6a7   bridge    bridge    local
+c3d4e5f6a7b8   host      host      local
+d4e5f6a7b8c9   none      null      local</div>
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' web3</span></div>
+            <div class="terminal-output">172.17.0.2</div>
+          </div>
+          <p>Try it: <code>curl http://172.17.0.2</code> from the host reaches nginx on the container's internal IP <em>without</em> any published port, because the host sits on the bridge too. Other machines on your LAN cannot do this, from the outside, only published ports exist. That default-deny posture is a genuine security feature of the bridge model.</p>
+          <div class="note"><strong>Common mistake:</strong> publishing <code>-p 80:80</code> and expecting containers to talk to each other through it, containers on a network reach each other directly by name or IP, and publishing is only for host/external access. <strong>Verify:</strong> <code>docker network inspect bridge</code> lists your container under <code>Containers</code> with a <code>172.17.0.x</code> address.</div>
+        
+<p class="lab-step-note">What this teaches: Container networking defaults to a bridge with NAT; <code>-p</code> is the controlled hole you punch in it.</p></div></div>
+        <div class="step"><div class="step-num">08</div><div class="step-body"><strong>Manage images: tags, layers, and cleanup</strong>
+          <p>Containers are disposable; images are what accumulate. Every <code>docker run</code> against a new tag downloads more layers to your disk, so knowing how to list, inspect, and remove images keeps a lab VM healthy. An image reference has three parts: the registry (defaulting to Docker Hub), the repository (<code>library/nginx</code> for official images), and the tag (<code>stable</code>). Tags are mutable labels, <code>latest</code> today may not be <code>latest</code> tomorrow, while the digest (<code>sha256:...</code>) pins an exact, immutable build.</p>
+          <p class="code-label">LIST AND INSPECT LOCAL IMAGES</p>
+          <pre><code>docker images
+docker history nginx:stable          # one line per layer
+docker image inspect nginx:stable --format '{{.RepoTags}} {{.Size}}'</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}'
+nginx:1.27 188MB</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">docker images</span></div>
+            <div class="terminal-output">REPOSITORY   TAG       IMAGE ID       CREATED       SIZE
+nginx        stable    6efc10a0510a   2 weeks ago   187MB
+hello-world  latest    d2c94e258dcb   1 year ago    13.3kB</div>
+          </div>
+          <p><code>docker history</code> is worth a look: images are stacks of read-only layers, and layers shared between images (two nginx tags, for example) are stored only once. This is why pulling a second tag of the same image is usually fast, Docker downloads just the layers it does not already have.</p>
+          <p class="code-label">REMOVE WHAT YOU NO LONGER NEED</p>
+          <pre><code>docker rmi hello-world             # remove by name:tag
+docker image prune                 # drop dangling (untagged) layers only</code></pre>
+          <div class="note"><strong>Common mistake:</strong> running <code>docker rmi</code> on an image that still has a container (even a stopped one) and hitting <code>image is being used by stopped container</code>, remove the containers first with <code>docker rm</code>. <strong>Verify:</strong> <code>docker images</code> no longer lists the image, and <code>docker system df</code> shows reclaimed space.</div>
+        
+<p class="lab-step-note">What this teaches: Tags are mutable aliases and layers are the cost; pruning reclaims what you no longer need.</p></div></div>
+      </div>
+    </section>
+<section><h2 id="step-flow-map">Step Flow Map</h2>
+<div class="mermaid" role="img" aria-label="Flow of the lab steps from first to last">
+graph TD
+  S1["Run a container"]
+  S2["List and inspect"]
+  S3["Persist data with a volume"]
+  S4["Read container logs"]
+  S5["Shell into a running container"]
+  S6["Stop, start, and remove: the container lifecycle"]
+  S7["Inspect container networking"]
+  S8["Manage images: tags, layers, and cleanup"]
+  S1 --> S2
+  S2 --> S3
+  S3 --> S4
+  S4 --> S5
+  S5 --> S6
+  S6 --> S7
+  S7 --> S8
+</div>
+<p>Each box is one step in the lab; work them in order, since later steps build on earlier state.</p>
+</section>
+
+    
+
+    <section><h2 id="progress-so-far">Progress So Far</h2>
+      <p>The four core moves, run, inspect, persist, and read logs, are now done. Steps 05-08 layered on the operational skills (exec, lifecycle, networking, image management) you will use daily.</p>
+      <div class="mermaid" role="img" aria-label="Docker fundamentals progress">
+graph LR
+  A[01 Run] -->|done| B[02 Inspect]
+  B -->|done| C[03 Volume]
+  C -->|done| D[04 Logs]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style D fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+<div class="lab-explainer">
+<p>An image is a stack of read-only filesystem layers plus metadata; a container is a running process given its own view of the system through namespaces, with resource limits enforced by cgroups. The layered design means ten containers from one image share the image's layers on disk and only their thin writable top layer differs. Deleting a container discards that top layer, which is why data written inside a container vanishes with it.</p>
+<p>Volumes exist to break that rule deliberately. A volume is storage managed by Docker that lives outside the container's writable layer and outside the union filesystem entirely, so it survives container deletion and can be shared between containers. Bind mounts are the sibling concept: a host path mapped into the container, ideal for development but tied to one machine.</p>
+<p>Tags are human-readable aliases for image digests, and digests are the content hashes that actually identify an image. <code>latest</code> is just a tag that moves; pinning a digest is the only way to guarantee the same bytes twice. <code>docker history</code> shows how each Dockerfile instruction added a layer, which is the first step toward understanding why an image is the size it is.</p>
+</div>
+</section>
+
+    <section><h2 id="testing-validation">Testing &amp; Validation</h2>
+      <p>Do not trust that things work, prove each claim with a command. Run through this checklist before calling the lab complete.</p>
+      <p><strong>1. The service answers HTTP:</strong></p>
+      <div class="command-block" data-copy><div class="command"><code>curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080</code></div></div>
+      <p>You should see <code>200</code>. If so, your container is serving traffic and you have completed the lab.</p>
+      <p><strong>2. The container is actually running (not just recently started and crashed):</strong></p>
+      <p class="code-label">STATUS CHECK</p>
+      <pre><code>docker ps --filter name=web --format '{{.Names}}: {{.Status}}'</code></pre>
+      <p>Expect <code>web: Up X minutes</code>. An <code>Up</code> time of a few seconds when you started the container long ago means it is crash-looping, check the logs.</p>
+      <p><strong>3. The volume survived the container swap from step 03:</strong></p>
+      <p class="code-label">PERSISTENCE CHECK</p>
+      <pre><code>curl -s http://localhost:8081     # expect: &lt;h1&gt;persisted by webdata&lt;/h1&gt;
+docker volume inspect webdata --format '{{.Mountpoint}}'</code></pre>
+      <p><strong>4. Clean up when you are done</strong>, so the containers and volume do not linger into the next lab:</p>
+      <p class="code-label">TEARDOWN</p>
+      <pre><code>docker rm -f web web3
+docker volume rm webdata
+docker system prune              # optional: reclaim dangling images and stopped containers</code></pre>
+      <div class="note"><strong>Verify:</strong> after teardown, <code>docker ps -a</code> lists none of the lab containers and <code>docker volume ls</code> no longer shows <code>webdata</code>. A clean slate is part of the deliverable.</div>
+    </section>
+<section><h2 id="troubleshooting">Troubleshooting</h2>
+<p>Quick-reference for the failures you are most likely to hit in this lab.</p>
+<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<tr><td>Cannot connect to the Docker daemon</td><td>The engine is not running</td><td>Start the Docker service (or Docker Desktop) and retry <code>docker version</code>.</td></tr>
+<tr><td>Permission denied on every command</td><td>Your user is not in the <code>docker</code> group</td><td>Add yourself with <code>usermod -aG docker</code>, then log out and back in.</td></tr>
+<tr><td>Port is already allocated</td><td>Another container or host service owns the port</td><td>List with <code>docker ps</code> and remap with a different host port.</td></tr>
+<tr><td>No space left on device</td><td>Unused images, containers, and build cache accumulated</td><td>Run <code>docker system df</code> to see usage, then <code>docker system prune</code> to reclaim.</td></tr>
+<tr><td><code>exec</code> fails with container not running</td><td>The container exited; exec needs a live process</td><td>Start it first, or use <code>docker run</code> for a one-off shell.</td></tr>
+</tbody></table>
+</section>
+
+    
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>permission denied on docker.sock:</strong> add your user to the docker group and re-login. The full error is <code>permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock</code>. Run <code>sudo usermod -aG docker $USER</code>, then log out and back in (or <code>newgrp docker</code>). Confirm with <code>groups</code>, <code>docker</code> must appear.</li>
+        <li><strong>port already allocated:</strong> another service uses 8080; map a different host port. Find the squatter with <code>sudo ss -lntp | grep 8080</code>, then either stop it or pick a free host port, e.g. <code>-p 8090:80</code>. A stale container from an earlier attempt is the usual culprit, check <code>docker ps -a</code> first.</li>
+        <li><strong>data lost on remove:</strong> mount a named volume rather than writing inside the container layer. If you already lost data, it is unrecoverable, the writable layer was deleted with the container. Treat this as the lesson it is: anything that matters gets <code>-v name:/path</code> from day one.</li>
+        <li><strong>Cannot connect to the Docker daemon:</strong> the error <code>Is the docker daemon running?</code> means the service is down, not your CLI. Check with <code>sudo systemctl status docker</code>, start it with <code>sudo systemctl start docker</code>, and enable it at boot with <code>sudo systemctl enable docker</code>. On VMs that were suspended or rebooted, this is the most common failure of all.</li>
+        <li><strong>container exits immediately after run:</strong> a container lives only as long as its PID 1 process. If <code>docker ps</code> is empty but <code>docker ps -a</code> shows <code>Exited (1) 3 seconds ago</code>, the app crashed on startup, read <code>docker logs &lt;name&gt;</code> for the actual error. <code>Exited (137)</code> specifically points to the OOM killer; give the VM more memory or set a <code>--memory</code> limit to see it fail predictably.</li>
+      </ul>
+    </details>
+
+    <section><h2 id="extension-ideas">Extension Ideas</h2>
+      <ul>
+        <li>Build your own image in <a href="docker-images.html">Docker Images &amp; Dockerfile</a>.</li>
+        <li>Connect multiple containers in <a href="container-networking.html">Container Networking</a>.</li>
+        <li>Orchestrate with <a href="docker-compose.html">Docker Compose</a>.</li>
+        <li>Add <code>--restart unless-stopped</code> to your run commands and reboot the VM to see containers come back on their own.</li>
+        <li>Limit resources with <code>--memory=128m --cpus=0.5</code> and watch the container behave under pressure.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Launched a working web container in under 5 minutes.</li>
+        <li>Persisted data across container removal with a named volume.</li>
+        <li>Inspected status, ports, and logs of running containers.</li>
+        <li>Verified the service with an HTTP 200 response.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="self-check">Self-Check</h2>
+      <p>Answer these from memory before moving on. If any answer is fuzzy, rerun the matching step, the muscle memory is the point of the lab.</p>
+      <ul>
+        <li>What is the difference between <code>docker stop</code> and <code>docker rm</code>? <span class="text-dim">(Stop halts the process but keeps the container and its filesystem; rm deletes it permanently.)</span></li>
+        <li>Your container serves port 80 internally but <code>curl localhost:80</code> fails. What flag did you forget, and where do the two port numbers go? <span class="text-dim">(-p, as host:container, e.g. -p 8080:80.)</span></li>
+        <li>You deleted a container and its data vanished. What should you have mounted, and with which flag? <span class="text-dim">(A named volume, with -v name:/path.)</span></li>
+        <li><code>docker ps</code> is empty but the app was running a minute ago. What two commands do you run next? <span class="text-dim">(docker ps -a, then docker logs on the exited container.)</span></li>
+        <li>Which is immutable, the tag <code>nginx:stable</code> or the digest <code>sha256:...</code>? <span class="text-dim">(The digest; tags can be repointed to new builds.)</span></li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways"><h3 id="key-takeaways">Key Takeaways</h3>
+      <ul>
+        <li>An <strong>image</strong> is the read-only blueprint; a <strong>container</strong> is a running instance of it. One image, many containers.</li>
+        <li><code>-d</code> detaches, <code>--name</code> labels, and <code>-p host:container</code> publishes a port, you will type these three flags more than any others.</li>
+        <li>Container filesystems are disposable by design. Anything that must survive goes in a <strong>named volume</strong> (<code>-v name:/path</code>).</li>
+        <li>Your debugging trio is <code>docker ps -a</code> (is it up?), <code>docker logs</code> (what did it say?), and <code>docker inspect</code> (how is it configured?).</li>
+        <li>Containers on the default bridge get private <code>172.17.0.x</code> IPs; only published ports are reachable from outside the host.</li>
+        <li>Exit codes tell the story: <code>Exited (0)</code> is a clean stop, <code>137</code> is a kill (often OOM), anything else means read the logs.</li>
+        <li>Tags are mutable labels; digests are immutable. Pin by digest when a build must be exactly reproducible.</li>
+      </ul>
+      <p>Everything here was a single container on a single host. The natural next step is defining images yourself with a Dockerfile, then wiring several containers together, both are covered in the related labs below.</p>
+    </div>
+
+    <section><h2 id="command-quick-reference">Command Quick Reference</h2>
+      <p>Everything from this lab in one place, for when you come back in three months:</p>
+      <ul>
+        <li><code>docker run -d --name X -p 8080:80 image:tag</code>, create and start a detached container with a published port.</li>
+        <li><code>docker ps</code> / <code>docker ps -a</code>, list running / all containers.</li>
+        <li><code>docker logs [--tail N] [-f] X</code>, read a container's stdout/stderr.</li>
+        <li><code>docker exec -it X sh</code>, open a shell inside a running container.</li>
+        <li><code>docker inspect X</code>, full JSON config; pair with <code>--format</code> for one field.</li>
+        <li><code>docker stop / start / restart / rm -f X</code>, lifecycle control.</li>
+        <li><code>docker volume create / ls / rm</code> and <code>-v name:/path</code>, persistent storage.</li>
+        <li><code>docker network ls / inspect</code>, see which network a container lives on.</li>
+        <li><code>docker images / rmi / system df</code>, image inventory and disk usage.</li>
+        <li><code>docker system prune</code>, reclaim space from stopped containers and dangling layers.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="practice-challenges">Practice Challenges</h2>
+<div class="lab-challenge"><h4>Challenge 1: Feel the ephemerality</h4><p>Goal: Modify a file inside a container, recreate the container, and watch the change vanish; then repeat with a volume and watch it survive.</p><p>Hint: The contrast is the lesson; do both experiments back to back.</p></div>
+<div class="lab-challenge"><h4>Challenge 2: Read the layers</h4><p>Goal: Run <code>docker history</code> on an image and map each layer to its Dockerfile instruction.</p><p>Hint: The biggest layers are usually a package install or a copied artifact; that is where optimization starts.</p></div>
+<div class="lab-challenge"><h4>Challenge 3: Cap the memory</h4><p>Goal: Run a container limited to 512 MB and observe what happens when it exceeds the limit.</p><p>Hint: Use <code>--memory=512m</code>; the OOM killer's exit code 137 is the signature.</p></div>
+</section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="docker-images.html">Docker Images &amp; Dockerfile</a></li>
+        <li><a href="docker-compose.html">Docker Compose</a></li>
+        <li><a href="kubernetes-basics.html">Kubernetes Basics</a></li>
+      
+        <li><a href="container-networking.html">Container Networking</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

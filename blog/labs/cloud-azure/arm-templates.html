@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure ARM Templates: Declarative Deployments | TYFSADIK</title>
+  <meta name="description" content="Deploy Azure infrastructure declaratively with ARM templates: parameters, what-if previews, idempotent redeploys, and validation for repeatable environments.">
+  <meta name="keywords" content="ARM templates, Azure IaC, what-if deployment, infrastructure as code, declarative deployment, Azure Resource Manager">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Azure ARM Templates: Declarative Deployments | TYFSADIK">
+  <meta property="og:description" content="Deploy Azure infrastructure declaratively with ARM templates: parameters, what-if previews, idempotent redeploys, and validation for repeatable environments.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/blog/labs/cloud-azure/arm-templates.html">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Azure ARM Templates: Declarative Deployments | TYFSADIK">
+  <meta name="twitter:description" content="Deploy Azure infrastructure declaratively with ARM templates: parameters, what-if previews, idempotent redeploys, and validation for repeatable environments.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <link rel="canonical" href="https://tyfsadik.org/blog/labs/cloud-azure/arm-templates.html">
+  <link rel="stylesheet" href="../../../css/style.css">
+  <link rel="icon" href="../../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Azure ARM Template Deployments", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-03-11", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "Azure CLI, ARM templates", "articleSection": "Cloud", "learningResourceType": "Hands-on lab", "teaches": "Microsoft Azure cloud services"}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "HowTo", "name": "Azure ARM Templates | Declarative Deployments", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"}, "step": [{"@type": "HowToStep", "name": "Write a parameterized template", "url": "https://tyfsadik.org/blog/labs/cloud-azure/arm-templates.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Preview with what-if", "url": "https://tyfsadik.org/blog/labs/cloud-azure/arm-templates.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Deploy", "url": "https://tyfsadik.org/blog/labs/cloud-azure/arm-templates.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Inspect the deployed resource", "url": "https://tyfsadik.org/blog/labs/cloud-azure/arm-templates.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Prove idempotency by re-running", "url": "https://tyfsadik.org/blog/labs/cloud-azure/arm-templates.html#step-by-step-execution"}]}</script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Labs", "item": "https://tyfsadik.org/blog/labs/index.html"}, {"@type": "ListItem", "position": 3, "name": "Cloud & Azure", "item": "https://tyfsadik.org/blog/labs/cloud-azure/index.html"}, {"@type": "ListItem", "position": 4, "name": "ARM Templates", "item": "https://tyfsadik.org/blog/labs/cloud-azure/arm-templates.html"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Name already taken'?", "acceptedAnswer": {"@type": "Answer", "text": "storage account names are globally unique; choose another."}}, {"@type": "Question", "name": "How do I fix 'Validation failed'?", "acceptedAnswer": {"@type": "Answer", "text": "run az deployment group validate to see the schema error."}}, {"@type": "Question", "name": "How do I fix 'Unexpected what-if changes'?", "acceptedAnswer": {"@type": "Answer", "text": "a property drifted in the portal; let the template be the source of truth."}}, {"@type": "Question", "name": "How do I fix 'AuthorizationFailed on deployment'?", "acceptedAnswer": {"@type": "Answer", "text": "your account (or the pipeline's service principal) lacks write permission on the resource group. You need at least the Contributor role at that scope. Check with az role assignment list --assignee $(az ad signed-in-user show --query id -o tsv) --resource-group tyf-rg -o table and have an owner grant the role if it is missing."}}, {"@type": "Question", "name": "How do I fix 'MissingSubscriptionRegistration'?", "acceptedAnswer": {"@type": "Answer", "text": "the subscription has never used the Storage resource provider, so ARM refuses to deploy Microsoft.Storage resources. Register it once per subscription with az provider register --namespace Microsoft.Storage, then wait a minute and retry. Confirm with az provider show --namespace Microsoft.Storage --query registrationState, you want \"Registered\"."}}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../../work.html" class="nav-link">Work</a></li>
+        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content"><div class="container">
+    <div class="content-box">
+
+    <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/cloud-azure/index.html">Cloud &amp; Azure</a> &rsaquo; <span>ARM Templates</span></nav>
+    <div class="page-header"><h1>Azure ARM Templates: Declarative, Idempotent Deployments</h1>
+      <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Cloud</span><span class="lab-time">~3 hours</span></div>
+      <div class="tags" style="margin-top:0.75rem;"><span class="tag">ARM</span><span class="tag">JSON</span><span class="tag">parameters</span><span class="tag">what-if</span></div>
+    </div>
+<nav class="lab-toc" aria-label="On this page"><strong>On this page</strong><ol>
+<li><a href="#architecture-overview">Architecture Overview</a></li>
+<li><a href="#environment-setup">Environment Setup</a></li>
+<li><a href="#step-by-step-execution">Step-by-Step Execution</a></li>
+<li><a href="#step-flow-map">Step Flow Map</a></li>
+<li><a href="#progress-so-far">Progress So Far</a></li>
+<li><a href="#how-it-works">How It Works</a></li>
+<li><a href="#testing-validation">Testing & Validation</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#extension-ideas">Extension Ideas</a></li>
+<li><a href="#key-results">Key Results</a></li>
+<li><a href="#practice-challenges">Practice Challenges</a></li>
+<li><a href="#related-labs">Related Labs</a></li>
+</ol></nav>
+
+    
+
+    <section><p class="lead">You will deploy Azure resources from a parameterized ARM template and preview changes with what-if before applying. By the end you will run repeatable, idempotent deployments instead of one-off portal clicks.</p>
+      <p>An ARM template is a JSON document that describes <em>what</em> your environment should look like, not <em>how</em> to build it. You hand the template to Azure Resource Manager (ARM), and ARM works out the order of operations, the API calls, and the retries. Because the template describes desired state, you can run the same deployment ten times and get the same result every time, that property is called idempotency, and it is the foundation of every infrastructure-as-code workflow in Azure.</p>
+      <p>In this lab you will author a template for a storage account, externalize the environment-specific values into a parameters file, validate and preview the deployment, apply it, and then prove that re-running it changes nothing. These are the exact motions you will repeat later with Bicep, CI/CD pipelines, and larger multi-resource topologies.</p>
+    </section>
+
+    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+      <ul>
+        <li>Author an ARM template with parameters.</li>
+        <li>Preview changes with the what-if operation.</li>
+        <li>Deploy idempotently and confirm no drift on re-run.</li>
+        <li>Separate environment-specific values into a parameters file.</li>
+        <li>Validate a template before any resource is touched.</li>
+        <li><strong>Time:</strong> ~3 hours &middot; <strong>Difficulty:</strong> Intermediate &middot; <strong>Prereqs:</strong> the Azure CLI and a resource group.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="architecture-overview">Architecture Overview</h2>
+      <p>Everything you deploy in Azure flows through one front door: the Azure Resource Manager. Your local files, <code>template.json</code> plus a parameters file, are sent to ARM by the Azure CLI. ARM first answers the <code>what-if</code> operation with a change set (create, modify, delete, or no change) computed against the live state of the resource group, and only when you approve does it issue the actual create/update calls to the resource providers.</p>
+      <div class="mermaid" role="img" aria-label="ARM template to deployed resources">
+graph LR
+  T[template.json + parameters] -->|az deployment| ARM[Azure Resource Manager]
+  ARM -->|what-if preview| Diff[Change set]
+  ARM -->|create| Res[Resources]
+      </div>
+      <p>Two things are worth internalizing from this diagram. First, the template is the <strong>source of truth</strong>: if someone later changes a setting in the portal, the next template deployment is what brings the resource back in line. Second, <code>what-if</code> and <code>create</code> are two views of the same evaluation, the preview you approve is the same plan ARM will execute, which is why previewing before every production deployment is a non-negotiable habit.</p>
+    </section>
+
+    <section><h2 id="environment-setup">Environment Setup</h2>
+<div class="lab-prereqs"><h3>Prerequisites</h3>
+<ul>
+<li>Any OS with a shell: Windows (PowerShell), macOS, or Linux.</li>
+<li>Azure CLI 2.5x or newer (<code>az version</code>) and an Azure subscription with Contributor access on a resource group.</li>
+<li>Assumed skills: JSON syntax, basic <code>az</code> commands (see the Azure CLI Setup lab), and what a resource group is.</li>
+</ul></div>
+      <p><strong>You will need:</strong> the Azure CLI and a target resource group.</p>
+      <p><strong>Before you begin:</strong> always run what-if before deploying to production scopes.</p>
+      <p>Start by confirming the CLI is installed and reasonably current. ARM template support and the what-if operation have been in the CLI for years, but older builds report what-if results in a noisier format.</p>
+      <p class="code-label">CHECK THE CLI VERSION</p>
+<pre><code>az version</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az version</span></div>
+        <div class="terminal-output">{
+  "azure-cli": "2.61.0",
+  "azure-cli-core": "2.61.0",
+  "azure-cli-telemetry": "1.1.0",
+  "extensions": {}
+}</div>
+      </div>
+      <p>Next, sign in and make sure you are pointed at the right subscription. A template deploys into whichever subscription is currently active, so this check prevents the classic mistake of provisioning into a pay-as-you-go subscription when you meant to use a sandbox.</p>
+      <p class="code-label">SIGN IN AND SELECT THE SUBSCRIPTION</p>
+<pre><code>az login
+az account list --output table
+az account set --subscription "My Sandbox Sub"
+az account show --query "{name:name, id:id, state:state}" --output table</code></pre>
+      <p>Finally, create the resource group the template will deploy into. Resource-group-scoped deployments (the <code>az deployment group</code> family) require the group to exist beforehand, the template itself can only create resources <em>inside</em> the group, not the group.</p>
+      <p class="code-label">CREATE THE TARGET RESOURCE GROUP</p>
+<pre><code>az group create --name tyf-rg --location canadacentral</code></pre>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az group create --name tyf-rg --location canadacentral</span></div>
+        <div class="terminal-output">{
+  "id": "/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/tyf-rg",
+  "location": "canadacentral",
+  "name": "tyf-rg",
+  "properties": { "provisioningState": "Succeeded" }
+}</div>
+      </div>
+      <div class="note"><strong>Common mistake:</strong> running the deployment before creating the resource group fails with <code>ResourceGroupNotFound</code>. If you see that error, you skipped the step above, deployments at the group scope never create their own group.</div>
+    </section>
+
+    <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <div class="steps">
+        <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Write a parameterized template</strong>
+          <p>Every ARM template has the same skeleton: a <code>$schema</code> pointer, a <code>contentVersion</code> for your own change tracking, a <code>parameters</code> block for inputs, a <code>variables</code> block for values derived inside the template, a <code>resources</code> array describing what to build, and an optional <code>outputs</code> block for values you want back after the deployment. The excerpt below shows the core pattern, a single storage account whose name is supplied at deploy time:</p>
+<p class="code-label"># template.json (excerpt)</p>
+<pre><code class="language-json">"parameters": { "saName": { "type": "string" } },
+"resources": [{
+  "type": "Microsoft.Storage/storageAccounts",
+  "apiVersion": "2023-01-01",
+  "name": "[parameters('saName')]",
+  "location": "[resourceGroup().location]",
+  "sku": { "name": "Standard_LRS" },
+  "kind": "StorageV2"
+}]</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ az deployment group validate --resource-group tyf-rg --template-file template.json --parameters parameters.dev.json && echo VALID
+VALID</code></pre>
+          <p>Notice the bracket syntax: anything wrapped in <code>[...]</code> is a template expression evaluated by ARM, not a literal string. <code>[parameters('saName')]</code> reads the input, and <code>[resourceGroup().location]</code> makes the resource inherit the location of whatever group it lands in, one less value to hardcode, and one less way for environments to drift apart.</p>
+          <p>Here is the complete template used for the rest of this lab. It adds input validation (storage account names must be 3-24 characters, lowercase letters and numbers only), a variable for tags, and an output so the deployment hands you back the resource ID:</p>
+          <p class="code-label">FULL TEMPLATE, template.json</p>
+<pre><code>{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "saName": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 24,
+      "metadata": {
+        "description": "Globally unique storage account name, lowercase letters and numbers only."
+      }
+    },
+    "environment": {
+      "type": "string",
+      "defaultValue": "dev",
+      "allowedValues": [ "dev", "test", "prod" ]
+    }
+  },
+  "variables": {
+    "commonTags": {
+      "deployedBy": "arm-template",
+      "environment": "[parameters('environment')]"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-01-01",
+      "name": "[parameters('saName')]",
+      "location": "[resourceGroup().location]",
+      "tags": "[variables('commonTags')]",
+      "sku": { "name": "Standard_LRS" },
+      "kind": "StorageV2",
+      "properties": {
+        "allowBlobPublicAccess": false,
+        "minimumTlsVersion": "TLS1_2",
+        "supportsHttpsTrafficOnly": true
+      }
+    }
+  ],
+  "outputs": {
+    "storageAccountId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Storage/storageAccounts', parameters('saName'))]"
+    }
+  }
+}</code></pre>
+          <p>Environment-specific values belong in a separate parameters file, not in the template. That way the same <code>template.json</code> deploys to dev, test, and prod with only the parameter file changing, which is exactly how pipelines promote infrastructure between environments.</p>
+          <p class="code-label">PARAMETER VALUES, parameters.dev.json</p>
+<pre><code>{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "saName": { "value": "tyfstore01" },
+    "environment": { "value": "dev" }
+  }
+}</code></pre>
+          <div class="note"><strong>Common mistake:</strong> editing the template to swap a value per environment instead of using a parameters file. The moment you have two hand-edited copies of a template, they will drift. One template, many parameter files. Verify your JSON parses at all with <code>jq . template.json</code>, a stray comma is the most common reason a template fails before it even reaches Azure.</div>
+        
+<p class="lab-step-note">What this teaches: Parameters separate inputs from structure, so one template serves every environment instead of one template per environment.</p></div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Preview with what-if</strong>
+          <p>what-if shows exactly what will change before anything is created or modified. Before previewing, though, run a validation pass: <code>az deployment group validate</code> asks ARM to parse the template, resolve expressions, and check parameter values against their constraints, all without touching the resource group. It catches schema errors and bad input far earlier than a failed deployment does.</p>
+          <p class="code-label">VALIDATE THE TEMPLATE (no changes made)</p>
+<pre><code>az deployment group validate \
+  --resource-group tyf-rg \
+  --template-file template.json \
+  --parameters parameters.dev.json</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>Resource and scope                       Change
+storageAccounts/tyfsademo001             Create
+
+1 resource would change.</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az deployment group validate --resource-group tyf-rg --template-file template.json --parameters parameters.dev.json</span></div>
+            <div class="terminal-output">{
+  "error": null,
+  "id": "/subscriptions/1111.../resourceGroups/tyf-rg/providers/Microsoft.Resources/deployments/template",
+  "properties": { "provisioningState": "Succeeded" }
+}</div>
+          </div>
+          <p>Now the preview. what-if compares your template against the live state of the resource group and reports a symbol per resource: <code>+</code> create, <code>~</code> modify, <code>-</code> delete, <code>=</code> no change. Read every line of this output as if you were reviewing a diff in a pull request, because that is exactly what it is.</p>
+          <div class="command-block" data-copy><div class="command"><code>az deployment group what-if -g tyf-rg --template-file template.json --parameters saName=tyfstore01</code></div></div>
+          <p>Note that the CLI accepts parameter values inline (<code>saName=tyfstore01</code>) as above, or from a file with <code>--parameters parameters.dev.json</code> as in the validate call. For anything beyond a quick experiment, prefer the file, it is reviewable and committed to source control.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az deployment group what-if -g tyf-rg --template-file template.json --parameters saName=tyfstore01</span></div>
+            <div class="terminal-output">Resource and property changes are indicated with these symbols:
+  + Create
+
+The deployment will update the following scope:
+
+Scope: /subscriptions/1111.../resourceGroups/tyf-rg
+
+  + Microsoft.Storage/storageAccounts/tyfstore01
+
+      apiVersion:                "2023-01-01"
+      kind:                      "StorageV2"
+      location:                  "canadacentral"
+      sku.name:                  "Standard_LRS"
+      properties.minimumTlsVersion: "TLS1_2"
+
+Resource changes: 1 to create.</div>
+          </div>
+          <div class="note"><strong>How to verify:</strong> the summary line is your gate. Before a first deployment you expect <code>Resource changes: 1 to create</code>. If you see <code>to modify</code> or <code>to delete</code> against resources you did not intend to touch, stop and figure out why before proceeding, what-if only reports what is in the template versus what is live, so an unexpected change always means a real difference between the two.</div>
+        
+<p class="lab-step-note">What this teaches: The what-if diff is the safety net: reading a preview before deploying is how you catch destructive changes while they are still cheap.</p></div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Deploy</strong>
+          <p>The create command is the same shape as what-if, minus the preview. Giving the deployment an explicit <code>--name</code> is optional (the CLI derives one from the template file name), but a meaningful name pays off later when you are paging through deployment history in the resource group. ARM runs in <code>Incremental</code> mode by default: it creates and updates what the template describes and leaves everything else in the group alone. The alternative, <code>Complete</code> mode, deletes anything in the group that is not in the template, powerful, and dangerous enough that you should only use it deliberately.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az deployment group create -g tyf-rg --template-file template.json --parameters saName=tyfstore01</span></div>
+            <div class="terminal-output">"provisioningState": "Succeeded"</div>
+          </div>
+          <p>The full response is a large JSON document describing the finished deployment. Two fields matter most: <code>properties.provisioningState</code> tells you the outcome, and <code>properties.outputs</code> contains whatever your template's <code>outputs</code> block computed, here, the resource ID of the new storage account.</p>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az deployment group create -g tyf-rg -n storage-deploy-01 --template-file template.json --parameters parameters.dev.json --query "{state:properties.provisioningState, saId:properties.outputs.storageAccountId.value}" -o table</span></div>
+            <div class="terminal-output">State      SaId
+---------  -------------------------------------------------------------------------
+Succeeded  /subscriptions/1111.../resourceGroups/tyf-rg/providers/Microsoft.Storage/storageAccounts/tyfstore01</div>
+          </div>
+          <div class="note"><strong>Common mistake:</strong> treating a red CLI error as "nothing happened." ARM deployments are not atomic across resources; on multi-resource templates, some resources may exist even though the deployment failed. After any failure, check <code>az deployment group show -g tyf-rg -n &lt;name&gt;</code> and the resource group itself before blindly re-running.</div>
+        
+<p class="lab-output-label">Expected output:</p>
+<pre><code>{
+  "name": "template-001",
+  "properties": {
+    "provisioningState": "Succeeded",
+    "outputs": {
+      "storageAccountId": {
+        "value": "/subscriptions/.../resourceGroups/tyf-rg/providers/Microsoft.Storage/storageAccounts/tyfsademo001"
+      }
+    }
+  }
+}</code></pre>
+<p class="lab-step-note">What this teaches: Deployments are asynchronous ARM operations; the CLI returns once the operation is accepted, and provisioningState tells you when it truly finished.</p></div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Inspect the deployed resource</strong>
+          <p>Never trust a deployment you have not inspected. List what is actually in the resource group, then query the specific resource for the properties the template was supposed to set. This is where you confirm the security-relevant settings, TLS floor, public access disabled, really applied and were not silently ignored.</p>
+          <p class="code-label">LIST RESOURCES AND CHECK KEY PROPERTIES</p>
+<pre><code>az resource list --resource-group tyf-rg --output table
+
+az storage account show \
+  --name tyfstore01 \
+  --resource-group tyf-rg \
+  --query "{name:name, location:location, sku:sku.name, tls:minimumTlsVersion, publicAccess:allowBlobPublicAccess, tags:tags}"</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ az storage account show -n tyfsademo001 -g tyf-rg --query "{name:name, state:provisioningState, location:primaryLocation}" -o table
+Name           State      Location
+-------------  ---------  ----------
+tyfsademo001   Succeeded  eastus</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az storage account show --name tyfstore01 --resource-group tyf-rg --query "{name:name, location:location, sku:sku.name, tls:minimumTlsVersion, publicAccess:allowBlobPublicAccess}"</span></div>
+            <div class="terminal-output">{
+  "location": "canadacentral",
+  "name": "tyfstore01",
+  "publicAccess": false,
+  "sku": "Standard_LRS",
+  "tls": "TLS1_2"
+}</div>
+          </div>
+          <div class="note"><strong>How to verify:</strong> every property in the query output should match the template. If <code>tls</code> came back as <code>null</code> or an older value, the property was not honored for that apiVersion, check the ARM template reference for <code>Microsoft.Storage/storageAccounts</code> and confirm the property name and apiVersion line up.</div>
+        
+<p class="lab-step-note">What this teaches: Every deployment writes to the activity log, which is where you audit who changed what and when.</p></div></div>
+        <div class="step"><div class="step-num">05</div><div class="step-body"><strong>Prove idempotency by re-running</strong>
+          <p>This is the step that separates declarative infrastructure from scripting. Run the exact same deployment command a second time. ARM compares the template to the live state, finds nothing to change, and returns success without modifying the resource. The deployment succeeds; the work performed is zero.</p>
+          <p class="code-label">RE-RUN THE SAME DEPLOYMENT</p>
+<pre><code>az deployment group create \
+  --resource-group tyf-rg \
+  --name storage-deploy-02 \
+  --template-file template.json \
+  --parameters parameters.dev.json \
+  --query properties.provisioningState</code></pre>
+<p class="lab-output-label">Expected output:</p>
+<pre><code>$ az deployment group what-if --resource-group tyf-rg --template-file template.json --parameters parameters.dev.json
+0 resources would change. The deployment is idempotent.</code></pre>
+          <div class="terminal-session">
+            <div class="terminal-line"><span class="prompt">$</span> <span class="input">az deployment group create --resource-group tyf-rg --name storage-deploy-02 --template-file template.json --parameters parameters.dev.json --query properties.provisioningState</span></div>
+            <div class="terminal-output">"Succeeded"</div>
+          </div>
+          <p>Idempotency is what makes templates safe to put in a pipeline: a scheduled or triggered re-run converges the environment toward the template rather than duplicating resources or erroring on things that already exist. The formal proof comes in the next section, where what-if reports zero changes.</p>
+          <div class="note"><strong>Common mistake:</strong> re-running with a different inline parameter value (for example a new <code>saName</code>) and being surprised when a <em>second</em> storage account appears. Incremental mode does not delete resources that fall out of the template, it just stops managing them. The old account remains until you remove it explicitly.</div>
+        
+<p class="lab-step-note">What this teaches: Idempotency is the core promise of declarative IaC: re-running a template should converge, not duplicate.</p></div></div>
+        
+      </div>
+    </section>
+<section><h2 id="step-flow-map">Step Flow Map</h2>
+<div class="mermaid" role="img" aria-label="Flow of the lab steps from first to last">
+graph TD
+  S1["Write a parameterized template"]
+  S2["Preview with what-if"]
+  S3["Deploy"]
+  S4["Inspect the deployed resource"]
+  S5["Prove idempotency by re-running"]
+    S1 --> S2
+  S2 --> S3
+  S3 --> S4
+  S4 --> S5
+</div>
+<p>Each box is one step in the lab; work them in order, since later steps build on earlier state.</p>
+</section>
+
+    
+
+    <section><h2 id="progress-so-far">Progress So Far</h2>
+      <p>The three core milestones, authoring the template, previewing with what-if, and the initial deployment, are complete. Steps 04-06 then closed the loop: you inspected the live resource, proved the deployment is idempotent, and cleaned up.</p>
+      <div class="mermaid" role="img" aria-label="ARM deployment progress">
+graph LR
+  A[01 Template] -->|done| B[02 what-if]
+  B -->|done| C[03 Deploy]
+  style A fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style B fill:#1a4a1a,stroke:#00ff00,color:#fff
+  style C fill:#1a4a1a,stroke:#00ff00,color:#fff
+      </div>
+    </section>
+
+    <section><h2 id="how-it-works">How It Works</h2>
+<div class="lab-explainer">
+<p>An ARM template is a JSON document that declares the desired end state of a set of Azure resources. You submit it to the Azure Resource Manager control plane, and ARM computes the operations needed to converge the current state toward the declared state. This is the declarative model: you describe what should exist, not the sequence of API calls to create it, so the same template produces the same environment every time it runs.</p>
+<p>Anything wrapped in square brackets, like <code>[parameters('saName')]</code>, is a template expression evaluated server-side at deployment time. Parameters keep environment-specific values out of the template body, variables derive values inside it, and outputs hand values back to you after deployment. The <code>what-if</code> operation runs the same evaluation as a real deployment but stops before making changes, producing a diff of creates, modifies, and deletes. Reading that diff is the single most important habit in this lab.</p>
+<p>Deployments are incremental by default: re-running a template only changes what drifted, which makes deployments idempotent. The dangerous twin is Complete mode, which deletes any resource in the group that is not declared in the template. Complete mode has legitimate uses for strict environments, but it should never be the default you reach for in a shared resource group.</p>
+</div>
+</section>
+
+    <section><h2 id="testing-validation">Testing &amp; Validation</h2>
+      <div class="command-block" data-copy><div class="command"><code>az deployment group what-if -g tyf-rg --template-file template.json --parameters saName=tyfstore01</code></div></div>
+      <p>Re-running what-if after a successful deploy should report no changes, proving the template is idempotent.</p>
+      <div class="terminal-session">
+        <div class="terminal-line"><span class="prompt">$</span> <span class="input">az deployment group what-if -g tyf-rg --template-file template.json --parameters saName=tyfstore01</span></div>
+        <div class="terminal-output">Resource and property changes are indicated with these symbols:
+  = No change
+
+Scope: /subscriptions/1111.../resourceGroups/tyf-rg
+
+  = Microsoft.Storage/storageAccounts/tyfstore01
+
+Resource changes: no change.</div>
+      </div>
+      <p>Beyond the what-if check, three quick queries give you a complete validation picture. First, confirm the deployment record itself shows success in the group's deployment history. Second, confirm the resource reports healthy from its own provider's point of view. Third, deliberately introduce drift, flip a tag in the portal, then run what-if again and watch it report a <code>~</code> modify. That last experiment is the one that makes the "template is the source of truth" idea concrete.</p>
+      <p class="code-label">VALIDATION QUERIES</p>
+<pre><code># Deployment history for the resource group:
+az deployment group list --resource-group tyf-rg \
+  --query "[].{name:name, state:properties.provisioningState, time:properties.timestamp}" -o table
+
+# Live resource health:
+az storage account show --name tyfstore01 --resource-group tyf-rg \
+  --query "{state:provisioningState, httpsOnly:enableHttpsTrafficOnly}"
+
+# Simulate drift, then see what-if catch it:
+az resource tag --ids $(az storage account show -n tyfstore01 -g tyf-rg --query id -o tsv) \
+  --set tags.environment=production
+az deployment group what-if -g tyf-rg --template-file template.json --parameters parameters.dev.json</code></pre>
+      <div class="note"><strong>How to verify:</strong> after the drift experiment, what-if should show <code>~ Microsoft.Storage/storageAccounts/tyfstore01</code> with <code>tags.environment</code> changing back to <code>"dev"</code>. Re-deploy the template to actually restore it, and run what-if once more to confirm you are back to <code>no change</code>.</div>
+      <p class="code-label">CLEAN UP</p>
+      <p>When the lab is done, remove what you created so it stops billing. Delete only the storage account: <code>tyf-rg</code> is shared with the other Cloud and Azure labs, so never delete the whole group here.</p>
+<pre><code>az storage account delete --name tyfstore01 --resource-group tyf-rg --yes</code></pre>
+      <div class="note"><strong>How to verify:</strong> <code>az storage account show -n tyfstore01 -g tyf-rg</code> should fail with ResourceNotFound once deletion completes. The deployment record itself remains in the group history (<code>az deployment group list -g tyf-rg</code>); deleting a deployment never deletes its resources, which is why the account above is removed explicitly.</div>
+    </section>
+<section><h2 id="troubleshooting">Troubleshooting</h2>
+<p>Quick-reference for the failures you are most likely to hit in this lab.</p>
+<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<tr><td>Template validation fails with InvalidTemplate</td><td>JSON syntax error or a malformed template expression</td><td>Run <code>az deployment group validate</code> and read the first error; most failures are a missing comma or an unclosed bracket.</td></tr>
+<tr><td>Storage account name is rejected</td><td>Storage names must be 3-24 lowercase letters and numbers, and globally unique</td><td>Pick a shorter unique name; prefix it with your initials and a random suffix.</td></tr>
+<tr><td>what-if shows unexpected deletes</td><td>Deployment mode is set to Complete</td><td>Switch back to Incremental unless you explicitly intend to remove undeclared resources.</td></tr>
+<tr><td>Deployment hangs for many minutes</td><td>Resource provider not registered, or quota exhaustion in the region</td><td>Check <code>az provider show</code> for the provider state and review the activity log for the failing operation.</td></tr>
+<tr><td>Parameter file not found</td><td>Relative path resolved from the wrong working directory</td><td>Use an absolute path, or <code>cd</code> into the template directory before deploying.</td></tr>
+<tr><td>Secret value leaks into logs</td><td>Passed on the command line instead of through a file</td><td>Move secrets to a parameters file excluded from version control, or better, a key vault reference.</td></tr>
+</tbody></table>
+</section>
+
+    
+
+    <details><summary>Troubleshooting</summary>
+      <ul>
+        <li><strong>Name already taken:</strong> storage account names are globally unique; choose another.</li>
+        <li><strong>Validation failed:</strong> run <code>az deployment group validate</code> to see the schema error.</li>
+        <li><strong>Unexpected what-if changes:</strong> a property drifted in the portal; let the template be the source of truth.</li>
+        <li><strong><code>AuthorizationFailed</code> on deployment:</strong> your account (or the pipeline's service principal) lacks write permission on the resource group. You need at least the <code>Contributor</code> role at that scope. Check with <code>az role assignment list --assignee $(az ad signed-in-user show --query id -o tsv) --resource-group tyf-rg -o table</code> and have an owner grant the role if it is missing.</li>
+        <li><strong><code>MissingSubscriptionRegistration</code>:</strong> the subscription has never used the Storage resource provider, so ARM refuses to deploy <code>Microsoft.Storage</code> resources. Register it once per subscription with <code>az provider register --namespace Microsoft.Storage</code>, then wait a minute and retry. Confirm with <code>az provider show --namespace Microsoft.Storage --query registrationState</code>, you want <code>"Registered"</code>.</li>
+        <li><strong>Template deploys but properties are wrong:</strong> the property name or the <code>apiVersion</code> does not match. Resource properties are versioned; a property that exists in <code>2023-01-01</code> may be named differently (or not exist) in an older apiVersion. Cross-check against the ARM template reference for the resource type, and keep apiVersions current but pinned, never leave them floating.</li>
+      </ul>
+    </details>
+
+    <section><h2 id="extension-ideas">Extension Ideas</h2>
+      <ul>
+        <li>Move to the cleaner Bicep syntax in <a href="infrastructure-as-code.html">Infrastructure as Code</a>.</li>
+        <li>Deploy from a pipeline with <a href="../devops/github-actions.html">GitHub Actions</a>.</li>
+        <li>Audit deployed resources with <a href="cspm-azure-aws.html">CSPM</a>.</li>
+        <li>Add a second resource (a blob container or a Key Vault) and use <code>dependsOn</code> to control creation order.</li>
+        <li>Split the template into linked or nested templates once it grows past a few resources.</li>
+      </ul>
+    </section>
+
+    <section><h2 id="key-results">Key Results</h2>
+      <ul>
+        <li>Deployed resources declaratively from a parameterized template.</li>
+        <li>Previewed every change with what-if before applying.</li>
+        <li>Confirmed idempotency: a re-run reported no changes.</li>
+        <li>Replaced manual portal steps with repeatable deployments.</li>
+      </ul>
+    </section>
+
+    <div class="lab-takeaways"><h3 id="key-takeaways">Key Takeaways</h3>
+      <ul>
+        <li>Templates declare desired state; Azure Resource Manager figures out the how.</li>
+        <li>One template, many parameter files, never hand-edit copies per environment.</li>
+        <li>Validate first, what-if second, deploy third. Read the change summary line like a diff review.</li>
+        <li>Incremental mode (the default) adds and updates; it never cleans up resources that leave the template.</li>
+        <li>Idempotency is the payoff: re-running a deployment is safe, so pipelines can converge environments on every run.</li>
+        <li>Deployment history and what-if are your audit trail, drift is always visible if you look.</li>
+      </ul>
+    </div>
+
+    <section><h2 id="practice-challenges">Practice Challenges</h2>
+<div class="lab-challenge"><h4>Challenge 1: Add a second resource</h4><p>Goal: Extend the template with a blob container inside the storage account and pass the account name between resources without hardcoding it.</p><p>Hint: Nest the container under the storage account resource and reference it with its symbolic name, then read it back from the deployment outputs.</p></div>
+<div class="lab-challenge"><h4>Challenge 2: Deploy from a parameters file</h4><p>Goal: Move every environment-specific value into a <code>params.json</code> file and deploy with <code>--parameters @params.json</code>.</p><p>Hint: Keep the parameters file out of git; it is the one artifact that differs per environment.</p></div>
+<div class="lab-challenge"><h4>Challenge 3: Preview a destructive change safely</h4><p>Goal: In a scratch resource group, run <code>what-if</code> with Complete mode and observe which out-of-band resources it would delete.</p><p>Hint: Never run Complete mode against a real group; the scratch group exists so you can see the blast radius safely.</p></div>
+</section>
+
+    <section class="related-labs"><h2 id="related-labs">Related Labs</h2>
+      <ul>
+        <li><a href="infrastructure-as-code.html">Infrastructure as Code</a></li>
+        <li><a href="azure-vm-config.html">Azure VM Configuration</a></li>
+        <li><a href="../devops/cicd-pipeline.html">Full CI/CD Pipeline</a></li>
+      
+        <li><a href="azure-cli-setup.html">Azure CLI Setup</a></li></ul>
+    </section>
+
+</div></div>
+</main>
+<footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a></div></div></footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Run Your Own DNS: Self-Hosted Server Guide | TYFSADIK</title>
+  <meta name="description" content="Self-hosted DNS: network-wide ad blocking with Pi-hole plus recursive DNS via Unbound, configured and documented by MD. Taki Yasir Faraji Sadik and tested.">
+  <meta name="robots" content="index,follow">
+  <meta name="author" content="MD. Taki Yasir Faraji Sadik">
+  <meta name="keywords" content="TYFSADIK, Taki Sadik, MD. Taki Yasir Faraji Sadik, Pi-hole, Unbound, self-hosted DNS, ad blocking">
+  <link rel="canonical" href="https://tyfsadik.org/work/infrastructure/self-hosted-dns.html">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Run Your Own DNS: Self-Hosted Server Guide | TYFSADIK">
+  <meta property="og:description" content="Self-hosted DNS: network-wide ad blocking with Pi-hole plus recursive DNS via Unbound, configured and documented by MD. Taki Yasir Faraji Sadik and tested.">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
+  <meta property="og:url" content="https://tyfsadik.org/work/infrastructure/self-hosted-dns.html">
+  <meta property="og:image" content="https://tyfsadik.org/images/projects/self-hosted-dns.jpg">
+  <meta property="og:image:alt" content="Self-Hosted DNS | TYFSADIK">
+  <meta property="og:site_name" content="TYFSADIK">
+  <meta property="og:locale" content="en_CA">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Run Your Own DNS: Self-Hosted Server Guide | TYFSADIK">
+  <meta name="twitter:description" content="Self-hosted DNS: network-wide ad blocking with Pi-hole plus recursive DNS via Unbound, configured and documented by MD. Taki Yasir Faraji Sadik and tested.">
+  <meta name="twitter:image" content="https://tyfsadik.org/images/projects/self-hosted-dns.jpg">
+  <meta name="twitter:image:alt" content="Self-Hosted DNS | TYFSADIK">
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Self-Hosted DNS", "name": "Self-Hosted DNS", "description": "Self-hosted DNS: network-wide ad blocking with Pi-hole plus recursive DNS via Unbound, configured and documented by MD. Taki Yasir Faraji Sadik and tested.", "image": "https://tyfsadik.org/images/projects/self-hosted-dns.jpg", "author": {"@type": "Person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "publisher": {"@type": "Organization", "name": "TYFSADIK", "url": "https://tyfsadik.org/"}, "datePublished": "2026-09-30", "inLanguage": "en-CA", "mainEntityOfPage": {"@type": "WebPage", "@id": "https://tyfsadik.org/work/infrastructure/self-hosted-dns.html"}, "keywords": []}</script>
+  <link rel="stylesheet" href="../../css/style.css">
+  <link rel="icon" href="../../favicon.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Infrastructure", "item": "https://tyfsadik.org/work.html"}, {"@type": "ListItem", "position": 3, "name": "Self-Hosted DNS", "item": "https://tyfsadik.org/work/infrastructure/self-hosted-dns.html"}]}</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="top-panel">
+    <div class="site-id">
+      <a href="../../index.html" class="site-name">Taki Sadik</a>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
+    </div>
+    <a href="../../contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
+  </div>
+  <div class="menu-banner-panel">
+    <nav class="nav" aria-label="Main navigation">
+      <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
+      <ul class="nav-links">
+        <li><a href="../../about.html" class="nav-link">About Me</a></li>
+        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
+        <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
+        <li><a href="../../contact.html" class="nav-link">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="banner" style="background-image:url('../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
+  </div>
+</header>
+<main class="page-content">
+  <div class="container">
+    <div class="content-box">
+    <div class="breadcrumbs">
+      <a href="../../index.html">Home</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <a href="../../work.html">Projects</a>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Infrastructure</span>
+      <span class="breadcrumb-sep">&rsaquo;</span>
+      <span>Self-Hosted DNS</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Self-Hosted DNS</h1>
+      <p class="subtitle">Network-wide ad blocking with Pi-hole + recursive DNS via Unbound</p>
+    </div>
+
+    <figure class="project-hero">
+  <img src="../../images/projects/self-hosted-dns.jpg" alt="Single board computer with ethernet cable beside a monitor showing a DNS ad blocking dashboard">
+  <figcaption>Concept visualization: the Pi-hole dashboard beside the DNS hardware serving the LAN. Generated illustration, not a photo of the actual setup.</figcaption>
+</figure>
+
+    <div class="project-meta">
+      <span class="meta-year">2025</span>
+      <span class="meta-category">Infrastructure</span>
+      <a class="meta-link" href="https://github.com/TYFSADIK/DNS_server" target="_blank" rel="noopener">GitHub &nearr;</a>
+    </div>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>
+        This project replaces the default ISP DNS resolver with a fully self-hosted, two-layer DNS stack.
+        <strong>Pi-hole</strong> acts as the network's primary DNS server, intercepting every DNS query
+        from every device on the LAN. When a domain appears on any of the configured blocklists (ad
+        networks, trackers, malware domains), Pi-hole returns a blocked response immediately
+        (<code>0.0.0.0</code> for A queries and <code>::</code> for AAAA queries, Pi-hole's
+        default NULL blocking mode). Allowed queries are forwarded to
+        <strong>Unbound</strong>, a validating recursive resolver that walks the DNS tree from the
+        root nameservers rather than trusting a third-party upstream like Google (8.8.8.8) or
+        Cloudflare (1.1.1.1).
+      </p>
+      <p>
+        The stack runs in Docker containers on a Proxmox LXC container using a macvlan network so
+        Pi-hole gets its own IP on the LAN, allowing the router's DHCP to advertise it as the DNS
+        server for all connected devices. Blocklists from Steven Black and OISD block well over one
+        hundred thousand ad, tracker, and malware domains (the exact count changes with every list
+        update). DNSSEC validation is enabled in Unbound for additional query integrity, with
+        Pi-hole-side validation left off to avoid validating twice.
+      </p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <div class="mermaid">
+graph LR
+  C["Client Devices\n(any LAN host)"]
+  PH["Pi-hole\nport 53\n(macvlan IP)"]
+  BL[("Blocklists\nSteven Black\nOISD")]
+  UB["Unbound\nport 5335\n(recursive)"]
+  ROOT["Root Nameservers\n(IANA)"]
+  AUTH["Authoritative DNS\n(e.g. ns1.example.com)"]
+
+  C -->|"DNS query :53"| PH
+  PH -->|"check domain"| BL
+  BL -->|"blocked"| NXDOMAIN["Blocked response\nreturned to client"]
+  BL -->|"allowed"| UB
+  UB -->|"query root"| ROOT
+  ROOT -->|"referral"| AUTH
+  AUTH -->|"answer"| UB
+  UB -->|"resolved IP"| PH
+  PH -->|"answer"| C
+
+style C fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style PH fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style BL fill:#181818,stroke:#1e1e1e,color:#888
+style UB fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style ROOT fill:#181818,stroke:#1e1e1e,color:#888
+style AUTH fill:#181818,stroke:#1e1e1e,color:#888
+style NXDOMAIN fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+      </div>
+    </section>
+
+    <section id="tech-stack">
+      <h2>Tech Stack</h2>
+      <ul>
+        <li><strong>Pi-hole</strong>, DNS sinkhole with web dashboard and blocklist management</li>
+        <li><strong>Unbound</strong>, validating, recursive, caching DNS resolver with DNSSEC</li>
+        <li><strong>Docker &amp; Docker Compose</strong>, container runtime for both services</li>
+        <li><strong>pihole-FTL</strong>, Pi-hole's integrated DNS/DHCP engine (dnsmasq-derived, embedded in v6)</li>
+        <li><strong>macvlan</strong>, Docker network driver giving Pi-hole its own LAN IP</li>
+        <li><strong>Linux (Debian)</strong>, host OS inside Proxmox LXC container</li>
+      </ul>
+    </section>
+
+    <section id="build-process">
+      <h2>Build Process</h2>
+      <div class="steps">
+
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h3>Deploy Pi-hole via Docker Compose with macvlan</h3>
+            <p>
+              Pi-hole is deployed using a macvlan Docker network so it receives a dedicated IP address
+              on the physical LAN segment. This allows the router to advertise Pi-hole's IP as the DNS
+              server via DHCP, causing all client devices to use it automatically without any per-device
+              configuration changes. A second container runs Unbound on a shared internal network,
+              because a macvlan container cannot reach services on the Docker host's loopback.
+              The admin password is kept in a <code>.env</code> file, never in the compose file.
+            </p>
+            <pre><code># Create the macvlan Docker network
+docker network create \
+  -d macvlan \
+  -subnet=192.168.1.0/24 \
+  -gateway=192.168.1.1 \
+  -o parent=eth0 \
+  macvlan_net
+
+# docker-compose.yml for Pi-hole + Unbound
+# Both containers share an internal network so Pi-hole can reach Unbound
+# as unbound#5335; Pi-hole also sits on macvlan for its own LAN IP.
+services:
+  pihole:
+    image: pihole/pihole:latest
+    container_name: pihole
+    hostname: pihole
+    networks:
+      macvlan_net:
+        ipv4_address: 192.168.1.53
+      dns_internal:
+    environment:
+      TZ: "America/Toronto"
+      # Pi-hole v6 variable names (v5 names like WEBPASSWORD no longer work)
+      FTLCONF_webserver_api_password: ${PIHOLE_PASSWORD:?set a password in .env}
+      FTLCONF_dns_upstreams: "unbound#5335"
+      # Leave Pi-hole-side DNSSEC off: Unbound already validates (see Step 2)
+      FTLCONF_dns_dnssec: "false"
+    volumes:
+      - ./pihole/etc-pihole:/etc/pihole
+      - ./pihole/etc-dnsmasq.d:/etc/dnsmasq.d
+    restart: unless-stopped
+
+  unbound:
+    image: mvance/unbound:latest
+    container_name: unbound
+    hostname: unbound
+    networks:
+      dns_internal:
+    ports:
+      - "127.0.0.1:5335:5335/udp"
+      - "127.0.0.1:5335:5335/tcp"
+    volumes:
+      # Mount the whole config directory: unbound.conf, root.hints, and the
+      # writable root.key trust anchor all live here inside the container
+      - ./unbound:/opt/unbound/etc/unbound
+    restart: unless-stopped
+
+networks:
+  macvlan_net:
+    external: true
+  dns_internal:</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h3>Configure Unbound Recursive Resolver</h3>
+            <p>
+              Unbound runs in its own container on the shared internal network, listening on port
+              5335. It performs recursive resolution from the IANA root nameservers, validates DNSSEC
+              signatures, and refuses queries from outside the container network. The root hints file
+              is downloaded to bootstrap the root nameserver list.
+            </p>
+            <pre><code># ./unbound/unbound.conf (mounted into the unbound container)
+server:
+    verbosity: 0
+    interface: 0.0.0.0
+    port: 5335
+    do-ip4: yes
+    do-udp: yes
+    do-tcp: yes
+    do-ip6: no
+
+    # Only answer the internal Docker network
+    access-control: 127.0.0.1 allow
+    access-control: 172.16.0.0/12 allow
+
+    # Root hints
+    root-hints: "/opt/unbound/etc/unbound/root.hints"
+
+    # DNSSEC
+    auto-trust-anchor-file: "/opt/unbound/etc/unbound/root.key"
+
+    # Security
+    hide-identity: yes
+    hide-version: yes
+    harden-glue: yes
+    harden-dnssec-stripped: yes
+    use-caps-for-id: yes
+
+    # Performance
+    cache-min-ttl: 3600
+    num-threads: 2
+
+# Download root hints next to the config before first start
+wget -O unbound/root.hints \
+  https://www.internic.net/domain/named.cache
+
+docker compose up -d unbound
+docker compose logs unbound</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h3>Point Pi-hole Upstream DNS to Unbound</h3>
+            <p>
+              Pi-hole's upstream is set to the Unbound container on the shared internal network.
+              In the Pi-hole admin dashboard under Settings &rarr; DNS, all default upstream DNS
+              providers are disabled and the custom upstream is set to <code>unbound#5335</code>,
+              so allowed queries route to the local Unbound instance. (Using
+              <code>127.0.0.1#5335</code> would fail: from inside the Pi-hole container, loopback
+              is the container itself, not the host.)
+            </p>
+            <pre><code># Set via environment variable in docker-compose.yml:
+FTLCONF_dns_upstreams: "unbound#5335"
+
+# Verify Pi-hole forwards to Unbound
+docker exec pihole pihole -d | grep "DNS"
+
+# Test full resolution chain from the host
+dig @192.168.1.53 github.com</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <h3>Set Router DHCP to Use Pi-hole as DNS</h3>
+            <p>
+              The router's DHCP server configuration is updated so that it distributes Pi-hole's
+              macvlan IP as the DNS server for all DHCP clients on the LAN. This ensures every
+              device automatically routes DNS through Pi-hole without manual configuration.
+            </p>
+            <pre><code># On OpenWrt, advertise Pi-hole via DHCP option 6
+# (Network > Interfaces > LAN > DHCP Server > Advanced > DHCP-Options):
+# 6,192.168.1.53
+# Note: this is different from "DNS forwardings", which controls where the
+# router itself forwards queries, not what it tells DHCP clients to use.
+
+# For dnsmasq-based routers (/etc/dnsmasq.conf):
+dhcp-option=6,192.168.1.53
+
+# Verify a client received the correct DNS server
+# On any LAN device:
+nslookup - 192.168.1.53
+> google.com
+
+# Check Pi-hole dashboard for new queries appearing
+# http://192.168.1.53/admin</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <h3>Import Blocklists</h3>
+            <p>
+              Additional blocklists beyond the default Pi-hole list are imported via the web
+              dashboard under Group Management &rarr; Adlists. After adding the URLs, the gravity
+              database is updated to compile all lists into a single SQLite database. The combined
+              lists block well over one hundred thousand known ad, tracker, and malware domains
+              (the exact count changes with every list update).
+            </p>
+            <pre><code># Blocklist URLs to add in Pi-hole dashboard:
+# Steven Black unified hosts:
+https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
+
+# OISD full list:
+https://big.oisd.nl/domainswild
+
+# After adding lists, update gravity:
+docker exec pihole pihole -g
+
+# Check gravity count
+docker exec pihole pihole -q example-ad-domain.com
+docker exec pihole sqlite3 /etc/pihole/gravity.db \
+  "SELECT COUNT(*) FROM gravity;"</code></pre>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">6</div>
+          <div class="step-body">
+            <h3>Verify with dig and Pi-hole Dashboard</h3>
+            <p>
+              Full verification covers both the blocking path and the recursive resolution path.
+              A known ad domain should return the blocked response; a regular domain should resolve
+              through Unbound. The Pi-hole dashboard shows query statistics and confirms upstream
+              forwarding to the Unbound instance.
+            </p>
+            <pre><code># Test that a known ad domain is blocked
+dig @192.168.1.53 doubleclick.net
+# Expected: 0.0.0.0 (Pi-hole's default blocking mode)
+
+# Test that a regular domain resolves
+dig @192.168.1.53 github.com
+# Expected: valid A record
+
+# Check recursive resolution via Unbound directly
+dig @127.0.0.1 -p 5335 github.com
+
+# Confirm DNSSEC validation is working
+dig @127.0.0.1 -p 5335 sigfail.verteiltesysteme.net
+# Expected: SERVFAIL (DNSSEC failure detected correctly)</code></pre>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="workflow">
+      <h2>Request Flow</h2>
+      <div class="mermaid">
+sequenceDiagram
+  participant C as Client Device
+  participant PH as Pi-hole :53
+  participant BL as Blocklist DB
+  participant UB as Unbound :5335
+  participant R as Root Nameservers
+  participant A as Authoritative NS
+
+  C-->>PH: DNS query (e.g. ads.example.com)
+  PH-->>BL: check domain in gravity DB
+  alt Domain is blocked
+    BL-->>PH: match found
+    PH-->>C: blocked response (0.0.0.0)
+  else Domain is allowed
+    BL-->>PH: no match
+    PH-->>UB: forward query (unbound#5335)
+    UB-->>R: query root for TLD
+    R-->>UB: referral to TLD NS
+    UB-->>A: query authoritative NS
+    A-->>UB: IP address answer
+    UB-->>PH: resolved IP + TTL
+    PH-->>C: resolved IP answer
+  end
+      </div>
+    </section>
+
+    <section id="challenges">
+      <h2>Challenges &amp; Solutions</h2>
+      <ul>
+        <li>
+          <strong>Docker macvlan container cannot reach the host:</strong> By default, a container
+          on a macvlan network cannot communicate with the host machine running Docker, because macvlan
+          bypasses the host network stack. This would have prevented Pi-hole from talking to Unbound
+          on the host loopback. Resolved by running Unbound in a second container attached to a
+          shared internal Docker network; Pi-hole reaches it as <code>unbound#5335</code>, sidestepping
+          macvlan's host isolation entirely.
+        </li>
+        <li>
+          <strong>DNS loop between Pi-hole and Unbound:</strong> When both resolvers listen on port 53,
+          Pi-hole can forward queries to Unbound, which in some configurations forwards back to
+          Pi-hole. Resolved by running Unbound strictly on port 5335 and pointing Pi-hole upstream
+          explicitly to <code>unbound#5335</code>, ensuring a one-way forwarding chain.
+        </li>
+        <li>
+          <strong>Gravity update failing inside container:</strong> The <code>pihole -g</code> command
+          failed because the container initially had no working outbound route to download
+          blocklists. Fixed by correcting the macvlan gateway and default route so the container
+          can reach the internet during gravity updates.
+        </li>
+        <li>
+          <strong>Some legitimate domains blocked:</strong> OISD's full list occasionally blocks CDN
+          subdomains used by legitimate services. Whitelisting is managed via the Pi-hole dashboard
+          under Whitelist, and the OISD basic list is used instead of the full list for stricter
+          environments.
+        </li>
+      </ul>
+    </section>
+
+    <section id="learnings">
+      <h2>What I Learned</h2>
+      <ul>
+        <li>DNS resolution hierarchy: root nameservers, TLD delegation, and authoritative records</li>
+        <li>DNSSEC validation chain and how SERVFAIL signals a tampered record</li>
+        <li>Docker macvlan networking and its limitations with host communication</li>
+        <li>Pi-hole gravity database structure and SQLite query patterns</li>
+        <li>The performance impact of recursive vs forwarding DNS (latency vs privacy)</li>
+        <li>Router DHCP option 6 for network-wide DNS distribution without per-device config</li>
+      </ul>
+    </section>
+
+    <section id="how-i-built-it">
+  <h2>How I built it</h2>
+  <p>ISPs log DNS, and third-party resolvers see every domain your household looks up. This stack keeps resolution in-house: Pi-hole filters the junk, Unbound walks the DNS tree itself, and nothing is forwarded to Google or Cloudflare.</p>
+  <ol>
+    <li><strong>Phase 1, deploy Pi-hole with its own IP:</strong> Created a Docker macvlan network so Pi-hole gets a dedicated address on the LAN, letting the router advertise it as the DNS server via DHCP with zero per-device configuration.</li>
+    <li><strong>Phase 2, add the recursive resolver:</strong> Deployed Unbound as the upstream: a validating recursive resolver that walks from the root nameservers instead of trusting a third party, with DNSSEC validation enabled.</li>
+    <li><strong>Phase 3, load the blocklists:</strong> Subscribed to the Steven Black and OISD lists, blocking well over one hundred thousand ad, tracker, and malware domains at the DNS layer (counts change with every update).</li>
+    <li><strong>Phase 4, cut over the network:</strong> Pointed the router's DHCP DNS advertisement at Pi-hole so every device on the LAN picks it up automatically.</li>
+    <li><strong>Phase 5, containerize on Proxmox:</strong> Runs the whole stack in Docker inside a Proxmox LXC container for easy snapshots and migration.</li>
+  </ol>
+</section>
+<section id="what-you-need">
+  <h2>What you need</h2>
+  <table>
+    <thead><tr><th>Category</th><th>Item</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Hardware</td><td>Proxmox host or any Linux machine on the LAN</td><td>Runs inside an LXC container or directly on Docker</td></tr>
+      <tr><td>Software</td><td>Docker and Docker Compose</td><td>Hosts Pi-hole and Unbound</td></tr>
+      <tr><td>Software</td><td>Pi-hole, Unbound, dnsmasq (embedded)</td><td>Filtering frontend and recursive backend</td></tr>
+      <tr><td>Network</td><td>Router with DHCP DNS control</td><td>Needed to advertise Pi-hole network-wide</td></tr>
+      <tr><td>Skills</td><td>Docker macvlan networking and DNS basics</td><td>macvlan quirks and blocklist management</td></tr>
+    </tbody>
+  </table>
+</section>
+<section id="challenges-lessons">
+  <h2>Challenges and lessons learned</h2>
+  <ul>
+    <li><strong>macvlan host isolation:</strong> with macvlan, the Docker host itself cannot reach the Pi-hole container IP. Lesson: manage it from another LAN device or add a macvlan shim interface on the host.</li>
+    <li><strong>False positives:</strong> aggressive lists occasionally break legitimate sites or apps. Lesson: keep the Pi-hole audit log handy and whitelist deliberately; the dashboard makes the offending domain obvious.</li>
+    <li><strong>DNSSEC validation failures:</strong> misconfigured domains fail validation and look like outages. Lesson: learn to read Unbound logs so a broken remote domain is not mistaken for a local problem.</li>
+  </ul>
+</section>
+<section id="whats-next">
+  <h2>What is next</h2>
+  <ul>
+    <li>Deploy a secondary resolver so DNS survives maintenance on the primary.</li>
+    <li>Offer DNS-over-HTTPS as an optional upstream for specific clients.</li>
+    <li>Use Pi-hole client groups for per-device policies, such as stricter filtering for IoT.</li>
+    <li>Build query-log analytics to spot new trackers and compromised devices.</li>
+  </ul>
+</section>
+
+    <div class="tags">
+      <span class="tag">Pi-hole</span>
+      <span class="tag">Unbound</span>
+      <span class="tag">DNS</span>
+      <span class="tag">Docker</span>
+      <span class="tag">Privacy</span>
+      <span class="tag">Networking</span>
+      <span class="tag">Ad Blocking</span>
+    </div>
+  </div>
+</div>
+    <section class="related-labs"><h2>Related Work</h2>
+      <ul>
+        <li><a href="email-server.html">Private Email Server</a>, the mail server that depends on these DNS records.</li>
+        <li><a href="proxmox-homelab.html">Proxmox Homelab</a>, the virtualization host for the DNS VMs.</li>
+        <li><a href="search-engine.html">Public Search Engine</a>, another self-hosted network service.</li>
+      </ul>
+    </section>
+
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span>
+    <div class="footer-links">
+      <a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a>
+      <a href="https://github.com/TYFSADIK" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+  </div>
+</footer>
+<button class="back-to-top">&uarr; TOP</button>
+<script src="../../js/main.js"></script>
+</body>
+</html>
