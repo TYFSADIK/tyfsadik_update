@@ -1,0 +1,68 @@
+# Ping IndexNow (Bing, Yandex, Naver, Seznam) with URLs changed on each deploy.
+# Key file: 149c878bd7aba5f097a1e8ea75a473b8.txt at the site root.
+name: IndexNow
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for diff)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Collect changed public pages
+        id: changed
+        run: |
+          git diff --name-only --diff-filter=ACM HEAD~1 HEAD -- '*.html' \
+            | grep -v '^\.tools/' | grep -v '^404.html$' > changed.txt || true
+          # On manual runs or when the diff is empty, submit the key pages.
+          if [ ! -s changed.txt ]; then
+            printf '%s\n' index.html about.html work.html blog.html resume.html contact.html blog/labs/index.html > changed.txt
+          fi
+          python3 - <<'EOF'
+          import json
+          base = "https://tyfsadik.org"
+          urls = []
+          for line in open("changed.txt"):
+              rel = line.strip()
+              if not rel:
+                  continue
+              urls.append(base + "/" if rel == "index.html" else f"{base}/{rel}")
+          json.dump(urls[:10000], open("urls.json", "w"))
+          print(f"{len(urls)} URLs queued")
+          EOF
+
+      - name: Submit to IndexNow
+        run: |
+          python3 - <<'EOF'
+          import json, urllib.request
+          urls = json.load(open("urls.json"))
+          if not urls:
+              print("nothing to submit")
+              raise SystemExit(0)
+          payload = {
+              "host": "tyfsadik.org",
+              "key": "149c878bd7aba5f097a1e8ea75a473b8",
+              "keyLocation": "https://tyfsadik.org/149c878bd7aba5f097a1e8ea75a473b8.txt",
+              "urlList": urls,
+          }
+          req = urllib.request.Request(
+              "https://api.indexnow.org/indexnow",
+              data=json.dumps(payload).encode(),
+              headers={"Content-Type": "application/json; charset=utf-8"},
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  print("IndexNow status:", r.status)
+          except Exception as e:
+              print("IndexNow submit failed (non-fatal):", e)
+          EOF
