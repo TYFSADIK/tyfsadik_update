@@ -267,3 +267,22 @@ context. Per hard rule 1, nothing was deleted; layout fixes are logged here.
   ("How do I fix ...?") with direct first-sentence answers, and answer-first
   .lead paragraphs sit at the top of every lab.
 - 654 JSON-LD blocks re-validated after the edit, all parse.
+
+## Phase 8: search experience (SXO)
+
+- Static client-side search: `.tools/build_search_index.py` generates
+  `search-index.json` (177 items: labs, assignments, projects). A search bar
+  on the labs index page filters live, supports `?q=` URLs, and renders
+  results without third-party calls (tested in headless Chrome: "vlan"
+  returns 6 results). The 404 search form targets the same `?q=` flow.
+- WebSite SearchAction added to the homepage JSON-LD, pointing at the real
+  `?q=` search (only valid because the search now exists).
+- Homepage hero now leads with proof (Toronto, 25% MTTR cut, 7-node
+  Kubernetes homelab, 116 labs) with links; the original hero text is
+  untouched below it.
+- Reading time ("N min read", 200 wpm) added to 170 lab/work page bylines.
+- Status added to every defence build byline ("Status: Building"; thermal
+  SAR drone: "Building, first results published"), matching the existing
+  Status and Roadmap sections. No inflation.
+- Copy buttons on code blocks, back-to-top, filter buttons, lab TOCs, and
+  scroll progress already existed and are unchanged.

@@ -182,3 +182,52 @@ document.querySelectorAll('a[href^="#"]').forEach(a => {
     }
   });
 });
+
+// --- Static site search (labs index and 404) ---------------
+// Fetches /search-index.json once, filters client side, and supports ?q=
+// so the WebSite SearchAction schema and the 404 search form work.
+(function initSiteSearch() {
+  const form = document.getElementById('lab-search-form');
+  const resultsBox = document.getElementById('search-results');
+  if (!form || !resultsBox) return;
+  const input = form.querySelector('input[type="search"]');
+  const base = form.getAttribute('data-root') || '../../';
+  let indexPromise = null;
+  const loadIndex = () => {
+    if (!indexPromise) {
+      indexPromise = fetch(base + 'search-index.json').then(r => r.json());
+    }
+    return indexPromise;
+  };
+  const render = (items, q) => {
+    if (!q) { resultsBox.innerHTML = ''; return; }
+    const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const hits = items.filter(it => {
+      const hay = (it.title + ' ' + it.description + ' ' + it.track + ' ' + it.kind).toLowerCase();
+      return terms.every(t => hay.includes(t));
+    }).slice(0, 20);
+    if (!hits.length) {
+      resultsBox.innerHTML = '<p class="search-status">No matches for &ldquo;' +
+        q.replace(/[<>&]/g, '') + '&rdquo;. Try a shorter term.</p>';
+      return;
+    }
+    resultsBox.innerHTML = '<p class="search-status">' + hits.length + ' result' +
+      (hits.length === 1 ? '' : 's') + ' for &ldquo;' + q.replace(/[<>&]/g, '') + '&rdquo;</p>' +
+      '<ul class="search-results">' + hits.map(it =>
+        '<li><a href="' + base + it.url + '"><strong>' + it.title + '</strong></a>' +
+        ' <span class="search-kind">' + it.track + ' ' + it.kind + '</span><br>' +
+        '<span class="search-desc">' + it.description + '</span></li>'
+      ).join('') + '</ul>';
+  };
+  const run = () => {
+    const q = (input.value || '').trim();
+    if (q.length < 2) { resultsBox.innerHTML = ''; return; }
+    loadIndex().then(items => render(items, q)).catch(() => {
+      resultsBox.innerHTML = '<p class="search-status">Search index failed to load.</p>';
+    });
+  };
+  form.addEventListener('submit', (e) => { e.preventDefault(); run(); });
+  input.addEventListener('input', run);
+  const initial = new URLSearchParams(location.search).get('q');
+  if (initial) { input.value = initial; run(); }
+})();
