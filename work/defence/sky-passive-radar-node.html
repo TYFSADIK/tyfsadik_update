@@ -2,9 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#333333">
   <title>Passive Radar Node: KrakenSDR Defence Build | TYFSADIK</title>
+  <link rel="preload" as="image" href="../../images/banner-space.jpg">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff" as="font" type="font/woff" crossorigin>
   <meta name="description" content="Receive-only passive radar on a KrakenSDR 5-channel coherent SDR: FM and TV broadcast reflections off aircraft, range-Doppler processing, scored vs ADS-B truth.">
   <meta name="keywords" content="passive radar, KrakenSDR, coherent SDR, range-Doppler, pyAPRiL, ADS-B ground truth, RTL-SDR, dump1090-fa, tar1090, FM illuminator, UHF TV illuminator, bistatic radar">
   <meta name="robots" content="index,follow">
@@ -26,6 +28,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Sky: Passive Aerial Early-Warning Node", "name": "Sky: Passive Aerial Early-Warning Node", "description": "Receive-only passive radar on a KrakenSDR 5-channel coherent SDR: FM and TV broadcast reflections off aircraft, range-Doppler processing, scored vs ADS-B truth.", "image": "https://tyfsadik.org/Prove/Sky%20passive%20aerial%20early-warning%20node.jpeg", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "publisher": {"@type": "Organization", "name": "TYFSADIK", "url": "https://tyfsadik.org/"}, "datePublished": "2026-09-30", "inLanguage": "en-CA", "mainEntityOfPage": {"@type": "WebPage", "@id": "https://tyfsadik.org/work/defence/sky-passive-radar-node.html"}, "keywords": ["passive radar", "KrakenSDR", "range-Doppler", "pyAPRiL", "ADS-B ground truth", "receive-only SDR", "early warning"]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Build a passive aerial early-warning node with a KrakenSDR","description":"Stand up a receive-only passive radar node: ADS-B ground truth first, illuminator survey, antenna tuning, KrakenSDR coherent bring-up and phase calibration, antenna geometry, IQ capture, pyAPRiL range-Doppler processing, scoring against ADS-B, and automated multi-node MQTT fusion.","step":[{"@type":"HowToStep","name":"ADS-B ground truth first","text":"Set up an RTL-SDR Blog V4 with a 1090 MHz antenna, run readsb/dump1090-fa and tar1090, and start logging aircraft positions as ground truth."},{"@type":"HowToStep","name":"Illuminator survey","text":"Scan FM (88-108 MHz) and UHF TV (~470-600 MHz) bands with rtl_power to map usable broadcast transmitters by frequency, bearing, and power."},{"@type":"HowToStep","name":"Antenna tuning","text":"Tune the FM Yagi and UHF log-periodic with a NanoVNA and NanoVNASaver, checking SWR across each target band."},{"@type":"HowToStep","name":"KrakenSDR bring-up","text":"Install the open-source krakensdr_doa software (HeIMDALL DAQ) on the mini PC and start the coherent five-channel receiver."},{"@type":"HowToStep","name":"Phase calibration","text":"Inject the built-in noise source into all five channels and calibrate out per-channel phase and amplitude offsets; re-run after any retune."},{"@type":"HowToStep","name":"Reference and surveillance geometry","text":"Point the reference Yagi at the broadcast transmitter and the surveillance antennas at the area of interest; compute half-wavelength spacing per band."},{"@type":"HowToStep","name":"Coherent IQ capture","text":"Record synchronized multi-channel CF32 IQ captures from the DAQ's network IQ interface for offline processing."},{"@type":"HowToStep","name":"Range-Doppler processing with pyAPRiL","text":"Run clutter cancellation, cross-ambiguity range-Doppler surfaces, CA-CFAR hit detection, and DoA estimation with the pyAPRiL Python library."},{"@type":"HowToStep","name":"Score against ADS-B truth","text":"Align radar detections with the ADS-B truth log and compute detection rate, false-alarm rate, and effective range per illuminator."},{"@type":"HowToStep","name":"Automation and multi-node fusion","text":"Run the node as a systemd service, archive captures, and publish detections over MQTT for fusion with 2-3 nodes into the common operating picture."}]}</script>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="../../css/style.css">
   <link rel="icon" href="../../favicon.png" type="image/png">
   <link rel="icon" type="image/png" sizes="48x48" href="../../favicon-48.png">
@@ -33,7 +36,6 @@
   <link rel="icon" type="image/png" sizes="16x16" href="../../favicon-16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="../../apple-touch-icon.png">
   <link rel="manifest" href="../../site.webmanifest">
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Defence Builds", "item": "https://tyfsadik.org/work/defence/defence-hardware-program.html"}, {"@type": "ListItem", "position": 3, "name": "Sky: Passive Aerial Early-Warning Node", "item": "https://tyfsadik.org/work/defence/sky-passive-radar-node.html"}]}</script>
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'USB dropouts ruining coherent captures.'?", "acceptedAnswer": {"@type": "Answer", "text": "Symptom: streaks across the waterfall and correlation that dies mid-CPI. Cause: both SDRs streaming through one overloaded USB controller, and an undervolted KrakenSDR. Fix: separate USB buses for the KrakenSDR and the RTL-SDR, a quality 5 V supply, short good cables, and dmesg -w watching for xHCI errors during every capture. Any capture with a dropout gets deleted, not processed."}}, {"@type": "Question", "name": "How do I fix 'Range-Doppler map is all clutter ridge, no aircraft.'?", "acceptedAnswer": {"@type": "Answer", "text": "The direct-path signal leaking into the surveillance channels was stronger than the echoes by orders of magnitude. Fixes, in the order that worked: physically separate and null the antennas (reference pattern null toward the surveillance array), then raise the ECA filter order in the processing chain, then confirm the calibration was current. If the zero-Doppler ridge still dominates, the geometry, not the code, is the problem."}}, {"@type": "Question", "name": "How do I fix 'Coherence \"randomly\" lost after working an hour ago.'?", "acceptedAnswer": {"@type": "Answer", "text": "Not random: frequency and gain changes trigger Kraken recalibration, and any retune or sample-rate change invalidates phase calibration. Fix: treat calibration as part of the run configuration, re-run it on every change, and log its timestamp with every capture so stale-calibration data can be filtered out of scoring."}}, {"@type": "Question", "name": "How do I fix 'A nearby powerhouse FM station saturating the front end.'?", "acceptedAnswer": {"@type": "Answer", "text": "A very strong local transmitter raised the noise floor across the band and produced intermod ghosts. Fix: back the gain down (coherence matters more than gain), pick an illuminator that is strong-but-distant, and if needed put an FM band-stop filter on the surveillance channels only, never on the reference."}}, {"@type": "Question", "name": "How do I fix 'Detections that don't line up with ADS-B truth.'?", "acceptedAnswer": {"@type": "Answer", "text": "First suspect was the algorithm; the actual cause was clock disagreement between the radar captures and the truth log, a few seconds of drift moves a fast aircraft well outside the tolerance window. Fix: chrony on the mini PC disciplining both pipelines off NTP, and a scoring-harness check that rejects runs where the truth log has gaps."}}]}</script>
@@ -141,7 +143,7 @@
 
     <section id="proof">
       <h2>Proof of Build</h2>
-      <img src="../../Prove/Sky%20passive%20aerial%20early-warning%20node.jpeg" alt="KrakenSDR five-channel coherent SDR receiver on the workbench with five whip antennas, Raspberry Pi, and a laptop showing range-Doppler waterfall plots beside a live ADS-B aircraft map" loading="lazy" width="1408" height="768">
+      <picture><source type="image/avif" srcset="../../Prove/Sky%20passive%20aerial%20early-warning%20node.avif"><source type="image/webp" srcset="../../Prove/Sky%20passive%20aerial%20early-warning%20node.webp"><img decoding="async" src="../../Prove/Sky%20passive%20aerial%20early-warning%20node.jpeg" alt="KrakenSDR five-channel coherent SDR receiver on the workbench with five whip antennas, Raspberry Pi, and a laptop showing range-Doppler waterfall plots beside a live ADS-B aircraft map" loading="lazy" width="1408" height="768"></picture>
       <p class="diagram-label">The real rig on my bench: the KrakenSDR five-channel coherent receiver with its five whip antennas, a Raspberry Pi running the KrakenSDR software, and a laptop showing range-Doppler waterfall plots beside the live tar1090 ADS-B aircraft map that serves as ground truth.</p>
       <p>
         Everything in the photo is already purchased and running. The ADS-B side went live first:
@@ -153,7 +155,7 @@
 
     <section id="bom">
       <h2>Bill of Materials</h2>
-      <table class="bom-table">
+      <div class="table-scroll"><table class="bom-table">
         <thead><tr><th scope="col">Part</th><th scope="col">Role</th><th scope="col">Details</th><th scope="col" class="bom-cost">Est. US$</th></tr></thead>
         <tbody>
           <tr><td>KrakenSDR</td><td>Coherent radar receiver</td><td>5-channel coherent receiver, 24 MHz to 1766 MHz, 2.56 MHz max channel bandwidth (2.4 MS/s is the stable operating sample rate)</td><td class="bom-cost">749 (price listed on the KrakenRF product page; confirm before ordering)</td></tr>
@@ -164,7 +166,7 @@
           <tr><td>RF accessories</td><td>Connections and front end</td><td>SMA adapters, low-loss coax, optional FM/UHF filter or LNA</td><td class="bom-cost">60-100</td></tr>
           <tr><td>NanoVNA (optional)</td><td>Antenna tuning</td><td>Vector network analyzer for tuning the Yagis</td><td class="bom-cost">50-70</td></tr>
         </tbody>
-      </table>
+      </table></div>
       <p>
         Total lands around <strong>US$1,350-1,600</strong> at the current KrakenSDR price. I started with just the ADS-B kit
         (~US$100) so the ground-truth logging was collecting data weeks before the KrakenSDR
@@ -179,7 +181,7 @@
         controllers, one saturated USB bus dropping samples is enough to ruin a coherent capture
         (see <a href="#troubleshooting">Troubleshooting</a>).
       </p>
-      <table>
+      <div class="table-scroll"><table>
         <thead><tr><th scope="col">From</th><th scope="col">To</th><th scope="col">Cable / interface</th><th scope="col">Notes</th></tr></thead>
         <tbody>
           <tr><td>FM Yagi (pointed at transmitter)</td><td>KrakenSDR CH1 (reference)</td><td>LMR-240 coax, SMA</td><td>Clean direct-path signal; keep this run short</td></tr>
@@ -190,7 +192,7 @@
           <tr><td>Mini PC</td><td>LAN / MQTT broker</td><td>Gigabit Ethernet</td><td>chrony NTP sync so radar and ADS-B timestamps agree</td></tr>
           <tr><td>Mini PC</td><td>Laptop (monitoring)</td><td>SSH / HTTP over LAN</td><td>tar1090 map and range-Doppler plots viewed here</td></tr>
         </tbody>
-      </table>
+      </table></div>
       <p class="diagram-label">Every cable on the receive side; nothing on this node ever transmits.</p>
     </section>
 
@@ -517,7 +519,7 @@ client.publish("defence/sky/detections", json.dumps({
         Evidence and targets are kept separate: the "measured to date" column holds only what has
         actually been recorded, and the target column holds what the build is aiming at.
       </p>
-      <table class="viz-results">
+      <div class="table-scroll"><table class="viz-results">
         <thead><tr><th scope="col">Metric</th><th scope="col">Target</th><th scope="col">Measured to date</th><th scope="col">Current status</th></tr></thead>
         <tbody>
           <tr><td>ADS-B truth log uptime</td><td>&gt; 95% over any scoring week</td><td class="viz-measured">Running; uptime tracked, scoring weeks being selected</td><td>Running; uptime tracked, scoring weeks being selected</td></tr>
@@ -528,7 +530,7 @@ client.publish("defence/sky/detections", json.dumps({
           <tr><td>Calibration hold time</td><td>Quantify, then automate re-calibration on that interval</td><td class="viz-measured">Not yet measured</td><td>In progress, T2 data being collected</td></tr>
           <tr><td>Multi-node position error</td><td>Meaningfully better than single-node geometry</td><td class="viz-measured">Not yet measured</td><td>Not started, second node not yet built</td></tr>
         </tbody>
-      </table>
+      </table></div>
 
       <p>
         <strong>Results are in progress and not yet published.</strong> The ADS-B truth log has been
@@ -598,7 +600,7 @@ client.publish("defence/sky/detections", json.dumps({
     <section id="what-you-need">
       <h2>What You Need</h2>
 <p>Everything below mirrors the bill of materials on this page. The single non-obvious requirement is patience with calibration: the whole build assumes you re-calibrate on every configuration change.</p>
-      <table>
+      <div class="table-scroll"><table>
         <thead><tr><th scope="col">Category</th><th scope="col">Item</th><th scope="col">Notes</th></tr></thead>
         <tbody>
           <tr><td>Hardware</td><td>KrakenSDR</td><td>5-channel coherent SDR, 5x R820T2 tuners, 24 MHz to 1766 MHz, 2.56 MHz channel bandwidth, ~11 W at 5 V</td></tr>
@@ -611,7 +613,7 @@ client.publish("defence/sky/detections", json.dumps({
           <tr><td>Skills</td><td>RF fundamentals, Linux, Python DSP</td><td>dB arithmetic, gain staging, reading waterfall plots, coherent vs non-coherent captures</td></tr>
           <tr><td>Accounts</td><td>None for receive-only</td><td>No accounts or licenses needed; export-control review with Global Affairs Canada is required before publishing radar processing code</td></tr>
         </tbody>
-      </table>
+      </table></div>
     </section>
 
     <section id="challenges-lessons">
@@ -649,6 +651,6 @@ client.publish("defence/sky/detections", json.dumps({
   </div>
 </footer>
 <button type="button" class="back-to-top">&uarr; TOP</button>
-<script src="../../js/main.js"></script>
+<script src="../../js/main.js" defer></script>
 </body>
 </html>

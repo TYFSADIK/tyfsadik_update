@@ -2,9 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#333333">
   <title>GPS-Denied Rover: ROS 2 Navigation Build | TYFSADIK</title>
+  <link rel="preload" as="image" href="../../images/banner-space.jpg">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff" as="font" type="font/woff" crossorigin>
   <meta name="description" content="ROS 2 rover that keeps navigating after GNSS is cut: wheel odometry, BNO085 IMU, and 2D LiDAR fused with an Extended Kalman Filter, drift vs u-blox truth.">
   <meta name="keywords" content="GPS-denied navigation rover, GNSS-denied localization, ROS 2 Jazzy, Extended Kalman Filter, robot_localization, wheel odometry, BNO085 IMU, LD19 2D LiDAR, rf2o lidar odometry, SLAM Toolbox, u-blox M9N, Raspberry Pi 5 rover">
   <meta name="robots" content="index,follow">
@@ -26,6 +28,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "GPS-Denied Navigation Rover", "name": "GPS-Denied Navigation Rover", "description": "ROS 2 rover that keeps navigating after GNSS is cut: wheel odometry, BNO085 IMU, and 2D LiDAR fused with an Extended Kalman Filter, drift vs u-blox truth.", "image": "https://tyfsadik.org/Prove/GPS-denied%20navigation%20rover.jpeg", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "publisher": {"@type": "Organization", "name": "TYFSADIK", "url": "https://tyfsadik.org/"}, "datePublished": "2026-09-30", "inLanguage": "en-CA", "mainEntityOfPage": {"@type": "WebPage", "@id": "https://tyfsadik.org/work/defence/gps-denied-navigation-rover.html"}, "keywords": ["GPS-denied navigation", "ROS 2", "Extended Kalman Filter", "wheel odometry", "IMU", "LiDAR", "SLAM", "defence robotics Canada"]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Build a GPS-Denied Navigation Rover","description":"Assemble a ROS 2 rover that keeps localizing after GNSS is cut, fusing wheel odometry, IMU, and LiDAR with an Extended Kalman Filter, and measure drift against a u-blox reference track.","step":[{"@type":"HowToStep","name":"Chassis and drive train","text":"Assemble the metal 4WD chassis, pair the motors skid-steer, and wire the encoders and the BTS7960 dual motor driver."},{"@type":"HowToStep","name":"Power system and e-stop","text":"Wire the Li-ion pack with BMS, a fused DC-DC 5 V/5 A rail for the Pi and sensors, and a physical e-stop that cuts only motor power."},{"@type":"HowToStep","name":"Ubuntu and ROS 2 Jazzy install","text":"Flash Ubuntu 24.04 Server on the Pi 5 and install ROS 2 Jazzy from the official apt repository."},{"@type":"HowToStep","name":"URDF and TF tree","text":"Write the robot_description URDF with base_link, wheel, IMU, and laser frames so the TF tree matches the physical robot."},{"@type":"HowToStep","name":"ros2_control diff-drive stack","text":"Bring up diff_drive_controller through a custom hardware interface driving the BTS7960 over PWM, with encoders feeding joint states."},{"@type":"HowToStep","name":"BNO085 IMU bring-up","text":"Wire the BNO085 over UART, add a udev rule, and publish sensor_msgs/Imu with on-chip fused orientation."},{"@type":"HowToStep","name":"LD19 LiDAR bring-up","text":"Install the ldlidar_stl_ros2 driver and verify the LaserScan stream on /scan."},{"@type":"HowToStep","name":"EKF odometry fusion","text":"Configure robot_localization ekf_node to fuse wheel odometry and IMU into the odom-to-base_link estimate."},{"@type":"HowToStep","name":"LiDAR aiding","text":"Add rf2o_laser_odometry scan matching as a third EKF input and run SLAM Toolbox alongside for the map frame."},{"@type":"HowToStep","name":"Reference track, the cut, and publish","text":"Log the u-blox M9N track as the reference track, drive a known loop, switch GNSS off, measure drift by loop closure, and publish the dataset and plots."}]}</script>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="../../css/style.css">
   <link rel="icon" href="../../favicon.png" type="image/png">
   <link rel="icon" type="image/png" sizes="48x48" href="../../favicon-48.png">
@@ -33,7 +36,6 @@
   <link rel="icon" type="image/png" sizes="16x16" href="../../favicon-16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="../../apple-touch-icon.png">
   <link rel="manifest" href="../../site.webmanifest">
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Defence Builds", "item": "https://tyfsadik.org/work/defence/defence-hardware-program.html"}, {"@type": "ListItem", "position": 3, "name": "GPS-Denied Navigation Rover", "item": "https://tyfsadik.org/work/defence/gps-denied-navigation-rover.html"}]}</script>
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Motors twitching with no command.'?", "acceptedAnswer": {"@type": "Answer", "text": "Symptom: random wheel jerks at idle. Cause: the BTS7960's ground was not tied to the Pi's ground, so PWM levels floated. Fix: dedicated 22 AWG ground wire from driver B- to Pi GND; verified with a continuity check, twitching gone. Lesson: on a mixed-voltage robot, \"obviously it's grounded\" is a claim, not a measurement."}}, {"@type": "Question", "name": "How do I fix 'Pi browning out when motors stalled.'?", "acceptedAnswer": {"@type": "Answer", "text": "Symptom: vcgencmd get_throttled returning under-voltage flags and the Pi rebooting mid-run. Cause: Pi and motors shared one rail; a stall dragged it below the Pi's cutoff. Fix: split the rails (step 02), separate fused DC-DC branch for logic, re-ran the stall test with flags staying at 0x0. This is also why the e-stop cuts motors only, a logging Pi during an incident is a feature."}}, {"@type": "Question", "name": "How do I fix 'Silent IMU, node timing out on the UART.'?", "acceptedAnswer": {"@type": "Answer", "text": "Symptom: /dev/imu opened but no SHTP packets arrived. Cause: the BNO085 breakout shipped with PS1 floating, so it was in I2C mode, not UART. Fix: soldered the PS1 strap high (PS0 low, UART-SHTP) per the datasheet. Lesson: verify the mode pins before suspecting the software; I burned an evening on a driver that was never the problem."}}, {"@type": "Question", "name": "How do I fix 'Odometry TF fighting in RViz.'?", "acceptedAnswer": {"@type": "Answer", "text": "Symptom: the robot flickered between two positions a metre apart. Cause: both diff_drive_controller and the EKF were publishing odom->base_link. Fix: enable_odom_tf: false on the controller so the EKF owns the transform. Lesson: exactly one publisher per TF frame, always, check with ros2 run tf2_ros tf2_echo odom base_link when in doubt."}}, {"@type": "Question", "name": "How do I fix 'Scan matcher diverging along a blank wall.'?", "acceptedAnswer": {"@type": "Answer", "text": "Symptom: /odom_rf2o froze or jumped while driving past a featureless wall. Cause: scan matching has nothing to lock onto without features, a known RF2O limitation, not a bug. Fix: RF2O enters the EKF with a larger covariance than wheel odometry, so the filter degrades gracefully toward encoder+IMU behaviour. Lesson: every aiding sensor needs a designed failure mode, not just a happy path."}}]}</script>
@@ -139,7 +141,7 @@
 
     <section id="proof">
       <h2>Proof of Build</h2>
-      <img src="../../Prove/GPS-denied%20navigation%20rover.jpeg" alt="Wheeled skid-steer rover on the workbench topped with a LiDAR puck and depth camera around a Raspberry Pi, beside a laptop running ROS 2 RViz showing the fused map, planned path, and live battery and IMU telemetry" loading="lazy" width="1408" height="768">
+      <picture><source type="image/avif" srcset="../../Prove/GPS-denied%20navigation%20rover.avif"><source type="image/webp" srcset="../../Prove/GPS-denied%20navigation%20rover.webp"><img decoding="async" src="../../Prove/GPS-denied%20navigation%20rover.jpeg" alt="Wheeled skid-steer rover on the workbench topped with a LiDAR puck and depth camera around a Raspberry Pi, beside a laptop running ROS 2 RViz showing the fused map, planned path, and live battery and IMU telemetry" loading="lazy" width="1408" height="768"></picture>
       <p class="diagram-label">The rover on my bench: 4WD chassis with the LiDAR puck and Pi Camera Module 3 mounted around the Raspberry Pi 5, next to the laptop running ROS 2 RViz with the fused map, planned path, and live battery and IMU telemetry.</p>
     </section>
 
@@ -149,7 +151,7 @@
         Everything below is purchased and on the bench. The u-blox M9N GNSS module used for ground
         truth is shared from the program's Phase 0 kit. Software (Ubuntu 24.04, ROS 2 Jazzy) is free.
       </p>
-      <table class="bom-table">
+      <div class="table-scroll"><table class="bom-table">
         <thead><tr><th scope="col">Part</th><th scope="col">Role</th><th scope="col">Details</th><th scope="col" class="bom-cost">Est. US$</th></tr></thead>
         <tbody>
           <tr><td>Chassis</td><td>Wheeled skid-steer base</td><td>2 metal 4WD chassis with wheel encoders</td><td class="bom-cost">80-150 each</td></tr>
@@ -160,7 +162,7 @@
           <tr><td>Camera</td><td>Visual verification</td><td>Pi Camera Module 3</td><td class="bom-cost">25-50</td></tr>
           <tr><td>Power</td><td>Split-rail power and safety</td><td>Li-ion pack with BMS, DC-DC 5 V/5 A, physical e-stop switch</td><td class="bom-cost">60-100</td></tr>
         </tbody>
-      </table>
+      </table></div>
     </section>
 
     <section id="wiring">
@@ -169,7 +171,7 @@
         The full interconnect map. Two rules govern everything: motor power and logic power never
         share a rail, and every signal pair gets a common ground reference back to the Pi.
       </p>
-      <table>
+      <div class="table-scroll"><table>
         <thead><tr><th scope="col">From</th><th scope="col">To</th><th scope="col">Cable or interface</th><th scope="col">Notes</th></tr></thead>
         <tbody>
           <tr><td>Li-ion pack</td><td>BMS, then main fuse (10 A)</td><td>18 AWG silicone wire, XT60</td><td>Fuse within 10 cm of the pack; BMS handles cell protection and balancing</td></tr>
@@ -183,7 +185,7 @@
           <tr><td>Pi Camera Module 3</td><td>Pi 5 CSI port</td><td>15-to-22-pin FPC ribbon</td><td>Kept short and away from the motor wiring to avoid noise on the ribbon</td></tr>
           <tr><td>u-blox M9N (ground truth)</td><td>Pi 5 USB-A</td><td>USB cable</td><td>Logging only, never wired into the estimator; antenna on a ground plate away from the LiDAR</td></tr>
         </tbody>
-      </table>
+      </table></div>
     </section>
 
     <section id="architecture">
@@ -568,7 +570,7 @@ flowchart LR
         Per-run conditions (surface, temperature, battery state) are logged with the bag, since all
         three move the numbers. Targets below are what I am aiming at, not results I have:
       </p>
-      <table class="viz-results">
+      <div class="table-scroll"><table class="viz-results">
         <thead><tr><th scope="col">Metric</th><th scope="col">Target</th><th scope="col">Measured to date</th><th scope="col">Current status</th></tr></thead>
         <tbody>
           <tr><td>Loop-closure error, EKF only (Run 3)</td><td>Under 2% of distance travelled</td><td class="viz-measured">Not yet measured</td><td>In progress, tuning passes underway, not yet measured against truth</td></tr>
@@ -578,7 +580,7 @@ flowchart LR
           <tr><td>IMU bias stability across a run</td><td>No visible yaw drift in a static 10-minute log</td><td class="viz-measured">Not yet measured</td><td>In progress, static logs collected, analysis pending</td></tr>
           <tr><td>Cold-weather drift delta (Run 6)</td><td>Same protocol repeated at winter temperatures</td><td class="viz-measured">No data, waiting on winter</td><td>Planned, waiting on weather</td></tr>
         </tbody>
-      </table>
+      </table></div>
       <p>
         No drift numbers are published yet because I won't quote figures I haven't measured. The
         dataset and plots go up with the build write-up once the loop runs are complete.
@@ -642,7 +644,7 @@ flowchart LR
     <section id="what-you-need">
       <h2>What You Need</h2>
 <p>This is the one build in the program where the software stack outweighs the hardware cost. ROS 2 fluency is assumed; the table lists what is not obvious.</p>
-      <table>
+      <div class="table-scroll"><table>
         <thead><tr><th scope="col">Category</th><th scope="col">Item</th><th scope="col">Notes</th></tr></thead>
         <tbody>
           <tr><td>Hardware</td><td>4WD metal chassis + encoders</td><td>Skid-steer platform with quadrature wheel encoders; metal survives repeated outdoor loop runs</td></tr>
@@ -655,7 +657,7 @@ flowchart LR
           <tr><td>Skills</td><td>ROS 2, state estimation basics, Linux</td><td>URDF/TF debugging, covariance reasoning, covariance tuning, rosbag workflows</td></tr>
           <tr><td>Accounts</td><td>None</td><td>No accounts or licenses required; the whole stack is open source</td></tr>
         </tbody>
-      </table>
+      </table></div>
     </section>
 
     <section id="challenges-lessons">
@@ -694,6 +696,6 @@ flowchart LR
   </div>
 </footer>
 <button type="button" class="back-to-top">&uarr; TOP</button>
-<script src="../../js/main.js"></script>
+<script src="../../js/main.js" defer></script>
 </body>
 </html>

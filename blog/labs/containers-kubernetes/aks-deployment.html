@@ -2,9 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#333333">
   <title>Azure Kubernetes Service: Deploy &amp; Scale AKS | TYFSADIK</title>
+  <link rel="preload" as="image" href="../../../images/banner-space.jpg">
+  <link rel="preload" href="../../../fonts/DepartureMono-Regular.woff" as="font" type="font/woff" crossorigin>
   <meta name="description" content="Deploy a production-shaped AKS cluster: autoscaling node pools, app deployment, Horizontal Pod Autoscaler, cluster autoscaler behavior, and full cleanup.">
   <meta name="keywords" content="AKS, Azure Kubernetes Service, HPA, cluster autoscaler, kubectl, managed Kubernetes">
   <meta name="author" content="MD. Taki Yasir Faraji Sadik">
@@ -24,6 +26,7 @@
   <meta name="twitter:description" content="Deploy a production-shaped AKS cluster: autoscaling node pools, app deployment, Horizontal Pod Autoscaler, cluster autoscaler behavior, and full cleanup.">
   <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
   <link rel="canonical" href="https://tyfsadik.org/blog/labs/containers-kubernetes/aks-deployment.html">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="../../../css/style.css">
   <link rel="icon" href="../../../favicon.png" type="image/png">
   <link rel="icon" type="image/png" sizes="48x48" href="../../../favicon-48.png">
@@ -31,7 +34,6 @@
   <link rel="icon" type="image/png" sizes="16x16" href="../../../favicon-16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="../../../apple-touch-icon.png">
   <link rel="manifest" href="../../../site.webmanifest">
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Deploying to Azure Kubernetes Service (AKS)", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-02-19", "dateModified": "2026-09-29", "proficiencyLevel": "Advanced", "dependencies": "Azure CLI, AKS, kubectl", "articleSection": "Containers", "learningResourceType": "Hands-on lab", "teaches": "containers and Kubernetes"}</script>
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "HowTo", "name": "Azure Kubernetes Service | Deploy & Scale AKS", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"}, "step": [{"@type": "HowToStep", "name": "Create the cluster with autoscaling nodes", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/aks-deployment.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Get credentials and deploy", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/aks-deployment.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Expose and add an HPA", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/aks-deployment.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Wait for the public IP and test the app end to end", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/aks-deployment.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Generate load and watch the HPA scale out", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/aks-deployment.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Watch the cluster autoscaler add nodes", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/aks-deployment.html#step-by-step-execution"}]}</script>
 
@@ -363,14 +365,14 @@ $ az group show -n rg
 </section>
 <section><h2 id="troubleshooting">Troubleshooting</h2>
 <p>Quick-reference for the failures you are most likely to hit in this lab.</p>
-<table class="lab-table"><thead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">Fix</th></tr></thead><tbody>
+<div class="table-scroll"><table class="lab-table"><thead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">Fix</th></tr></thead><tbody>
 <tr><td>Cluster creation fails</td><td>vCPU quota exhausted in the region</td><td>Request a quota increase, or pick a smaller VM size and fewer initial nodes.</td></tr>
 <tr><td><code>kubectl</code> cannot connect</td><td>Kubeconfig points at the wrong cluster or is stale</td><td>Re-run <code>az aks get-credentials --overwrite-existing</code> and verify the context.</td></tr>
 <tr><td>HPA shows unknown targets</td><td>Metrics-server missing, or pods lack CPU requests</td><td>Confirm the metrics addon and set <code>resources.requests.cpu</code> on the deployment.</td></tr>
 <tr><td>Service never gets a public IP</td><td>Load balancer provisioning is slow or the quota is hit</td><td>Check <code>kubectl get events</code> and the Azure activity log; most cases resolve within minutes.</td></tr>
 <tr><td>Cluster autoscaler never adds nodes</td><td>Min/max bounds too tight, or pods are unschedulable for other reasons</td><td>Describe the pending pod; the autoscaler only reacts to pods it could place on a new node.</td></tr>
 <tr><td>Costs keep accruing after the lab</td><td>The resource group was not deleted</td><td>Delete the whole resource group; AKS-adjacent resources (load balancer, public IP, disks) hide outside the cluster view.</td></tr>
-</tbody></table>
+</tbody></table></div>
 </section>
 
     
@@ -437,6 +439,6 @@ $ az group show -n rg
 </main>
 <footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener noreferrer">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener noreferrer">LinkedIn</a></div></div></footer>
 <button type="button" class="back-to-top">&uarr; TOP</button>
-<script src="../../../js/main.js"></script>
+<script src="../../../js/main.js" defer></script>
 </body>
 </html>

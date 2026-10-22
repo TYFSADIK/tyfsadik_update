@@ -1,36 +1,45 @@
 /* TYFSADIK.ORG, Main JS */
 
-// --- Mermaid initialization ------------------------------
-if (typeof mermaid !== 'undefined') {
-  mermaid.initialize({
-    startOnLoad: true,
-    theme: 'base',
-    themeVariables: {
-      darkMode: true,
-      background: '#161616',
-      primaryColor: '#262626',
-      primaryTextColor: '#DBDADA',
-      primaryBorderColor: '#5B93EF',
-      lineColor: '#9FA2A4',
-      secondaryColor: '#161616',
-      tertiaryColor: '#2E2E2E',
-      edgeLabelBackground: '#161616',
-      clusterBkg: '#1c1c1c',
-      clusterBorder: '#313131',
-      titleColor: '#FFFFFF',
-      nodeTextColor: '#DBDADA',
-      attributeBackgroundColorEven: '#161616',
-      attributeBackgroundColorOdd: '#262626',
-    },
-    flowchart: { curve: 'basis', padding: 20 },
-    sequence: {
-      actorFontFamily: 'Georgia, serif',
-      noteFontFamily: 'Georgia, serif',
-      messageFontFamily: 'Georgia, serif',
-      actorFontSize: 13,
-      mirrorActors: false,
-    },
-  });
+// --- Mermaid: load on demand only when a diagram exists ----
+// The library is ~680 KiB, so it is injected only on pages that
+// actually contain a .mermaid block (previously loaded site-wide).
+if (document.querySelector('.mermaid')) {
+  const mermaidScript = document.createElement('script');
+  mermaidScript.src = 'https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js';
+  mermaidScript.integrity = 'sha384-EOXBFmc3gx5mb+vn0vPvvGqACToJD24hhacX5Yx+8NUUQrHIle/Qi5Bg9o3zKwW2';
+  mermaidScript.crossOrigin = 'anonymous';
+  mermaidScript.onload = () => {
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        darkMode: true,
+        background: '#161616',
+        primaryColor: '#262626',
+        primaryTextColor: '#DBDADA',
+        primaryBorderColor: '#5B93EF',
+        lineColor: '#9FA2A4',
+        secondaryColor: '#161616',
+        tertiaryColor: '#2E2E2E',
+        edgeLabelBackground: '#161616',
+        clusterBkg: '#1c1c1c',
+        clusterBorder: '#313131',
+        titleColor: '#FFFFFF',
+        nodeTextColor: '#DBDADA',
+        attributeBackgroundColorEven: '#161616',
+        attributeBackgroundColorOdd: '#262626',
+      },
+      flowchart: { curve: 'basis', padding: 20 },
+      sequence: {
+        actorFontFamily: 'Georgia, serif',
+        noteFontFamily: 'Georgia, serif',
+        messageFontFamily: 'Georgia, serif',
+        actorFontSize: 13,
+        mirrorActors: false,
+      },
+    });
+  };
+  document.head.appendChild(mermaidScript);
 }
 
 // --- Mobile nav toggle -----------------------------------
@@ -45,6 +54,15 @@ if (navToggle && navLinks) {
   document.addEventListener('click', (e) => {
     if (!navToggle.contains(e.target) && !navLinks.contains(e.target)) {
       navLinks.classList.remove('open');
+      navToggle.setAttribute('aria-expanded', 'false');
+    }
+  });
+  // Escape closes the menu and returns focus to the toggle
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && navLinks.classList.contains('open')) {
+      navLinks.classList.remove('open');
+      navToggle.setAttribute('aria-expanded', 'false');
+      navToggle.focus();
     }
   });
 }

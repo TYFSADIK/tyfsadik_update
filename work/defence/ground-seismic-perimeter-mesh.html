@@ -2,9 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#333333">
   <title>Ground: Seismic &amp; Acoustic Perimeter Mesh | TYFSADIK</title>
+  <link rel="preload" as="image" href="../../images/banner-space.jpg">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff" as="font" type="font/woff" crossorigin>
   <meta name="description" content="Solar-powered 915 MHz LoRa mesh of ESP32 sensor nodes with ADXL355 accelerometers and geophones, classifying vehicles, footsteps, and wind at the edge.">
   <meta name="keywords" content="seismic perimeter security, LoRa sensor mesh 915 MHz, ESP32 LoRa node, ADXL355 accelerometer, SM-24 geophone, edge ML classification, vehicle detection seismic, Canadian Arctic Sensor Suite, ground domain awareness, MQTT signed detections, common operating picture, solar sensor node">
   <meta name="robots" content="index,follow">
@@ -26,6 +28,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Ground: Seismic & Acoustic Perimeter Mesh", "name": "Ground: Seismic & Acoustic Perimeter Mesh", "description": "Solar-powered 915 MHz LoRa mesh of ESP32 sensor nodes with ADXL355 accelerometers and geophones, classifying vehicles, footsteps, and wind at the edge.", "image": "https://tyfsadik.org/Prove/Ground%20seismic%20and%20acoustic%20perimeter%20mesh.jpeg", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "publisher": {"@type": "Organization", "name": "TYFSADIK", "url": "https://tyfsadik.org/"}, "datePublished": "2026-09-30", "inLanguage": "en-CA", "mainEntityOfPage": {"@type": "WebPage", "@id": "https://tyfsadik.org/work/defence/ground-seismic-perimeter-mesh.html"}, "keywords": ["seismic perimeter mesh", "LoRa 915 MHz", "ESP32", "ADXL355", "SM-24 geophone", "edge classification", "Canadian Arctic Sensor Suite", "MQTT", "common operating picture"]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Build a solar LoRa seismic and acoustic perimeter mesh","description":"Bring up ESP32 LoRa nodes, wire ADXL355 seismic sensors, classify vehicles vs footsteps vs wind at the edge, mesh detections to a Pi gateway, and report signed detections to a common operating picture.","step":[{"@type":"HowToStep","name":"Node bring-up","text":"Flash the ESP32 LoRa boards with arduino-cli and bring the SX1262 radio up with RadioLib at 915 MHz (North America; 868 MHz is Europe)."},{"@type":"HowToStep","name":"Radio range survey","text":"Run a two-node range check, logging RSSI and SNR per packet to find the honest hop distance before designing the mesh."},{"@type":"HowToStep","name":"Seismic front end","text":"Wire the ADXL355-class MEMS accelerometer over SPI, verify DEVID, and stream the Z axis at ~1 kHz."},{"@type":"HowToStep","name":"Edge feature extraction","text":"Window the samples and compute RMS plus FFT spectral band energies so the classifier sees a compact feature vector."},{"@type":"HowToStep","name":"Edge classification","text":"Classify vehicles vs footsteps vs wind on-device, thresholds first and then a tiny TFLite Micro model, so only detections leave the node."},{"@type":"HowToStep","name":"LoRa mesh protocol","text":"Define a versioned packet format with source, sequence, hop limit, and CRC, with dedup and backoff to keep floods sane."},{"@type":"HowToStep","name":"Store-and-forward buffering","text":"Buffer signed detections to LittleFS when the gateway is unreachable and replay oldest-first on reconnect."},{"@type":"HowToStep","name":"Gateway and MQTT broker","text":"Run a Pi with a LoRa HAT and a Python service that verifies signatures, dedups, and republishes to a localhost-only mosquitto broker."},{"@type":"HowToStep","name":"Power system","text":"18650 cells in protected holders, small solar panel and charge board, deep-sleep duty cycling, weatherproof box with IP65 glands."},{"@type":"HowToStep","name":"Signing and reporting","text":"Give each node an Ed25519 keypair, sign every detection JSON, and publish verified detections to the common operating picture over MQTT."},{"@type":"HowToStep","name":"Geophone upgrade path","text":"Add SM-24 geophones through a low-noise preamp and a 24-bit ADC for longer-range vehicle detection."},{"@type":"HowToStep","name":"Verify-asset integration","text":"A detection queues a human to task the rover or drone to verify; the human tasks, the machine ferries."}]}</script>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="../../css/style.css">
   <link rel="icon" href="../../favicon.png" type="image/png">
   <link rel="icon" type="image/png" sizes="48x48" href="../../favicon-48.png">
@@ -33,7 +36,6 @@
   <link rel="icon" type="image/png" sizes="16x16" href="../../favicon-16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="../../apple-touch-icon.png">
   <link rel="manifest" href="../../site.webmanifest">
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Defence Builds", "item": "https://tyfsadik.org/work/defence/defence-hardware-program.html"}, {"@type": "ListItem", "position": 3, "name": "Ground: Seismic & Acoustic Perimeter Mesh", "item": "https://tyfsadik.org/work/defence/ground-seismic-perimeter-mesh.html"}]}</script>
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Accelerometer reads all 0x00 or all 0xFF.'?", "acceptedAnswer": {"@type": "Answer", "text": "Classic SPI bring-up failure: the ADXL355 is strictly SPI MODE0, and one swapped CS or clock line produces exactly this. The fix is the boot-time DEVID self-check (expect 0xAD), fail loudly at startup instead of silently logging garbage in the field."}}, {"@type": "Question", "name": "How do I fix 'Brownout resets when the radio transmits.'?", "acceptedAnswer": {"@type": "Answer", "text": "The TX current spike sagged the rail on a weak cell and reset the ESP32 mid-packet. Fixed with a bulk capacitor across the supply rail and by checking voltage under load, not at rest, a cell that reads fine on the bench can still collapse under a TX burst in the cold."}}, {"@type": "Question", "name": "How do I fix 'A \"detector\" that was really detecting its own enclosure.'?", "acceptedAnswer": {"@type": "Answer", "text": "Early wind false alarms traced to the box itself vibrating and coupling noise into the spike. Rigid mounting fixed most of it; the rest is why wind became its own labelled reject class instead of an afterthought."}}, {"@type": "Question", "name": "How do I fix 'Packet storms after adding forwarding.'?", "acceptedAnswer": {"@type": "Answer", "text": "The first mesh build had no dedup, and two forwarding nodes happily retransmitted each other's copies forever. The (src, seq) seen-cache plus the hop limit ended the storms; any flooding protocol needs both from day one."}}, {"@type": "Question", "name": "How do I fix 'Moisture in a \"sealed\" box.'?", "acceptedAnswer": {"@type": "Answer", "text": "Temperature swings pump moist air past a badly seated gland. Properly tightened IP65 glands plus a desiccant pack per box, and a lesson learned: weatherproofing is a system, not a product you buy."}}]}</script>
@@ -138,7 +140,7 @@
 
     <section id="proof">
       <h2>Proof of Build</h2>
-      <img src="../../Prove/Ground%20seismic%20and%20acoustic%20perimeter%20mesh.jpeg" alt="Solar LoRa mesh sensor node v2.1 on the workbench with three labelled geophones, an acoustic microphone, 18650 cells, a small solar panel, and a rugged laptop showing the perimeter common-operating-picture dashboard with ground, air, and water tracks" loading="lazy" width="1408" height="768">
+      <picture><source type="image/avif" srcset="../../Prove/Ground%20seismic%20and%20acoustic%20perimeter%20mesh.avif"><source type="image/webp" srcset="../../Prove/Ground%20seismic%20and%20acoustic%20perimeter%20mesh.webp"><img decoding="async" src="../../Prove/Ground%20seismic%20and%20acoustic%20perimeter%20mesh.jpeg" alt="Solar LoRa mesh sensor node v2.1 on the workbench with three labelled geophones, an acoustic microphone, 18650 cells, a small solar panel, and a rugged laptop showing the perimeter common-operating-picture dashboard with ground, air, and water tracks" loading="lazy" width="1408" height="768"></picture>
       <p class="diagram-label">Sensor node v2.1 on my bench: three labelled geophones and an acoustic microphone wired to the node board, 18650 cells and the small solar panel for power, and my rugged laptop running the perimeter common-operating-picture dashboard with ground, air, and water tracks.</p>
       <p>
         Everything in the photo is purchased and assembled, not a rendering. The node board on the
@@ -150,7 +152,7 @@
 
     <section id="bom">
       <h2>Bill of Materials</h2>
-      <table class="bom-table">
+      <div class="table-scroll"><table class="bom-table">
         <thead><tr><th scope="col">Part</th><th scope="col">Role</th><th scope="col">Details</th><th scope="col" class="bom-cost">Est. US$</th></tr></thead>
         <tbody>
           <tr><td>Node boards</td><td>Mesh radio node</td><td>5 ESP32 LoRa boards, 915 MHz (Heltec V3 / LilyGO T-Beam class)</td><td class="bom-cost">20-40 each</td></tr>
@@ -159,7 +161,7 @@
           <tr><td>Node power</td><td>Unattended field power</td><td>18650 cells, protected holders, small solar panel, charge board, weatherproof box</td><td class="bom-cost">25-40 each</td></tr>
           <tr><td>Gateway</td><td>Mesh sink and dashboard link</td><td>LoRa HAT / gateway board for a Pi</td><td class="bom-cost">40-80</td></tr>
         </tbody>
-      </table>
+      </table></div>
       <p>
         All of it is already bought and on the bench. The 915 MHz detail matters: that is the North
         American ISM band, 868 MHz LoRa parts are for Europe and are not legal to transmit on here.
@@ -245,7 +247,7 @@ flowchart LR
         One node is a small system: sensor front end, radio, and power all meet on the ESP32. This is
         the full connection map for node v2.1 and the gateway.
       </p>
-      <table>
+      <div class="table-scroll"><table>
         <thead><tr><th scope="col">From</th><th scope="col">To</th><th scope="col">Cable or interface</th><th scope="col">Notes</th></tr></thead>
         <tbody>
           <tr><td>ADXL355 breakout</td><td>ESP32 (Heltec V3) GPIO</td><td>SPI: SCK, MISO, MOSI, CS, plus 3V3 and GND on short twisted pairs</td><td>SPI MODE0 only; keep leads under ~15 cm or the bus rings at speed</td></tr>
@@ -259,7 +261,7 @@ flowchart LR
           <tr><td>Pi gateway</td><td>LoRa HAT</td><td>40-pin GPIO header (SPI0)</td><td>Enable SPI via raspi-config; CE/reset pins follow the HAT's docs</td></tr>
           <tr><td>Pi gateway</td><td>MQTT broker</td><td>localhost, broker runs on the same Pi</td><td>Listener bound to 127.0.0.1; the broker is never exposed to the LAN</td></tr>
         </tbody>
-      </table>
+      </table></div>
     </section>
 
     <section id="how-building">
@@ -531,7 +533,7 @@ flowchart TB
         Evidence and targets are kept separate: the "measured to date" column holds only what has
         actually been recorded, and the target column holds what the build is aiming at.
       </p>
-      <table class="viz-results">
+      <div class="table-scroll"><table class="viz-results">
         <thead><tr><th scope="col">Metric</th><th scope="col">Target</th><th scope="col">Measured to date</th><th scope="col">Current status</th></tr></thead>
         <tbody>
           <tr><td>Sampling integrity (T1)</td><td>No dropped samples at 1 kHz sustained</td><td class="viz-measured">No results published yet</td><td>In progress, long-run logging under way</td></tr>
@@ -541,7 +543,7 @@ flowchart TB
           <tr><td>Outage recovery (T6)</td><td>Complete, ordered, deduped replay (at-least-once delivery, effectively-once processing after dedup)</td><td class="viz-measured">No results published yet</td><td>In progress, buffer firmware in bench testing</td></tr>
           <tr><td>Solar endurance (T7)</td><td>Survive a multi-day overcast stretch unattended</td><td class="viz-measured">No results published yet</td><td>Pending, outdoor deployment not yet started</td></tr>
         </tbody>
-      </table>
+      </table></div>
       <p>
         When the labelled runs are complete, the dataset and the confusion matrices land on this page.
         Until then, everything above is protocol and targets, not results.
@@ -606,7 +608,7 @@ flowchart TB
     <section id="what-you-need">
       <h2>What You Need</h2>
 <p>Five nodes on land I control is the target deployment. The skill most people skip is link budgeting: the range survey comes before the classifier, not after.</p>
-      <table>
+      <div class="table-scroll"><table>
         <thead><tr><th scope="col">Category</th><th scope="col">Item</th><th scope="col">Notes</th></tr></thead>
         <tbody>
           <tr><td>Hardware</td><td>ESP32 nodes with LoRa</td><td>Heltec V3-class boards (ESP32 + SX1262), one per node, 915 MHz whips; never power the radio without the antenna attached</td></tr>
@@ -619,7 +621,7 @@ flowchart TB
           <tr><td>Skills</td><td>Embedded C, SPI debugging, RF link basics</td><td>MODE0 discipline, bus ringing on long leads, RSSI/SNR interpretation, soldering</td></tr>
           <tr><td>Accounts</td><td>None</td><td>No accounts or licenses required for a LoRa sensor mesh on 915 MHz</td></tr>
         </tbody>
-      </table>
+      </table></div>
     </section>
 
     <section id="challenges-lessons">
@@ -658,6 +660,6 @@ flowchart TB
   </div>
 </footer>
 <button type="button" class="back-to-top">&uarr; TOP</button>
-<script src="../../js/main.js"></script>
+<script src="../../js/main.js" defer></script>
 </body>
 </html>

@@ -2,9 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#333333">
   <title>Hydrophone Vessel Monitor: Defence Build | TYFSADIK</title>
+  <link rel="preload" as="image" href="../../images/banner-space.jpg">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff" as="font" type="font/woff" crossorigin>
   <meta name="description" content="Dock-mounted hydrophone node that detects and classifies passing vessels from underwater sound, with an RTL-SDR AIS receiver as ground truth, solar powered.">
   <meta name="keywords" content="passive acoustic vessel detection, hydrophone Raspberry Pi, Aquarian hydrophone, AIS ground truth RTL-SDR, rtl_ais, vessel classification spectrogram, librosa audio classification, underwater acoustics Canada, Canadian Arctic Sensor Suite, DRDC Northern Watch, seabed sensor node, marine traffic monitoring">
   <meta name="robots" content="index,follow">
@@ -26,6 +28,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Water: Passive Acoustic Vessel Monitor", "name": "Water: Passive Acoustic Vessel Monitor", "description": "Dock-mounted hydrophone node that detects and classifies passing vessels from underwater sound, with an RTL-SDR AIS receiver as ground truth, solar powered.", "image": "https://tyfsadik.org/Prove/Water%20passive%20acoustic%20vessel%20monitor.jpeg", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "publisher": {"@type": "Organization", "name": "TYFSADIK", "url": "https://tyfsadik.org/"}, "datePublished": "2026-09-30", "inLanguage": "en-CA", "mainEntityOfPage": {"@type": "WebPage", "@id": "https://tyfsadik.org/work/defence/water-passive-acoustic-vessel-monitor.html"}, "keywords": ["passive acoustics", "hydrophone", "vessel classification", "AIS ground truth", "RTL-SDR", "spectrogram", "underwater surveillance", "Canada"]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Build a Passive Acoustic Vessel Monitor","description":"Dock-mounted hydrophone node that detects and classifies passing vessels from underwater sound, using an RTL-SDR AIS receiver as ground truth.","step":[{"@type":"HowToStep","name":"Capture chain: hydrophone to Pi","text":"Connect the hydrophone to a USB audio interface (48 V phantom power for the XLR H2d) and record on a Pi 5 with arecord/sox at 48 kHz (96 kHz exploratory)."},{"@type":"HowToStep","name":"Bench validation in the test tank","text":"Validate the whole chain in a glass test tank with swept tones and recorded vessel signatures before any field deployment."},{"@type":"HowToStep","name":"AIS ground truth receiver","text":"Run rtl_ais/AISdecoder on an RTL-SDR Blog V4 with a 162 MHz marine antenna; log MMSI, position, and timestamps."},{"@type":"HowToStep","name":"Labelling: join AIS tracks to acoustic events","text":"Match each acoustic detection to AIS tracks inside a time window and range gate to build a labelled dataset."},{"@type":"HowToStep","name":"Feature extraction: spectrograms and narrowband lines","text":"Convert audio to mel spectrograms with librosa and track narrowband propeller lines with scipy; radial approach/departure trend from Doppler shift and amplitude envelope (a single hydrophone gives no compass bearing)."},{"@type":"HowToStep","name":"Train and run the classifier on the Pi 5","text":"Train a small scikit-learn classifier on the labelled dataset, split by passage, and run inference on the Pi 5 per detected event."},{"@type":"HowToStep","name":"Field housing and solar power","text":"IP67 box, cable glands, weighted hydrophone assembly; 12 V battery, 30-50 W solar, MPPT controller, and DC-DC buck sized from an estimated power budget (field endurance test pending)."},{"@type":"HowToStep","name":"Store-and-forward over MQTT","text":"Buffer detections and audio snippets on high-endurance storage and sync to the common operating picture over MQTT when the link is up."},{"@type":"HowToStep","name":"Keep the node alive","text":"systemd services with auto-restart, the Pi hardware watchdog, and log rotation so the node survives weeks unattended."},{"@type":"HowToStep","name":"Docking-node extension","text":"Mount the sensor on a small autonomous boat that returns to a dock node to recharge and upload data, the Dalhousie docking-node pattern."}]}</script>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="../../css/style.css">
   <link rel="icon" href="../../favicon.png" type="image/png">
   <link rel="icon" type="image/png" sizes="48x48" href="../../favicon-48.png">
@@ -33,7 +36,6 @@
   <link rel="icon" type="image/png" sizes="16x16" href="../../favicon-16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="../../apple-touch-icon.png">
   <link rel="manifest" href="../../site.webmanifest">
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Defence Builds", "item": "https://tyfsadik.org/work/defence/defence-hardware-program.html"}, {"@type": "ListItem", "position": 3, "name": "Water: Passive Acoustic Vessel Monitor", "item": "https://tyfsadik.org/work/defence/water-passive-acoustic-vessel-monitor.html"}]}</script>
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Mains hum in the tank recordings.'?", "acceptedAnswer": {"@type": "Answer", "text": "The first bench captures showed a hard 60 Hz line with harmonics marching up the low end, a ground loop between the interface, the bench supply, and the tank speaker amp. Fix: power the interface and Pi from the same supply, run the replay speaker on a separate circuit, and use the balanced XLR path end to end. Lesson: measure the noise floor before trusting any tank result."}}, {"@type": "Question", "name": "How do I fix 'ALSA card index shuffles between boots.'?", "acceptedAnswer": {"@type": "Answer", "text": "The interface was hw:1,0 on one boot and hw:2,0 on the next, and the recorder silently captured from the wrong device. Fix: address the card by name (hw:CARD=USBAudio) backed by a udev rule keyed to the USB vendor/product ID. The systemd unit now survives reboots without edits."}}, {"@type": "Question", "name": "How do I fix 'Overruns at 96 kHz with the SDR on the same bus.'?", "acceptedAnswer": {"@type": "Answer", "text": "Capturing at 96 kHz while rtl_ais streamed over the same USB controller produced periodic xrun overruns (bench observation). Fix: a larger ALSA buffer (--buffer-time 200000), the SDR on a different port via a short extension, and a scheduling-priority bump for the recorder. The 48 kHz capture baseline is the defensible rate; 96 kHz stays exploratory."}}, {"@type": "Question", "name": "How do I fix 'Timestamp mismatch between AIS and audio.'?", "acceptedAnswer": {"@type": "Answer", "text": "Early labels were off by minutes because the Pi's clock drifted after sitting offline. Fix: chrony with NTP whenever the uplink exists, plus logging the monotonic clock next to wall time on every event so drift is measurable instead of invisible. Lesson: labelling errors from clock skew look exactly like classifier errors until you check the raw alignment by ear."}}, {"@type": "Question", "name": "How do I fix 'Condensation in the IP67 box.'?", "acceptedAnswer": {"@type": "Answer", "text": "A sealed box on a dock breathes with temperature swings and fogs from the inside. Fix: desiccant packs, a breathable waterproof vent gland, and all cable glands on the bottom face. Cheap insurance, water inside the box ends the node far more reliably than any software bug."}}]}</script>
@@ -138,7 +140,7 @@
 
     <section id="proof">
       <h2>Proof of Build</h2>
-      <img src="../../Prove/Water%20passive%20acoustic%20vessel%20monitor.jpeg" alt="Hydrophone submerged in a glass test tank on the workbench beside a USB audio interface, a Raspberry Pi with RTL-SDR dongle, and a laptop showing live spectrograms and vessel-classification histograms" loading="lazy" width="1376" height="768">
+      <picture><source type="image/avif" srcset="../../Prove/Water%20passive%20acoustic%20vessel%20monitor.avif"><source type="image/webp" srcset="../../Prove/Water%20passive%20acoustic%20vessel%20monitor.webp"><img decoding="async" src="../../Prove/Water%20passive%20acoustic%20vessel%20monitor.jpeg" alt="Hydrophone submerged in a glass test tank on the workbench beside a USB audio interface, a Raspberry Pi with RTL-SDR dongle, and a laptop showing live spectrograms and vessel-classification histograms" loading="lazy" width="1376" height="768"></picture>
       <p class="diagram-label">The rig on my bench: the hydrophone submerged in a glass test tank, the USB audio interface and Pi 5 with the RTL-SDR dongle beside it, and the laptop running live spectrograms and classification histograms.</p>
       <p>
         Nothing here is simulated. The hydrophone sits in the test tank so the full capture chain
@@ -150,7 +152,7 @@
 
     <section id="bom">
       <h2>Bill of Materials</h2>
-      <table class="bom-table">
+      <div class="table-scroll"><table class="bom-table">
         <thead><tr><th scope="col">Part</th><th scope="col">Role</th><th scope="col">Details</th><th scope="col" class="bom-cost">Est. US$</th></tr></thead>
         <tbody>
           <tr><td>Hydrophone</td><td>Underwater ears</td><td>Aquarian H2dM (3.5 mm, needs plug-in power) or H2dX (XLR, needs 48 V phantom); -172 (H2dM) / -165 (H2dX) dB re 1 V/&micro;Pa (&plusmn;4 dB 20 Hz-4 kHz)</td><td class="bom-cost">230-320</td></tr>
@@ -160,7 +162,7 @@
           <tr><td>Housing</td><td>Field survival</td><td>IP67 box, cable glands, hydrophone weight assembly</td><td class="bom-cost">40-70</td></tr>
           <tr><td>Power</td><td>Unattended field power</td><td>12 V battery, 30-50 W solar panel, MPPT controller, DC-DC buck</td><td class="bom-cost">150-250</td></tr>
         </tbody>
-      </table>
+      </table></div>
       <p>All components are already purchased and on my bench. Total lands around US$700-1,000 before tax and shipping.</p>
     </section>
 
@@ -241,7 +243,7 @@ flowchart LR
 
     <section id="wiring">
       <h2>Wiring &amp; Connections</h2>
-      <table>
+      <div class="table-scroll"><table>
         <thead><tr><th scope="col">From</th><th scope="col">To</th><th scope="col">Cable / interface</th><th scope="col">Notes</th></tr></thead>
         <tbody>
           <tr><td>Hydrophone (H2d-XLR)</td><td>USB audio interface, XLR input</td><td>Balanced XLR, 3 m stock cable</td><td>48 V phantom power ON. The H2dM variant is 3.5 mm TRS into a mic input with plug-in power ON instead, phantom OFF.</td></tr>
@@ -255,7 +257,7 @@ flowchart LR
           <tr><td>DC-DC buck</td><td>Pi 5</td><td>Short USB-C cable (or 18 AWG to GPIO 5 V/GND)</td><td>Powering via the header skips PD negotiation; voltage verified at the header pins, not at the buck output.</td></tr>
           <tr><td>Pi 5</td><td>Uplink (MQTT broker)</td><td>Ethernet to a field router, or Wi-Fi</td><td>Optional by design, the node runs fully disconnected and syncs later.</td></tr>
         </tbody>
-      </table>
+      </table></div>
     </section>
 
     <section id="how-building">
@@ -518,7 +520,7 @@ flowchart LR
         Evidence and targets are kept separate: the "measured to date" column holds only what has
         actually been recorded, and the target column holds what the build is aiming at.
       </p>
-      <table class="viz-results">
+      <div class="table-scroll"><table class="viz-results">
         <thead><tr><th scope="col">Run</th><th scope="col">Target</th><th scope="col">Measured to date</th><th scope="col">Current status</th></tr></thead>
         <tbody>
           <tr><td>T1 capture soak</td><td>0 dropped buffers over 12 h</td><td class="viz-measured">Not yet measured</td><td>In progress, overnight soaks running</td></tr>
@@ -527,7 +529,7 @@ flowchart LR
           <tr><td>T4 detection vs AIS</td><td>&ge;80% in-gate passages detected; &lt;2 false events/hour</td><td class="viz-measured">No data, field collection not started</td><td>Not started, awaiting dock deployment</td></tr>
           <tr><td>T5 classifier + sync</td><td>&ge;80% macro recall; 100% backlog delivery on resync</td><td class="viz-measured">No data, needs the T4 dataset</td><td>Not started, needs the T4 dataset</td></tr>
         </tbody>
-      </table>
+      </table></div>
       <p>
         As of writing, T1-T3 are running on the bench and T4-T5 have not started; I will publish the
         dataset and the numbers with each completed run, and I won't quote a detection rate until it
@@ -591,7 +593,7 @@ flowchart LR
     <section id="what-you-need">
       <h2>What You Need</h2>
 <p>The build deliberately avoids anything exotic. The two parts people underestimate are the marine antenna (AIS is short-range VHF and wants height) and the power budget (sized for grey Canadian weeks, not summer days).</p>
-      <table>
+      <div class="table-scroll"><table>
         <thead><tr><th scope="col">Category</th><th scope="col">Item</th><th scope="col">Notes</th></tr></thead>
         <tbody>
           <tr><td>Hardware</td><td>Hydrophone + USB audio interface</td><td>H2d-class hydrophone (XLR needs 48 V phantom, 3.5 mm variant needs none); interface must hold -12 dBFS peaks without clipping</td></tr>
@@ -604,7 +606,7 @@ flowchart LR
           <tr><td>Skills</td><td>Linux audio, basic DSP, RF basics</td><td>ALSA gain staging, reading spectrograms, AIS message structure, power budgeting</td></tr>
           <tr><td>Accounts</td><td>None</td><td>No accounts or licenses required for a receive-only acoustic and AIS receiver</td></tr>
         </tbody>
-      </table>
+      </table></div>
     </section>
 
     <section id="challenges-lessons">
@@ -643,6 +645,6 @@ flowchart LR
   </div>
 </footer>
 <button type="button" class="back-to-top">&uarr; TOP</button>
-<script src="../../js/main.js"></script>
+<script src="../../js/main.js" defer></script>
 </body>
 </html>

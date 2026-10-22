@@ -2,9 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#333333">
   <title>Airspace Deconfliction Manager: Defence Build | TYFSADIK</title>
+  <link rel="preload" as="image" href="../../images/banner-space.jpg">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff" as="font" type="font/woff" crossorigin>
   <meta name="description" content="Small-scale UAS airspace manager: ESP32 tracker beacons, ArduPilot SITL simulated drones, dynamic geofences, predicted-conflict alerts, human override.">
   <meta name="keywords" content="airspace deconfliction, UAS traffic management, UTM Canada, ArduPilot SITL, MAVLink, pymavlink, ESP32 tracker beacon, dynamic geofence, conflict detection, time to closest point of approach, human in the loop, Canadian Army airspace study">
   <meta name="robots" content="index,follow">
@@ -26,6 +28,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Mini Airspace Deconfliction Manager", "name": "Mini Airspace Deconfliction Manager", "description": "Small-scale UAS airspace manager: ESP32 tracker beacons, ArduPilot SITL simulated drones, dynamic geofences, predicted-conflict alerts, human override.", "image": "https://tyfsadik.org/Prove/Mini%20airspace%20deconfliction%20manager.jpeg", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "publisher": {"@type": "Organization", "name": "TYFSADIK", "url": "https://tyfsadik.org/"}, "datePublished": "2026-09-30", "inLanguage": "en-CA", "mainEntityOfPage": {"@type": "WebPage", "@id": "https://tyfsadik.org/work/defence/airspace-deconfliction-manager.html"}, "keywords": ["airspace deconfliction", "UAS traffic management", "ArduPilot SITL", "MAVLink", "ESP32 beacons", "dynamic geofence", "human in the loop"]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Build a Mini Airspace Deconfliction Manager","description":"A small-scale UAS airspace manager that fuses ArduPilot SITL simulated drones and ESP32 tracker beacons, detects predicted conflicts, enforces dynamic geofences, and keeps a human approving every resolution.","step":[{"@type":"HowToStep","name":"Simulated traffic","text":"Run three ArduPilot SITL instances with unique instance offsets and system IDs, each flying an autonomous mission."},{"@type":"HowToStep","name":"MAVLink ingest and track model","text":"Stream telemetry from every instance with pymavlink and fold it into one common track model."},{"@type":"HowToStep","name":"Physical tracker beacons","text":"Flash ESP32 beacons that broadcast stand-in position packets over Wi-Fi UDP."},{"@type":"HowToStep","name":"Beacon ingest and health monitoring","text":"Receive beacon UDP packets, stamp them at ingest, fold them into the track store, and flag stale or jittery beacons."},{"@type":"HowToStep","name":"Conflict engine","text":"Propagate predicted trajectories and compute time-to-closest-approach between every track pair, alerting before separation is lost."},{"@type":"HowToStep","name":"Dynamic geofences","text":"Create, move, and resize 3D keep-in / keep-out volumes live, with immediate violation alerts."},{"@type":"HowToStep","name":"Operator dashboard","text":"Render tracks, geofence volumes, and the advisory alert queue in a web dashboard on the homelab."},{"@type":"HowToStep","name":"Human-in-the-loop resolutions","text":"Propose altitude, hold, or reroute manoeuvres that a human approves before any MAVLink command is sent to an aircraft."},{"@type":"HowToStep","name":"Scripted test cases","text":"Run repeatable conflict scenarios and sign off result sheets logging time-to-alert and resolution quality."},{"@type":"HowToStep","name":"Integration","text":"Publish tracks and alerts into the multi-domain common operating picture over MQTT."}]}</script>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="../../css/style.css">
   <link rel="icon" href="../../favicon.png" type="image/png">
   <link rel="icon" type="image/png" sizes="48x48" href="../../favicon-48.png">
@@ -33,7 +36,6 @@
   <link rel="icon" type="image/png" sizes="16x16" href="../../favicon-16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="../../apple-touch-icon.png">
   <link rel="manifest" href="../../site.webmanifest">
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Defence Builds", "item": "https://tyfsadik.org/work/defence/defence-hardware-program.html"}, {"@type": "ListItem", "position": 3, "name": "Mini Airspace Deconfliction Manager", "item": "https://tyfsadik.org/work/defence/airspace-deconfliction-manager.html"}]}</script>
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Second SITL instance never connected'?", "acceptedAnswer": {"@type": "Answer", "text": "I forgot the -I instance offset, so both instances fought over the same ports and the second one's telemetry silently went nowhere. Fix: unique -I and --sysid per instance, and a heartbeat check in the ingest path that screams instead of waiting forever."}}, {"@type": "Question", "name": "How do I fix 'Beacons dropped packets in bursts'?", "acceptedAnswer": {"@type": "Answer", "text": "the ESP32's default modem sleep batches radio traffic, which made stand-in tracks jump and nearly triggered false conflicts. Fix: WiFi.setSleep(false) in the beacon firmware, confirmed with a packet-gap histogram."}}, {"@type": "Question", "name": "How do I fix 'Alerts flapped at the bubble boundary'?", "acceptedAnswer": {"@type": "Answer", "text": "a single-sample threshold raised and cleared the same conflict several times a second as telemetry jittered. Fix: require three consecutive violating predictions to raise, and a clear margin to release, classic hysteresis."}}, {"@type": "Question", "name": "How do I fix 'Predictions were useless at default telemetry rates'?", "acceptedAnswer": {"@type": "Answer", "text": "SITL streams position slowly unless asked, and 1 Hz updates made TCPA estimates jump around. Fix: request GLOBAL_POSITION_INT at 10 Hz with MAV_CMD_SET_MESSAGE_INTERVAL on connect."}}, {"@type": "Question", "name": "How do I fix '\"Repeatable\" scenarios were not repeatable'?", "acceptedAnswer": {"@type": "Answer", "text": "SITL kept leftover waypoints and parameters between runs, so run 2 never matched run 1. Fix: the harness restarts instances and wipes state (sim_vehicle.py -w) before every run."}}]}</script>
@@ -138,13 +140,13 @@
 
     <section id="proof">
       <h2>Proof of Build</h2>
-      <img src="../../Prove/Mini%20airspace%20deconfliction%20manager.jpeg" alt="Airspace manager workbench with three labelled ESP32 tracker beacons, a breadboarded controller with an OLED display, signed test-case sheets, and a laptop running ArduPilot showing 3D dynamic geofence volumes with a conflict alert on a drone track" loading="lazy" width="1408" height="768">
+      <picture><source type="image/avif" srcset="../../Prove/Mini%20airspace%20deconfliction%20manager.avif"><source type="image/webp" srcset="../../Prove/Mini%20airspace%20deconfliction%20manager.webp"><img decoding="async" src="../../Prove/Mini%20airspace%20deconfliction%20manager.jpeg" alt="Airspace manager workbench with three labelled ESP32 tracker beacons, a breadboarded controller with an OLED display, signed test-case sheets, and a laptop running ArduPilot showing 3D dynamic geofence volumes with a conflict alert on a drone track" loading="lazy" width="1408" height="768"></picture>
       <p class="diagram-label">The bench as it sits today: three labelled ESP32 tracker beacons, the breadboarded controller with its OLED status display, the signed test-case result sheets, and the laptop running ArduPilot SITL with 3D geofence volumes and a live conflict alert on a drone track.</p>
     </section>
 
     <section id="bom">
       <h2>Bill of Materials</h2>
-      <table class="bom-table">
+      <div class="table-scroll"><table class="bom-table">
         <thead><tr><th scope="col">Item</th><th scope="col">What I used</th><th scope="col">Est. US$</th></tr></thead>
         <tbody>
           <tr><td>Beacons</td><td>3 cheap ESP32 boards (tracker beacons)</td><td>6-12 each</td></tr>
@@ -152,7 +154,7 @@
           <tr><td>Compute</td><td>Existing laptop / homelab node</td><td>0</td></tr>
           <tr><td>Display/UI</td><td>Web dashboard on the homelab</td><td>0</td></tr>
         </tbody>
-      </table>
+      </table></div>
       <p>
         This is deliberately the cheapest build in the program: the point is that deconfliction is a
         software and doctrine problem, not a hardware procurement. The ESP32s were already in the
@@ -166,7 +168,7 @@
         There is very little copper in this build, most of the "wiring" is UDP sockets, but the
         few physical and logical links all have to be right or the track picture goes stale silently:
       </p>
-      <table>
+      <div class="table-scroll"><table>
         <thead><tr><th scope="col">From</th><th scope="col">To</th><th scope="col">Cable or interface</th><th scope="col">Notes</th></tr></thead>
         <tbody>
           <tr><td>ESP32 beacons (x3)</td><td>Bench Wi-Fi access point</td><td>2.4 GHz Wi-Fi (WPA2), UDP to manager :5005</td><td>Position packets at 5 Hz; static DHCP lease per beacon MAC so IDs survive reboots</td></tr>
@@ -177,7 +179,7 @@
           <tr><td>Manager</td><td>MQTT broker (homelab)</td><td>TCP 1883</td><td><code>cop/air/*</code> topics, QoS 1; integration feed for the common operating picture</td></tr>
           <tr><td>Operator browser</td><td>Dashboard backend</td><td>HTTP :8080 + WebSocket on the LAN</td><td>Leaflet map UI; 2 Hz state push, no full-history resend</td></tr>
         </tbody>
-      </table>
+      </table></div>
     </section>
 
     <section id="architecture">
@@ -637,7 +639,7 @@ def on_alert(alert):
       </p>
 
       <h3>Targets and Current Status</h3>
-      <table>
+      <div class="table-scroll"><table>
         <thead><tr><th scope="col">Metric</th><th scope="col">Target</th><th scope="col">Current status</th></tr></thead>
         <tbody>
           <tr><td>Time-to-alert margin (Runs 1-2)</td><td>Alert at least 30 s before predicted separation loss</td><td>In progress, harness runs, sheets being filled</td></tr>
@@ -646,7 +648,7 @@ def on_alert(alert):
           <tr><td>Geofence edit-to-enforcement (Run 3)</td><td>Next track update (1 s or less)</td><td>In progress</td></tr>
           <tr><td>Stale-track detection (Run 5)</td><td>Flag within 2 s of the last beacon packet</td><td>In progress</td></tr>
         </tbody>
-      </table>
+      </table></div>
       <p>
         No results are published yet: the scenario harness runs and the result sheets are being
         filled in, but numbers go up only when every scripted case has been run repeatedly and the
@@ -713,7 +715,7 @@ def on_alert(alert):
     <section id="what-you-need">
       <h2>What You Need</h2>
 <p>The cheapest build in the program on purpose: deconfliction is a software and doctrine problem, not a hardware procurement. The only real cost is compute you already own.</p>
-      <table>
+      <div class="table-scroll"><table>
         <thead><tr><th scope="col">Category</th><th scope="col">Item</th><th scope="col">Notes</th></tr></thead>
         <tbody>
           <tr><td>Hardware</td><td>3 ESP32 tracker beacons</td><td>Cheap boards as live RF stand-ins; disable modem sleep in the firmware</td></tr>
@@ -724,7 +726,7 @@ def on_alert(alert):
           <tr><td>Skills</td><td>Python, MAVLink basics, software testing</td><td>Scenario design, hysteresis tuning, disciplined repeatable test harnesses</td></tr>
           <tr><td>Accounts</td><td>None</td><td>No accounts or licenses required</td></tr>
         </tbody>
-      </table>
+      </table></div>
     </section>
 
     <section id="challenges-lessons">
@@ -763,6 +765,6 @@ def on_alert(alert):
   </div>
 </footer>
 <button type="button" class="back-to-top">&uarr; TOP</button>
-<script src="../../js/main.js"></script>
+<script src="../../js/main.js" defer></script>
 </body>
 </html>

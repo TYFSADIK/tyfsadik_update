@@ -2,9 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#333333">
   <title>Secure Robot Fleet Updates: TPM 2.0 OTA | TYFSADIK</title>
+  <link rel="preload" as="image" href="../../images/banner-space.jpg">
+  <link rel="preload" href="../../fonts/DepartureMono-Regular.woff" as="font" type="font/woff" crossorigin>
   <meta name="description" content="Secure boot, TPM 2.0 measured boot, YubiKey-signed over-the-air updates, and automatic A/B rollback for a small robot fleet, tested in a cold chamber.">
   <meta name="keywords" content="secure boot Raspberry Pi, TPM 2.0 measured boot, YubiKey Ed25519 signing, secure OTA updates, RAUC A/B rollback, Mender, cosign image signing, syft SBOM, supply chain security, robot fleet management, LUKS TPM sealing, Defence Drone Initiative">
   <meta name="robots" content="index,follow">
@@ -26,6 +28,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Secure Robot-Fleet Updates", "name": "Secure Robot-Fleet Updates", "description": "Secure boot, TPM 2.0 measured boot, YubiKey-signed over-the-air updates, and automatic A/B rollback for a small robot fleet, tested in a cold chamber.", "image": "https://tyfsadik.org/Prove/Secure%20robot-fleet%20updates.jpeg", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "publisher": {"@type": "Organization", "name": "TYFSADIK", "url": "https://tyfsadik.org/"}, "datePublished": "2026-09-30", "inLanguage": "en-CA", "mainEntityOfPage": {"@type": "WebPage", "@id": "https://tyfsadik.org/work/defence/secure-fleet-updates.html"}, "keywords": ["secure boot", "TPM 2.0 measured boot", "YubiKey Ed25519", "secure OTA", "A/B rollback", "SBOM", "supply-chain integrity", "Defence Drone Initiative"]}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Secure Robot-Fleet Updates","description":"Build a robot fleet that boots only signed code, accepts only updates signed by an offline key, and rolls a bad update back automatically.","step":[{"@type":"HowToStep","name":"Secure boot chain on the Pi","text":"Enable Raspberry Pi secure boot with a signed bootloader and kernel so unsigned code never executes; program the public key hash into OTP."},{"@type":"HowToStep","name":"Wire up the TPM 2.0 module","text":"Attach the TPM 2.0 board to the Pi's SPI header, enable the device-tree overlay, and confirm the kernel enumerates the device."},{"@type":"HowToStep","name":"Measured boot with PCRs","text":"Record each boot stage in TPM PCRs and verify the event log matches the expected measurement chain."},{"@type":"HowToStep","name":"Seal disk encryption keys to the TPM","text":"Encrypt the root filesystem with LUKS and seal the key to the measured state so a tampered image cannot decrypt user data."},{"@type":"HowToStep","name":"Signing keys on YubiKeys","text":"Generate Ed25519 signing keys on a YubiKey with an offline backup key, so private key material never touches a networked machine."},{"@type":"HowToStep","name":"SBOM and signature verification","text":"Generate an SBOM with syft for every image, sign the digest offline, and verify cosign-style before any node installs."},{"@type":"HowToStep","name":"RAUC A/B partitions and bundles","text":"Lay out A/B rootfs slots and package updates as signed RAUC bundles that write only to the inactive slot."},{"@type":"HowToStep","name":"Health-check gate and automatic rollback","text":"Boot a new image once on trial; a systemd health gate marks the slot good or the bootloader falls back to last-known-good."},{"@type":"HowToStep","name":"Fleet server identity, policy, campaigns","text":"Enrol each node with a per-device certificate and run targeted, auditable update campaigns from the homelab."},{"@type":"HowToStep","name":"Store-and-forward delivery on degraded links","text":"Queue bundles server-side and resume partial downloads node-side so offline nodes never miss a campaign."},{"@type":"HowToStep","name":"Cold-chamber validation","text":"Apply and roll back updates with the target at freezer temperatures, because flash and SD cards behave differently in the cold."},{"@type":"HowToStep","name":"Chaos tests","text":"Corrupt an image mid-transfer and kill power mid-flash, then prove the device always returns to a signed, working state."}]}</script>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="../../css/style.css">
   <link rel="icon" href="../../favicon.png" type="image/png">
   <link rel="icon" type="image/png" sizes="48x48" href="../../favicon-48.png">
@@ -33,7 +36,6 @@
   <link rel="icon" type="image/png" sizes="16x16" href="../../favicon-16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="../../apple-touch-icon.png">
   <link rel="manifest" href="../../site.webmanifest">
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Defence Builds", "item": "https://tyfsadik.org/work/defence/defence-hardware-program.html"}, {"@type": "ListItem", "position": 3, "name": "Secure Robot-Fleet Updates", "item": "https://tyfsadik.org/work/defence/secure-fleet-updates.html"}]}</script>
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'TPM never enumerated.'?", "acceptedAnswer": {"@type": "Answer", "text": "The module sat silently on the header with no /dev/tpm0. The scope showed no clock on SCLK, SPI itself was off, and my first overlay name didn't match the chip. Fix: dtparam=spi=on plus the correct dtoverlay=tpm-slb9670 for the SLB9670-class board, confirmed with dmesg | grep -i tpm. Lesson: debug the bus before blaming the chip."}}, {"@type": "Question", "name": "How do I fix 'I locked my own node out of its disk.'?", "acceptedAnswer": {"@type": "Answer", "text": "A legitimate kernel update changed the PCR measurements, the TPM refused to unseal, and the node couldn't decrypt its own rootfs after a perfectly valid update. Fix: the offline recovery passphrase (separate LUKS keyslot, stored offline), and re-sealing the TPM policy is now an explicit step in the update pipeline, run with every build."}}, {"@type": "Question", "name": "How do I fix 'OTP is one-way, and I knew it could still surprise me.'?", "acceptedAnswer": {"@type": "Answer", "text": "Programming the secure-boot key hash into OTP cannot be undone, a mistake there turns a Pi into a paperweight. Fix: rehearsed the entire sign-flash-boot cycle three times on a second, un-programmed board first, and only burned OTP after three clean reject-and-accept cycles."}}, {"@type": "Question", "name": "How do I fix 'A cheap SD card died during power-cut rehearsals.'?", "acceptedAnswer": {"@type": "Answer", "text": "Random mid-flash power cuts are exactly what consumer cards hate; the card, not the update mechanism, was the weak point. Fix: high-endurance cards from the Phase 0 kit, and the A/B layout means even a failed slot write never touches the running system."}}, {"@type": "Question", "name": "How do I fix 'Condensation in the freezer.'?", "acceptedAnswer": {"@type": "Answer", "text": "The first cold run ended with a damp node that I was not about to power up. Fix: the node now goes into and out of the freezer in a sealed bag and warms to room temperature before power-up, the same discipline as never charging a cold battery. Conformal coating is on the list for nodes that will live outdoors."}}]}</script>
@@ -136,7 +138,7 @@
 
     <section id="proof">
       <h2>Proof of Build</h2>
-      <img src="../../Prove/Secure%20robot-fleet%20updates.jpeg" alt="Secure robot controller board wired to a TPM 2.0 module on the workbench with an oscilloscope and a laptop showing a verified secure-boot log, TPM integrity status, and an automated rollback interface" loading="lazy" width="1408" height="768">
+      <picture><source type="image/avif" srcset="../../Prove/Secure%20robot-fleet%20updates.avif"><source type="image/webp" srcset="../../Prove/Secure%20robot-fleet%20updates.webp"><img decoding="async" src="../../Prove/Secure%20robot-fleet%20updates.jpeg" alt="Secure robot controller board wired to a TPM 2.0 module on the workbench with an oscilloscope and a laptop showing a verified secure-boot log, TPM integrity status, and an automated rollback interface" loading="lazy" width="1408" height="768"></picture>
       <p class="diagram-label">The rig on my bench: a Raspberry Pi fleet node wired to its TPM 2.0 module, with the oscilloscope alongside and the laptop showing a verified secure-boot log, TPM integrity status, and the rollback interface after a forced bad-update test.</p>
     </section>
 
@@ -147,7 +149,7 @@
         with the rover and sensor builds, so the incremental cost of making the whole fleet
         trustworthy is essentially the TPM and the keys.
       </p>
-      <table class="bom-table">
+      <div class="table-scroll"><table class="bom-table">
         <thead><tr><th scope="col">Item</th><th scope="col">What I used</th><th scope="col">Est. US$</th></tr></thead>
         <tbody>
           <tr><td>TPM</td><td>TPM 2.0 add-on board for the Pi</td><td>25-40</td></tr>
@@ -155,7 +157,7 @@
           <tr><td>Targets</td><td>Raspberry Pi fleet nodes from the rover/sensor builds</td><td>(shared)</td></tr>
           <tr><td>Cold chamber</td><td>Canadian winter (free) or chest freezer (shared with the cold-soak rig)</td><td>0-300</td></tr>
         </tbody>
-      </table>
+      </table></div>
     </section>
 
     <section id="architecture">
@@ -293,7 +295,7 @@ flowchart LR
         The hardware side of this build is deliberately boring, most of the security lives in
         software. What is physically connected, and why:
       </p>
-      <table>
+      <div class="table-scroll"><table>
         <thead><tr><th scope="col">From</th><th scope="col">To</th><th scope="col">Cable or interface</th><th scope="col">Notes</th></tr></thead>
         <tbody>
           <tr><td>TPM 2.0 module (Infineon SLB9670)</td><td>Pi 5 GPIO header</td><td>SPI0: MOSI/MISO/SCLK on GPIO 9/10/11, CE0 on GPIO 8, 3.3 V + GND</td><td>Module seats directly on the header; keep leads short so the SPI clock stays clean</td></tr>
@@ -304,7 +306,7 @@ flowchart LR
           <tr><td>Fleet server (homelab)</td><td>Fleet nodes</td><td>Ethernet on the bench, Wi-Fi in the field</td><td>Campaigns over TLS; nodes resume partial downloads when the link drops</td></tr>
           <tr><td>YubiKey (root signing key)</td><td>Offline signing laptop</td><td>USB</td><td>Never plugged into a networked machine; signed bundles cross to the server on removable media</td></tr>
         </tbody>
-      </table>
+      </table></div>
     </section>
 
     <section id="how-building">
@@ -598,7 +600,7 @@ rauc status --output-format=shell | grep -E "BOOTED|GOOD"</code></pre>
       </ul>
 
       <h3>Targets and current status</h3>
-      <table>
+      <div class="table-scroll"><table>
         <thead><tr><th scope="col">Test</th><th scope="col">Target</th><th scope="col">Current status</th></tr></thead>
         <tbody>
           <tr><td>T1 Boot-chain rejection</td><td>0 of 3 bad variants boot</td><td>Passing on the bench rig</td></tr>
@@ -608,7 +610,7 @@ rauc status --output-format=shell | grep -E "BOOTED|GOOD"</code></pre>
           <tr><td>T5 Cold matrix</td><td>Identical outcomes at room, -20 &deg;C, warm-up</td><td>In progress, first freezer runs logged</td></tr>
           <tr><td>T6 Fault injection</td><td>100% signed, working state after every fault</td><td>Next, corruption path verified, power-cut battery not yet run</td></tr>
         </tbody>
-      </table>
+      </table></div>
       <p>
         Full numbers (campaign counts, rollback rates, cold-vs-warm comparison) will be published
         once the matrix has accumulated enough runs to mean something. Nothing above is a final
@@ -666,7 +668,7 @@ rauc status --output-format=shell | grep -E "BOOTED|GOOD"</code></pre>
     <section id="what-you-need">
       <h2>What You Need</h2>
 <p>The fleet nodes are shared with the rover and sensor builds, so the incremental cost of trust is essentially the TPM and the keys. The scarcest resource is the discipline to rehearse destructive operations on a spare board.</p>
-      <table>
+      <div class="table-scroll"><table>
         <thead><tr><th scope="col">Category</th><th scope="col">Item</th><th scope="col">Notes</th></tr></thead>
         <tbody>
           <tr><td>Hardware</td><td>TPM 2.0 add-on board</td><td>SLB9670-class for the Pi; enumerate with the correct dtoverlay before blaming the chip</td></tr>
@@ -679,7 +681,7 @@ rauc status --output-format=shell | grep -E "BOOTED|GOOD"</code></pre>
           <tr><td>Skills</td><td>Linux boot process, LUKS, TPM basics</td><td>Understanding measured boot and PCR fragility, key management hygiene</td></tr>
           <tr><td>Accounts</td><td>None</td><td>No accounts or licenses required</td></tr>
         </tbody>
-      </table>
+      </table></div>
     </section>
 
     <section id="challenges-lessons">
@@ -719,6 +721,6 @@ rauc status --output-format=shell | grep -E "BOOTED|GOOD"</code></pre>
   </div>
 </footer>
 <button type="button" class="back-to-top">&uarr; TOP</button>
-<script src="../../js/main.js"></script>
+<script src="../../js/main.js" defer></script>
 </body>
 </html>

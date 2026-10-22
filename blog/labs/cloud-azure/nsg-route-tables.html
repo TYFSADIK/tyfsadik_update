@@ -2,9 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#333333">
   <title>Azure NSGs &amp; Route Tables: Traffic Control | TYFSADIK</title>
+  <link rel="preload" as="image" href="../../../images/banner-space.jpg">
+  <link rel="preload" href="../../../fonts/DepartureMono-Regular.woff" as="font" type="font/woff" crossorigin>
   <meta name="description" content="Control Azure traffic with NSGs and route tables: priority-ordered allow rules, user-defined routes via a firewall, and verifying effective rules and routes.">
   <meta name="keywords" content="Azure NSG, network security group, UDR, user defined routes, effective routes, Azure firewall">
   <meta name="author" content="MD. Taki Yasir Faraji Sadik">
@@ -24,6 +26,7 @@
   <meta name="twitter:description" content="Control Azure traffic with NSGs and route tables: priority-ordered allow rules, user-defined routes via a firewall, and verifying effective rules and routes.">
   <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
   <link rel="canonical" href="https://tyfsadik.org/blog/labs/cloud-azure/nsg-route-tables.html">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="../../../css/style.css">
   <link rel="icon" href="../../../favicon.png" type="image/png">
   <link rel="icon" type="image/png" sizes="48x48" href="../../../favicon-48.png">
@@ -31,7 +34,6 @@
   <link rel="icon" type="image/png" sizes="16x16" href="../../../favicon-16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="../../../apple-touch-icon.png">
   <link rel="manifest" href="../../../site.webmanifest">
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Azure NSGs and User-Defined Route Tables", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-03-09", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "Azure CLI, NSG, UDR", "articleSection": "Cloud", "learningResourceType": "Hands-on lab", "teaches": "Microsoft Azure cloud services"}</script>
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "HowTo", "name": "Azure NSGs & Route Tables | Traffic Control", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"}, "step": [{"@type": "HowToStep", "name": "Create an NSG allow rule", "url": "https://tyfsadik.org/blog/labs/cloud-azure/nsg-route-tables.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Create a UDR forcing traffic via a firewall", "url": "https://tyfsadik.org/blog/labs/cloud-azure/nsg-route-tables.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Inspect effective rules and routes", "url": "https://tyfsadik.org/blog/labs/cloud-azure/nsg-route-tables.html#step-by-step-execution"}]}</script>
 
@@ -124,7 +126,7 @@ graph LR
       <p><strong>You will need:</strong> a VNet with at least two subnets and the Azure CLI.</p>
       <p><strong>Before you begin:</strong> NSG rules are evaluated by priority, lowest number first.</p>
       <p>The lab assumes this layout. If your VNet differs, keep the names consistent or adjust every command, most "the rule does nothing" bugs in this lab are really "I edited the wrong subnet's NSG" bugs.</p>
-      <table>
+      <div class="table-scroll"><table>
         <thead><tr><th scope="col">Resource</th><th scope="col">Name</th><th scope="col">Address / Role</th></tr></thead>
         <tbody>
           <tr><td>Resource group</td><td><code>lab-rg</code></td><td>Holds everything; commands below rely on CLI defaults</td></tr>
@@ -133,7 +135,7 @@ graph LR
           <tr><td>App subnet</td><td><code>app-subnet</code></td><td><code>10.0.2.0/24</code>, gets the route table</td></tr>
           <tr><td>Firewall subnet</td><td><code>fw-subnet</code></td><td><code>10.0.3.0/24</code>, NVA at <code>10.0.3.4</code></td></tr>
         </tbody>
-      </table>
+      </table></div>
       <p>Sign in and pin CLI defaults so the commands below can use short <code>-n</code> flags without repeating <code>--resource-group</code> every time. This also makes the one-line command blocks throughout the page work as written.</p>
       <p class="code-label">SIGN IN AND SET CLI DEFAULTS</p>
       <pre><code>az login
@@ -166,7 +168,7 @@ az vm create -n fw01 --image Ubuntu2204 --size Standard_B2s \
           <div class="command-block" data-copy><div class="command"><code>az network nsg create -n web-nsg &amp;&amp; az network nsg rule create --nsg-name web-nsg -n allow-https --priority 100 --destination-port-ranges 443 --access Allow --protocol Tcp</code></div></div>
           <p>WHAT: this creates the NSG itself, then adds an inbound rule named <code>allow-https</code> at priority 100 permitting TCP traffic to destination port 443. WHY priority 100: Azure reserves 65000-65500 for its default rules and 100-4096 is the usable band for your own. Starting your most specific allow at 100 leaves room above it for even-more-specific exceptions later, and keeps it well ahead of the final <code>DenyAllInBound</code> at 65500. Priority ordering is the whole game, a rule that never gets evaluated because a broader rule matched first is indistinguishable from a rule that does not exist.</p>
           <p>Every new NSG comes with three inbound defaults you did not write: <code>AllowVNetInBound</code> (65000), <code>AllowAzureLoadBalancerInBound</code> (65001), and <code>DenyAllInBound</code> (65500), plus a mirrored set for outbound. Your allow rule only has to land below 65000 in number to beat the catch-all deny. The full default set, for reference:</p>
-          <table>
+          <div class="table-scroll"><table>
             <thead><tr><th scope="col">Default rule</th><th scope="col">Priority</th><th scope="col">Direction</th><th scope="col">Effect</th></tr></thead>
             <tbody>
               <tr><td><code>AllowVNetInBound</code></td><td>65000</td><td>Inbound</td><td>Allows any traffic originating inside the VNet</td></tr>
@@ -176,7 +178,7 @@ az vm create -n fw01 --image Ubuntu2204 --size Standard_B2s \
               <tr><td><code>AllowInternetOutBound</code></td><td>65001</td><td>Outbound</td><td>Allows all outbound internet traffic</td></tr>
               <tr><td><code>DenyAllOutBound</code></td><td>65500</td><td>Outbound</td><td>Catch-all deny for everything else outbound</td></tr>
             </tbody>
-          </table>
+          </table></div>
           <p>You cannot delete these defaults, you can only override them with lower-numbered rules, which is exactly what the lab does. For least privilege, also add an explicit deny for management ports from the internet so the intent is documented in the rule list, not just implied by the catch-all.</p>
           <p class="code-label">FULL RULE SET, allow 443, explicitly deny management ports</p>
           <pre><code>az network nsg rule create --nsg-name web-nsg -n allow-https \
@@ -249,7 +251,7 @@ Name         AddressPrefix    NextHopType       NextHopIpAddress
 to-firewall  0.0.0.0/0        VirtualAppliance  10.1.1.4</code></pre>
           <p>Two things to notice in the baseline. The <code>Default 0.0.0.0/0 -&gt; Internet</code> line is the route your UDR is about to replace, after association, the same command shows that prefix sourced as <code>User</code> with the appliance as next hop. And the three RFC 1918 <code>None</code> routes outside your VNet's range are deliberate blackholes: Azure drops private-range traffic that does not belong to the VNet, which is why peered or on-prem networks need explicit routes rather than goodwill.</p>
           <p>Choosing the next-hop type is the design decision in any UDR. The five options:</p>
-          <table>
+          <div class="table-scroll"><table>
             <thead><tr><th scope="col">Next-hop type</th><th scope="col">What it means</th><th scope="col">Typical use</th></tr></thead>
             <tbody>
               <tr><td><code>VirtualAppliance</code></td><td>A specific IP of an NVA (firewall, IDS, proxy)</td><td>This lab, forced inspection</td></tr>
@@ -258,7 +260,7 @@ to-firewall  0.0.0.0/0        VirtualAppliance  10.1.1.4</code></pre>
               <tr><td><code>None</code></td><td>Blackhole, drop matching traffic</td><td>Deliberately kill a flow path</td></tr>
               <tr><td><code>VnetLocal</code></td><td>Stay inside the VNet</td><td>Exempt intra-VNet traffic from a gateway override</td></tr>
             </tbody>
-          </table>
+          </table></div>
           <p>If the VNet is peered to an on-premises network over ExpressRoute or VPN, one more flag matters: BGP route propagation. A gateway can advertise routes (including a <code>0.0.0.0/0</code> from your on-prem edge) that would compete with your UDRs. Creating the table with propagation disabled makes the subnet deaf to those advertisements, so your UDRs are the only user intent in play:</p>
           <p class="code-label">HYBRID BONUS, create the table deaf to BGP advertisements</p>
           <pre><code>az network route-table create -n rt-app --disable-bgp-route-propagation true</code></pre>
@@ -340,7 +342,7 @@ graph LR
 
     <section><h2 id="nsg-vs-udr-which-tool-for-which-job">NSG vs UDR: Which Tool for Which Job</h2>
       <p>By this point both mechanisms are in place, and it is worth stating the division of labor explicitly because real designs mix them up constantly. If you are asking "should this be blocked?", you are writing an NSG rule. If you are asking "which path should this take?", you are writing a route. Neither can do the other's job: a UDR cannot drop a packet by policy (a <code>None</code> next hop drops by routing, not by 5-tuple), and an NSG cannot redirect a packet anywhere, allowed traffic follows the route table, always.</p>
-      <table>
+      <div class="table-scroll"><table>
         <thead><tr><th scope="col">Question</th><th scope="col">Tool</th><th scope="col">Knob</th></tr></thead>
         <tbody>
           <tr><td>May the internet reach the web tier on 443?</td><td>NSG</td><td>Inbound allow rule, priority 100</td></tr>
@@ -349,7 +351,7 @@ graph LR
           <tr><td>Does a specific prefix bypass the tunnel?</td><td>Route table</td><td>More-specific UDR with <code>Internet</code> next hop</td></tr>
           <tr><td>Which combination is actually in effect?</td><td>Both</td><td>Effective rules / effective routes on the NIC</td></tr>
         </tbody>
-      </table>
+      </table></div>
     </section>
 
     <section><h2 id="how-it-works">How It Works</h2>
@@ -413,13 +415,13 @@ az network watcher flow-log create -n lab-vnet-flowlog \
     </section>
 <section><h2 id="troubleshooting">Troubleshooting</h2>
 <p>Quick-reference for the failures you are most likely to hit in this lab.</p>
-<table class="lab-table"><thead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">Fix</th></tr></thead><tbody>
+<div class="table-scroll"><table class="lab-table"><thead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">Fix</th></tr></thead><tbody>
 <tr><td>New allow rule has no effect</td><td>A lower-priority deny or a default rule matches first; rules evaluate by priority number</td><td>Open effective security rules and find which rule actually matched the traffic.</td></tr>
 <tr><td>VM unreachable after adding a UDR</td><td>The route points at a next hop that does not forward</td><td>Verify the appliance IP is correct and that IP forwarding is enabled on the firewall NIC.</td></tr>
 <tr><td>Traffic blackholed to nowhere</td><td>A <code>0.0.0.0/0</code> route with a wrong next-hop IP</td><td>Fix the next hop or remove the route; check effective routes before and after.</td></tr>
 <tr><td>Return traffic fails</td><td>Asymmetric routing: the reply takes a different path than the request</td><td>Trace both directions; the forward path working does not prove the reverse path.</td></tr>
 <tr><td>Changes take minutes to apply</td><td>Control-plane propagation delay across the fabric</td><td>Wait a few minutes and re-check effective rules before concluding the change failed.</td></tr>
-</tbody></table>
+</tbody></table></div>
 </section>
 
     
@@ -489,6 +491,6 @@ az network watcher flow-log create -n lab-vnet-flowlog \
 </main>
 <footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener noreferrer">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener noreferrer">LinkedIn</a></div></div></footer>
 <button type="button" class="back-to-top">&uarr; TOP</button>
-<script src="../../../js/main.js"></script>
+<script src="../../../js/main.js" defer></script>
 </body>
 </html>

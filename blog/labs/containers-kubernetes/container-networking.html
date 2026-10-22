@@ -2,9 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#333333">
   <title>Container Networking: Bridge, DNS &amp; Isolation | TYFSADIK</title>
+  <link rel="preload" as="image" href="../../../images/banner-space.jpg">
+  <link rel="preload" href="../../../fonts/DepartureMono-Regular.woff" as="font" type="font/woff" crossorigin>
   <meta name="description" content="Master Docker networking hands-on: user-defined bridges, embedded DNS, container-to-container connectivity, isolation tests, and publishing only what you must.">
   <meta name="keywords" content="Docker networking, bridge network, container DNS, network isolation, docker network, port publishing">
   <meta name="author" content="MD. Taki Yasir Faraji Sadik">
@@ -24,6 +26,7 @@
   <meta name="twitter:description" content="Master Docker networking hands-on: user-defined bridges, embedded DNS, container-to-container connectivity, isolation tests, and publishing only what you must.">
   <meta name="twitter:image" content="https://tyfsadik.org/images/banner-space.jpg">
   <link rel="canonical" href="https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="../../../css/style.css">
   <link rel="icon" href="../../../favicon.png" type="image/png">
   <link rel="icon" type="image/png" sizes="48x48" href="../../../favicon-48.png">
@@ -31,7 +34,6 @@
   <link rel="icon" type="image/png" sizes="16x16" href="../../../favicon-16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="../../../apple-touch-icon.png">
   <link rel="manifest" href="../../../site.webmanifest">
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Docker Container Networking and Isolation", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-02-07", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "Docker 24.x, bridge networks", "articleSection": "Containers", "learningResourceType": "Hands-on lab", "teaches": "containers and Kubernetes"}</script>
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "HowTo", "name": "Container Networking | Bridges, DNS & Isolation", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"}, "step": [{"@type": "HowToStep", "name": "Create a user-defined network", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Attach containers to it", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Resolve by name from the app", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Inspect the bridge", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Test app-to-database connectivity", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Create a second, isolated network", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Prove isolation from the outsider", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Expose only the frontend", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html#step-by-step-execution"}, {"@type": "HowToStep", "name": "Clean up", "url": "https://tyfsadik.org/blog/labs/containers-kubernetes/container-networking.html#step-by-step-execution"}]}</script>
 
@@ -449,13 +451,13 @@ other-net</code></pre>
       </ul>
     
 <p>Quick-reference for the failures you are most likely to hit in this lab.</p>
-<table class="lab-table"><thead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">Fix</th></tr></thead><tbody>
+<div class="table-scroll"><table class="lab-table"><thead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">Fix</th></tr></thead><tbody>
 <tr><td>Name resolution fails between containers</td><td>Containers are on the default bridge, which has no embedded DNS</td><td>Create a user-defined network and attach both containers to it.</td></tr>
 <tr><td>Connection refused on a published port</td><td>The app listens on localhost inside the container, or the port mapping is wrong</td><td>Check <code>docker ps</code> for the mapping and make the app bind <code>0.0.0.0</code>.</td></tr>
 <tr><td>Isolation test unexpectedly succeeds</td><td>Both containers are still attached to the first network</td><td>Inspect each container's networks; a container can hold memberships in several.</td></tr>
 <tr><td>Subnet overlap errors</td><td>Docker's chosen subnet collides with your LAN or VPN</td><td>Create the network with an explicit <code>--subnet</code> outside your ranges.</td></tr>
 <tr><td>DNS queries are slow</td><td>The embedded DNS forwarder struggling with the host resolver</td><td>Check the container's <code>/etc/resolv.conf</code>; it should point at 127.0.0.11.</td></tr>
-</tbody></table>
+</tbody></table></div>
 </section>
 
     <section><h2 id="extension-ideas">Extension Ideas</h2>
@@ -505,6 +507,6 @@ other-net</code></pre>
 </main>
 <footer class="footer"><div class="footer-inner"><span>&copy; 2026 MD. Taki Yasir Faraji Sadik</span><div class="footer-links"><a href="mailto:taki@tyfsadik.org">taki@tyfsadik.org</a><a href="https://github.com/TYFSADIK" target="_blank" rel="noopener noreferrer">GitHub</a><a href="https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/" target="_blank" rel="noopener noreferrer">LinkedIn</a></div></div></footer>
 <button type="button" class="back-to-top">&uarr; TOP</button>
-<script src="../../../js/main.js"></script>
+<script src="../../../js/main.js" defer></script>
 </body>
 </html>

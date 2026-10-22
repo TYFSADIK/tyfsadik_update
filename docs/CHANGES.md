@@ -110,3 +110,68 @@ context. Per hard rule 1, nothing was deleted; layout fixes are logged here.
   senecac.on.ca link that exists only in the internal `.tools/ref/` folder.
 - 403 responses from dell.com, rsync.net, and linkedin.com are bot blocking;
   the links work in a browser.
+
+## Phase 2: responsive, media, and performance fixes
+
+### Horizontal overflow (320-768px)
+
+- resume.html: fixed by the Phase 1 thead repair (verified clean after).
+- Wrapped all 241 tables across 162 pages in `<div class="table-scroll">`
+  (overflow-x auto) so wide tables scroll inside their own container.
+  Verified no wrapper landed inside pre or script blocks; html-validate
+  still reports 0 errors.
+- `code` inline elements now wrap (`overflow-wrap: anywhere`); `pre code`
+  unchanged so code blocks still scroll.
+- Verified with Playwright at 320/375/768: zero document-level overflow on
+  the three previously failing pages.
+
+### Responsive hardening (css/style.css, additive block)
+
+- `html { scroll-padding-top: 1rem; text-size-adjust: 100%; }`.
+- `min-height: 100dvh` upgrade for body with @supports fallback.
+- `env(safe-area-inset-*)` padding for notched devices.
+- Viewport meta updated to include `viewport-fit=cover` (199 pages).
+- 44px minimum tap targets for nav links, buttons, hero links, and lab TOC
+  links (Lighthouse target-size failure on lab TOC fixed).
+- Print stylesheet: hides banner/nav/buttons, black on white, page-break
+  rules, link URLs shown for external links. Resume and lab pages print
+  cleanly.
+
+### Mermaid loaded on demand (the big mobile win)
+
+- Before: `mermaid@11` CDN script (about 680 KiB JS, 3.5 MB source) loaded
+  eagerly on all 197 pages, including the 17 with no diagrams. Baseline
+  mobile performance was 56-61 largely because of this.
+- After: js/main.js injects the script only when a `.mermaid` block exists,
+  pinned to mermaid@11.17.2 with SRI sha384 and crossorigin. Pages with
+  diagrams get a preconnect to cdn.jsdelivr.net. The eager script tag was
+  removed from 197 pages (functional change, logged here; diagrams render
+  identically).
+
+### Images
+
+- Generated .webp (q82) and .avif (q60) next to every raster image used by
+  public pages (44 images; originals untouched). Example: the 2.2 MB
+  kubernetes-infrastructure.jpg is now a 176 KB webp / 126 KB avif.
+- Wrapped 46 `<img>` tags in `<picture>` with avif and webp sources, jpg/png
+  fallback kept. Gifs and .tools/ref internal pages untouched.
+- `decoding="async"` added to all imgs; hero portrait on index.html switched
+  from lazy to fetchpriority="high".
+- Each page's banner image (CSS background, the LCP element on most pages)
+  now has a `<link rel="preload" as="image">` (199 pages).
+- Font preload for DepartureMono-Regular.woff added to all pages
+  (root-absolute on 404.html since it serves under arbitrary URLs).
+
+### JavaScript and navigation
+
+- `js/main.js` now loaded with `defer` on all pages (was render-blocking).
+- Mobile menu: Escape now closes it and returns focus to the toggle;
+  outside-click close also resets aria-expanded.
+
+### Measured results (Lighthouse mobile, local server)
+
+- index.html: performance 56 -> 99, accessibility 100, best-practices 100,
+  SEO 92 -> 100. LCP 2.6s -> 2.0s, CLS 0.
+- Lab page (azure-sql-deployment): performance ~60 -> 92, accessibility
+  100, SEO 100. LCP 1.6s, CLS 0.
+- axe sweep clean on all 10 key pages.
