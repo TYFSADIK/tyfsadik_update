@@ -145,6 +145,7 @@
 
     <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>SSH Hardening</span></nav>
     <div class="page-header"><h1>SSH Hardening with Key-Only Authentication and fail2ban</h1>
+      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-10-22">2026-10-22</time></p>
       <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Security</span><span class="lab-time">~3 hours</span></div>
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">OpenSSH</span><span class="tag">fail2ban</span><span class="tag">ed25519</span><span class="tag">PAM</span></div>
     </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
@@ -497,6 +498,33 @@ RETURN     all  --  0.0.0.0/0            0.0.0.0/0</code></pre>
         <li><a href="../linux-fundamentals/ssh-remote-access.html">SSH Remote Access</a></li>
       </ul>
     </section>
+
+<section class="faq" id="faq">
+    <h2>Frequently Asked Questions</h2>
+    <details><summary>How do I fix &#x27;Locked out after reload&#x27;?</summary><p>always validate with sshd -t before reload and keep a session open. If the worst happens, use the provider&#x27;s out-of-band console (VNC/serial), restore /etc/ssh/sshd_config.bak.YYYY-MM-DD from step 0, and reload. As a belt-and-braces measure on remote-only boxes, schedule a safety net BEFORE reloading: it must restore the backup, not just restart with the new config. BK=$(cat /root/.sshd-last-backup); echo &quot;cp $BK /etc/ssh/sshd_config &amp;amp;&amp;amp; systemctl restart ssh&quot; | sudo at now + 10 minutes. The at daemon must be installed (sudo apt install -y at) and running. The backup path is read from the durable file written in step 0, so it works in a fresh shell. If your new session works, cancel the job with atrm; if you are locked out, the old config is restored and the daemon restarted on its own.</p></details>
+    <details><summary>How do I fix &#x27;fail2ban not banning&#x27;?</summary><p>confirm the backend and journal match in jail.local. On Ubuntu 22.04 use backend = systemd with journalmatch = _SYSTEMD_UNIT=ssh.service + _COMM=sshd, and test the filter with sudo fail2ban-regex --journalmatch &quot;_SYSTEMD_UNIT=ssh.service + _COMM=sshd&quot; systemd-journal /etc/fail2ban/filter.d/sshd.conf. A jail that shows Total failed: 0 while auth failures exist is watching the wrong log source.</p></details>
+    <details><summary>How do I fix &#x27;Key refused with &quot;Permission denied (publickey)&quot;&#x27;?</summary><p>check ~/.ssh is 700 and authorized_keys is 600, that the key is actually listed in the file, and that the home directory is not group-writable (StrictModes rejects it). Debug server-side with a one-off verbose daemon: sudo /usr/sbin/sshd -d -p 2222, then connect to port 2222 and read exactly why the key was rejected.</p></details>
+    <details><summary>How do I fix &#x27;&quot;Bad configuration option&quot; from sshd -t&#x27;?</summary><p>the directive is deprecated or misspelled for your OpenSSH version, e.g. UsePrivilegeSeparation and RSAAuthentication were removed years ago but linger in old tutorials. Check man sshd_config on the actual host, and re-run sshd -T to see what survived.</p></details>
+    <details><summary>How do I fix &#x27;Banned myself by accident&#x27;?</summary><p>from another network or the console, run sudo fail2ban-client set sshd unbanip YOUR_IP. To prevent recurrence, add your static management IPs to the ignoreip line in [DEFAULT] (e.g. ignoreip = 127.0.0.1/8 198.51.100.10), but only for genuinely static addresses, never DHCP ranges.</p></details>
+    </section>
+
+<section class="cite-this" id="cite-this-page">
+<h2>Cite This Page</h2>
+<details><summary>Citation formats</summary>
+<p><strong>Plain text</strong></p>
+<pre><code>Taki Sadik, &quot;SSH Hardening with Key-Only Authentication and fail2ban&quot;, TYFSADIK, https://tyfsadik.org/blog/labs/security/ssh-hardening.html (accessed 2026-10-22).</code></pre>
+<p><strong>BibTeX</strong></p>
+<pre><code>@misc{sadik-ssh-hardening,
+  author  = {Sadik, MD. Taki Yasir Faraji},
+  title   = {SSH Hardening with Key-Only Authentication and fail2ban},
+  year    = {2026},
+  url     = {https://tyfsadik.org/blog/labs/security/ssh-hardening.html},
+  urldate = {2026-10-22}
+}</code></pre>
+<p><strong>APA</strong></p>
+<pre><code>Sadik, M. T. Y. F. (2026). SSH Hardening with Key-Only Authentication and fail2ban. TYFSADIK. https://tyfsadik.org/blog/labs/security/ssh-hardening.html</code></pre>
+</details>
+</section>
 
 </div>
 </div>

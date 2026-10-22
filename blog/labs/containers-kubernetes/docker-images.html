@@ -97,6 +97,7 @@
 
     <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Docker Images &amp; Dockerfile</span></nav>
     <div class="page-header"><h1>Build Optimized Docker Images with Multi-Stage Dockerfiles</h1>
+      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-10-22">2026-10-22</time></p>
       <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Containers</span><span class="lab-time">~3 hours</span></div>
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">Dockerfile</span><span class="tag">multi-stage</span><span class="tag">layer cache</span><span class="tag">Trivy</span></div>
     </div>
@@ -501,6 +502,33 @@ docker stop app-test</code></pre>
       
         <li><a href="kubernetes-pods-services.html">Kubernetes Pods and Deployments</a></li></ul>
     </section>
+
+<section class="faq" id="faq">
+    <h2>Frequently Asked Questions</h2>
+    <details><summary>How do I fix &#x27;Image still huge.&#x27;?</summary><p>The final stage almost certainly is not the slim one. Confirm the last FROM in the Dockerfile is the distroless/alpine base, that you copy the artifact with COPY --from=build (the documented double-dash form), and that you tagged the result of the whole build. Run docker history tyf/app:1.0 and look for fat layers carrying the toolchain, if you see them, you are shipping the build stage.</p></details>
+    <details><summary>How do I fix &#x27;Cache never hits; every build re-downloads dependencies.&#x27;?</summary><p>The Dockerfile copies source before resolving dependencies. Reorder so COPY go.mod go.sum ./ and RUN go mod download come before COPY . ., and add a .dockerignore so files that change constantly (.git, logs, editor temp files) do not invalidate the context. Also confirm BuildKit is actually on: legacy builders (DOCKER_BUILDKIT=0) cache far less aggressively.</p></details>
+    <details><summary>How do I fix &#x27;Trivy DB error on first run&#x27;?</summary><p>(failed to download vulnerability DB). Trivy needs internet access once to fetch its database. Behind a corporate proxy, export HTTPS_PROXY before scanning. In fully offline environments, pre-seed the cache directory (~/.cache/trivy) from a machine that has access, or scan with --skip-db-update against an older cached DB and record the DB age in your report.</p></details>
+    <details><summary>How do I fix &#x27;Build fails with go: go.mod file not found.&#x27;?</summary><p>The project has no module file but Go 1.22 builds in module mode. Run go mod init example.com/myapp locally, commit the resulting go.mod (and go.sum), and rebuild. As a stopgap for trivial single-file programs only, GO111MODULE=off go build works, but modules are the correct fix.</p></details>
+    <details><summary>How do I fix &#x27;Container exits instantly with exec /app: no such file or directory.&#x27;?</summary><p>The binary exists but its interpreter does not: it was dynamically linked (CGO enabled) and the distroless base has no libc. Rebuild with CGO_ENABLED=0, or switch the runtime base to gcr.io/distroless/base-nossl (or base) if the app genuinely needs cgo. A related variant, exec format error, means an architecture mismatch, e.g. building on an Apple Silicon Mac (arm64) and deploying to an amd64 server; fix with docker buildx build --platform linux/amd64 -t tyf/app:1.0 ..</p></details>
+    </section>
+
+<section class="cite-this" id="cite-this-page">
+<h2>Cite This Page</h2>
+<details><summary>Citation formats</summary>
+<p><strong>Plain text</strong></p>
+<pre><code>Taki Sadik, &quot;Build Optimized Docker Images with Multi-Stage Dockerfiles&quot;, TYFSADIK, https://tyfsadik.org/blog/labs/containers-kubernetes/docker-images.html (accessed 2026-10-22).</code></pre>
+<p><strong>BibTeX</strong></p>
+<pre><code>@misc{sadik-docker-images,
+  author  = {Sadik, MD. Taki Yasir Faraji},
+  title   = {Build Optimized Docker Images with Multi-Stage Dockerfiles},
+  year    = {2026},
+  url     = {https://tyfsadik.org/blog/labs/containers-kubernetes/docker-images.html},
+  urldate = {2026-10-22}
+}</code></pre>
+<p><strong>APA</strong></p>
+<pre><code>Sadik, M. T. Y. F. (2026). Build Optimized Docker Images with Multi-Stage Dockerfiles. TYFSADIK. https://tyfsadik.org/blog/labs/containers-kubernetes/docker-images.html</code></pre>
+</details>
+</section>
 
 </div></div>
 </main>

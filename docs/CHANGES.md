@@ -230,3 +230,31 @@ context. Per hard rule 1, nothing was deleted; layout fixes are logged here.
 - Google Search Console and Bing verification meta placeholders (empty
   content) added to index.html with instructions in docs/MANUAL-TASKS.md.
   Tokens must come from the owner; nothing faked.
+
+## Phase 6: GEO / AEO
+
+- Visible FAQ sections (details/summary, keyboard accessible) generated from
+  the existing FAQPage JSON-LD on 122 pages. Before: FAQ structured data
+  existed with no visible FAQ content, which violated the "schema must match
+  visible content" rule. After: every FAQPage block has a matching visible
+  section. about.html already had a visible FAQ, so the generated duplicate
+  there was removed (the original stays).
+- New page: /about/facts.html, the canonical entity sheet (name variants,
+  role, location, focus areas, profiles, key numbers), linked from the About
+  page header and llms.txt. AboutPage schema with speakable.
+- "Cite This Page" blocks (plain text, BibTeX, APA in a collapsible details)
+  on 148 lab and project pages; bylines "Written by Taki Sadik, Last updated
+  <git date>" on 170 lab/work pages.
+- Markdown mirrors: .tools/build_md_mirrors.py generates 42 .md mirrors
+  (home, about, work, resume, contact, blog, labs index, all 9 track
+  indexes, docs pages, all 18 defence projects, key infrastructure pages)
+  plus llms-full.txt. No YAML front matter, so the Jekyll pipeline serves
+  them verbatim (verified assumption documented in ASSUMPTIONS.md).
+  rel=alternate type="text/markdown" links added on the 38 mirrored pages.
+- llms.txt expanded: per-track lab links with anchors, facts page, feeds,
+  markdown mirrors, llms-full.txt, future /api endpoints, citation note.
+- robots.txt: explicit allow rules for search crawlers and AI retrieval /
+  user-triggered agents (OAI-SearchBot, ChatGPT-User, Claude-SearchBot,
+  Claude-User, PerplexityBot, Perplexity-User, Google-Extended,
+  Applebot-Extended), plus a commented one-edit switch block to opt out of
+  training crawlers (GPTBot, ClaudeBot, CCBot, Bytespider).

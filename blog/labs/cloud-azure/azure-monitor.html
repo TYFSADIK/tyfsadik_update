@@ -97,6 +97,7 @@
 
     <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/cloud-azure/index.html">Cloud &amp; Azure</a> &rsaquo; <span>Azure Monitor &amp; Alerting</span></nav>
     <div class="page-header"><h1>Azure Monitor: Log Analytics, KQL, and Alerts</h1>
+      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-10-22">2026-10-22</time></p>
       <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Cloud</span><span class="lab-time">~3 hours</span></div>
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">Azure Monitor</span><span class="tag">Log Analytics</span><span class="tag">KQL</span><span class="tag">alerts</span></div>
     </div>
@@ -512,6 +513,33 @@ az monitor log-analytics workspace delete -g $RG -n $LAW --force true --yes</cod
       
         <li><a href="azure-vm-config.html">Azure VM Configuration</a></li></ul>
     </section>
+
+<section class="faq" id="faq">
+    <h2>Frequently Asked Questions</h2>
+    <details><summary>How do I fix &#x27;No data in workspace&#x27;?</summary><p>enable diagnostic settings / install the Azure Monitor Agent. Check the chain in order: agent extension provisioning state (az vm extension show -g $RG --vm-name $VM -n AzureMonitorLinuxAgent --query provisioningState -o tsv must be Succeeded), then the DCR association (az monitor data-collection rule association list --resource $VMID must be non-empty), then the DCR&#x27;s destination workspace ID. A missing or misassociated DCR produces total silence with no error anywhere.</p></details>
+    <details><summary>How do I fix &#x27;KQL returns nothing&#x27;?</summary><p>widen the time range; data ingestion has a short delay. First-time ingestion after installing the agent can take 5-15 minutes. Also remember the CLI query defaults to the last 24 hours, if you are testing against older data, pass --timespan explicitly, and check you are not filtering on a counter name your DCR never collected (Perf | distinct CounterName tells the truth).</p></details>
+    <details><summary>How do I fix &#x27;Alert never fires&#x27;?</summary><p>verify the condition aggregation window and the action group target. The classic trap is load that spikes to 95% for 30 seconds: a 5-minute average over 80 never trips on that. Either sustain the load or lower the window with --window-size PT1M. Also confirm the alert&#x27;s scope is the VM resource ID, not the workspace, a metric alert scoped to the wrong resource type evaluates against a metric that does not exist and silently stays healthy.</p></details>
+    <details><summary>How do I fix &#x27;Alert fires but no email arrives&#x27;?</summary><p>the rule and the notification are separate links. Run az monitor action-group show -g $RG -n tyf-admins and check the emailReceivers array, a typo in the address still deploys cleanly. Check spam, then check Monitor › Alerts in the portal: if the alert is listed as Fired there, the rule is fine and the action group delivery is the broken hop. Test the action group in isolation with az monitor action-group test-notifications create --action-group tyf-admins -g $RG --alert-type metricstaticthreshold.</p></details>
+    <details><summary>How do I fix &#x27;az monitor log-analytics query fails with &quot;BadRequest&quot; or a path error&#x27;?</summary><p>you almost certainly passed the workspace&#x27;s customer GUID or a workspace name where the -w flag expects the full resource ID (/subscriptions/.../workspaces/tyf-law). Re-capture it with the --query id command from step 01. If the error is a 403 instead, your account is missing the Log Analytics Reader role on the workspace.</p></details>
+    </section>
+
+<section class="cite-this" id="cite-this-page">
+<h2>Cite This Page</h2>
+<details><summary>Citation formats</summary>
+<p><strong>Plain text</strong></p>
+<pre><code>Taki Sadik, &quot;Azure Monitor: Log Analytics, KQL, and Alerts&quot;, TYFSADIK, https://tyfsadik.org/blog/labs/cloud-azure/azure-monitor.html (accessed 2026-10-22).</code></pre>
+<p><strong>BibTeX</strong></p>
+<pre><code>@misc{sadik-azure-monitor,
+  author  = {Sadik, MD. Taki Yasir Faraji},
+  title   = {Azure Monitor: Log Analytics, KQL, and Alerts},
+  year    = {2026},
+  url     = {https://tyfsadik.org/blog/labs/cloud-azure/azure-monitor.html},
+  urldate = {2026-10-22}
+}</code></pre>
+<p><strong>APA</strong></p>
+<pre><code>Sadik, M. T. Y. F. (2026). Azure Monitor: Log Analytics, KQL, and Alerts. TYFSADIK. https://tyfsadik.org/blog/labs/cloud-azure/azure-monitor.html</code></pre>
+</details>
+</section>
 
 </div></div>
 </main>
