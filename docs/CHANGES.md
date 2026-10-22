@@ -175,3 +175,26 @@ context. Per hard rule 1, nothing was deleted; layout fixes are logged here.
 - Lab page (azure-sql-deployment): performance ~60 -> 92, accessibility
   100, SEO 100. LCP 1.6s, CLS 0.
 - axe sweep clean on all 10 key pages.
+
+## Phase 3: titles, descriptions, meta, social
+
+- Every page now has a unique 50-60 char title and 140-158 char meta
+  description, verified by `.tools/phase3_titles.py` (rerunnable validator).
+  11 titles and 27 descriptions rewritten; rewrites applied to title,
+  DC.title, og:title, twitter:title, description, og:description, and
+  twitter:description together so they never drift.
+- `images/banner-mine.jpg` (1300x560) is now the FIRST og:image and the
+  twitter:image on all 199 pages, with og:image:width/height/type/alt.
+  Page-specific og:images remain as secondary images (documented resolution
+  of the hard rule vs earlier per-page social images).
+- 404.html gained a full og/twitter block and a keywords tag.
+- Added to all pages: format-detection, color-scheme dark, referrer
+  strict-origin-when-cross-origin, application-name, geo.region CA-ON,
+  geo.placename North York Toronto, msapplication-TileColor,
+  mobile/apple-mobile-web-app tags, Dublin Core title/creator/language,
+  link rel=author (about page), rel=me (GitHub, LinkedIn).
+- article:modified_time added to all article pages from git history.
+- Homepage title kept as "Taki Sadik: Cybersecurity, IT, Defence Tech |
+  TYFSADIK" (53 chars, brand first, all primary entities); the description
+  already carried Toronto, 7-node Kubernetes, and 116 labs.
+- Keywords meta kept everywhere and added where missing (404 only).
