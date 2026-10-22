@@ -258,3 +258,12 @@ context. Per hard rule 1, nothing was deleted; layout fixes are logged here.
   Claude-User, PerplexityBot, Perplexity-User, Google-Extended,
   Applebot-Extended), plus a commented one-edit switch block to opt out of
   training crawlers (GPTBot, ClaudeBot, CCBot, Bytespider).
+
+## Phase 7: voice search optimization
+
+- speakable (SpeakableSpecification, cssSelector .lead and .faq) added to
+  the TechArticle JSON-LD on 160 lab and project pages; homepage and About
+  already carried speakable. FAQ questions are already conversational
+  ("How do I fix ...?") with direct first-sentence answers, and answer-first
+  .lead paragraphs sit at the top of every lab.
+- 654 JSON-LD blocks re-validated after the edit, all parse.
