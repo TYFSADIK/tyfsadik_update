@@ -198,3 +198,15 @@ context. Per hard rule 1, nothing was deleted; layout fixes are logged here.
   TYFSADIK" (53 chars, brand first, all primary entities); the description
   already carried Toronto, 7-node Kubernetes, and 116 labs.
 - Keywords meta kept everywhere and added where missing (404 only).
+
+## Phase 4: structured data
+
+- Audited all 652 JSON-LD blocks across 199 pages: all parse valid.
+  Existing coverage confirmed: BreadcrumbList 198, TechArticle 116 labs +
+  all work pages, LearningResource 116, HowTo 127, FAQPage 122,
+  CollectionPage 13, Person 3, WebSite + speakable on the homepage,
+  ProfilePage + speakable on About.
+- Added: ProfilePage (mainEntity Person @id) to index.html and resume.html;
+  SoftwareSourceCode for Chakor (TypeScript, Next.js 15, facts from the
+  visible page). 404.html deliberately carries no JSON-LD (noindex).
+- WebSite SearchAction deferred to Phase 8 (needs a real ?q= search first).
