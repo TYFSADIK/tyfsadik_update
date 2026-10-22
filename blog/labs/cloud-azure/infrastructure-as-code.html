@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>Infrastructure as Code | Bicep &amp; Terraform on Azure</title>
   <meta name="description" content="Manage Azure infrastructure as code with Bicep and Terraform: modules, remote state, plan and apply workflows, drift detection, and remediation through code.">
   <meta name="keywords" content="infrastructure as code, Bicep, Terraform, Azure remote state, drift detection, az deployment">
@@ -16,6 +17,8 @@
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
   <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta property="og:image:width" content="640">
+  <meta property="og:image:height" content="275">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Infrastructure as Code | Bicep &amp; Terraform on Azure">
   <meta name="twitter:description" content="Manage Azure infrastructure as code with Bicep and Terraform: modules, remote state, plan and apply workflows, drift detection, and remediation through code.">
@@ -36,6 +39,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'State lock errors'?", "acceptedAnswer": {"@type": "Answer", "text": "a previous run is holding the lock; wait or force-unlock carefully. Terraform prints the lock info, including a Lock ID, confirm no run is genuinely active (a crashed apply or a closed laptop can leave a stale lease), then release it with terraform force-unlock <LOCK_ID>. Never force-unlock while a teammate's apply might still be running; the lock is the only thing standing between you and a corrupt state file."}}, {"@type": "Question", "name": "How do I fix 'Drift keeps returning'?", "acceptedAnswer": {"@type": "Answer", "text": "stop editing in the portal; remediate only through code. If drift reappears after every apply, something automated is making the change, a policy assignment, a scheduled runbook, or a colleague's script. Find the actor with az monitor activity-log list --resource-group tyf-rg --max-events 20 -o table and look at the caller column."}}, {"@type": "Question", "name": "How do I fix 'Bicep build error'?", "acceptedAnswer": {"@type": "Answer", "text": "run az bicep build to surface the line. The compiler reports file, line, and a diagnostic code (e.g. BCP057 for a name that does not exist in scope), fix the first reported error and rebuild, since later errors are often cascading noise from the first."}}, {"@type": "Question", "name": "How do I fix 'Backend init fails with AuthorizationFailed or 403 on the state blob'?", "acceptedAnswer": {"@type": "Answer", "text": "your account has management rights on the storage account but no data-plane role on the container. Add Storage Blob Data Contributor as shown in the setup section, wait a minute for RBAC propagation, and re-run terraform init."}}, {"@type": "Question", "name": "How do I fix 'Plan wants to destroy and recreate a resource you only renamed'?", "acceptedAnswer": {"@type": "Answer", "text": "Terraform tracks resources by their address (azurerm_storage_account.iac), so renaming the block label looks like \"delete old, create new.\" Use terraform state mv azurerm_storage_account.old_name azurerm_storage_account.new_name to rename the address in state instead of letting the resource be rebuilt. Note that renaming the Azure name property of a storage account genuinely is a recreate, the name is immutable once created, and the plan is correct."}}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -50,7 +54,7 @@
       <ul class="nav-links">
         <li><a href="../../../about.html" class="nav-link">About Me</a></li>
         <li><a href="../../../work.html" class="nav-link">Work</a></li>
-        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../blog.html" class="nav-link current" aria-current="page">Blog/Labs</a></li>
         <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
       </ul>
@@ -58,7 +62,7 @@
     <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
   </div>
 </header>
-<main class="page-content"><div class="container">
+<main class="page-content" id="main-content"><div class="container">
     <div class="content-box">
 
     <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/cloud-azure/index.html">Cloud &amp; Azure</a> &rsaquo; <span>Infrastructure as Code</span></nav>
@@ -89,7 +93,7 @@
       <p>You will also practice the workflow that makes IaC safe in production: <strong>preview before apply</strong>. Bicep's what-if and Terraform's plan both answer "what would change if I ran this?" before anything is touched, and both can be used after the fact to detect <em>drift</em>, the gap between what your code says and what actually exists, usually caused by someone editing resources by hand.</p>
     </section>
 
-    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+    <div class="lab-objectives"><h2 id="learning-objectives">Learning Objectives</h2>
       <ul>
         <li>Write a Bicep module and deploy it.</li>
         <li>Write equivalent Terraform with remote state.</li>
@@ -470,7 +474,7 @@ Destroy complete! Resources: 1 destroyed.</code></pre>
     </section>
 <section><h2 id="troubleshooting">Troubleshooting</h2>
 <p>Quick-reference for the failures you are most likely to hit in this lab.</p>
-<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<table class="lab-table"><th scope="col"ead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">Fix</th></tr></thead><tbody>
 <tr><td><code>bicep build</code> fails</td><td>Syntax error in the Bicep file</td><td>Run <code>az bicep build</code> and read the first error; the compiler points at the exact line.</td></tr>
 <tr><td><code>terraform init</code> fails</td><td>Provider download blocked by network or proxy</td><td>Retry with proxy variables set; providers cache under <code>~/.terraform.d</code> after the first success.</td></tr>
 <tr><td>State lock held after a crashed apply</td><td>The lock was never released</td><td>Confirm no apply is running, then <code>terraform force-unlock</code> with the lock ID; never unlock while an apply is live.</td></tr>
@@ -523,9 +527,9 @@ Destroy complete! Resources: 1 destroyed.</code></pre>
     </div>
 
     <section><h2 id="practice-challenges">Practice Challenges</h2>
-<div class="lab-challenge"><h4>Challenge 1: Parameterize the environment</h4><p>Goal: Convert the Bicep template to accept an <code>env</code> parameter that changes names and SKUs between dev and prod.</p><p>Hint: Use a variable map keyed by env so the template body stays clean.</p></div>
-<div class="lab-challenge"><h4>Challenge 2: Import a manual resource</h4><p>Goal: Create a resource in the portal, then <code>terraform import</code> it into state without recreating it.</p><p>Hint: Write the configuration block first, then import; the next plan should show no changes.</p></div>
-<div class="lab-challenge"><h4>Challenge 3: Prove locking works</h4><p>Goal: Start two applies at once and observe the second wait on the state lock.</p><p>Hint: Use a <code>null_resource</code> with a sleep provisioner to widen the window.</p></div>
+<div class="lab-challenge"><h3>Challenge 1: Parameterize the environment</h3><p>Goal: Convert the Bicep template to accept an <code>env</code> parameter that changes names and SKUs between dev and prod.</p><p>Hint: Use a variable map keyed by env so the template body stays clean.</p></div>
+<div class="lab-challenge"><h3>Challenge 2: Import a manual resource</h3><p>Goal: Create a resource in the portal, then <code>terraform import</code> it into state without recreating it.</p><p>Hint: Write the configuration block first, then import; the next plan should show no changes.</p></div>
+<div class="lab-challenge"><h3>Challenge 3: Prove locking works</h3><p>Goal: Start two applies at once and observe the second wait on the state lock.</p><p>Hint: Use a <code>null_resource</code> with a sleep provisioner to widen the window.</p></div>
 </section>
 
     <section class="related-labs"><h2 id="related-labs">Related Labs</h2>

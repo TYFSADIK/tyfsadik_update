@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>TYF-AI: Local AI Inference Stack on CUDA | TYFSADIK</title>
   <meta name="description" content="TYF-AI: a hardened, fully local AI inference stack with llama.cpp on CUDA, Open WebUI behind an authenticated proxy, and per-model sandboxing by Taki Sadik.">
   <meta name="robots" content="index,follow">
@@ -17,6 +18,8 @@
   <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
   <meta property="og:url" content="https://tyfsadik.org/work/infrastructure/tyf-ai-platform.html">
   <meta property="og:image" content="https://tyfsadik.org/images/projects/tyf-ai-platform.jpg">
+  <meta property="og:image:width" content="1600">
+  <meta property="og:image:height" content="1067">
   <meta property="og:image:alt" content="TYF-AI | TYFSADIK">
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
@@ -40,6 +43,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Infrastructure", "item": "https://tyfsadik.org/work.html"}, {"@type": "ListItem", "position": 3, "name": "TYF-AI: Self-Hosted Local AI Security Platform", "item": "https://tyfsadik.org/work/infrastructure/tyf-ai-platform.html"}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -53,7 +57,7 @@
       <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
       <ul class="nav-links">
         <li><a href="../../about.html" class="nav-link">About Me</a></li>
-        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../work.html" class="nav-link current" aria-current="page">Work</a></li>
         <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
         <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../contact.html" class="nav-link">Contact</a></li>
@@ -63,7 +67,7 @@
   </div>
 </header>
 
-<main class="page-content">
+<main class="page-content" id="main-content">
   <div class="container">
     <div class="content-box">
     <div class="breadcrumbs">
@@ -225,7 +229,7 @@ sudo -u llama firejail --private --caps.drop=all --seccomp \
 <section id="what-you-need">
   <h2>What you need</h2>
   <table>
-    <thead><tr><th>Category</th><th>Item</th><th>Notes</th></tr></thead>
+    <th scope="col"ead><tr><th scope="col">Category</th><th scope="col">Item</th><th scope="col">Notes</th></tr></thead>
     <tbody>
       <tr><td>Hardware</td><td>NVIDIA GPU with enough VRAM for your models</td><td>Passed through to the AI VM via vfio-pci</td></tr>
       <tr><td>Hardware</td><td>Proxmox VE 8.1 host with IOMMU enabled</td><td>Required for reliable PCI passthrough</td></tr>
@@ -252,6 +256,237 @@ sudo -u llama firejail --private --caps.drop=all --seccomp \
     <li>Create an evaluation harness that regression-tests model updates.</li>
   </ul>
 </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="request-path">
+      <h2>Inference Request Path</h2>
+      <p>
+        Every inference request traverses the same fixed path: the client authenticates at the Caddy
+        reverse proxy, which terminates TLS, checks credentials, and applies the per-client rate limit
+        before forwarding to Open WebUI. Open WebUI translates the chat request into a completion call
+        against the llama.cpp server on loopback. The llama.cpp process lives inside the trust boundary
+        formed by the Firejail sandbox and the UID-based egress firewall: it can read its GGUF model
+        files and talk to the passed-through GPU over CUDA, but its non-loopback network traffic is
+        dropped. The GGUF weights are data input to the engine, pinned by SHA-256 checksum.
+      </p>
+      <div class="mermaid" role="img" aria-label="Inference request path from client through Caddy and Open WebUI into the Firejail sandbox boundary containing llama.cpp and the GGUF model">
+flowchart TB
+  CLIENT["Client Browser"]
+  CAD["Caddy Reverse Proxy<br/>TLS termination + basicauth<br/>per-client rate limit"]
+  WEBUI["Open WebUI<br/>chat frontend :3000"]
+
+  subgraph SB["TRUST BOUNDARY: Firejail sandbox + UID egress firewall"]
+    LC["llama.cpp server<br/>CUDA offload :8080 (loopback)"]
+    GGUF[("GGUF model files<br/>Q4_K_M / Q5_K_M<br/>SHA-256 pinned")]
+  end
+
+  subgraph PVE["Proxmox VE host"]
+    GPU["NVIDIA GPU<br/>PCI passthrough (vfio-pci)"]
+  end
+
+  CLIENT -->|"HTTPS + credentials"| CAD
+  CAD -->|"authenticated proxy pass"| WEBUI
+  WEBUI -->|"REST over loopback"| LC
+  LC --- GGUF
+  LC -->|"CUDA kernels"| GPU
+
+style CLIENT fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style CAD fill:#1a1a2e,stroke:#ff8800,color:#e0e0e0
+style WEBUI fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style LC fill:#1a1a2e,stroke:#ff4444,color:#e0e0e0
+style GGUF fill:#1a1a2e,stroke:#aa88ff,color:#e0e0e0
+style GPU fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style SB fill:#161616,stroke:#ff4444,color:#e0e0e0
+style PVE fill:#161616,stroke:#5B93EF,color:#e0e0e0
+      </div>
+      <p>
+        The only arrows that cross the sandbox boundary are the loopback REST calls from Open WebUI
+        and the CUDA path to the GPU device node. There is no outbound path: the iptables owner-match
+        rules shown in the Deployment section drop every non-loopback packet from the model UID, so
+        the inference process cannot reach the LAN or the internet even if the runtime itself is
+        compromised.
+      </p>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="components">
+      <h2>Component Reference</h2>
+      <p>
+        Status meanings: <strong>Documented</strong> means the component and its configuration are
+        described in this project's documentation, but no runnable artifacts or test output are
+        published to verify against; <strong>Verified</strong> means behavior confirmed against the
+        running system; <strong>Planned</strong> means designed but not implemented. Because the
+        public repository contains documentation rather than deployment artifacts, most components
+        here are honestly marked Documented, not Verified.
+      </p>
+      <table>
+        <th scope="col"ead><tr><th scope="col">Component</th><th scope="col">Responsibility</th><th scope="col">Technology</th><th scope="col">Dependencies</th><th scope="col">Status</th></tr></thead>
+        <tbody>
+          <tr><td>GPU passthrough</td><td>Dedicates the NVIDIA GPU to the AI VM for CUDA inference</td><td>vfio-pci binding, Proxmox VM config</td><td>IOMMU in BIOS and kernel cmdline, clean IOMMU group</td><td>Documented</td></tr>
+          <tr><td>Inference engine</td><td>Serves GGUF models with GPU layer offload</td><td>llama.cpp server (CUDA build)</td><td>CUDA toolkit, NVIDIA driver in VM, GGUF model files</td><td>Documented</td></tr>
+          <tr><td>Model weights</td><td>Quantized local models; integrity-checked input</td><td>GGUF Q4_K_M / Q5_K_M</td><td>SHA-256 checksum pinning, trusted download source</td><td>Documented</td></tr>
+          <tr><td>Process sandbox</td><td>Filesystem, capability, and syscall confinement of the model process</td><td>Firejail (<code>--private --caps.drop=all --seccomp</code>)</td><td>Dedicated <code>llama</code> UID, video/render groups</td><td>Documented</td></tr>
+          <tr><td>Egress firewall</td><td>Drops all non-loopback traffic from the model UID</td><td>iptables owner-match rules</td><td>Persistence via netfilter-persistent or a systemd unit</td><td>Documented</td></tr>
+          <tr><td>Chat frontend</td><td>User-facing chat UI and conversation management</td><td>Open WebUI</td><td>Loopback REST access to llama.cpp server</td><td>Documented</td></tr>
+          <tr><td>Reverse proxy</td><td>TLS termination, authentication, request routing</td><td>Caddy (basicauth)</td><td>Bcrypt password hash from <code>caddy hash-password</code></td><td>Documented</td></tr>
+          <tr><td>Rate limiting</td><td>Per-client request throttling at the edge</td><td>caddy-ratelimit module</td><td>Custom Caddy build via xcaddy; not in stock Caddy</td><td>Documented</td></tr>
+          <tr><td>Web search integration</td><td>Optional derived search queries from the UI</td><td>Open WebUI search providers</td><td>External search API; breaks full locality when enabled</td><td>Documented</td></tr>
+          <tr><td>Audit logging</td><td>Record of every prompt and completion</td><td>To be selected</td><td>Open WebUI hooks or proxy logging</td><td>Planned</td></tr>
+          <tr><td>Multi-model routing</td><td>Pick the right model per task and budget</td><td>To be selected</td><td>Multiple loaded models or a router proxy</td><td>Planned</td></tr>
+          <tr><td>Benchmark harness</td><td>Reproducible latency and throughput measurements</td><td>llama-bench plus scripted load tests</td><td>See the GPU and Performance section</td><td>Planned</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="security-architecture">
+      <h2>Security Architecture</h2>
+      <p>
+        The design premise is that the inference engine is an untrusted workload: it parses
+        complex binary model files and arbitrary user prompts, which is exactly the profile of
+        software that gets memory-corruption CVEs. The security layers are therefore arranged to
+        contain a compromised llama.cpp process, not merely to keep outsiders out.
+      </p>
+      <h3>Firejail per-model sandboxing</h3>
+      <p>
+        Each model process runs inside Firejail with three controls that matter most. First,
+        filesystem isolation: <code>--private</code> gives the process a throwaway home directory,
+        so a compromised runtime cannot read SSH keys, browser profiles, or other users' data.
+        Second, capability dropping: <code>--caps.drop=all</code> removes every Linux capability,
+        so the process cannot remount filesystems, change network configuration, or trace other
+        processes even if it gains code execution. Third, syscall filtering: <code>--seccomp</code>
+        restricts the kernel interface to the calls the runtime actually needs, shrinking the
+        attack surface available to an exploit. The stated design goal is a dedicated Firejail
+        profile per model, so models with different provenance get different confinement; what is
+        implemented and documented today is the single profile shown in the Deployment section.
+      </p>
+      <h3>Caddy authentication layer</h3>
+      <p>
+        Caddy is the only public entry point. It terminates TLS, enforces HTTP basic
+        authentication with a bcrypt-hashed credential, and rate-limits per client before any
+        request reaches Open WebUI. This is a deliberate simplicity trade: basicauth is coarse
+        (one shared credential class, no per-user identity, no SSO) but it has almost no attack
+        surface and can be rotated by editing the Caddyfile and reloading. An OIDC-backed login
+        through the identity-aware access layer used elsewhere in the homelab is a design goal,
+        not the current implementation. Note also that the rate limit requires a custom Caddy
+        build with the caddy-ratelimit module, which must be rebuilt on every Caddy upgrade.
+      </p>
+      <h3>GPU passthrough isolation model</h3>
+      <p>
+        With PCI passthrough, the GPU is bound to vfio-pci on the Proxmox host and assigned
+        exclusively to the AI VM. IOMMU (VT-d / AMD-Vi) restricts the device's DMA to the guest's
+        memory, so the VM cannot use the GPU to read or write host memory. This is a real hardware
+        boundary, but with two honest caveats: passthrough gives the VM full control of the device,
+        so it protects the host from the guest rather than the guest from a malicious GPU firmware;
+        and the host loses the device entirely for the lifetime of the assignment, which is an
+        availability cost rather than a security property.
+      </p>
+      <h3>Update practices</h3>
+      <p>
+        llama.cpp moves fast and ships no signed release binaries, so updates are built from source
+        at a pinned commit, and GGUF files are re-verified against their pinned SHA-256 checksums
+        after any change. Caddy carries the extra constraint that the rate-limit module forces a
+        rebuild through xcaddy instead of a package upgrade. No automated update pipeline or
+        vulnerability-scanning schedule for this stack is documented yet; that is a gap, listed
+        under future work. The host and hypervisor follow the same patch discipline as the rest of
+        the Proxmox fleet.
+      </p>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="gpu-performance">
+      <h2>GPU and Performance</h2>
+      <p>
+        The passthrough configuration in the Deployment section identifies the GPU as an NVIDIA
+        RTX A5000 (PCI ID <code>10de:2231</code>). VRAM capacity, actual VRAM consumption per
+        model and quantization, and offload split (<code>--n-gpu-layers 35</code> versus total
+        layer count) are not documented on this page; capturing <code>nvidia-smi</code> output
+        from inside the AI VM under load is the right way to document them.
+      </p>
+      <p>
+        This project's documented claims are 50+ concurrent queries under 2 seconds of latency,
+        100% API independence for inference, and sandboxed model execution. The independence and
+        sandboxing claims are architectural and verifiable by inspection of the configuration.
+        The latency and concurrency figures are performance claims, and no benchmark output is
+        published with them. The methodology below is what would make them verifiable; it is
+        documented here as methodology, not as measured results. No numbers in this section are
+        measurements from the TYF-AI system.
+      </p>
+      <h3>Measurement methodology</h3>
+      <ul>
+        <li>
+          <strong>Throughput (tokens/sec):</strong> run <code>llama-bench</code> from the llama.cpp
+          tree against the exact GGUF file, quantization, and <code>--n-gpu-layers</code> value used
+          in production. llama-bench reports prompt-processing and generation throughput directly.
+          For server-mode numbers, llama.cpp's own log output prints prompt eval time and generation
+          tokens-per-second for every request, so a scripted conversation replay against the running
+          server yields real per-request figures.
+        </li>
+        <li>
+          <strong>Time to first token (TTFT):</strong> enable streaming on the completion endpoint
+          and timestamp the arrival of the first streamed token against the request send time, for
+          example with <code>curl -N</code> and a wrapper that records monotonic timestamps per
+          chunk. TTFT is dominated by prompt evaluation, so it must be reported alongside prompt
+          length.
+        </li>
+        <li>
+          <strong>Concurrency and end-to-end latency:</strong> drive N parallel HTTP clients (a
+          small Bash or Python harness issuing simultaneous requests through Caddy, including the
+          auth and rate-limit path) and record wall-clock latency percentiles, p50 and p95 at
+          minimum, per concurrency level. The claimed figure of 50+ concurrent queries under 2 s
+          would be verified by showing p95 latency below 2 s at N=50 for a defined prompt and
+          response length, with the model, quantization, context length, and GPU state published
+          alongside the result.
+        </li>
+        <li>
+          <strong>Rate-limit awareness:</strong> load tests must either authenticate as a single
+          client with the rate limit temporarily raised, or distribute across client keys,
+          otherwise the caddy-ratelimit zone (60 events per minute per client) throttles the test
+          and the numbers measure the proxy, not the GPU.
+        </li>
+      </ul>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="failure-modes">
+      <h2>Failure Modes</h2>
+      <table>
+        <th scope="col"ead><tr><th scope="col">Failure</th><th scope="col">Symptom</th><th scope="col">Cause</th><th scope="col">Mitigation</th></tr></thead>
+        <tbody>
+          <tr><td>GPU passthrough reset failure</td><td>After VM shutdown, the GPU cannot be re-claimed or reassigned without a host reboot</td><td>Many NVIDIA cards do not implement a clean function-level reset; the device is left in a state vfio-pci cannot recover</td><td>Test VM stop/start cycles before relying on the setup; keep the GPU permanently assigned to the AI VM; where supported, use a vendor reset quirk; plan host reboots around passthrough maintenance</td></tr>
+          <tr><td>Model OOM by context length</td><td>CUDA out-of-memory errors, or inference silently slowing by an order of magnitude</td><td>The KV cache grows with context length and concurrent slots; a large <code>-c</code> value can exceed VRAM even when the weights fit, forcing partial CPU offload</td><td>Size context and parallel slots against measured VRAM (<code>nvidia-smi</code> under load); prefer a smaller quantization over silent CPU offload; reject or truncate over-long prompts at the proxy or UI layer</td></tr>
+          <tr><td>Caddy authentication failure</td><td>All users locked out, or repeated 401s for legitimate clients</td><td>Lost or mistyped bcrypt hash in the Caddyfile; rate-limit false positives from NAT'd clients sharing <code>{remote_host}</code></td><td>Generate hashes with <code>caddy hash-password</code> and store the Caddyfile in version control (hash only, never the plaintext; the plaintext password lives in a password manager, not the repo); validate config with <code>caddy validate</code> before reload; tune the rate-limit key if clients share egress IPs</td></tr>
+          <tr><td>Sandbox escape</td><td>A compromised llama.cpp process reaches the host filesystem or network despite Firejail</td><td>Firejail is a setuid-root userspace sandbox with its own CVE history, and seccomp cannot block a kernel exploit; sandboxing raises the bar, it does not prove containment</td><td>Defense in depth: keep host kernel and Firejail patched, retain the UID egress firewall as an independent layer, run the whole stack inside the dedicated AI VM so an escape lands in the guest rather than the hypervisor host</td></tr>
+          <tr><td>Firewall rules lost on reboot</td><td>Model process can suddenly reach the network after a restart</td><td>The iptables owner-match rules are volatile unless persisted</td><td>Persist with netfilter-persistent or re-apply from a systemd unit ordered before the inference service; alert on rule absence</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="limitations">
+      <h2>Limitations and Future Work</h2>
+      <ul>
+        <li><strong>No high availability:</strong> a single GPU in a single VM behind a single Caddy instance; any failure of the three stops inference. There is no failover design.</li>
+        <li><strong>Coarse identity:</strong> basicauth provides one credential class with no per-user audit trail; OIDC integration with the homelab's identity-aware access layer is planned, not implemented.</li>
+        <li><strong>Unverified performance claims:</strong> the 50+ concurrent / &lt;2 s figures are documented claims without published benchmark output; the benchmark harness in the Component Reference exists to close exactly this gap.</li>
+        <li><strong>Locality has one documented exception:</strong> enabling web search sends derived queries to external search providers, so the 100% API-independence claim covers model inference only.</li>
+        <li><strong>No documented monitoring or update pipeline:</strong> inference service health, GPU state, and vulnerability-driven rebuilds of llama.cpp and the custom Caddy binary are not yet automated.</li>
+        <li><strong>Planned capabilities:</strong> multi-model routing per task and budget, retrieval-augmented generation over local documents with citations, a full audit log of prompts and completions, and an evaluation harness that regression-tests model updates before they replace a pinned GGUF.</li>
+      </ul>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="references">
+      <h2>References</h2>
+      <ul>
+        <li><a href="https://github.com/ggml-org/llama.cpp" target="_blank" rel="noopener">llama.cpp</a>, inference engine, GGUF format, <code>llama-server</code>, and <code>llama-bench</code> documentation</li>
+        <li><a href="https://docs.openwebui.com/" target="_blank" rel="noopener">Open WebUI documentation</a>, deployment and configuration reference</li>
+        <li><a href="https://caddyserver.com/docs/" target="_blank" rel="noopener">Caddy documentation</a>, including the basicauth directive and <code>caddy hash-password</code></li>
+        <li><a href="https://github.com/mholt/caddy-ratelimit" target="_blank" rel="noopener">caddy-ratelimit</a>, the rate-limit module used by the custom Caddy build</li>
+        <li><a href="https://firejail.wordpress.com/" target="_blank" rel="noopener">Firejail</a>, SUID sandbox for Linux processes: filesystem isolation, capability dropping, seccomp</li>
+        <li><a href="https://pve.proxmox.com/wiki/PCI_Passthrough" target="_blank" rel="noopener">Proxmox VE PCI Passthrough guide</a>, IOMMU, vfio-pci binding, and GPU assignment to VMs</li>
+      </ul>
+    </section>
 
     <div class="tags">
       <span class="tag">llama.cpp</span><span class="tag">GGUF</span><span class="tag">Open WebUI</span><span class="tag">Caddy</span><span class="tag">Firejail</span><span class="tag">Proxmox</span><span class="tag">GPU Passthrough</span><span class="tag">Security</span>

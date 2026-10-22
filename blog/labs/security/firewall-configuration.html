@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>Firewall Configuration Explained: Security Lab | TYFSADIK</title>
   <meta name="description" content="Configure Linux host firewalls hands-on: iptables chains, firewalld zones, and ufw policies with default-deny posture, drop logging, and reboot persistence.">
   <meta name="keywords" content="iptables, firewalld, ufw, host firewall, default deny, netfilter, Linux firewall">
@@ -26,6 +27,8 @@
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
   <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta property="og:image:width" content="640">
+  <meta property="og:image:height" content="275">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Firewall Configuration Explained: Security Lab | TYFSADIK">
   <meta name="twitter:description" content="Configure Linux host firewalls hands-on: iptables chains, firewalld zones, and ufw policies with default-deny posture, drop logging, and reboot persistence.">
@@ -89,6 +92,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Locked out of SSH'?", "acceptedAnswer": {"@type": "Answer", "text": "the allow rule must precede the DROP policy; recover via the hypervisor or serial console, then reorder. Prevention beats recovery: before any risky firewall change, schedule a rollback with at now + 5 minutes running iptables -P INPUT ACCEPT; iptables -F, if the change locks you out, the safety net fires and lets you back in; if it works, delete the at-job with atrm."}}, {"@type": "Question", "name": "How do I fix 'firewalld and iptables conflict'?", "acceptedAnswer": {"@type": "Answer", "text": "run one manager only; firewalld owns the chains when active. If raw iptables rules keep disappearing, check systemctl is-active firewalld, firewalld rebuilds the entire ruleset on every reload and erases anything it did not create. Either migrate the rules into firewalld (--direct rules or rich rules) or mask firewalld and manage iptables yourself."}}, {"@type": "Question", "name": "How do I fix 'Rules vanish on reboot'?", "acceptedAnswer": {"@type": "Answer", "text": "install iptables-persistent or enable the firewalld service. Diagnose by comparing iptables-save output immediately after boot against your saved file; an empty INPUT chain with policy ACCEPT means nothing restored the rules. Confirm the restore service is enabled: systemctl is-enabled netfilter-persistent."}}, {"@type": "Question", "name": "How do I fix 'A legitimate service stopped working after lockdown'?", "acceptedAnswer": {"@type": "Answer", "text": "watch the drop log while reproducing the failure, journalctl -k -f | grep fw-drop will show the exact destination port being dropped. Add a targeted allow rule for that port above the LOG rule rather than widening the policy. If nothing appears in the log, the problem is not the inbound firewall, check the service's own bind address and any egress filtering."}}, {"@type": "Question", "name": "How do I fix 'Outbound DNS, updates, or NTP fail'?", "acceptedAnswer": {"@type": "Answer", "text": "almost always a missing or misplaced ESTABLISHED,RELATED rule rather than an OUTPUT problem. The return traffic for host-initiated connections enters through INPUT and needs that conntrack accept to pass a default-deny policy. Verify by checking the rule's packet counter with iptables -L INPUT -v -n while running apt update, the counter should climb."}}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -103,7 +107,7 @@
       <ul class="nav-links">
         <li><a href="../../../about.html" class="nav-link">About Me</a></li>
         <li><a href="../../../work.html" class="nav-link">Work</a></li>
-        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../blog.html" class="nav-link current" aria-current="page">Blog/Labs</a></li>
         <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
       </ul>
@@ -111,7 +115,7 @@
     <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
   </div>
 </header>
-<main class="page-content"><div class="container">
+<main class="page-content" id="main-content"><div class="container">
     <div class="content-box">
 
     <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Firewall Configuration</span></nav>
@@ -363,7 +367,7 @@ PORT    STATE SERVICE
 
     <section id="troubleshooting"><h2>Troubleshooting</h2>
 <table class="lab-table">
-<thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+<th scope="col"ead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">Fix</th></tr></thead>
 <tbody>
 <tr><td>Command not found</td><td>package missing</td><td>install prerequisite and verify version</td></tr>
 <tr><td>Permission denied</td><td>insufficient privileges</td><td>use documented sudo or lab admin context</td></tr>
@@ -403,8 +407,8 @@ PORT    STATE SERVICE
 
         <section id="practice-challenges">
       <h2>Practice Challenges</h2>
-      <div class="lab-challenge"><h4>Challenge 1: Rate-limit SSH aggressively</h4><p>Goal: Tune the SSH rule to allow 3 new connections per minute with a burst of 5, then prove brute forcing gets throttled.</p><p>Hint: Adjust the limit module parameters and watch the packet counters while running hydra against the lab host.</p></div>
-      <div class="lab-challenge"><h4>Challenge 2: Port-knock a hidden service</h4><p>Goal: Add a port-knocking sequence that temporarily opens a management port, using only iptables recent matching.</p><p>Hint: Use -m recent --set and --rcheck with --seconds to build the knock stages.</p></div>
+      <div class="lab-challenge"><h3>Challenge 1: Rate-limit SSH aggressively</h3><p>Goal: Tune the SSH rule to allow 3 new connections per minute with a burst of 5, then prove brute forcing gets throttled.</p><p>Hint: Adjust the limit module parameters and watch the packet counters while running hydra against the lab host.</p></div>
+      <div class="lab-challenge"><h3>Challenge 2: Port-knock a hidden service</h3><p>Goal: Add a port-knocking sequence that temporarily opens a management port, using only iptables recent matching.</p><p>Hint: Use -m recent --set and --rcheck with --seconds to build the knock stages.</p></div>
     </section>
 <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
       <ul>

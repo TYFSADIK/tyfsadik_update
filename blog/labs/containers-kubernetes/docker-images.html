@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>Docker Images: Dockerfile Build &amp; Optimize | TYFSADIK</title>
   <meta name="description" content="Build better Docker images: write multi-stage Dockerfiles, exploit the build cache, compare image sizes, and scan for vulnerabilities before shipping.">
   <meta name="keywords" content="Dockerfile, multi-stage build, docker build, image optimization, vulnerability scanning, build cache">
@@ -16,6 +17,8 @@
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
   <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta property="og:image:width" content="640">
+  <meta property="og:image:height" content="275">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Docker Images: Dockerfile Build &amp; Optimize | TYFSADIK">
   <meta name="twitter:description" content="Build better Docker images: write multi-stage Dockerfiles, exploit the build cache, compare image sizes, and scan for vulnerabilities before shipping.">
@@ -36,6 +39,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Image still huge.'?", "acceptedAnswer": {"@type": "Answer", "text": "The final stage almost certainly is not the slim one. Confirm the last FROM in the Dockerfile is the distroless/alpine base, that you copy the artifact with COPY --from=build (the documented double-dash form), and that you tagged the result of the whole build. Run docker history tyf/app:1.0 and look for fat layers carrying the toolchain, if you see them, you are shipping the build stage."}}, {"@type": "Question", "name": "How do I fix 'Cache never hits; every build re-downloads dependencies.'?", "acceptedAnswer": {"@type": "Answer", "text": "The Dockerfile copies source before resolving dependencies. Reorder so COPY go.mod go.sum ./ and RUN go mod download come before COPY . ., and add a .dockerignore so files that change constantly (.git, logs, editor temp files) do not invalidate the context. Also confirm BuildKit is actually on: legacy builders (DOCKER_BUILDKIT=0) cache far less aggressively."}}, {"@type": "Question", "name": "How do I fix 'Trivy DB error on first run'?", "acceptedAnswer": {"@type": "Answer", "text": "(failed to download vulnerability DB). Trivy needs internet access once to fetch its database. Behind a corporate proxy, export HTTPS_PROXY before scanning. In fully offline environments, pre-seed the cache directory (~/.cache/trivy) from a machine that has access, or scan with --skip-db-update against an older cached DB and record the DB age in your report."}}, {"@type": "Question", "name": "How do I fix 'Build fails with go: go.mod file not found.'?", "acceptedAnswer": {"@type": "Answer", "text": "The project has no module file but Go 1.22 builds in module mode. Run go mod init example.com/myapp locally, commit the resulting go.mod (and go.sum), and rebuild. As a stopgap for trivial single-file programs only, GO111MODULE=off go build works, but modules are the correct fix."}}, {"@type": "Question", "name": "How do I fix 'Container exits instantly with exec /app: no such file or directory.'?", "acceptedAnswer": {"@type": "Answer", "text": "The binary exists but its interpreter does not: it was dynamically linked (CGO enabled) and the distroless base has no libc. Rebuild with CGO_ENABLED=0, or switch the runtime base to gcr.io/distroless/base-nossl (or base) if the app genuinely needs cgo. A related variant, exec format error, means an architecture mismatch, e.g. building on an Apple Silicon Mac (arm64) and deploying to an amd64 server; fix with docker buildx build --platform linux/amd64 -t tyf/app:1.0 .."}}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -50,7 +54,7 @@
       <ul class="nav-links">
         <li><a href="../../../about.html" class="nav-link">About Me</a></li>
         <li><a href="../../../work.html" class="nav-link">Work</a></li>
-        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../blog.html" class="nav-link current" aria-current="page">Blog/Labs</a></li>
         <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
       </ul>
@@ -58,7 +62,7 @@
     <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
   </div>
 </header>
-<main class="page-content"><div class="container">
+<main class="page-content" id="main-content"><div class="container">
     <div class="content-box">
 
     <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Docker Images &amp; Dockerfile</span></nav>
@@ -88,7 +92,7 @@
       <p>The lab assumes a small HTTP service written in Go (any single-binary language works, the same pattern applies to Rust, Java, or Node with minor changes). All example output is illustrative but representative of Docker 24+ with BuildKit and Trivy 0.5x.</p>
     </section>
 
-    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+    <div class="lab-objectives"><h2 id="learning-objectives">Learning Objectives</h2>
       <ul>
         <li>Author a Dockerfile using layer-cache-friendly ordering.</li>
         <li>Shrink images with a multi-stage build.</li>
@@ -414,7 +418,7 @@ docker stop app-test</code></pre>
       </ul>
     
 <p>Quick-reference for the failures you are most likely to hit in this lab.</p>
-<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<table class="lab-table"><th scope="col"ead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">Fix</th></tr></thead><tbody>
 <tr><td>Builds are slow every time</td><td>A frequently changing instruction sits early in the Dockerfile, invalidating the cache</td><td>Move <code>COPY . .</code> after dependency installation so code changes do not reinstall dependencies.</td></tr>
 <tr><td><code>COPY failed: file not found</code></td><td>The file is outside the build context or excluded by <code>.dockerignore</code></td><td>Check the context directory and the ignore file; the daemon only sees what you send it.</td></tr>
 <tr><td>Scanner reports critical CVEs</td><td>The base image or a package has known vulnerabilities</td><td>Bump the base tag, rebuild, and re-scan; pin the new digest once it is clean.</td></tr>
@@ -454,9 +458,9 @@ docker stop app-test</code></pre>
     </div>
 
     <section><h2 id="practice-challenges">Practice Challenges</h2>
-<div class="lab-challenge"><h4>Challenge 1: Get under 50 MB</h4><p>Goal: Rebuild the sample app image under 50 MB using a minimal base and multi-stage build.</p><p>Hint: Distroless or alpine bases plus copying only the compiled artifact is the standard recipe.</p></div>
-<div class="lab-challenge"><h4>Challenge 2: Drop root</h4><p>Goal: Add a non-root <code>USER</code> to the final stage and prove the container no longer runs as root.</p><p>Hint: Run <code>docker exec app whoami</code> for the proof; fix file ownership with <code>--chown</code> on COPY.</p></div>
-<div class="lab-challenge"><h4>Challenge 3: Compare three strategies</h4><p>Goal: Build the same app as single-stage, multi-stage, and distroless, and tabulate size and CVE count.</p><p>Hint: The table is the deliverable; it makes the tradeoffs visible instead of theoretical.</p></div>
+<div class="lab-challenge"><h3>Challenge 1: Get under 50 MB</h3><p>Goal: Rebuild the sample app image under 50 MB using a minimal base and multi-stage build.</p><p>Hint: Distroless or alpine bases plus copying only the compiled artifact is the standard recipe.</p></div>
+<div class="lab-challenge"><h3>Challenge 2: Drop root</h3><p>Goal: Add a non-root <code>USER</code> to the final stage and prove the container no longer runs as root.</p><p>Hint: Run <code>docker exec app whoami</code> for the proof; fix file ownership with <code>--chown</code> on COPY.</p></div>
+<div class="lab-challenge"><h3>Challenge 3: Compare three strategies</h3><p>Goal: Build the same app as single-stage, multi-stage, and distroless, and tabulate size and CVE count.</p><p>Hint: The table is the deliverable; it makes the tradeoffs visible instead of theoretical.</p></div>
 </section>
 
     <section class="related-labs"><h2 id="related-labs">Related Labs</h2>

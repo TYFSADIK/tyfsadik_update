@@ -3,7 +3,7 @@
 import re
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 
 ROOT = Path('/Users/captain/Downloads/tyfsadik_update-main')
 
@@ -50,7 +50,13 @@ for f in sorted(ROOT.rglob('*.html')):
         u = urlparse(ref)
         if u.scheme or u.netloc:
             continue
-        target = (f.parent / u.path).resolve()
+        path = unquote(u.path)
+        if path.startswith('/'):
+            target = (ROOT / path.lstrip('/')).resolve()
+        else:
+            target = (f.parent / path).resolve()
+        if not target.exists() and path.endswith('/'):
+            target = target / 'index.html'
         if not target.exists():
             errors.append(f'{f.relative_to(ROOT)}: {tag}[{attr}] -> {ref} MISSING')
 

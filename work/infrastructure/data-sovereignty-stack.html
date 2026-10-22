@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>Data Sovereignty Stack: Self-Hosted Guide | TYFSADIK</title>
   <meta name="description" content="Data sovereignty stack: self-hosted Nextcloud and Immich with BTRFS snapshots, ACL isolation, and 3-2-1 offsite backups to BorgBase and rsync.net, documented.">
   <meta name="robots" content="index,follow">
@@ -17,6 +18,8 @@
   <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
   <meta property="og:url" content="https://tyfsadik.org/work/infrastructure/data-sovereignty-stack.html">
   <meta property="og:image" content="https://tyfsadik.org/images/projects/data-sovereignty-stack.jpg">
+  <meta property="og:image:width" content="1600">
+  <meta property="og:image:height" content="1067">
   <meta property="og:image:alt" content="Data Sovereignty Stack | TYFSADIK">
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
@@ -40,6 +43,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Infrastructure", "item": "https://tyfsadik.org/work.html"}, {"@type": "ListItem", "position": 3, "name": "Data Sovereignty & Secure Media Stack", "item": "https://tyfsadik.org/work/infrastructure/data-sovereignty-stack.html"}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -53,7 +57,7 @@
       <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
       <ul class="nav-links">
         <li><a href="../../about.html" class="nav-link">About Me</a></li>
-        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../work.html" class="nav-link current" aria-current="page">Work</a></li>
         <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
         <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../contact.html" class="nav-link">Contact</a></li>
@@ -63,7 +67,7 @@
   </div>
 </header>
 
-<main class="page-content">
+<main class="page-content" id="main-content">
   <div class="container">
     <div class="content-box">
     <div class="breadcrumbs">
@@ -193,7 +197,7 @@ docker exec nextcloud-aio-nextcloud php occ maintenance:mode --off
 <section id="what-you-need">
   <h2>What you need</h2>
   <table>
-    <thead><tr><th>Category</th><th>Item</th><th>Notes</th></tr></thead>
+    <th scope="col"ead><tr><th scope="col">Category</th><th scope="col">Item</th><th scope="col">Notes</th></tr></thead>
     <tbody>
       <tr><td>Hardware</td><td>External USB 3.2 SSDs</td><td>Sized to hold files, photos, and snapshot history with headroom</td></tr>
       <tr><td>Hardware</td><td>Linux host with USB 3 ports</td><td>Runs the containers and the BTRFS pool</td></tr>
@@ -220,6 +224,346 @@ docker exec nextcloud-aio-nextcloud php occ maintenance:mode --off
     <li>Evaluate an object-storage tier for cold archival of old photo originals.</li>
   </ul>
 </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="storage-backup-architecture">
+      <h2>Storage &amp; Backup Architecture</h2>
+      <p>
+        The stack has three physically and administratively separate tiers. The
+        <strong>primary tier</strong> is the BTRFS pool on external USB 3.2 SSDs: all live
+        Nextcloud and Immich data lives here, with zstd compression and per-data-area
+        subvolumes. The <strong>local recovery tier</strong> is read-only BTRFS snapshots of
+        those subvolumes, kept on the same pool for fast rollback. The <strong>offsite
+        tier</strong> is two independent destinations: encrypted, deduplicated Borg archives
+        on BorgBase, and a secondary copy on rsync.net held under a separate account.
+      </p>
+      <div class="mermaid" role="img" aria-label="Storage and backup architecture: primary BTRFS SSDs feed local snapshots, which feed encrypted BorgBase archives and an rsync.net copy">
+flowchart LR
+  subgraph Primary["Primary Tier: on-site"]
+    SSD[("BTRFS pool<br/>external USB 3.2 SSDs<br/>zstd compression")]
+  end
+
+  subgraph Local["Local Recovery Tier: on-site"]
+    SNAP["BTRFS snapshots<br/>read-only, daily/weekly<br/>fast rollback"]
+  end
+
+  subgraph Offsite["Offsite Tier: independent providers"]
+    BB[("BorgBase<br/>Borg archives<br/>repokey-blake2 encrypted")]
+    RN[("rsync.net<br/>secondary offsite copy<br/>separate account")]
+  end
+
+  SSD -->|"btrfs subvolume snapshot -r"| SNAP
+  SNAP -->|"borg create over SSH"| BB
+  SNAP -->|"rsync over SSH"| RN
+  BB -.->|"monthly restore drill"| VERIFY["Restore + checksum<br/>verification on<br/>scratch directory"]
+  RN -.->|"spot-check"| VERIFY
+
+style SSD fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style SNAP fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style BB fill:#1a1a2e,stroke:#ff8800,color:#e0e0e0
+style RN fill:#1a1a2e,stroke:#ff8800,color:#e0e0e0
+style VERIFY fill:#1a1a2e,stroke:#ffcc00,color:#e0e0e0
+      </div>
+      <p>
+        <strong>Replication is not backup.</strong> Any mechanism that mirrors the primary
+        data &mdash; RAID, a second synced drive, or continuous replication to another
+        host &mdash; faithfully mirrors deletions and corruption too. Delete a folder (or
+        have malware encrypt it) and the replica deletes or encrypts its copy within
+        seconds. Replication protects against exactly one failure class: loss of the
+        primary device. What actually protects data is <em>independent recovery
+        points</em>: copies that (a) cannot be modified by the system they back up,
+        (b) retain history so you can roll back to before the damage, and (c) live
+        somewhere the same event cannot reach.
+      </p>
+      <p>
+        The 3-2-1 layout addresses each of those properties directly. The local BTRFS
+        snapshots are read-only, so neither the containers nor any user process can
+        rewrite history, and they retain point-in-time views for rolling back accidental
+        changes. The BorgBase archives are encrypted client-side before anything leaves
+        the host, deduplicated so history is cheap to keep, and append-oriented so a
+        compromised host cannot silently rewrite old archives. The rsync.net copy sits
+        with a different provider under different credentials, so an account-level
+        problem at one provider cannot take out both offsite copies. Three copies, two
+        providers, one offsite-and-then-some &mdash; the "0 data-loss events" claim in
+        this project's metrics is a statement about this design and its drills, not
+        about hardware never failing.
+      </p>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="component-reference">
+      <h2>Component Reference</h2>
+      <p>
+        This repository contains documentation, not running infrastructure. The status
+        column is deliberately honest about that: <em>Documented</em> means the design and
+        commands are written down here as practiced or designed; nothing on this page
+        should be read as a third-party audit.
+      </p>
+      <table>
+        <th scope="col"ead><tr><th scope="col">Component</th><th scope="col">Responsibility</th><th scope="col">Technology</th><th scope="col">Dependencies</th><th scope="col">Status</th></tr></thead>
+        <tbody>
+          <tr><td>Primary storage pool</td><td>Holds all live file and photo data with transparent compression and checksumming</td><td>BTRFS on external USB 3.2 SSDs, <code>compress=zstd:3</code>, <code>-d single</code></td><td>Linux host, USB 3 enclosures</td><td>Documented</td></tr>
+          <tr><td>File sync &amp; share</td><td>Multi-user private cloud replacing hosted drives</td><td>Nextcloud AIO (Docker)</td><td>Docker, BTRFS pool, MariaDB (bundled)</td><td>Documented</td></tr>
+          <tr><td>Photo &amp; video backup</td><td>Mobile auto-backup, libraries, ML features</td><td>Immich (Docker)</td><td>Docker, BTRFS pool, PostgreSQL, Redis</td><td>Documented</td></tr>
+          <tr><td>Local recovery points</td><td>Fast rollback of deletions and corruption</td><td>Read-only BTRFS subvolume snapshots</td><td>BTRFS pool</td><td>Documented</td></tr>
+          <tr><td>User isolation</td><td>Keeps each user's data in their own namespace across container mounts</td><td>POSIX ACLs + Nextcloud/Immich accounts</td><td>Filesystem ACL support, container bind mounts</td><td>Documented</td></tr>
+          <tr><td>Offsite backup (primary)</td><td>Encrypted, deduplicated, versioned archives</td><td>BorgBackup to BorgBase over SSH</td><td>BorgBase account, SSH key, repo passphrase</td><td>Documented</td></tr>
+          <tr><td>Offsite copy (secondary)</td><td>Provider-independent second offsite copy</td><td>rsync to rsync.net over SSH</td><td>rsync.net account, SSH key</td><td>Documented</td></tr>
+          <tr><td>Restore verification</td><td>Proves archives are restorable, not just present</td><td>Monthly drill: <code>borg extract</code> to scratch + checksum comparison</td><td>Scratch disk space, drill log</td><td>Documented (procedure; results logged privately)</td></tr>
+          <tr><td>SMART monitoring &amp; alerts</td><td>Early warning on drive degradation</td><td>smartd / smartctl alerting</td><td>Enclosure SMART passthrough</td><td>Planned</td></tr>
+          <tr><td>Second local mirror</td><td>Faster recovery from total pool loss</td><td>BTRFS send/receive to separate hardware</td><td>Second host or enclosure</td><td>Planned</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="data-flow">
+      <h2>Data Flow</h2>
+      <p>
+        Two ingestion paths converge on the same storage and backup pipeline.
+      </p>
+      <p>
+        <strong>Phone photo to offsite (Immich):</strong> the Immich mobile app uploads new
+        photos and videos in the background over HTTPS to the Immich server. The server
+        writes the original assets into its library directories on the BTRFS pool and stores
+        metadata, thumbnails, and ML results in its PostgreSQL database (which is dumped to
+        the data tree before each backup run, so the database is covered by the same
+        pipeline). On the backup schedule, a read-only BTRFS snapshot freezes a consistent
+        view of the pool, <code>borg create</code> sends the deduplicated, encrypted delta
+        to BorgBase, and the rsync.net copy is updated as the second offsite destination.
+        A photo taken on the phone therefore ends up in three places: the pool (plus its
+        local snapshots), BorgBase, and rsync.net.
+      </p>
+      <p>
+        <strong>Desktop file sync (Nextcloud):</strong> the Nextcloud desktop client watches
+        the local sync folders and pushes changes over HTTPS to Nextcloud AIO, which writes
+        them into per-user data directories on the same BTRFS pool. Nextcloud's own versions
+        and trash bin provide the first, in-application line of undo; below that, the BTRFS
+        snapshots give filesystem-level rollback; and the same snapshot &rarr; Borg &rarr;
+        BorgBase / rsync.net pipeline carries everything offsite. Because both services
+        share the pool and the snapshot schedule, one backup run covers files, photos, and
+        the database dumps together.
+      </p>
+      <div class="mermaid" role="img" aria-label="Data flow from phone and desktop clients through Immich and Nextcloud to the BTRFS pool, snapshots, and the two offsite destinations">
+flowchart LR
+  PHONE["Phone<br/>Immich mobile<br/>auto-backup"]
+  DESKTOP["Desktop / laptop<br/>Nextcloud sync client"]
+  IM["Immich server<br/>library + PostgreSQL"]
+  NC["Nextcloud AIO<br/>per-user data dirs"]
+  POOL[("BTRFS pool<br/>USB 3.2 SSDs")]
+  DUMP["DB dumps<br/>pg_dump into data tree"]
+  SNAP2["Read-only<br/>BTRFS snapshot"]
+  BB2[("BorgBase<br/>encrypted archives")]
+  RN2[("rsync.net<br/>secondary copy")]
+
+  PHONE -->|"HTTPS upload"| IM
+  DESKTOP -->|"HTTPS sync"| NC
+  IM --> POOL
+  NC --> POOL
+  IM -->|"pg_dump before backup"| DUMP
+  NC -->|"maintenance mode<br/>during backup"| DUMP
+  DUMP --> POOL
+  POOL --> SNAP2
+  SNAP2 -->|"borg create (SSH)"| BB2
+  SNAP2 -->|"rsync (SSH)"| RN2
+
+style PHONE fill:#1a1a2e,stroke:#aa88ff,color:#e0e0e0
+style DESKTOP fill:#1a1a2e,stroke:#aa88ff,color:#e0e0e0
+style IM fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style NC fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style POOL fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style DUMP fill:#1a1a2e,stroke:#ffcc00,color:#e0e0e0
+style SNAP2 fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style BB2 fill:#1a1a2e,stroke:#ff8800,color:#e0e0e0
+style RN2 fill:#1a1a2e,stroke:#ff8800,color:#e0e0e0
+      </div>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="security-model">
+      <h2>Security Model</h2>
+      <ul>
+        <li>
+          <strong>Multi-user ACL isolation:</strong> each person gets their own Nextcloud
+          account and Immich user, and the underlying data directories on the BTRFS pool
+          carry POSIX ACLs so one user's files are not readable by another's, even where
+          directories are bind-mounted into containers. Isolation is enforced at two
+          layers: application accounts (the day-to-day boundary) and filesystem ACLs
+          (the boundary that survives a misconfigured share or app-level bug).
+        </li>
+        <li>
+          <strong>Encryption in transit:</strong> client-to-server traffic runs over HTTPS,
+          and both offsite destinations are reached over SSH. No service in this stack is
+          exposed over plaintext protocols.
+        </li>
+        <li>
+          <strong>Encryption of offsite backups:</strong> Borg archives are encrypted
+          client-side with <code>repokey-blake2</code> before any byte leaves the host, so
+          BorgBase only ever stores ciphertext. The secondary rsync.net copy is transport-
+          encrypted over SSH; at-rest encryption there relies on the provider, which is one
+          reason the BorgBase archives are the primary offsite recovery source.
+        </li>
+        <li>
+          <strong>Encryption of the local pool:</strong> the primary SSDs are not claimed to
+          be encrypted at rest on this page. Physical theft of the drives is a known gap;
+          full-disk encryption (LUKS) under the pool is the natural fix and is listed as
+          future work rather than asserted as done.
+        </li>
+        <li>
+          <strong>Credential handling:</strong> the Borg passphrase and the SSH keys for both
+          offsite providers are never stored in the Compose files, scripts, or this
+          repository. Commands reference them as environment variables and placeholders
+          (<code>$BORG_PASSPHRASE</code>, <code>&lt;your-ssh-key&gt;</code>,
+          <code>&lt;user@user.repo.borgbase.com&gt;</code>), and the real values live in a
+          password manager. Losing the Borg passphrase loses the BorgBase archives, so it is
+          backed up in the same way the data is: more than one copy, in more than one place.
+        </li>
+      </ul>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="restore-testing">
+      <h2>Restore Testing</h2>
+      <p>
+        A green "backup completed" message proves a process ran; it proves nothing about
+        whether data can come back. Archives can be subtly corrupt, passphrases can drift
+        from what the password manager holds, and application state (database dumps,
+        config) can silently fall out of the backup set. The only evidence that a backup
+        works is a restore that was actually performed and checked. That is why this stack
+        treats the monthly drill &mdash; not the nightly job &mdash; as the deliverable,
+        and why the results are logged rather than assumed.
+      </p>
+      <p>
+        The drill below is the documented procedure. Commands are sanitized: hostnames,
+        users, and paths are placeholders, and no specific drill results are claimed on
+        this page.
+      </p>
+      <div class="command-block"><div class="command"><code># 1. Confirm the repository is readable and list recent archives
+export BORG_REPO="ssh://&lt;user&gt;@&lt;user&gt;.repo.borgbase.com/./repo"
+export BORG_PASSPHRASE="&lt;from password manager&gt;"
+borg list "$BORG_REPO" | tail -5
+
+# 2. Verify repository integrity (data-level check, not just metadata)
+borg check --verify-data "$BORG_REPO"
+
+# 3. Extract a sample subtree to a SCRATCH directory, never over live data
+mkdir -p /mnt/scratch/restore-drill
+cd /mnt/scratch/restore-drill
+borg extract "$BORG_REPO::data-&lt;archive-date&gt;" path/to/sample-directory
+
+# 4. Compare checksums of restored files against the live originals
+(cd /mnt/data &amp;&amp; sha256sum path/to/sample-directory/*) | sort &gt; /tmp/live.sums
+(cd /mnt/scratch/restore-drill &amp;&amp; sha256sum path/to/sample-directory/*) | sort &gt; /tmp/restored.sums
+diff /tmp/live.sums /tmp/restored.sums &amp;&amp; echo "DRILL PASS: checksums match"
+
+# 5. Spot-check a database dump restores into a throwaway database
+docker exec -i immich_postgres psql -U postgres -c "CREATE DATABASE drill_check;"
+docker exec -i immich_postgres psql -U postgres drill_check &lt; /mnt/scratch/restore-drill/db-dumps/immich.sql
+docker exec -i immich_postgres psql -U postgres -c "DROP DATABASE drill_check;"
+
+# 6. Record the outcome (date, archive tested, checksum result) in the drill log,
+#    then clean up the scratch directory
+rm -rf /mnt/scratch/restore-drill</code></div></div>
+      <p>
+        Two habits make this meaningful. First, restore to a scratch location and compare
+        checksums, rather than "looking at" the files &mdash; a diff is objective, an
+        eyeball is not. Second, vary what gets tested: alternate between the newest
+        archive and an older one, and between the BorgBase source and the rsync.net copy,
+        so every tier of the 3-2-1 layout gets exercised over time.
+      </p>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="failure-modes">
+      <h2>Failure Modes &amp; Recovery Paths</h2>
+      <table>
+        <th scope="col"ead><tr><th scope="col">Failure</th><th scope="col">Blast Radius</th><th scope="col">Recovery Path</th><th scope="col">Expected Data Loss</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>Single SSD fails or drops off the USB bus</strong></td>
+            <td>Pool is <code>-d single</code>: one dead drive means total pool loss</td>
+            <td>Rebuild the pool on replacement hardware, restore the latest Borg archive from BorgBase (or pull from rsync.net), reload database dumps, redeploy containers</td>
+            <td>Changes since the last offsite run; prevented entirely for anything already snapshotted and uploaded</td>
+          </tr>
+          <tr>
+            <td><strong>Accidental deletion by a user</strong></td>
+            <td>One user's files or photos</td>
+            <td>First line: Nextcloud trash bin / file versions or Immich trash. Second line: roll the subvolume back from a read-only BTRFS snapshot. Offsite is only needed if both are exhausted</td>
+            <td>None for deletions inside the snapshot retention window</td>
+          </tr>
+          <tr>
+            <td><strong>Ransomware-style mass corruption or encryption of the pool</strong></td>
+            <td>All live data on the primary tier</td>
+            <td>Local snapshots are read-only and cannot be rewritten by the malware; restore from a pre-infection snapshot. If the host itself is untrusted, restore from BorgBase instead &mdash; the archives were encrypted and written before the compromise and the provider holds the keys to nothing</td>
+            <td>Changes between the last clean snapshot and detection</td>
+          </tr>
+          <tr>
+            <td><strong>One offsite provider unavailable (outage, account issue, provider closure)</strong></td>
+            <td>One of two offsite copies</td>
+            <td>The 3-2-1 layout is deliberately two-provider: restores fall back to the surviving destination while the primary is re-established or replaced. No recovery path depends on a single company</td>
+            <td>None, as long as the second destination and local tier are intact</td>
+          </tr>
+          <tr>
+            <td><strong>Site loss (fire, theft of the whole setup)</strong></td>
+            <td>Primary tier and local snapshots together</td>
+            <td>Rebuild from BorgBase; rsync.net is the fallback if BorgBase is simultaneously unavailable. This is the scenario the offsite tier exists for, and the one replication to another in-house drive would not survive</td>
+            <td>Changes since the last offsite run</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="limitations">
+      <h2>Limitations &amp; Future Work</h2>
+      <ul>
+        <li>
+          <strong>No redundancy inside the pool:</strong> <code>-d single</code> trades
+          redundancy for capacity, so a single drive failure is a full-pool event. The
+          offsite backups cover it, but recovery means a full restore, not a degraded-but-
+          running system. The planned second local mirror (BTRFS send/receive to separate
+          hardware) closes most of this gap.
+        </li>
+        <li>
+          <strong>USB-attached storage:</strong> external SSDs can disconnect under load or
+          with marginal enclosures and cables, and SMART passthrough varies by enclosure,
+          which limits early-warning monitoring until the planned alerting is in place.
+        </li>
+        <li>
+          <strong>Manual elements in the pipeline:</strong> quiescing Nextcloud and dumping
+          the Immich database before the backup are scriptable but human-supervised today;
+          a fully scheduled, self-verifying job with alerting on failure is future work.
+        </li>
+        <li>
+          <strong>Restore drills are periodic, not continuous:</strong> a monthly drill can
+          miss a bad archive for up to a month. More frequent automated extraction checks
+          would shrink that window.
+        </li>
+        <li>
+          <strong>Secondary offsite copy is not independently encrypted at rest:</strong>
+          the rsync.net copy relies on transport encryption and provider-side handling;
+          moving that copy to an encrypted format (or Borg with a separate key) would make
+          both offsite tiers equally strong.
+        </li>
+        <li>
+          <strong>Performance claims are hardware-specific:</strong> the ~2.5&nbsp;Gbps SSD
+          throughput figure belongs to this exact enclosure/cable/host combination; anyone
+          reproducing the stack should benchmark their own chain before quoting numbers.
+        </li>
+      </ul>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="references">
+      <h2>References</h2>
+      <ul>
+        <li><a href="https://docs.nextcloud.com/" target="_blank" rel="noopener">Nextcloud documentation</a> and <a href="https://github.com/nextcloud/all-in-one" target="_blank" rel="noopener">Nextcloud All-in-One</a></li>
+        <li><a href="https://immich.app/docs/" target="_blank" rel="noopener">Immich documentation</a>, including backup and restore guidance</li>
+        <li><a href="https://btrfs.readthedocs.io/" target="_blank" rel="noopener">BTRFS documentation</a> (subvolumes, snapshots, compression)</li>
+        <li><a href="https://borgbackup.readthedocs.io/" target="_blank" rel="noopener">BorgBackup documentation</a> and <a href="https://docs.borgbase.com/" target="_blank" rel="noopener">BorgBase documentation</a></li>
+        <li><a href="https://www.rsync.net/resources/howto/" target="_blank" rel="noopener">rsync.net how-to and documentation</a></li>
+      </ul>
+    </section>
 
     <div class="tags">
       <span class="tag">Nextcloud</span><span class="tag">Immich</span><span class="tag">BTRFS</span><span class="tag">Docker</span><span class="tag">BorgBase</span><span class="tag">rsync.net</span><span class="tag">Backup</span><span class="tag">Privacy</span>

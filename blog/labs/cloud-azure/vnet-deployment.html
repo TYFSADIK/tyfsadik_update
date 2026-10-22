@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>Azure VNet Deployment: Subnets &amp; Peering | TYFSADIK</title>
   <meta name="description" content="Build Azure virtual networks from scratch: address planning, subnets, VNet peering, and the non-overlapping CIDR discipline that peering demands of you.">
   <meta name="keywords" content="Azure VNet, virtual network, subnets, VNet peering, CIDR planning, az network vnet">
@@ -16,6 +17,8 @@
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
   <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta property="og:image:width" content="640">
+  <meta property="og:image:height" content="275">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Azure VNet Deployment: Subnets &amp; Peering | TYFSADIK">
   <meta name="twitter:description" content="Build Azure virtual networks from scratch: address planning, subnets, VNet peering, and the non-overlapping CIDR discipline that peering demands of you.">
@@ -36,6 +39,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Peering stuck at Initiated'?", "acceptedAnswer": {"@type": "Answer", "text": "create the peering in both directions; it requires a pair. Check both sides with az network vnet peering list --vnet-name <vnet>, whichever side is missing a link is the one you still need to create."}}, {"@type": "Question", "name": "How do I fix 'Overlapping address space'?", "acceptedAnswer": {"@type": "Answer", "text": "peered VNets must use non-overlapping CIDR ranges. The error NetcfgAddressPrefixesOverlapForPeering means exactly this. The only clean fix for a true overlap is to recreate one VNet with a different range. Note this is different from growing an address space: adding or removing prefixes on an already-peered VNet is allowed, you then sync the peering so the new ranges propagate."}}, {"@type": "Question", "name": "How do I fix 'No connectivity despite peering'?", "acceptedAnswer": {"@type": "Answer", "text": "check NSGs and that -allow-vnet-access is set. Run az network vnet peering show -n a-to-b --vnet-name vnet-a --query allowVirtualNetworkAccess, if it returns false, update the peering: az network vnet peering update -n a-to-b --vnet-name vnet-a --set allowVirtualNetworkAccess=true."}}, {"@type": "Question", "name": "How do I fix 'Ping fails but SSH works (or vice versa)'?", "acceptedAnswer": {"@type": "Answer", "text": "this is almost never peering. NSG default rules allow all VNet-internal traffic, but a VM-level firewall (e.g. ufw on Ubuntu) or a custom NSG rule may block ICMP while allowing TCP/22. Test with a TCP tool like curl -v telnet://10.1.1.4:22 before blaming the network."}}, {"@type": "Question", "name": "How do I fix 'Cannot add a subnet or extend the address space after peering'?", "acceptedAnswer": {"@type": "Answer", "text": "Azure does not block address-space changes on peered VNets, but the peering must be synced afterward. Update the prefixes with az network vnet update --add addressSpace.addressPrefixes=10.0.4.0/22, then sync the peering (portal: Peering blade, Sync) so the remote side learns the new ranges; until you sync, the new range is unreachable across the peering. Plan the /16 sizing generously at the start anyway, because every change still touches live routing."}}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -50,7 +54,7 @@
       <ul class="nav-links">
         <li><a href="../../../about.html" class="nav-link">About Me</a></li>
         <li><a href="../../../work.html" class="nav-link">Work</a></li>
-        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../blog.html" class="nav-link current" aria-current="page">Blog/Labs</a></li>
         <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
       </ul>
@@ -58,7 +62,7 @@
     <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
   </div>
 </header>
-<main class="page-content"><div class="container">
+<main class="page-content" id="main-content"><div class="container">
     <div class="content-box">
 
     <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/cloud-azure/index.html">Cloud &amp; Azure</a> &rsaquo; <span>Virtual Network Deployment</span></nav>
@@ -88,7 +92,7 @@
     <section><p class="lead">You will deploy an Azure Virtual Network with tiered subnets and peer it to a second VNet. By the end you will have a segmented cloud network foundation that VMs and services can join.</p>
       <p>A Virtual Network (VNet) is the fundamental isolation boundary in Azure networking: every VM, container app, or private endpoint you deploy lives inside one. Getting the address plan right on day one matters because the choices you make here, the VNet CIDR range, how you carve it into subnets, and which VNets are allowed to talk to each other, are painful to change once workloads are running. This lab walks through the entire lifecycle with the Azure CLI: planning a non-overlapping address space, creating the VNet, adding tiered subnets, and connecting two VNets with bidirectional peering so resources can reach each other over the Microsoft backbone instead of the public internet.</p></section>
 
-    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+    <div class="lab-objectives"><h2 id="learning-objectives">Learning Objectives</h2>
       <ul>
         <li>Create a VNet with non-overlapping subnets.</li>
         <li>Peer two VNets for private connectivity.</li>
@@ -335,7 +339,7 @@ DenyAllInBound             Deny      0.0.0.0/0</div>
     </section>
 <section><h2 id="troubleshooting">Troubleshooting</h2>
 <p>Quick-reference for the failures you are most likely to hit in this lab.</p>
-<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<table class="lab-table"><th scope="col"ead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">Fix</th></tr></thead><tbody>
 <tr><td>Peering creation fails</td><td>The two address spaces overlap</td><td>Re-plan with non-overlapping ranges; overlapping VNets can never peer, no matter the settings.</td></tr>
 <tr><td>Peering shows Disconnected</td><td>Peering is one-directional until both sides are created</td><td>Create the reverse peering; both directions must exist for traffic to flow.</td></tr>
 <tr><td>Fewer usable IPs than expected</td><td>Azure reserves five addresses per subnet (.0-.3 and the last)</td><td>Account for the reservation in your plan; a /29 leaves only 3 usable addresses.</td></tr>
@@ -403,9 +407,9 @@ az group delete -n tyf-net-rg --yes --no-wait</div>
     </section>
 
     <section><h2 id="practice-challenges">Practice Challenges</h2>
-<div class="lab-challenge"><h4>Challenge 1: Plan on paper first</h4><p>Goal: Split a /16 into four /18s on paper, assign each a purpose, then deploy exactly that.</p><p>Hint: Write the ranges down before touching the CLI; the plan is the deliverable.</p></div>
-<div class="lab-challenge"><h4>Challenge 2: Hub and spoke</h4><p>Goal: Build a hub VNet peered to two spokes and prove the spokes cannot reach each other directly.</p><p>Hint: The failed ping between spokes is the proof that peering is non-transitive.</p></div>
-<div class="lab-challenge"><h4>Challenge 3: Custom DNS</h4><p>Goal: Point the VNet at a custom DNS server and verify name resolution from a VM.</p><p>Hint: Run <code>nslookup</code> from the VM; it shows which server answered.</p></div>
+<div class="lab-challenge"><h3>Challenge 1: Plan on paper first</h3><p>Goal: Split a /16 into four /18s on paper, assign each a purpose, then deploy exactly that.</p><p>Hint: Write the ranges down before touching the CLI; the plan is the deliverable.</p></div>
+<div class="lab-challenge"><h3>Challenge 2: Hub and spoke</h3><p>Goal: Build a hub VNet peered to two spokes and prove the spokes cannot reach each other directly.</p><p>Hint: The failed ping between spokes is the proof that peering is non-transitive.</p></div>
+<div class="lab-challenge"><h3>Challenge 3: Custom DNS</h3><p>Goal: Point the VNet at a custom DNS server and verify name resolution from a VM.</p><p>Hint: Run <code>nslookup</code> from the VM; it shows which server answered.</p></div>
 </section>
 
     <section class="related-labs"><h2 id="related-labs">Related Labs</h2>

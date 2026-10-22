@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>Airspace Deconfliction Manager: Defence Build | TYFSADIK</title>
   <meta name="description" content="Small-scale UAS airspace manager: ESP32 tracker beacons, ArduPilot SITL simulated drones, dynamic geofences, predicted-conflict alerts, human override.">
   <meta name="keywords" content="airspace deconfliction, UAS traffic management, UTM Canada, ArduPilot SITL, MAVLink, pymavlink, ESP32 tracker beacon, dynamic geofence, conflict detection, time to closest point of approach, human in the loop, Canadian Army airspace study">
@@ -17,6 +18,8 @@
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
   <meta property="og:image" content="https://tyfsadik.org/Prove/Mini%20airspace%20deconfliction%20manager.jpeg">
+  <meta property="og:image:width" content="1408">
+  <meta property="og:image:height" content="768">
   <meta name="twitter:title" content="Airspace Deconfliction Manager: Defence Build | TYFSADIK">
   <meta name="twitter:description" content="Small-scale UAS airspace manager: ESP32 tracker beacons, ArduPilot SITL simulated drones, dynamic geofences, predicted-conflict alerts, human override.">
   <meta name="twitter:image" content="https://tyfsadik.org/Prove/Mini%20airspace%20deconfliction%20manager.jpeg">
@@ -36,6 +39,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Second SITL instance never connected'?", "acceptedAnswer": {"@type": "Answer", "text": "I forgot the -I instance offset, so both instances fought over the same ports and the second one's telemetry silently went nowhere. Fix: unique -I and --sysid per instance, and a heartbeat check in the ingest path that screams instead of waiting forever."}}, {"@type": "Question", "name": "How do I fix 'Beacons dropped packets in bursts'?", "acceptedAnswer": {"@type": "Answer", "text": "the ESP32's default modem sleep batches radio traffic, which made stand-in tracks jump and nearly triggered false conflicts. Fix: WiFi.setSleep(false) in the beacon firmware, confirmed with a packet-gap histogram."}}, {"@type": "Question", "name": "How do I fix 'Alerts flapped at the bubble boundary'?", "acceptedAnswer": {"@type": "Answer", "text": "a single-sample threshold raised and cleared the same conflict several times a second as telemetry jittered. Fix: require three consecutive violating predictions to raise, and a clear margin to release, classic hysteresis."}}, {"@type": "Question", "name": "How do I fix 'Predictions were useless at default telemetry rates'?", "acceptedAnswer": {"@type": "Answer", "text": "SITL streams position slowly unless asked, and 1 Hz updates made TCPA estimates jump around. Fix: request GLOBAL_POSITION_INT at 10 Hz with MAV_CMD_SET_MESSAGE_INTERVAL on connect."}}, {"@type": "Question", "name": "How do I fix '\"Repeatable\" scenarios were not repeatable'?", "acceptedAnswer": {"@type": "Answer", "text": "SITL kept leftover waypoints and parameters between runs, so run 2 never matched run 1. Fix: the harness restarts instances and wipes state (sim_vehicle.py -w) before every run."}}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -49,7 +53,7 @@
       <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
       <ul class="nav-links">
         <li><a href="../../about.html" class="nav-link">About Me</a></li>
-        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../work.html" class="nav-link current" aria-current="page">Work</a></li>
         <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
         <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../contact.html" class="nav-link">Contact</a></li>
@@ -58,7 +62,7 @@
     <div class="banner" style="background-image:url('../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
   </div>
 </header>
-<main class="page-content">
+<main class="page-content" id="main-content">
   <div class="container">
     <div class="content-box">
     <div class="breadcrumbs">
@@ -141,7 +145,7 @@
     <section id="bom">
       <h2>Bill of Materials</h2>
       <table class="bom-table">
-        <thead><tr><th>Item</th><th>What I used</th><th>Est. US$</th></tr></thead>
+        <th scope="col"ead><tr><th scope="col">Item</th><th scope="col">What I used</th><th scope="col">Est. US$</th></tr></thead>
         <tbody>
           <tr><td>Beacons</td><td>3 cheap ESP32 boards (tracker beacons)</td><td>6-12 each</td></tr>
           <tr><td>Simulation</td><td>ArduPilot SITL (free), several drone instances</td><td>0</td></tr>
@@ -163,7 +167,7 @@
         few physical and logical links all have to be right or the track picture goes stale silently:
       </p>
       <table>
-        <thead><tr><th>From</th><th>To</th><th>Cable or interface</th><th>Notes</th></tr></thead>
+        <th scope="col"ead><tr><th scope="col">From</th><th scope="col">To</th><th scope="col">Cable or interface</th><th scope="col">Notes</th></tr></thead>
         <tbody>
           <tr><td>ESP32 beacons (x3)</td><td>Bench Wi-Fi access point</td><td>2.4 GHz Wi-Fi (WPA2), UDP to manager :5005</td><td>Position packets at 5 Hz; static DHCP lease per beacon MAC so IDs survive reboots</td></tr>
           <tr><td>Beacon controller ESP32</td><td>SSD1306 OLED display</td><td>4-wire I2C: GPIO21 (SDA), GPIO22 (SCL), 3.3 V, GND</td><td>Display at address 0x3C; shows beacon health and active alert count</td></tr>
@@ -634,7 +638,7 @@ def on_alert(alert):
 
       <h3>Targets and Current Status</h3>
       <table>
-        <thead><tr><th>Metric</th><th>Target</th><th>Current status</th></tr></thead>
+        <th scope="col"ead><tr><th scope="col">Metric</th><th scope="col">Target</th><th scope="col">Current status</th></tr></thead>
         <tbody>
           <tr><td>Time-to-alert margin (Runs 1-2)</td><td>Alert at least 30 s before predicted separation loss</td><td>In progress, harness runs, sheets being filled</td></tr>
           <tr><td>False alerts (Run 4)</td><td>Zero over a 2-hour quiet soak</td><td>In progress</td></tr>
@@ -710,7 +714,7 @@ def on_alert(alert):
       <h2>What You Need</h2>
 <p>The cheapest build in the program on purpose: deconfliction is a software and doctrine problem, not a hardware procurement. The only real cost is compute you already own.</p>
       <table>
-        <thead><tr><th>Category</th><th>Item</th><th>Notes</th></tr></thead>
+        <th scope="col"ead><tr><th scope="col">Category</th><th scope="col">Item</th><th scope="col">Notes</th></tr></thead>
         <tbody>
           <tr><td>Hardware</td><td>3 ESP32 tracker beacons</td><td>Cheap boards as live RF stand-ins; disable modem sleep in the firmware</td></tr>
           <tr><td>Hardware</td><td>Compute</td><td>Existing laptop or homelab node for the SITL instances and the manager</td></tr>

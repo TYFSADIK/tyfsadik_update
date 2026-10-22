@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>Chakor: Self-Hosted Open-Source AI Workspace | TYFSADIK</title>
   <meta name="description" content="Chakor is an open-source, self-hosted AI workspace. Run local or cloud models, web search, document chat, compare, notes, and memory, all on your hardware.">
   <meta name="robots" content="index,follow">
@@ -17,6 +18,8 @@
   <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
   <meta property="og:url" content="https://tyfsadik.org/work/infrastructure/chakor.html">
   <meta property="og:image" content="https://tyfsadik.org/images/projects/chakor.jpg">
+  <meta property="og:image:width" content="1600">
+  <meta property="og:image:height" content="1067">
   <meta property="og:image:alt" content="Chakor: Self-Hosted Open-Source AI Workspace | TYFSADIK">
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
@@ -40,6 +43,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Infrastructure", "item": "https://tyfsadik.org/work.html"}, {"@type": "ListItem", "position": 3, "name": "Chakor: Your AI, on Your Hardware", "item": "https://tyfsadik.org/work/infrastructure/chakor.html"}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -53,7 +57,7 @@
       <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
       <ul class="nav-links">
         <li><a href="../../about.html" class="nav-link">About Me</a></li>
-        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../work.html" class="nav-link current" aria-current="page">Work</a></li>
         <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
         <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../contact.html" class="nav-link">Contact</a></li>
@@ -63,7 +67,7 @@
   </div>
 </header>
 
-<main class="page-content">
+<main class="page-content" id="main-content">
   <div class="container">
     <div class="content-box">
     <div class="breadcrumbs">
@@ -231,7 +235,7 @@ flowchart LR
 <section id="what-you-need">
   <h2>What you need</h2>
   <table>
-    <thead><tr><th>Category</th><th>Item</th><th>Notes</th></tr></thead>
+    <th scope="col"ead><tr><th scope="col">Category</th><th scope="col">Item</th><th scope="col">Notes</th></tr></thead>
     <tbody>
       <tr><td>Hardware</td><td>Any modern PC; a GPU helps for larger local models</td><td>Small models run on CPU; 7B+ models benefit strongly from VRAM</td></tr>
       <tr><td>Software</td><td>Node.js, Next.js, TypeScript, SQLite</td><td>The app stack, all open source</td></tr>
@@ -258,6 +262,320 @@ flowchart LR
     <li>Mobile-friendly UI refinements for the workspace on phones and tablets.</li>
   </ul>
 </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="request-lifecycle">
+      <h2>Request Lifecycle</h2>
+      <p>
+        Every chat message travels the same path through the stack, from the browser down to a
+        model engine and back. The flow below follows the modules named in the architecture
+        diagram: the API route authenticates and validates the request, the dispatcher trims the
+        conversation to fit the model&rsquo;s context window and selects a provider, optional
+        tools (web search and document retrieval) add grounding, the engine streams tokens back
+        to the browser, and the finished exchange is persisted to the local SQLite database.
+      </p>
+      <div class="mermaid" role="img" aria-label="Request lifecycle from prompt submission through validation, provider and tool selection, inference, and persistence to SQLite">
+flowchart TB
+  A["User submits prompt in browser"] --> B["/api/chat: authenticate session, validate input"]
+  B --> C["lib/system-prompt.ts: behavior prompt applied"]
+  C --> D["lib/dispatch.ts: trim context, select provider"]
+  D --> E{"Tools requested?"}
+  E -->|"web search"| F["lib/searxng.ts: SearXNG, Brave, DuckDuckGo fallback"]
+  E -->|"document chat"| G["lib/rag.ts: retrieve relevant chunks"]
+  E -->|"none"| H["Assemble request: prompt + memory + tool results"]
+  F --> H
+  G --> H
+  H --> I{"Local or cloud model?"}
+  I -->|"local"| J["llama.cpp supervisor / Ollama / LM Studio"]
+  I -->|"cloud"| K["OpenAI / Anthropic / Google / OpenRouter"]
+  J --> L["Stream tokens to browser"]
+  K --> L
+  L --> M["lib/db.ts: persist chat and messages to SQLite"]
+  M --> N["Response rendered; notes and memory updated where configured"]
+
+style A fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style B fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style C fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style D fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style E fill:#1a1a2e,stroke:#ffcc00,color:#e0e0e0
+style F fill:#1a1a2e,stroke:#ff8800,color:#e0e0e0
+style G fill:#1a1a2e,stroke:#ff8800,color:#e0e0e0
+style H fill:#1a1a2e,stroke:#aa88ff,color:#e0e0e0
+style I fill:#1a1a2e,stroke:#ffcc00,color:#e0e0e0
+style J fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style K fill:#1a1a2e,stroke:#ff4444,color:#e0e0e0
+style L fill:#1a1a2e,stroke:#aa88ff,color:#e0e0e0
+style M fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style N fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+      </div>
+      <p>
+        Two branches in this flow decide where your data goes, and the next section breaks them
+        down: the local/cloud decision at inference time, and the tool decision that can send
+        derived search queries to external search providers even when the model itself is local.
+      </p>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="privacy-architecture">
+      <h2>Privacy Architecture</h2>
+      <p>
+        Chakor is private by default, not private unconditionally. The boundary depends on which
+        engine and which tools a message uses, and the UI makes that boundary explicit rather
+        than hiding it.
+      </p>
+      <ul>
+        <li>
+          <strong>Local inference keeps data on your hardware.</strong> When a message runs on
+          llama.cpp, Ollama, or LM Studio, the prompt, conversation history, retrieved document
+          chunks, and memory are processed on the host machine. The only routine network traffic
+          in this mode is downloading GGUF models from Hugging Face, which sends no user content.
+        </li>
+        <li>
+          <strong>Cloud providers receive what you send them.</strong> When a message is routed to
+          OpenAI, Anthropic, Google, or OpenRouter, the prompt and the assembled context (including
+          memory and any retrieved document text) leave your machine and are processed under that
+          provider&rsquo;s data policy. This is a per-message choice, so sensitive chats can stay
+          local while cloud models handle the rest.
+        </li>
+        <li>
+          <strong>Web search leaves regardless of model.</strong> Enabling web search sends derived
+          queries to SearXNG, Brave, or DuckDuckGo. A local model does not make search local; the
+          query content is visible to whichever search backend answers it.
+        </li>
+        <li>
+          <strong>Storage is a file you own.</strong> Conversations, notes, and memory live in one
+          SQLite database on your disk. There is no telemetry and no sync to an external service;
+          backup and deletion are ordinary file operations.
+        </li>
+        <li>
+          <strong>Shared links are a deliberate exception.</strong> The shareable-link feature
+          makes a chat readable by anyone who has the link, so treat sharing as publishing.
+        </li>
+      </ul>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="component-reference">
+      <h2>Component Reference</h2>
+      <p>
+        The table below maps each component to its responsibility, technology, and dependencies.
+        Status is reported honestly: <em>Documented</em> means the component is described in the
+        project repository and documentation as shipped; it does not mean the implementation was
+        independently audited for this page. <em>Planned</em> means it appears in the roadmap
+        only.
+      </p>
+      <table>
+        <th scope="col"ead><tr><th scope="col">Component</th><th scope="col">Responsibility</th><th scope="col">Technology</th><th scope="col">Dependencies</th><th scope="col">Status</th></tr></thead>
+        <tbody>
+          <tr><td>Web UI</td><td>Chat interface, model picker, settings, notes panel, compare view</td><td>Next.js 15, React 19, Tailwind</td><td>App server API routes</td><td>Documented</td></tr>
+          <tr><td>Chat API</td><td>Authenticate session, validate input, stream responses (module <code>/api/chat</code>)</td><td>Next.js API routes, TypeScript</td><td>Auth.js session, dispatcher</td><td>Documented</td></tr>
+          <tr><td>System prompt</td><td>Baseline assistant behavior (<code>lib/system-prompt.ts</code>)</td><td>TypeScript</td><td>None</td><td>Documented</td></tr>
+          <tr><td>Dispatcher</td><td>Route messages to a provider, trim context to the model window (<code>lib/dispatch.ts</code>)</td><td>TypeScript</td><td>Provider layer</td><td>Documented</td></tr>
+          <tr><td>Provider layer</td><td>Unified interface over Ollama, OpenAI, Anthropic, Google, OpenRouter (<code>lib/providers.ts</code>)</td><td>TypeScript</td><td>Provider APIs, cloud API keys</td><td>Documented</td></tr>
+          <tr><td>llama.cpp supervisor</td><td>Spawn and manage the local <code>llama-server</code> child process, free models before switching (<code>lib/llama-supervisor.ts</code>)</td><td>TypeScript, llama.cpp</td><td>llama.cpp binary, GGUF models</td><td>Documented</td></tr>
+          <tr><td>Agent + tools</td><td>Function calling for tool use (<code>lib/agent.ts</code>, <code>lib/tools.ts</code>)</td><td>TypeScript</td><td>Search and retrieval modules</td><td>Documented</td></tr>
+          <tr><td>Web search</td><td>Live search with fallback chain SearXNG &rarr; Brave &rarr; DuckDuckGo (<code>lib/searxng.ts</code>)</td><td>TypeScript</td><td>SearXNG instance or search APIs</td><td>Documented</td></tr>
+          <tr><td>Document retrieval</td><td>Chunk and retrieve document context for chat (<code>lib/rag.ts</code>)</td><td>TypeScript</td><td>SQLite, uploaded documents</td><td>Documented</td></tr>
+          <tr><td>Database</td><td>Persist chats, messages, notes, memory, users (<code>lib/db.ts</code>)</td><td>SQLite via better-sqlite3</td><td>Local filesystem</td><td>Documented</td></tr>
+          <tr><td>Authentication</td><td>Accounts, sessions, first-account admin, invite-gated registration</td><td>Auth.js v5</td><td>SQLite, <code>AUTH_SECRET</code></td><td>Documented</td></tr>
+          <tr><td>Model downloads</td><td>Background GGUF downloads from Hugging Face with hardware fit tags</td><td>TypeScript, Hugging Face hub</td><td>Network access, disk space</td><td>Documented</td></tr>
+          <tr><td>Installer</td><td>OS detection, dependency provisioning, optional systemd service</td><td>Bash (<code>install.sh</code>)</td><td>Git, Node 20+, package manager</td><td>Documented</td></tr>
+          <tr><td>Container deployment</td><td>One-command self-hosted run</td><td>Docker Compose</td><td>Docker, optional Ollama profile</td><td>Documented</td></tr>
+          <tr><td>Plugin system</td><td>Community integrations without forking</td><td>To be determined</td><td>Core API stabilization</td><td>Planned</td></tr>
+          <tr><td>Voice input/output</td><td>Hands-free sessions</td><td>To be determined</td><td>Browser speech APIs or local models</td><td>Planned</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="ai-security">
+      <h2>AI Security</h2>
+      <p>
+        Self-hosting moves the trust boundary onto your own machine, but an AI workspace still has
+        its own attack surface: API keys, untrusted retrieved text, and expensive compute. The
+        items below distinguish what the project documents from what remains a design goal.
+      </p>
+      <ul>
+        <li>
+          <strong>API key handling (documented pattern):</strong> cloud provider keys are set as
+          server-side environment variables (<code>OPENAI_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>,
+          <code>GOOGLE_AI_API_KEY</code>, <code>OPENROUTER_API_KEY</code>), for example
+          <code>OPENAI_API_KEY=&lt;your-openai-key&gt;</code> in <code>.env.local</code> or the
+          Docker environment. Keys never ship to the browser. <em>Design goal:</em> encryption of
+          stored secrets at rest and per-user keys are not currently documented, so treat the host
+          environment file as the security boundary and restrict its file permissions accordingly.
+        </li>
+        <li>
+          <strong>Input validation (documented):</strong> the chat API authenticates the session and
+          validates input before dispatch, and the dispatcher trims conversations to the target
+          model&rsquo;s context window rather than letting unbounded history through.
+        </li>
+        <li>
+          <strong>Prompt injection via tools (design goal):</strong> document chat and web search
+          both inject third-party text into the model&rsquo;s context, and that text can contain
+          adversarial instructions (&ldquo;ignore previous instructions&rdquo;). The mitigation
+          direction is to treat retrieved content as data, not commands: wrap search results and
+          document chunks in clear delimiters, keep tool outputs visible to the user, and cite
+          sources so injected claims are attributable. This is a stated design goal, not a
+          verified control; assume a determined injection in a retrieved page can still influence
+          answers.
+        </li>
+        <li>
+          <strong>Resource exhaustion (partially documented):</strong> local inference is naturally
+          bounded by the host, and the FITS / TIGHT / TOO BIG fit tagging prevents loading models
+          that would exhaust memory, while the supervisor frees the previous model before switching
+          so two never contend for the same VRAM. <em>Design goal:</em> per-user request rate
+          limits and token budgets are not yet documented, so an authenticated user can still queue
+          arbitrarily expensive requests; put the app behind a reverse proxy with request limits if
+          you expose it to others.
+        </li>
+        <li>
+          <strong>Registration control (documented):</strong> the default registration mode is
+          invite-only with a default invite code of <code>change-me</code>; change
+          <code>INVITE_CODE</code> before exposing the app, or set
+          <code>REGISTRATION_MODE=open</code> only for a solo setup. The first registered account
+          becomes the admin.
+        </li>
+        <li>
+          <strong>Audit logging (design goal):</strong> an admin panel exists for multi-user
+          management, but a structured audit log of logins, provider use, and admin actions is not
+          documented. If you run Chakor for a team, front it with a reverse proxy that logs
+          requests until first-party audit logging lands.
+        </li>
+      </ul>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="data-model">
+      <h2>Data Model</h2>
+      <p>
+        Persistence is deliberately simple: better-sqlite3 keeps the whole workspace in a single
+        SQLite file with no database server. At the level this page documents, the store revolves
+        around four entities &mdash; chats and their messages, plus the notes and memories that
+        give the assistant continuity across sessions. The diagram below is an illustrative
+        sketch of those relationships, not a verified schema dump; the authoritative schema lives
+        in the repository.
+      </p>
+      <div class="mermaid" role="img" aria-label="Illustrative entity-relationship sketch of users, chats, messages, notes, and memories">
+erDiagram
+  USERS ||--o{ CHATS : "owns"
+  USERS ||--o{ NOTES : "writes"
+  USERS ||--o{ MEMORIES : "accumulates"
+  CHATS ||--o{ MESSAGES : "contains"
+  USERS {
+    string id
+    string email
+    string role
+  }
+  CHATS {
+    string id
+    string user_id
+    string title
+    string created_at
+  }
+  MESSAGES {
+    string id
+    string chat_id
+    string role
+    string content
+    string created_at
+  }
+  NOTES {
+    string id
+    string user_id
+    string title
+    string body
+  }
+  MEMORIES {
+    string id
+    string user_id
+    string summary
+    string updated_at
+  }
+      </div>
+      <p>
+        The single-file design makes backup, migration, and full deletion trivial file operations.
+        The tradeoff is write serialization: SQLite allows one writer at a time, so WAL mode and
+        short transactions matter once multiple users write concurrently. For the read-heavy,
+        single-node deployments Chakor targets, that tradeoff is the right one.
+      </p>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="deployment">
+      <h2>Deployment</h2>
+      <p>
+        The Quick Start above covers the three install paths; this section is about running the
+        result as a service you trust. A typical self-hosted deployment looks like this:
+      </p>
+      <ol>
+        <li>
+          <strong>Install:</strong> use Docker Compose (with the <code>ollama</code> profile if you
+          want a bundled local engine) or the unattended installer
+          (<code>sudo bash install.sh --yes --service</code>) which registers a systemd unit for
+          24/7 operation.
+        </li>
+        <li>
+          <strong>Configure secrets before first exposure:</strong> generate
+          <code>AUTH_SECRET</code> with <code>openssl rand -base64 32</code>, replace the default
+          <code>INVITE_CODE=&lt;your-invite-code&gt;</code>, and add any cloud keys you intend to
+          use, for example <code>ANTHROPIC_API_KEY=&lt;your-anthropic-key&gt;</code>. Keep the
+          environment file readable only by the service account.
+        </li>
+        <li>
+          <strong>Put HTTPS in front:</strong> Chakor serves HTTP on port 3001; terminate TLS at a
+          reverse proxy (Nginx, Caddy, or a tunnel such as Cloudflare Tunnel, matching the rest of
+          this homelab) before exposing it beyond localhost.
+        </li>
+        <li>
+          <strong>Point it at models:</strong> pull an Ollama model, load one in LM Studio, set
+          <code>LLAMA_SERVER_BIN</code> for a supervised llama.cpp server, or rely on cloud keys.
+          The model picker shows which engines are actually up.
+        </li>
+        <li>
+          <strong>Back up the state:</strong> snapshot the SQLite database file (and uploaded
+          documents, where stored alongside it) on a schedule; that single file is the whole
+          workspace.
+        </li>
+      </ol>
+      <p>
+        Environment variable names listed here (<code>AUTH_SECRET</code>, <code>INVITE_CODE</code>,
+        <code>REGISTRATION_MODE</code>, <code>LLAMA_SERVER_BIN</code>, and the provider keys) are
+        the ones documented on this page; consult the repository&rsquo;s example environment file
+        for the complete, current list.
+      </p>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="limitations">
+      <h2>Limitations and Future Work</h2>
+      <ul>
+        <li><strong>Single-node by design:</strong> one app process, one SQLite file, one writer at a time. There is no horizontal scaling story; the design optimizes for a self-hoster or a small team, not a fleet.</li>
+        <li><strong>Local quality ceiling:</strong> local models are bounded by the host&rsquo;s RAM and VRAM. The fit tagging prevents crashes, but it cannot make a small model answer like a frontier one; cloud providers remain the escape hatch.</li>
+        <li><strong>Tool trust:</strong> web search and document chat ingest untrusted text, and prompt-injection hardening is a design goal rather than a proven control (see AI Security).</li>
+        <li><strong>Streaming resilience:</strong> long streamed answers can still drop on flaky networks; reconnection handling exists, but treating every stream as resumable is ongoing work.</li>
+        <li><strong>Unaudited security surface:</strong> rate limiting, audit logging, and at-rest secret encryption are not yet documented as implemented.</li>
+      </ul>
+      <p>
+        Future work builds on the roadmap above: deeper document intelligence with cited answers,
+        voice input and output, a plugin system so integrations do not require forking, and
+        continued mobile UI refinement for the installable PWA.
+      </p>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="references">
+      <h2>References</h2>
+      <ul>
+        <li><a href="https://nextjs.org/docs" target="_blank" rel="noopener">Next.js documentation</a>, the application framework and API routes.</li>
+        <li><a href="https://github.com/ollama/ollama" target="_blank" rel="noopener">Ollama</a>, local model runtime and model library.</li>
+        <li><a href="https://github.com/ggml-org/llama.cpp" target="_blank" rel="noopener">llama.cpp</a>, the inference engine behind the supervised local server.</li>
+        <li><a href="https://sqlite.org/docs.html" target="_blank" rel="noopener">SQLite documentation</a>, the embedded database that stores the workspace.</li>
+        <li><a href="https://github.com/WiseLibs/better-sqlite3" target="_blank" rel="noopener">better-sqlite3</a>, the Node.js SQLite binding used by the data layer.</li>
+        <li><a href="https://authjs.dev/" target="_blank" rel="noopener">Auth.js</a>, the authentication library behind accounts and sessions.</li>
+        <li><a href="https://github.com/TYFSADIK/chakor" target="_blank" rel="noopener">Chakor repository</a> and <a href="https://docs.tyfsadik.org/" target="_blank" rel="noopener">project documentation</a>.</li>
+      </ul>
+    </section>
 
     <div class="tags">
       <span class="tag">Next.js</span><span class="tag">TypeScript</span><span class="tag">React</span><span class="tag">SQLite</span><span class="tag">llama.cpp</span><span class="tag">Ollama</span><span class="tag">LM Studio</span><span class="tag">Docker</span><span class="tag">Self-Hosted</span><span class="tag">Open Source</span>

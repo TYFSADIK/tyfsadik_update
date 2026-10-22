@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>Azure CLI: Login, Subscriptions &amp; Defaults | TYFSADIK</title>
   <meta name="description" content="Install and configure the Azure CLI: authenticate with Entra ID, pin the right subscription, set defaults, and create a least-privilege service principal.">
   <meta name="keywords" content="Azure CLI, az login, Azure subscription, service principal, az configure defaults, Entra ID authentication">
@@ -16,6 +17,8 @@
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
   <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta property="og:image:width" content="640">
+  <meta property="og:image:height" content="275">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Azure CLI: Login, Subscriptions &amp; Defaults | TYFSADIK">
   <meta name="twitter:description" content="Install and configure the Azure CLI: authenticate with Entra ID, pin the right subscription, set defaults, and create a least-privilege service principal.">
@@ -36,6 +39,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'az: command not found'?", "acceptedAnswer": {"@type": "Answer", "text": "the CLI is not on PATH; reinstall or restart your shell."}}, {"@type": "Question", "name": "How do I fix 'Wrong subscription used'?", "acceptedAnswer": {"@type": "Answer", "text": "always confirm with az account show before deploying."}}, {"@type": "Question", "name": "How do I fix 'SP secret printed once'?", "acceptedAnswer": {"@type": "Answer", "text": "store it immediately in a secret manager; it is not retrievable later."}}, {"@type": "Question", "name": "How do I fix 'Browser login fails behind a proxy or WAM errors on Windows'?", "acceptedAnswer": {"@type": "Answer", "text": "bypass the Windows broker with az config set core.enable_broker_on_windows=false, or fall back to az login --use-device-code, which works through any browser on any device."}}, {"@type": "Question", "name": "How do I fix 'az account set fails with \"The subscription ... could not be found\"'?", "acceptedAnswer": {"@type": "Answer", "text": "the name is case-sensitive and must match exactly, copy it from az account list -o table, and quote names that contain spaces."}}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -50,7 +54,7 @@
       <ul class="nav-links">
         <li><a href="../../../about.html" class="nav-link">About Me</a></li>
         <li><a href="../../../work.html" class="nav-link">Work</a></li>
-        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../blog.html" class="nav-link current" aria-current="page">Blog/Labs</a></li>
         <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
       </ul>
@@ -58,7 +62,7 @@
     <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
   </div>
 </header>
-<main class="page-content"><div class="container">
+<main class="page-content" id="main-content"><div class="container">
     <div class="content-box">
 
     <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/cloud-azure/index.html">Cloud &amp; Azure</a> &rsaquo; <span>Azure CLI Setup</span></nav>
@@ -90,7 +94,7 @@
       <p>This is deliberately the <em>first</em> lab in the Cloud &amp; Azure series, because every other lab assumes you can already run <code>az</code> commands against the correct subscription. Getting this foundation right prevents the two most common beginner disasters: deploying resources into the wrong subscription (surprise billing) and typing the same long flags on every command (typos and drift). We will also create a service principal now so that when you reach the DevOps labs you already have a non-human identity ready for CI/CD.</p>
     </section>
 
-    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+    <div class="lab-objectives"><h2 id="learning-objectives">Learning Objectives</h2>
       <ul>
         <li>Authenticate interactively and view your subscriptions.</li>
         <li>Set the active subscription and default resource group/location.</li>
@@ -400,7 +404,7 @@ az config get defaults -o table</code></pre>
     </section>
 <section><h2 id="troubleshooting">Troubleshooting</h2>
 <p>Quick-reference for the failures you are most likely to hit in this lab.</p>
-<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<table class="lab-table"><th scope="col"ead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">Fix</th></tr></thead><tbody>
 <tr><td><code>az: command not found</code></td><td>The installer updated PATH but the current shell still has the old one</td><td>Open a new terminal session, then verify with <code>az version</code>.</td></tr>
 <tr><td>Login lands in the wrong tenant</td><td>The account exists in multiple Entra ID tenants</td><td>Pin it with <code>az login --tenant &lt;tenant-id-or-domain&gt;</code>.</td></tr>
 <tr><td>Subscription missing from the list</td><td>Disabled subscription or insufficient RBAC, not a CLI bug</td><td>Check the portal; no re-login will conjure access you do not have.</td></tr>
@@ -452,9 +456,9 @@ az config get defaults -o table</code></pre>
     </div>
 
     <section><h2 id="practice-challenges">Practice Challenges</h2>
-<div class="lab-challenge"><h4>Challenge 1: Script the whole setup</h4><p>Goal: Write <code>setup-az.sh</code> that checks <code>az account show</code> first and exits early if already configured, then sets the subscription and defaults.</p><p>Hint: Use <code>set -euo pipefail</code> and quote every variable; idempotent scripts pay off each time you rebuild a machine.</p></div>
-<div class="lab-challenge"><h4>Challenge 2: Scope a principal to one resource group</h4><p>Goal: Create a second service principal whose Contributor role is scoped to <code>tyf-rg</code> only, then prove it cannot list another group.</p><p>Hint: Pass the full resource group ID to <code>--scopes</code> and test the boundary deliberately.</p></div>
-<div class="lab-challenge"><h4>Challenge 3: Build a subscription report with JMESPath</h4><p>Goal: Output name, id, and state for every subscription using a single <code>az account list</code> pipeline.</p><p>Hint: Combine <code>--query</code> reshaping with <code>-o tsv</code>; tsv with no headers is made for this.</p></div>
+<div class="lab-challenge"><h3>Challenge 1: Script the whole setup</h3><p>Goal: Write <code>setup-az.sh</code> that checks <code>az account show</code> first and exits early if already configured, then sets the subscription and defaults.</p><p>Hint: Use <code>set -euo pipefail</code> and quote every variable; idempotent scripts pay off each time you rebuild a machine.</p></div>
+<div class="lab-challenge"><h3>Challenge 2: Scope a principal to one resource group</h3><p>Goal: Create a second service principal whose Contributor role is scoped to <code>tyf-rg</code> only, then prove it cannot list another group.</p><p>Hint: Pass the full resource group ID to <code>--scopes</code> and test the boundary deliberately.</p></div>
+<div class="lab-challenge"><h3>Challenge 3: Build a subscription report with JMESPath</h3><p>Goal: Output name, id, and state for every subscription using a single <code>az account list</code> pipeline.</p><p>Hint: Combine <code>--query</code> reshaping with <code>-o tsv</code>; tsv with no headers is made for this.</p></div>
 </section>
 
     <section class="related-labs"><h2 id="related-labs">Related Labs</h2>

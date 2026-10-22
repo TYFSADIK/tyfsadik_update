@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>Multi-Container Apps | Compose to Production Patterns</title>
   <meta name="description" content="Run production-shaped multi-container stacks: reverse proxy routing, environment-driven config, runtime secrets, scaling stateless services, and clean teardown.">
   <meta name="keywords" content="multi-container, reverse proxy, Docker secrets, environment config, scaling services, compose production">
@@ -16,6 +17,8 @@
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
   <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta property="og:image:width" content="640">
+  <meta property="og:image:height" content="275">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Multi-Container Apps | Compose to Production Patterns">
   <meta name="twitter:description" content="Run production-shaped multi-container stacks: reverse proxy routing, environment-driven config, runtime secrets, scaling stateless services, and clean teardown.">
@@ -36,6 +39,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Only one replica answers'?", "acceptedAnswer": {"@type": "Answer", "text": "ensure the proxy load-balances across the service name, not a fixed container."}}, {"@type": "Question", "name": "How do I fix 'Secret not found'?", "acceptedAnswer": {"@type": "Answer", "text": "Compose uses secrets: with files; Swarm uses docker secret."}}, {"@type": "Question", "name": "How do I fix 'API crashes with \"connection refused\" on first boot'?", "acceptedAnswer": {"@type": "Answer", "text": "PostgreSQL was still initializing. Add a healthcheck to the db service and use depends_on: { db: { condition: service_healthy } } so the API waits for a database that actually accepts connections, not just a started container."}}, {"@type": "Question", "name": "How do I fix '502 Bad Gateway from the proxy after scaling or restart'?", "acceptedAnswer": {"@type": "Answer", "text": "Nginx resolved api once at startup and the container IPs changed. Restart the proxy (docker compose restart proxy) or use a resolver directive with a variable-based proxy_pass so names are re-resolved per request."}}, {"@type": "Question", "name": "How do I fix 'Authentication failures despite the correct password'?", "acceptedAnswer": {"@type": "Answer", "text": "check for a trailing newline in secrets/db_password (od -c secrets/db_password | tail -2 should end without \\n). Rewrite it with printf instead of echo."}}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -50,7 +54,7 @@
       <ul class="nav-links">
         <li><a href="../../../about.html" class="nav-link">About Me</a></li>
         <li><a href="../../../work.html" class="nav-link">Work</a></li>
-        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../blog.html" class="nav-link current" aria-current="page">Blog/Labs</a></li>
         <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
       </ul>
@@ -58,7 +62,7 @@
     <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
   </div>
 </header>
-<main class="page-content"><div class="container">
+<main class="page-content" id="main-content"><div class="container">
     <div class="content-box">
 
     <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Multi-Container Applications</span></nav>
@@ -87,7 +91,7 @@
       <p>This is the topology you see in almost every real deployment: one public entry point that terminates client connections, a stateless application tier that can be scaled horizontally, an asynchronous worker tier that drains a queue, and a stateful data tier that must never be exposed directly. Building it by hand forces you to confront the questions tutorials skip: which service may talk to which, where do credentials live, and what happens to your data when a container dies.</p>
     </section>
 
-    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+    <div class="lab-objectives"><h2 id="learning-objectives">Learning Objectives</h2>
       <ul>
         <li>Compose a 4-tier app (proxy, API, worker, DB).</li>
         <li>Inject configuration with environment and secrets.</li>
@@ -561,7 +565,7 @@ graph LR
     </section>
 <section><h2 id="troubleshooting">Troubleshooting</h2>
 <p>Quick-reference for the failures you are most likely to hit in this lab.</p>
-<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<table class="lab-table"><th scope="col"ead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">Fix</th></tr></thead><tbody>
 <tr><td>Worker never picks up jobs</td><td>The queue URL or credentials in the worker's environment are wrong</td><td>Exec into the worker and print its effective config; compare against the compose file.</td></tr>
 <tr><td>Secret file is empty in the container</td><td>The secret was not attached to the service, or file permissions block reads</td><td>Check the service definition mounts the secret and the app reads the file path, not an env var.</td></tr>
 <tr><td>Proxy returns 502 for the API</td><td>Upstream hostname wrong, or the API not yet healthy</td><td>Curl the API by its service name from inside the proxy container to isolate DNS from proxy config.</td></tr>
@@ -614,9 +618,9 @@ graph LR
     </div>
 
     <section><h2 id="practice-challenges">Practice Challenges</h2>
-<div class="lab-challenge"><h4>Challenge 1: Drain the queue faster</h4><p>Goal: Scale to two workers and measure the queue drain time before and after.</p><p>Hint: The numbers are the deliverable; twice the workers should roughly halve the drain time.</p></div>
-<div class="lab-challenge"><h4>Challenge 2: Rotate the secret</h4><p>Goal: Update the database password secret and roll it through the stack without downtime.</p><p>Hint: Update the secret, recreate the database first, then the dependents; order matters.</p></div>
-<div class="lab-challenge"><h4>Challenge 3: Terminate TLS at the proxy</h4><p>Goal: Add a self-signed certificate to the proxy and serve the app over HTTPS.</p><p>Hint: Generate the cert once, mount it read-only, and redirect HTTP to HTTPS.</p></div>
+<div class="lab-challenge"><h3>Challenge 1: Drain the queue faster</h3><p>Goal: Scale to two workers and measure the queue drain time before and after.</p><p>Hint: The numbers are the deliverable; twice the workers should roughly halve the drain time.</p></div>
+<div class="lab-challenge"><h3>Challenge 2: Rotate the secret</h3><p>Goal: Update the database password secret and roll it through the stack without downtime.</p><p>Hint: Update the secret, recreate the database first, then the dependents; order matters.</p></div>
+<div class="lab-challenge"><h3>Challenge 3: Terminate TLS at the proxy</h3><p>Goal: Add a self-signed certificate to the proxy and serve the app over HTTPS.</p><p>Hint: Generate the cert once, mount it read-only, and redirect HTTP to HTTPS.</p></div>
 </section>
 
     <section class="related-labs"><h2 id="related-labs">Related Labs</h2>

@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>Automated SOC Pipeline Explained: Security Lab | TYFSADIK</title>
   <meta name="description" content="Build an automated SOC pipeline: Wazuh detection rules, Active Response blocking, TheHive case management, and Cortex plus MISP enrichment end to end.">
   <meta name="keywords" content="SOC automation, Wazuh, TheHive, Cortex, MISP, Active Response, SOAR, alert pipeline">
@@ -26,6 +27,8 @@
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
   <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta property="og:image:width" content="640">
+  <meta property="og:image:height" content="275">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Automated SOC Pipeline Explained: Security Lab | TYFSADIK">
   <meta name="twitter:description" content="Build an automated SOC pipeline: Wazuh detection rules, Active Response blocking, TheHive case management, and Cortex plus MISP enrichment end to end.">
@@ -79,6 +82,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'No alerts in TheHive'?", "acceptedAnswer": {"@type": "Answer", "text": "verify the integration daemon in /var/ossec/integrations/ and check /var/ossec/logs/integrations.log. The two most common causes are wrong script permissions (must be executable, owned root:wazuh) and an unset THEHIVE_KEY, the script fails with a silent 401. Test the curl from step 3 by hand; if that works but the daemon path doesn't, it's permissions or the <integration> block's level filter."}}, {"@type": "Question", "name": "How do I fix 'Cortex analyzer timeouts'?", "acceptedAnswer": {"@type": "Answer", "text": "raise the job timeout and confirm outbound egress to MISP/AbuseIPDB. Cortex jobs default to short timeouts, and MISP queries against a large feed set can take 30+ seconds. Check curl -m 5 https://misp.lab.local/servers/getVersion from the Cortex host first, nine times out of ten it's a firewall egress rule, not the analyzer."}}, {"@type": "Question", "name": "How do I fix 'Duplicate cases'?", "acceptedAnswer": {"@type": "Answer", "text": "set a TheHive dedup key on the source IP + rule ID. In this pipeline that's the sourceRef field (wazuh-{alert.id}); if you see dupes anyway, confirm the field is actually being sent, a schema mismatch in the payload makes TheHive accept the alert and silently ignore the reference."}}, {"@type": "Question", "name": "How do I fix 'Active Response fires but nothing gets blocked'?", "acceptedAnswer": {"@type": "Answer", "text": "the agent executed the script but the DROP rule went into the wrong chain or table. Confirm with iptables -L INPUT -n on the agent, and on RHEL 9 check that nftables isn't shadowing iptables, firewall-drop uses the iptables compatibility layer, and a pure-nftables host needs the firewalld AR variant instead."}}, {"@type": "Question", "name": "How do I fix 'Rule 100210 never fires during Hydra tests'?", "acceptedAnswer": {"@type": "Answer", "text": "the same_field requirement isn't being met, usually because NAT or a reverse proxy makes every attempt appear from a different source IP in the log. Test with wazuh-logtest using a pasted log line to isolate rule logic from network topology."}}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -93,7 +97,7 @@
       <ul class="nav-links">
         <li><a href="../../../about.html" class="nav-link">About Me</a></li>
         <li><a href="../../../work.html" class="nav-link">Work</a></li>
-        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../blog.html" class="nav-link current" aria-current="page">Blog/Labs</a></li>
         <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
       </ul>
@@ -101,7 +105,7 @@
     <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
   </div>
 </header>
-<main class="page-content"><div class="container">
+<main class="page-content" id="main-content"><div class="container">
     <div class="content-box">
 
     <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Automated SOC Pipeline</span></nav>
@@ -421,7 +425,7 @@ T+3:42  Discord notification posted</code></pre>
 
     <section id="troubleshooting"><h2>Troubleshooting</h2>
 <table class="lab-table">
-<thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+<th scope="col"ead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">Fix</th></tr></thead>
 <tbody>
 <tr><td>Command not found</td><td>package missing</td><td>install prerequisite and verify version</td></tr>
 <tr><td>Permission denied</td><td>insufficient privileges</td><td>use documented sudo or lab admin context</td></tr>
@@ -473,8 +477,8 @@ T+3:42  Discord notification posted</code></pre>
 
         <section id="practice-challenges">
       <h2>Practice Challenges</h2>
-      <div class="lab-challenge"><h4>Challenge 1: Add a new detector</h4><p>Goal: Write a Wazuh rule for successful logins from a new country (impossible travel lite) and wire it through to a TheHive case.</p><p>Hint: Enrich the source IP with a GeoIP analyzer in Cortex and compare against the user's baseline country.</p></div>
-      <div class="lab-challenge"><h4>Challenge 2: Measure the pipeline</h4><p>Goal: Instrument each stage with timestamps and produce a report showing median time from alert to containment.</p><p>Hint: Log epoch timestamps at rule fire, Active Response, case creation, and webhook, then diff them.</p></div>
+      <div class="lab-challenge"><h3>Challenge 1: Add a new detector</h3><p>Goal: Write a Wazuh rule for successful logins from a new country (impossible travel lite) and wire it through to a TheHive case.</p><p>Hint: Enrich the source IP with a GeoIP analyzer in Cortex and compare against the user's baseline country.</p></div>
+      <div class="lab-challenge"><h3>Challenge 2: Measure the pipeline</h3><p>Goal: Instrument each stage with timestamps and produce a report showing median time from alert to containment.</p><p>Hint: Log epoch timestamps at rule fire, Active Response, case creation, and webhook, then diff them.</p></div>
     </section>
 <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
       <ul>

@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>Kubernetes Basics: kubectl, Cluster &amp; First Pod | TYFSADIK</title>
   <meta name="description" content="Learn Kubernetes hands-on: create a local cluster, run deployments, scale them, read logs, switch to declarative manifests, and roll back a bad rollout.">
   <meta name="keywords" content="Kubernetes basics, kubectl, kind, deployments, pods, rollout, local cluster">
@@ -16,6 +17,8 @@
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
   <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta property="og:image:width" content="640">
+  <meta property="og:image:height" content="275">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Kubernetes Basics: kubectl, Cluster &amp; First Pod | TYFSADIK">
   <meta name="twitter:description" content="Learn Kubernetes hands-on: create a local cluster, run deployments, scale them, read logs, switch to declarative manifests, and roll back a bad rollout.">
@@ -36,6 +39,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'kubectl cannot connect'?", "acceptedAnswer": {"@type": "Answer", "text": "kind writes a kubeconfig context; confirm with kubectl config current-context. If it shows a different cluster, switch with kubectl config use-context kind-lab. If the context is missing entirely, the cluster was deleted or the kubeconfig was overwritten, recreate it with kind create cluster --name lab."}}, {"@type": "Question", "name": "How do I fix 'ImagePullBackOff'?", "acceptedAnswer": {"@type": "Answer", "text": "the image name or tag is wrong; verify it pulls with docker. Run docker pull nginx:stable locally, if that fails, the tag does not exist. Fix the Deployment with kubectl set image deployment/web nginx=<correct-image>; editing the pod directly will not stick."}}, {"@type": "Question", "name": "How do I fix 'CrashLoopBackOff'?", "acceptedAnswer": {"@type": "Answer", "text": "the container starts and immediately exits, and Kubernetes keeps restarting it with backoff. Run kubectl logs <pod> --previous to see the output from the crashed instance, not the currently restarting one, that is where the actual error message lives."}}, {"@type": "Question", "name": "How do I fix 'kind create cluster fails with a port or name conflict'?", "acceptedAnswer": {"@type": "Answer", "text": "a previous cluster was not cleaned up. List them with kind get clusters and remove the stale one with kind delete cluster --name <name>. On corporate networks, a VPN that hijacks localhost routing can also break the API-server connection, disconnect it and retry."}}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -50,7 +54,7 @@
       <ul class="nav-links">
         <li><a href="../../../about.html" class="nav-link">About Me</a></li>
         <li><a href="../../../work.html" class="nav-link">Work</a></li>
-        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../blog.html" class="nav-link current" aria-current="page">Blog/Labs</a></li>
         <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
       </ul>
@@ -58,7 +62,7 @@
     <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
   </div>
 </header>
-<main class="page-content"><div class="container">
+<main class="page-content" id="main-content"><div class="container">
     <div class="content-box">
 
     <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Kubernetes Basics</span></nav>
@@ -88,7 +92,7 @@
       <p>We use <span class="glossary-term" data-definition="Kubernetes IN Docker: runs a local Kubernetes cluster using Docker containers as nodes.">kind</span> because it is the tool the Kubernetes project itself uses for testing, it needs nothing beyond Docker, and it behaves enough like a production cluster that the skills transfer directly. If you prefer minikube, every kubectl command in this lab is identical; only the cluster-creation step differs.</p>
     </section>
 
-    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+    <div class="lab-objectives"><h2 id="learning-objectives">Learning Objectives</h2>
       <ul>
         <li>Spin up a local cluster with kind or minikube.</li>
         <li>Use kubectl to create and inspect workloads.</li>
@@ -460,7 +464,7 @@ Deleted nodes: ["lab-control-plane"]</code></pre>
       </ul>
     
 <p>Quick-reference for the failures you are most likely to hit in this lab.</p>
-<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<table class="lab-table"><th scope="col"ead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">Fix</th></tr></thead><tbody>
 <tr><td>Cluster creation fails</td><td>Docker is not running, or ports are already in use</td><td>Start the Docker engine and retry; kind needs the daemon healthy first.</td></tr>
 <tr><td><code>kubectl</code> reports no context</td><td>Kubeconfig was not merged or points elsewhere</td><td>Run <code>kind get kubeconfig</code> and check <code>kubectl config current-context</code>.</td></tr>
 <tr><td>Pod stuck in Pending</td><td>No node has capacity, or a volume cannot attach</td><td><code>kubectl describe pod</code> names the exact blocker in the Events section.</td></tr>
@@ -498,9 +502,9 @@ Deleted nodes: ["lab-control-plane"]</code></pre>
     </div>
 
     <section><h2 id="practice-challenges">Practice Challenges</h2>
-<div class="lab-challenge"><h4>Challenge 1: Expose and curl the app</h4><p>Goal: Create a Service for the deployment and curl it from your machine.</p><p>Hint: Port-forward is the quickest path on kind; a NodePort works too.</p></div>
-<div class="lab-challenge"><h4>Challenge 2: Break it, then roll back</h4><p>Goal: Deploy a bad image tag, watch the rollout stall on the readiness check, then roll back.</p><p>Hint: The stalled rollout is the lesson; <code>rollout status</code> shows it waiting.</p></div>
-<div class="lab-challenge"><h4>Challenge 3: Scale to zero</h4><p>Goal: Scale the deployment to zero replicas and observe what remains in the cluster.</p><p>Hint: The Deployment and ReplicaSet persist; only the pods are gone, which is why scaling back up is instant.</p></div>
+<div class="lab-challenge"><h3>Challenge 1: Expose and curl the app</h3><p>Goal: Create a Service for the deployment and curl it from your machine.</p><p>Hint: Port-forward is the quickest path on kind; a NodePort works too.</p></div>
+<div class="lab-challenge"><h3>Challenge 2: Break it, then roll back</h3><p>Goal: Deploy a bad image tag, watch the rollout stall on the readiness check, then roll back.</p><p>Hint: The stalled rollout is the lesson; <code>rollout status</code> shows it waiting.</p></div>
+<div class="lab-challenge"><h3>Challenge 3: Scale to zero</h3><p>Goal: Scale the deployment to zero replicas and observe what remains in the cluster.</p><p>Hint: The Deployment and ReplicaSet persist; only the pods are gone, which is why scaling back up is instant.</p></div>
 </section>
 
     <section class="related-labs"><h2 id="related-labs">Related Labs</h2>

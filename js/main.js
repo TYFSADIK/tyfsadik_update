@@ -86,7 +86,8 @@ if (filterBtns.length) {
 }
 
 // --- Copy-to-clipboard for command blocks ----------------
-document.querySelectorAll('.command-block .command').forEach(cmd => {
+// Covers .command-block .command and any standalone <pre><code> block.
+document.querySelectorAll('.command-block .command, pre').forEach(cmd => {
   const codeEl = cmd.querySelector('code');
   if (!codeEl) return;
   const btn = document.createElement('button');

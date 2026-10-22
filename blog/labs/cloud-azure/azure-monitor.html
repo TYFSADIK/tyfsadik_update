@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>Azure Monitor: Logs, KQL Alerts &amp; Dashboards | TYFSADIK</title>
   <meta name="description" content="Monitor Azure with Log Analytics and alerts: connect a VM, query telemetry with KQL, build alert rules with action groups, and control ingestion costs.">
   <meta name="keywords" content="Azure Monitor, Log Analytics, KQL queries, Azure alerts, action groups, telemetry">
@@ -16,6 +17,8 @@
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
   <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta property="og:image:width" content="640">
+  <meta property="og:image:height" content="275">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Azure Monitor: Logs, KQL Alerts &amp; Dashboards | TYFSADIK">
   <meta name="twitter:description" content="Monitor Azure with Log Analytics and alerts: connect a VM, query telemetry with KQL, build alert rules with action groups, and control ingestion costs.">
@@ -36,6 +39,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'No data in workspace'?", "acceptedAnswer": {"@type": "Answer", "text": "enable diagnostic settings / install the Azure Monitor Agent. Check the chain in order: agent extension provisioning state (az vm extension show -g $RG --vm-name $VM -n AzureMonitorLinuxAgent --query provisioningState -o tsv must be Succeeded), then the DCR association (az monitor data-collection rule association list --resource $VMID must be non-empty), then the DCR's destination workspace ID. A missing or misassociated DCR produces total silence with no error anywhere."}}, {"@type": "Question", "name": "How do I fix 'KQL returns nothing'?", "acceptedAnswer": {"@type": "Answer", "text": "widen the time range; data ingestion has a short delay. First-time ingestion after installing the agent can take 5-15 minutes. Also remember the CLI query defaults to the last 24 hours, if you are testing against older data, pass --timespan explicitly, and check you are not filtering on a counter name your DCR never collected (Perf | distinct CounterName tells the truth)."}}, {"@type": "Question", "name": "How do I fix 'Alert never fires'?", "acceptedAnswer": {"@type": "Answer", "text": "verify the condition aggregation window and the action group target. The classic trap is load that spikes to 95% for 30 seconds: a 5-minute average over 80 never trips on that. Either sustain the load or lower the window with --window-size PT1M. Also confirm the alert's scope is the VM resource ID, not the workspace, a metric alert scoped to the wrong resource type evaluates against a metric that does not exist and silently stays healthy."}}, {"@type": "Question", "name": "How do I fix 'Alert fires but no email arrives'?", "acceptedAnswer": {"@type": "Answer", "text": "the rule and the notification are separate links. Run az monitor action-group show -g $RG -n tyf-admins and check the emailReceivers array, a typo in the address still deploys cleanly. Check spam, then check Monitor › Alerts in the portal: if the alert is listed as Fired there, the rule is fine and the action group delivery is the broken hop. Test the action group in isolation with az monitor action-group test-notifications create --action-group tyf-admins -g $RG --alert-type metricstaticthreshold."}}, {"@type": "Question", "name": "How do I fix 'az monitor log-analytics query fails with \"BadRequest\" or a path error'?", "acceptedAnswer": {"@type": "Answer", "text": "you almost certainly passed the workspace's customer GUID or a workspace name where the -w flag expects the full resource ID (/subscriptions/.../workspaces/tyf-law). Re-capture it with the --query id command from step 01. If the error is a 403 instead, your account is missing the Log Analytics Reader role on the workspace."}}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -50,7 +54,7 @@
       <ul class="nav-links">
         <li><a href="../../../about.html" class="nav-link">About Me</a></li>
         <li><a href="../../../work.html" class="nav-link">Work</a></li>
-        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../blog.html" class="nav-link current" aria-current="page">Blog/Labs</a></li>
         <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
       </ul>
@@ -58,7 +62,7 @@
     <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
   </div>
 </header>
-<main class="page-content"><div class="container">
+<main class="page-content" id="main-content"><div class="container">
     <div class="content-box">
 
     <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/cloud-azure/index.html">Cloud &amp; Azure</a> &rsaquo; <span>Azure Monitor &amp; Alerting</span></nav>
@@ -92,7 +96,7 @@
       <p>We work with three building blocks. <strong>Azure Monitor</strong> is the platform-level service that collects metrics and logs from every resource. <strong>Log Analytics</strong> is the workspace where log data is stored in tables (Heartbeat, Perf, Event, Syslog) and queried. <strong>KQL</strong> (Kusto Query Language) is the read-only language you use to search, filter, and aggregate those tables, the same language Microsoft Sentinel is built on, so the skills transfer directly to SOC work.</p>
     </section>
 
-    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+    <div class="lab-objectives"><h2 id="learning-objectives">Learning Objectives</h2>
       <ul>
         <li>Connect resources to a Log Analytics workspace.</li>
         <li>Query telemetry with <span class="glossary-term" data-definition="Kusto Query Language: the read-only query language used by Azure Monitor and Sentinel.">KQL</span>.</li>
@@ -398,7 +402,7 @@ EOF</code></pre>
       </ul>
     
 <p>Quick-reference for the failures you are most likely to hit in this lab.</p>
-<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<table class="lab-table"><th scope="col"ead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">Fix</th></tr></thead><tbody>
 <tr><td>Queries return no rows</td><td>Agent not connected, DCR not associated, or the wrong time range</td><td>Run <code>Heartbeat | take 10</code> in Logs; if the VM is absent, fix the agent and DCR before touching the query.</td></tr>
 <tr><td>Alert rule never fires</td><td>Evaluation frequency longer than the spike, or the threshold never crossed for the full window</td><td>Temporarily lower the threshold to force a fire and confirm the pipeline works end to end.</td></tr>
 <tr><td>Alert fires but nobody is notified</td><td>Action group misconfigured, or the email landed in spam</td><td>Use the action group's built-in test, and confirm the receiver address.</td></tr>
@@ -465,9 +469,9 @@ az monitor log-analytics workspace delete -g $RG -n $LAW --force true --yes</cod
     </section>
 
     <section><h2 id="practice-challenges">Practice Challenges</h2>
-<div class="lab-challenge"><h4>Challenge 1: Join two tables</h4><p>Goal: Write a KQL query that joins <code>Perf</code> CPU data with <code>Heartbeat</code> to show only reporting VMs.</p><p>Hint: Use <code>| join kind=inner (Heartbeat | distinct Computer) on Computer</code>; that is the pattern.</p></div>
-<div class="lab-challenge"><h4>Challenge 2: Alert on sustained CPU</h4><p>Goal: Create a metric alert that fires when CPU exceeds 80 percent for five consecutive minutes, not on a single spike.</p><p>Hint: The aggregation window and the evaluation frequency together define what sustained means.</p></div>
-<div class="lab-challenge"><h4>Challenge 3: Build a workbook</h4><p>Goal: Assemble a workbook with three tiles: CPU trend, memory trend, and the latest heartbeat per VM.</p><p>Hint: Parameterize the time range once at the top so every tile follows it.</p></div>
+<div class="lab-challenge"><h3>Challenge 1: Join two tables</h3><p>Goal: Write a KQL query that joins <code>Perf</code> CPU data with <code>Heartbeat</code> to show only reporting VMs.</p><p>Hint: Use <code>| join kind=inner (Heartbeat | distinct Computer) on Computer</code>; that is the pattern.</p></div>
+<div class="lab-challenge"><h3>Challenge 2: Alert on sustained CPU</h3><p>Goal: Create a metric alert that fires when CPU exceeds 80 percent for five consecutive minutes, not on a single spike.</p><p>Hint: The aggregation window and the evaluation frequency together define what sustained means.</p></div>
+<div class="lab-challenge"><h3>Challenge 3: Build a workbook</h3><p>Goal: Assemble a workbook with three tiles: CPU trend, memory trend, and the latest heartbeat per VM.</p><p>Hint: Parameterize the time range once at the top so every tile follows it.</p></div>
 </section>
 
     <section class="related-labs"><h2 id="related-labs">Related Labs</h2>

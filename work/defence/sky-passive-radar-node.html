@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>Passive Radar Node: KrakenSDR Defence Build | TYFSADIK</title>
   <meta name="description" content="Receive-only passive radar on a KrakenSDR 5-channel coherent SDR: FM and TV broadcast reflections off aircraft, range-Doppler processing, scored vs ADS-B truth.">
   <meta name="keywords" content="passive radar, KrakenSDR, coherent SDR, range-Doppler, pyAPRiL, ADS-B ground truth, RTL-SDR, dump1090-fa, tar1090, FM illuminator, UHF TV illuminator, bistatic radar">
@@ -17,6 +18,8 @@
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
   <meta property="og:image" content="https://tyfsadik.org/Prove/Sky%20passive%20aerial%20early-warning%20node.jpeg">
+  <meta property="og:image:width" content="1376">
+  <meta property="og:image:height" content="768">
   <meta name="twitter:title" content="Passive Radar Node: KrakenSDR Defence Build | TYFSADIK">
   <meta name="twitter:description" content="Receive-only passive radar on a KrakenSDR 5-channel coherent SDR: FM and TV broadcast reflections off aircraft, range-Doppler processing, scored vs ADS-B truth.">
   <meta name="twitter:image" content="https://tyfsadik.org/Prove/Sky%20passive%20aerial%20early-warning%20node.jpeg">
@@ -36,6 +39,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'USB dropouts ruining coherent captures.'?", "acceptedAnswer": {"@type": "Answer", "text": "Symptom: streaks across the waterfall and correlation that dies mid-CPI. Cause: both SDRs streaming through one overloaded USB controller, and an undervolted KrakenSDR. Fix: separate USB buses for the KrakenSDR and the RTL-SDR, a quality 5 V supply, short good cables, and dmesg -w watching for xHCI errors during every capture. Any capture with a dropout gets deleted, not processed."}}, {"@type": "Question", "name": "How do I fix 'Range-Doppler map is all clutter ridge, no aircraft.'?", "acceptedAnswer": {"@type": "Answer", "text": "The direct-path signal leaking into the surveillance channels was stronger than the echoes by orders of magnitude. Fixes, in the order that worked: physically separate and null the antennas (reference pattern null toward the surveillance array), then raise the ECA filter order in the processing chain, then confirm the calibration was current. If the zero-Doppler ridge still dominates, the geometry, not the code, is the problem."}}, {"@type": "Question", "name": "How do I fix 'Coherence \"randomly\" lost after working an hour ago.'?", "acceptedAnswer": {"@type": "Answer", "text": "Not random: frequency and gain changes trigger Kraken recalibration, and any retune or sample-rate change invalidates phase calibration. Fix: treat calibration as part of the run configuration, re-run it on every change, and log its timestamp with every capture so stale-calibration data can be filtered out of scoring."}}, {"@type": "Question", "name": "How do I fix 'A nearby powerhouse FM station saturating the front end.'?", "acceptedAnswer": {"@type": "Answer", "text": "A very strong local transmitter raised the noise floor across the band and produced intermod ghosts. Fix: back the gain down (coherence matters more than gain), pick an illuminator that is strong-but-distant, and if needed put an FM band-stop filter on the surveillance channels only, never on the reference."}}, {"@type": "Question", "name": "How do I fix 'Detections that don't line up with ADS-B truth.'?", "acceptedAnswer": {"@type": "Answer", "text": "First suspect was the algorithm; the actual cause was clock disagreement between the radar captures and the truth log, a few seconds of drift moves a fast aircraft well outside the tolerance window. Fix: chrony on the mini PC disciplining both pipelines off NTP, and a scoring-harness check that rejects runs where the truth log has gaps."}}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -49,7 +53,7 @@
       <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
       <ul class="nav-links">
         <li><a href="../../about.html" class="nav-link">About Me</a></li>
-        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../work.html" class="nav-link current" aria-current="page">Work</a></li>
         <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
         <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../contact.html" class="nav-link">Contact</a></li>
@@ -58,7 +62,7 @@
     <div class="banner" style="background-image:url('../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
   </div>
 </header>
-<main class="page-content">
+<main class="page-content" id="main-content">
   <div class="container">
     <div class="content-box">
     <div class="breadcrumbs">
@@ -150,7 +154,7 @@
     <section id="bom">
       <h2>Bill of Materials</h2>
       <table class="bom-table">
-        <thead><tr><th>Part</th><th>Role</th><th>Details</th><th class="bom-cost">Est. US$</th></tr></thead>
+        <th scope="col"ead><tr><th scope="col">Part</th><th scope="col">Role</th><th scope="col">Details</th><th scope="col" class="bom-cost">Est. US$</th></tr></thead>
         <tbody>
           <tr><td>KrakenSDR</td><td>Coherent radar receiver</td><td>5-channel coherent receiver, 24 MHz to 1766 MHz, 2.56 MHz max channel bandwidth (2.4 MS/s is the stable operating sample rate)</td><td class="bom-cost">749 (price listed on the KrakenRF product page; confirm before ordering)</td></tr>
           <tr><td>Antennas</td><td>Direction-finding array</td><td>KrakenRF 5-antenna set for testing</td><td class="bom-cost">199</td></tr>
@@ -176,7 +180,7 @@
         (see <a href="#troubleshooting">Troubleshooting</a>).
       </p>
       <table>
-        <thead><tr><th>From</th><th>To</th><th>Cable / interface</th><th>Notes</th></tr></thead>
+        <th scope="col"ead><tr><th scope="col">From</th><th scope="col">To</th><th scope="col">Cable / interface</th><th scope="col">Notes</th></tr></thead>
         <tbody>
           <tr><td>FM Yagi (pointed at transmitter)</td><td>KrakenSDR CH1 (reference)</td><td>LMR-240 coax, SMA</td><td>Clean direct-path signal; keep this run short</td></tr>
           <tr><td>Surveillance antennas (log-periodic / whips)</td><td>KrakenSDR CH2-CH5</td><td>Matched-length coax, SMA</td><td>Cable lengths matched so phase calibration stays valid</td></tr>
@@ -514,7 +518,7 @@ client.publish("defence/sky/detections", json.dumps({
         actually been recorded, and the target column holds what the build is aiming at.
       </p>
       <table class="viz-results">
-        <thead><tr><th>Metric</th><th>Target</th><th>Measured to date</th><th>Current status</th></tr></thead>
+        <th scope="col"ead><tr><th scope="col">Metric</th><th scope="col">Target</th><th scope="col">Measured to date</th><th scope="col">Current status</th></tr></thead>
         <tbody>
           <tr><td>ADS-B truth log uptime</td><td>&gt; 95% over any scoring week</td><td class="viz-measured">Running; uptime tracked, scoring weeks being selected</td><td>Running; uptime tracked, scoring weeks being selected</td></tr>
           <tr><td>Detection rate (FM illuminator)</td><td>&gt; 70% of ADS-B tracks in the primary coverage band</td><td class="viz-measured">Not yet measured</td><td>In progress, T3 runs underway, not yet scored</td></tr>
@@ -595,7 +599,7 @@ client.publish("defence/sky/detections", json.dumps({
       <h2>What You Need</h2>
 <p>Everything below mirrors the bill of materials on this page. The single non-obvious requirement is patience with calibration: the whole build assumes you re-calibrate on every configuration change.</p>
       <table>
-        <thead><tr><th>Category</th><th>Item</th><th>Notes</th></tr></thead>
+        <th scope="col"ead><tr><th scope="col">Category</th><th scope="col">Item</th><th scope="col">Notes</th></tr></thead>
         <tbody>
           <tr><td>Hardware</td><td>KrakenSDR</td><td>5-channel coherent SDR, 5x R820T2 tuners, 24 MHz to 1766 MHz, 2.56 MHz channel bandwidth, ~11 W at 5 V</td></tr>
           <tr><td>Hardware</td><td>Reference + surveillance antennas</td><td>FM Yagi for the reference channel, log-periodic/whip surveillance antennas, matched-length coax, NanoVNA for tuning</td></tr>

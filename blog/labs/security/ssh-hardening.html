@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>SSH Hardening: Hands-On Security Lab Tutorial | TYFSADIK</title>
   <meta name="description" content="Harden SSH the safe way: ed25519 key-only authentication, no-root policy, modern crypto selection, sshd -t validation, and fail2ban behavioral blocking.">
   <meta name="keywords" content="SSH hardening, ed25519, key-only auth, fail2ban, sshd_config, CIS benchmark">
@@ -26,6 +27,8 @@
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
   <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta property="og:image:width" content="640">
+  <meta property="og:image:height" content="275">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="SSH Hardening: Hands-On Security Lab Tutorial | TYFSADIK">
   <meta name="twitter:description" content="Harden SSH the safe way: ed25519 key-only authentication, no-root policy, modern crypto selection, sshd -t validation, and fail2ban behavioral blocking.">
@@ -84,6 +87,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Locked out after reload'?", "acceptedAnswer": {"@type": "Answer", "text": "always validate with sshd -t before reload and keep a session open. If the worst happens, use the provider's out-of-band console (VNC/serial), restore /etc/ssh/sshd_config.bak.YYYY-MM-DD from step 0, and reload. As a belt-and-braces measure on remote-only boxes, schedule a safety net BEFORE reloading: it must restore the backup, not just restart with the new config. BK=$(cat /root/.sshd-last-backup); echo \"cp $BK /etc/ssh/sshd_config &amp;&amp; systemctl restart ssh\" | sudo at now + 10 minutes. The at daemon must be installed (sudo apt install -y at) and running. The backup path is read from the durable file written in step 0, so it works in a fresh shell. If your new session works, cancel the job with atrm; if you are locked out, the old config is restored and the daemon restarted on its own."}}, {"@type": "Question", "name": "How do I fix 'fail2ban not banning'?", "acceptedAnswer": {"@type": "Answer", "text": "confirm the backend and journal match in jail.local. On Ubuntu 22.04 use backend = systemd with journalmatch = _SYSTEMD_UNIT=ssh.service + _COMM=sshd, and test the filter with sudo fail2ban-regex --journalmatch \"_SYSTEMD_UNIT=ssh.service + _COMM=sshd\" systemd-journal /etc/fail2ban/filter.d/sshd.conf. A jail that shows Total failed: 0 while auth failures exist is watching the wrong log source."}}, {"@type": "Question", "name": "How do I fix 'Key refused with \"Permission denied (publickey)\"'?", "acceptedAnswer": {"@type": "Answer", "text": "check ~/.ssh is 700 and authorized_keys is 600, that the key is actually listed in the file, and that the home directory is not group-writable (StrictModes rejects it). Debug server-side with a one-off verbose daemon: sudo /usr/sbin/sshd -d -p 2222, then connect to port 2222 and read exactly why the key was rejected."}}, {"@type": "Question", "name": "How do I fix '\"Bad configuration option\" from sshd -t'?", "acceptedAnswer": {"@type": "Answer", "text": "the directive is deprecated or misspelled for your OpenSSH version, e.g. UsePrivilegeSeparation and RSAAuthentication were removed years ago but linger in old tutorials. Check man sshd_config on the actual host, and re-run sshd -T to see what survived."}}, {"@type": "Question", "name": "How do I fix 'Banned myself by accident'?", "acceptedAnswer": {"@type": "Answer", "text": "from another network or the console, run sudo fail2ban-client set sshd unbanip YOUR_IP. To prevent recurrence, add your static management IPs to the ignoreip line in [DEFAULT] (e.g. ignoreip = 127.0.0.1/8 198.51.100.10), but only for genuinely static addresses, never DHCP ranges."}}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -98,7 +102,7 @@
       <ul class="nav-links">
         <li><a href="../../../about.html" class="nav-link">About Me</a></li>
         <li><a href="../../../work.html" class="nav-link">Work</a></li>
-        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../blog.html" class="nav-link current" aria-current="page">Blog/Labs</a></li>
         <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
       </ul>
@@ -106,7 +110,7 @@
     <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
   </div>
 </header>
-<main class="page-content"><div class="container">
+<main class="page-content" id="main-content"><div class="container">
     <div class="content-box">
 
     <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>SSH Hardening</span></nav>
@@ -413,7 +417,7 @@ RETURN     all  --  0.0.0.0/0            0.0.0.0/0</code></pre>
 
     <section id="troubleshooting"><h2>Troubleshooting</h2>
 <table class="lab-table">
-<thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+<th scope="col"ead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">Fix</th></tr></thead>
 <tbody>
 <tr><td>Command not found</td><td>package missing</td><td>install prerequisite and verify version</td></tr>
 <tr><td>Permission denied</td><td>insufficient privileges</td><td>use documented sudo or lab admin context</td></tr>
@@ -453,8 +457,8 @@ RETURN     all  --  0.0.0.0/0            0.0.0.0/0</code></pre>
 
         <section id="practice-challenges">
       <h2>Practice Challenges</h2>
-      <div class="lab-challenge"><h4>Challenge 1: Certificate authorities</h4><p>Goal: Replace static authorized_keys with an SSH certificate authority and issue a 24-hour user certificate.</p><p>Hint: Use ssh-keygen -s to sign a user key and add TrustedUserCAKeys to sshd_config.</p></div>
-      <div class="lab-challenge"><h4>Challenge 2: Tune the jail</h4><p>Goal: Configure fail2ban to ban for 1 hour after 3 failures and whitelist your management subnet.</p><p>Hint: Set bantime and maxretry in jail.local and add your subnet to ignoreip.</p></div>
+      <div class="lab-challenge"><h3>Challenge 1: Certificate authorities</h3><p>Goal: Replace static authorized_keys with an SSH certificate authority and issue a 24-hour user certificate.</p><p>Hint: Use ssh-keygen -s to sign a user key and add TrustedUserCAKeys to sshd_config.</p></div>
+      <div class="lab-challenge"><h3>Challenge 2: Tune the jail</h3><p>Goal: Configure fail2ban to ban for 1 hour after 3 failures and whitelist your management subnet.</p><p>Hint: Set bantime and maxretry in jail.local and add your subnet to ignoreip.</p></div>
     </section>
 <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
       <ul>

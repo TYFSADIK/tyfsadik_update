@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>Container Networking: Bridge, DNS &amp; Isolation | TYFSADIK</title>
   <meta name="description" content="Master Docker networking hands-on: user-defined bridges, embedded DNS, container-to-container connectivity, isolation tests, and publishing only what you must.">
   <meta name="keywords" content="Docker networking, bridge network, container DNS, network isolation, docker network, port publishing">
@@ -16,6 +17,8 @@
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
   <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta property="og:image:width" content="640">
+  <meta property="og:image:height" content="275">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Container Networking: Bridge, DNS &amp; Isolation | TYFSADIK">
   <meta name="twitter:description" content="Master Docker networking hands-on: user-defined bridges, embedded DNS, container-to-container connectivity, isolation tests, and publishing only what you must.">
@@ -36,6 +39,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Name not resolving'?", "acceptedAnswer": {"@type": "Answer", "text": "the default bridge lacks DNS; attach to a user-defined network. Verify with docker exec <container> cat /etc/resolv.conf, if you do not see nameserver 127.0.0.11, the container is not on a user-defined bridge. Fix by recreating it with --network app-net."}}, {"@type": "Question", "name": "How do I fix 'Containers can all reach each other'?", "acceptedAnswer": {"@type": "Answer", "text": "they share one network; separate concerns into distinct networks. docker network inspect <name> lists every attached container, if unrelated shows up under app-net, disconnect it with docker network disconnect app-net unrelated."}}, {"@type": "Question", "name": "How do I fix 'Port not reachable from host'?", "acceptedAnswer": {"@type": "Answer", "text": "publish it with -p; network membership alone does not expose it. Also confirm the service binds 0.0.0.0 inside the container, a process bound to 127.0.0.1 in its own namespace is unreachable no matter how you publish."}}, {"@type": "Question", "name": "How do I fix 'postgres container exits immediately'?", "acceptedAnswer": {"@type": "Answer", "text": "the official image aborts when no password is set. docker logs db shows Error: Database is uninitialized and superuser password is not specified. Fix by passing -e POSTGRES_PASSWORD=... (or POSTGRES_HOST_AUTH_METHOD=trust for throwaway labs only)."}}, {"@type": "Question", "name": "How do I fix '\"network with name app-net already exists\" or IP pool exhaustion'?", "acceptedAnswer": {"@type": "Answer", "text": "inspect existing networks with docker network ls; either reuse the existing network, remove the stale one with docker network rm, or create yours with an explicit non-overlapping --subnet. Pool exhaustion shows up as could not find an available, non-overlapping IPv4 address pool and means too many dead networks are squatting on RFC1918 ranges, docker network prune clears them."}}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -50,7 +54,7 @@
       <ul class="nav-links">
         <li><a href="../../../about.html" class="nav-link">About Me</a></li>
         <li><a href="../../../work.html" class="nav-link">Work</a></li>
-        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../blog.html" class="nav-link current" aria-current="page">Blog/Labs</a></li>
         <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
       </ul>
@@ -58,7 +62,7 @@
     <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
   </div>
 </header>
-<main class="page-content"><div class="container">
+<main class="page-content" id="main-content"><div class="container">
     <div class="content-box">
 
     <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Container Networking</span></nav>
@@ -88,7 +92,7 @@
       <p>Networking is where most multi-container deployments quietly go wrong: everything lands on the default bridge, every container can see every other container, and nothing resolves by name. This lab builds the opposite posture on purpose. You will stand up a two-tier application (an nginx frontend and a PostgreSQL database) on a private bridge, confirm Docker's embedded DNS resolves service names, then attach a hostile-by-omission "unrelated" container to a second bridge and prove it cannot reach the database at all. The same mental model carries directly into Docker Compose and Kubernetes, so treat this as foundational, not optional.</p>
     </section>
 
-    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+    <div class="lab-objectives"><h2 id="learning-objectives">Learning Objectives</h2>
       <ul>
         <li>Create user-defined bridge networks with built-in DNS.</li>
         <li>Connect containers by name instead of IP.</li>
@@ -445,7 +449,7 @@ other-net</code></pre>
       </ul>
     
 <p>Quick-reference for the failures you are most likely to hit in this lab.</p>
-<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<table class="lab-table"><th scope="col"ead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">Fix</th></tr></thead><tbody>
 <tr><td>Name resolution fails between containers</td><td>Containers are on the default bridge, which has no embedded DNS</td><td>Create a user-defined network and attach both containers to it.</td></tr>
 <tr><td>Connection refused on a published port</td><td>The app listens on localhost inside the container, or the port mapping is wrong</td><td>Check <code>docker ps</code> for the mapping and make the app bind <code>0.0.0.0</code>.</td></tr>
 <tr><td>Isolation test unexpectedly succeeds</td><td>Both containers are still attached to the first network</td><td>Inspect each container's networks; a container can hold memberships in several.</td></tr>
@@ -483,9 +487,9 @@ other-net</code></pre>
     </div>
 
     <section><h2 id="practice-challenges">Practice Challenges</h2>
-<div class="lab-challenge"><h4>Challenge 1: Custom subnet with static IPs</h4><p>Goal: Create a network with an explicit <code>--subnet</code>, assign static IPs to two containers, and prove they communicate.</p><p>Hint: Static IPs remove DHCP from the equation, which makes the DNS test cleaner.</p></div>
-<div class="lab-challenge"><h4>Challenge 2: Prove the default bridge cannot resolve names</h4><p>Goal: Run two containers on the default bridge and show name resolution failing while IP connectivity works.</p><p>Hint: The contrast with the user-defined network is the lesson; run both experiments back to back.</p></div>
-<div class="lab-challenge"><h4>Challenge 3: Map veth to container</h4><p>Goal: Use <code>docker network inspect</code> and <code>ip link</code> to match a veth interface to its container.</p><p>Hint: The interface index in the inspect output corresponds to the host-side veth name.</p></div>
+<div class="lab-challenge"><h3>Challenge 1: Custom subnet with static IPs</h3><p>Goal: Create a network with an explicit <code>--subnet</code>, assign static IPs to two containers, and prove they communicate.</p><p>Hint: Static IPs remove DHCP from the equation, which makes the DNS test cleaner.</p></div>
+<div class="lab-challenge"><h3>Challenge 2: Prove the default bridge cannot resolve names</h3><p>Goal: Run two containers on the default bridge and show name resolution failing while IP connectivity works.</p><p>Hint: The contrast with the user-defined network is the lesson; run both experiments back to back.</p></div>
+<div class="lab-challenge"><h3>Challenge 3: Map veth to container</h3><p>Goal: Use <code>docker network inspect</code> and <code>ip link</code> to match a veth interface to its container.</p><p>Hint: The interface index in the inspect output corresponds to the host-side veth name.</p></div>
 </section>
 
     <section class="related-labs"><h2 id="related-labs">Related Labs</h2>

@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>Network Security Groups Explained: Security Lab | TYFSADIK</title>
   <meta name="description" content="Segment cloud networks with Azure NSGs and AWS security groups: tiered allow rules, effective-policy checks, flow-log verification, and any-any audits.">
   <meta name="keywords" content="Azure NSG, AWS security groups, cloud firewall, network segmentation, flow logs, least privilege">
@@ -26,6 +27,8 @@
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
   <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta property="og:image:width" content="640">
+  <meta property="og:image:height" content="275">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Network Security Groups Explained: Security Lab | TYFSADIK">
   <meta name="twitter:description" content="Segment cloud networks with Azure NSGs and AWS security groups: tiered allow rules, effective-policy checks, flow-log verification, and any-any audits.">
@@ -94,6 +97,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Rule has no effect'?", "acceptedAnswer": {"@type": "Answer", "text": "NSGs evaluate by priority; a lower number wins, check rule ordering. A broader allow at priority 110 silently beats a specific deny at 4096. List rules sorted by priority with az network nsg rule list -o table and renumber with az network nsg rule update --priority."}}, {"@type": "Question", "name": "How do I fix 'Unexpected allow'?", "acceptedAnswer": {"@type": "Answer", "text": "A subnet and NIC NSG both apply, and traffic must pass both; review effective rules with az network nic list-effective-nsg. The surprise is usually the other direction: an allow added in one layer is blocked by a rule in the layer not edited."}}, {"@type": "Question", "name": "How do I fix 'AWS asymmetric block'?", "acceptedAnswer": {"@type": "Answer", "text": "security groups are stateful; NACLs are not, verify which layer drops. If a connection works outbound but the reply never returns, the subnet NACL's ephemeral-port range (1024-65535) is the usual suspect: add an inbound NACL rule for ephemeral ports, since NACLs do not track session state."}}, {"@type": "Question", "name": "How do I fix 'Flow logs show nothing'?", "acceptedAnswer": {"@type": "Answer", "text": "confirm Network Watcher is enabled in the region and the storage account allows the Microsoft.Insights provider; on AWS check aws ec2 describe-flow-logs for the log group, a wrong IAM role ARN creates the flow log but delivers nothing."}}, {"@type": "Question", "name": "How do I fix 'Allowed traffic still times out'?", "acceptedAnswer": {"@type": "Answer", "text": "work the stack top-down, effective NSG rules, then route table/UDR (a forced-tunnel route to a firewall can blackhole otherwise-allowed flows), then the guest OS firewall. Azure's Network Watcher IP Flow Verify (az network watcher test-ip-flow) pinpoints exactly which rule or hop denies a given 5-tuple."}}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -108,7 +112,7 @@
       <ul class="nav-links">
         <li><a href="../../../about.html" class="nav-link">About Me</a></li>
         <li><a href="../../../work.html" class="nav-link">Work</a></li>
-        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../blog.html" class="nav-link current" aria-current="page">Blog/Labs</a></li>
         <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../../contact.html" class="contact-link">Contact</a></li>
       </ul>
@@ -116,7 +120,7 @@
     <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
   </div>
 </header>
-<main class="page-content"><div class="container">
+<main class="page-content" id="main-content"><div class="container">
     <div class="content-box">
 
     <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Network Security Groups</span></nav>
@@ -200,8 +204,8 @@ Lab-Sub      taki@tyfsadik.org
     <section><h2>Rule Matrix</h2>
       <p>Before touching the CLI I write down the intended policy as a matrix. Every cell is either an explicit allow with a named rule, or "deny" by catch-all (Azure) or implicit deny (AWS). Having this on paper first is what keeps the rule set minimal, any rule that does not implement a matrix row does not get created.</p>
       <table>
-        <thead>
-          <tr><th>Source</th><th>Destination</th><th>Port</th><th>Action</th><th>Rule</th></tr>
+        <th scope="col"ead>
+          <tr><th scope="col">Source</th><th scope="col">Destination</th><th scope="col">Port</th><th scope="col">Action</th><th scope="col">Rule</th></tr>
         </thead>
         <tbody>
           <tr><td>Internet</td><td>Web tier</td><td>TCP 443</td><td>Allow</td><td>allow-https (100)</td></tr>
@@ -417,8 +421,8 @@ flowchart LR
       <p>Every timed-out probe from step 6 must appear here as D/REJECT. If the logs show no record at all, the traffic died somewhere else (routing, guest firewall) and the NSG verdict is unproven, rerun the probe while watching the logs.</p>
       <p>The full validation matrix I ran at the end of the lab, executed once per cloud:</p>
       <table>
-        <thead>
-          <tr><th>Test</th><th>Initiator</th><th>Target</th><th>Expected</th><th>Result</th></tr>
+        <th scope="col"ead>
+          <tr><th scope="col">Test</th><th scope="col">Initiator</th><th scope="col">Target</th><th scope="col">Expected</th><th scope="col">Result</th></tr>
         </thead>
         <tbody>
           <tr><td>Public HTTPS</td><td>External client</td><td>web-tier:443</td><td>200 OK</td><td>Pass</td></tr>
@@ -435,7 +439,7 @@ flowchart LR
 
     <section id="troubleshooting"><h2>Troubleshooting</h2>
 <table class="lab-table">
-<thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+<th scope="col"ead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">Fix</th></tr></thead>
 <tbody>
 <tr><td>Command not found</td><td>package missing</td><td>install prerequisite and verify version</td></tr>
 <tr><td>Permission denied</td><td>insufficient privileges</td><td>use documented sudo or lab admin context</td></tr>
@@ -491,8 +495,8 @@ flowchart LR
 
         <section id="practice-challenges">
       <h2>Practice Challenges</h2>
-      <div class="lab-challenge"><h4>Challenge 1: Break-glass access</h4><p>Goal: Add a time-limited JIT rule allowing your IP to reach the data tier for 1 hour, then confirm it disappears.</p><p>Hint: Use a high-priority allow with your public IP, and remove it (or use Azure JIT) after the window.</p></div>
-      <div class="lab-challenge"><h4>Challenge 2: Find the shadow rule</h4><p>Goal: A teammate added an any-any allow; find it using only CLI queries across both clouds.</p><p>Hint: Query for rules with 0.0.0.0/0 in source and Allow in access across all NSGs and security groups.</p></div>
+      <div class="lab-challenge"><h3>Challenge 1: Break-glass access</h3><p>Goal: Add a time-limited JIT rule allowing your IP to reach the data tier for 1 hour, then confirm it disappears.</p><p>Hint: Use a high-priority allow with your public IP, and remove it (or use Azure JIT) after the window.</p></div>
+      <div class="lab-challenge"><h3>Challenge 2: Find the shadow rule</h3><p>Goal: A teammate added an any-any allow; find it using only CLI queries across both clouds.</p><p>Hint: Query for rules with 0.0.0.0/0 in source and Allow in access across all NSGs and security groups.</p></div>
     </section>
 <section class="related-labs" id="related-labs"><h2>Related Labs</h2>
       <ul>

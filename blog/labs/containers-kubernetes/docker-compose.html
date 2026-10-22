@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>Docker Compose: Declarative Multi-Service Stacks | TYFSADIK</title>
   <meta name="description" content="Define multi-service stacks declaratively with Docker Compose: write the file, validate before running, manage lifecycle, and prove services reach each other.">
   <meta name="keywords" content="Docker Compose, compose file, multi-service, docker compose up, depends_on, container orchestration">
@@ -16,6 +17,8 @@
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
   <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta property="og:image:width" content="640">
+  <meta property="og:image:height" content="275">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Docker Compose: Declarative Multi-Service Stacks | TYFSADIK">
   <meta name="twitter:description" content="Define multi-service stacks declaratively with Docker Compose: write the file, validate before running, manage lifecycle, and prove services reach each other.">
@@ -36,6 +39,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'web starts before db is ready'?", "acceptedAnswer": {"@type": "Answer", "text": "use a healthcheck with condition: service_healthy. If you already have both and it still happens, check that the healthcheck is defined on the dependency (db), not on the dependent, putting the probe on web does nothing for ordering. Confirm with docker inspect compose-lab-db-1 | grep -A5 Healthcheck."}}, {"@type": "Question", "name": "How do I fix 'Old containers conflict'?", "acceptedAnswer": {"@type": "Answer", "text": "run docker compose down before re-creating. A harder variant is the error container name \"/compose-lab-db-1\" is already in use from a container created outside Compose (e.g. a manual docker run --name); Compose will not adopt it, so remove it with docker rm -f compose-lab-db-1."}}, {"@type": "Question", "name": "How do I fix 'Env not applied'?", "acceptedAnswer": {"@type": "Answer", "text": "confirm a .env file or environment keys are present. The file must be named exactly .env and sit in the directory you run the command from, not next to a compose file referenced with -f ../other/compose.yaml. Diagnose with docker compose config: if the output shows an empty value or a literal ${VAR}, interpolation never happened."}}, {"@type": "Question", "name": "How do I fix 'db is (unhealthy) and web never starts'?", "acceptedAnswer": {"@type": "Answer", "text": "the probe itself is failing, not the ordering. Run the healthcheck command by hand, docker compose exec db pg_isready -U postgres, and read its error. The classic cause is a changed POSTGRES_USER: pg_isready -U postgres fails if the superuser is not literally postgres. Match the probe's -U flag to whatever user the container initializes."}}, {"@type": "Question", "name": "How do I fix 'port 8080 already allocated'?", "acceptedAnswer": {"@type": "Answer", "text": "something on the host already owns the published port. Find it with lsof -i :8080 (or ss -tlnp | grep 8080 on Linux), then either stop the offender or change the host side of the mapping to \"8081:80\", the container port stays 80, only the host port moves."}}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -50,7 +54,7 @@
       <ul class="nav-links">
         <li><a href="../../../about.html" class="nav-link">About Me</a></li>
         <li><a href="../../../work.html" class="nav-link">Work</a></li>
-        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../blog.html" class="nav-link current" aria-current="page">Blog/Labs</a></li>
         <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
       </ul>
@@ -58,7 +62,7 @@
     <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
   </div>
 </header>
-<main class="page-content"><div class="container">
+<main class="page-content" id="main-content"><div class="container">
     <div class="content-box">
 
     <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Docker Compose</span></nav>
@@ -87,7 +91,7 @@
       <p>Running containers by hand works until the app needs more than one of them. The moment you have a web tier, a database, and a cache, a chain of <code>docker run</code> commands becomes a shell script that is easy to get wrong: networks must exist first, startup order matters, passwords get typed on the command line, and nobody remembers which flags the database container needed. Docker Compose replaces all of that with one declarative YAML file that describes the desired end state, services, networks, volumes, and the order they must come up in, and a single <code>docker compose up</code> that converges reality to that description.</p>
       <p>This lab builds that file from scratch, validates it before anything runs, brings the stack up, proves the services can actually reach each other, and then walks through the full lifecycle commands you will use daily. Every claim is verified with a command and its expected output, so you can follow it end to end on any machine with Docker installed.</p></section>
 
-    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+    <div class="lab-objectives"><h2 id="learning-objectives">Learning Objectives</h2>
       <ul>
         <li>Define services, networks, and volumes declaratively.</li>
         <li>Order startup with depends_on and healthchecks.</li>
@@ -425,7 +429,7 @@ compose-lab-web-1    Up 5 minutes</div>
       </ul>
     
 <p>Quick-reference for the failures you are most likely to hit in this lab.</p>
-<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<table class="lab-table"><th scope="col"ead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">Fix</th></tr></thead><tbody>
 <tr><td>Port is already allocated</td><td>Another service or a previous stack holds the host port</td><td>Change the host-side port in the compose file or stop the conflicting stack.</td></tr>
 <tr><td>Web crashes on boot talking to the database</td><td><code>depends_on</code> ordered startup but the DB was not ready</td><td>Add a healthcheck and use <code>condition: service_healthy</code>.</td></tr>
 <tr><td>Permission denied on a mounted volume</td><td>Host UID does not match the container user</td><td>Set <code>user:</code> in the service or fix ownership on the host path.</td></tr>
@@ -468,9 +472,9 @@ compose-lab-web-1    Up 5 minutes</div>
     </div>
 
     <section><h2 id="practice-challenges">Practice Challenges</h2>
-<div class="lab-challenge"><h4>Challenge 1: Gate on health, not startup</h4><p>Goal: Add a healthcheck to the database and make the web service wait for <code>service_healthy</code>.</p><p>Hint: Break the DB password afterwards and watch the web service refuse to start; that is the gate working.</p></div>
-<div class="lab-challenge"><h4>Challenge 2: Prove volume persistence</h4><p>Goal: Write data to the database, run <code>down</code> and <code>up</code>, and show the data survived.</p><p>Hint: Then run <code>down --volumes</code> once in a scratch project to feel the difference.</p></div>
-<div class="lab-challenge"><h4>Challenge 3: Override without editing</h4><p>Goal: Add a <code>compose.override.yml</code> that changes only the published ports.</p><p>Hint: Compose merges the files automatically; the base file stays pristine.</p></div>
+<div class="lab-challenge"><h3>Challenge 1: Gate on health, not startup</h3><p>Goal: Add a healthcheck to the database and make the web service wait for <code>service_healthy</code>.</p><p>Hint: Break the DB password afterwards and watch the web service refuse to start; that is the gate working.</p></div>
+<div class="lab-challenge"><h3>Challenge 2: Prove volume persistence</h3><p>Goal: Write data to the database, run <code>down</code> and <code>up</code>, and show the data survived.</p><p>Hint: Then run <code>down --volumes</code> once in a scratch project to feel the difference.</p></div>
+<div class="lab-challenge"><h3>Challenge 3: Override without editing</h3><p>Goal: Add a <code>compose.override.yml</code> that changes only the published ports.</p><p>Hint: Compose merges the files automatically; the base file stays pristine.</p></div>
 </section>
 
     <section class="related-labs"><h2 id="related-labs">Related Labs</h2>

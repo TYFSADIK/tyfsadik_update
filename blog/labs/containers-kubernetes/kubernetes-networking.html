@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>Kubernetes Networking | Services, Ingress &amp; Policy</title>
   <meta name="description" content="Understand Kubernetes networking by doing: ClusterIP, NodePort, and Ingress compared side by side, CoreDNS service discovery, and default-deny NetworkPolicies.">
   <meta name="keywords" content="Kubernetes networking, ClusterIP, NodePort, Ingress, CoreDNS, NetworkPolicy, kube-proxy">
@@ -16,6 +17,8 @@
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
   <meta property="og:image" content="https://tyfsadik.org/images/banner-space.jpg">
+  <meta property="og:image:width" content="640">
+  <meta property="og:image:height" content="275">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Kubernetes Networking | Services, Ingress &amp; Policy">
   <meta name="twitter:description" content="Understand Kubernetes networking by doing: ClusterIP, NodePort, and Ingress compared side by side, CoreDNS service discovery, and default-deny NetworkPolicies.">
@@ -36,6 +39,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Policy has no effect'?", "acceptedAnswer": {"@type": "Answer", "text": "your CNI must support NetworkPolicy (Calico/Cilium), not all do. kind's default kindnet and some managed-node images ignore policies entirely, traffic keeps flowing and nothing logs why. Check kubectl -n kube-system get pods | grep -Ei 'calico|cilium'."}}, {"@type": "Question", "name": "How do I fix 'DNS fails inside pods'?", "acceptedAnswer": {"@type": "Answer", "text": "check CoreDNS pods are Running in kube-system. If DNS broke only after applying default-deny, your egress policy is blocking port 53, apply the allow-dns policy from step 07."}}, {"@type": "Question", "name": "How do I fix 'Ingress EXTERNAL-IP stuck at <pending>'?", "acceptedAnswer": {"@type": "Answer", "text": "there is no cloud load balancer to allocate one. On minikube run minikube tunnel in a second terminal; elsewhere, port-forward directly with kubectl -n ingress-nginx port-forward svc/ingress-nginx-controller 8080:80 and test against http://localhost:8080."}}, {"@type": "Question", "name": "How do I fix 'Everything in the namespace broke after default-deny'?", "acceptedAnswer": {"@type": "Answer", "text": "that is the policy working, not failing. Rebuild connectivity one allow rule at a time, DNS egress first, then app-to-app paths, and test after each so you know which rule restored which flow."}}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -50,7 +54,7 @@
       <ul class="nav-links">
         <li><a href="../../../about.html" class="nav-link">About Me</a></li>
         <li><a href="../../../work.html" class="nav-link">Work</a></li>
-        <li><a href="../../../blog.html" class="nav-link current">Blog/Labs</a></li>
+        <li><a href="../../../blog.html" class="nav-link current" aria-current="page">Blog/Labs</a></li>
         <li><a href="../../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../../contact.html" class="nav-link">Contact</a></li>
       </ul>
@@ -58,7 +62,7 @@
     <div class="banner" style="background-image:url('../../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
   </div>
 </header>
-<main class="page-content"><div class="container">
+<main class="page-content" id="main-content"><div class="container">
     <div class="content-box">
 
     <nav class="breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/containers-kubernetes/index.html">Containers &amp; Kubernetes</a> &rsaquo; <span>Kubernetes Networking</span></nav>
@@ -87,7 +91,7 @@
       <p>Kubernetes networking is flat by design: every pod can reach every other pod on every node, with no NAT and no built-in firewall. That is great for developer velocity and terrible for security. This lab walks the full lifecycle of getting traffic <em>into</em> the cluster safely (Services and Ingress) and then constraining how traffic moves <em>inside</em> it (NetworkPolicy). You will work with a three-tier demo app, a public <code>web</code> frontend, an internal <code>api</code>, and a <code>db</code> backend, so every rule you write maps to a real allow-list decision.</p>
     </section>
 
-    <div class="lab-objectives"><h3 id="learning-objectives">Learning Objectives</h3>
+    <div class="lab-objectives"><h2 id="learning-objectives">Learning Objectives</h2>
       <ul>
         <li>Compare ClusterIP, NodePort, and Ingress for exposure.</li>
         <li>Route external traffic via an Ingress controller.</li>
@@ -464,7 +468,7 @@ kubectl -n ingress-nginx logs deploy/ingress-nginx-controller | tail -5</code></
     </section>
 <section><h2 id="troubleshooting">Troubleshooting</h2>
 <p>Quick-reference for the failures you are most likely to hit in this lab.</p>
-<table class="lab-table"><thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead><tbody>
+<table class="lab-table"><th scope="col"ead><tr><th scope="col">Symptom</th><th scope="col">Likely cause</th><th scope="col">Fix</th></tr></thead><tbody>
 <tr><td>Ingress returns 404</td><td>Host or path rule does not match the request</td><td>Inspect the ingress rules and test with an explicit <code>Host</code> header via curl.</td></tr>
 <tr><td>Service has no endpoints</td><td>The selector does not match any pod labels</td><td>An empty <code>kubectl get endpoints</code> plus <code>kubectl get pods --show-labels</code> reveals the mismatch.</td></tr>
 <tr><td>DNS lookups fail from pods</td><td>CoreDNS is down or the query is malformed</td><td>Check the CoreDNS pods in <code>kube-system</code>, then test with a fully qualified name.</td></tr>
@@ -514,9 +518,9 @@ kubectl -n ingress-nginx logs deploy/ingress-nginx-controller | tail -5</code></
     </div>
 
     <section><h2 id="practice-challenges">Practice Challenges</h2>
-<div class="lab-challenge"><h4>Challenge 1: Two hosts, one ingress</h4><p>Goal: Add a second ingress host routing to a different backend service.</p><p>Hint: One Ingress object can hold many rules; the host field is the router.</p></div>
-<div class="lab-challenge"><h4>Challenge 2: Least-privilege policy</h4><p>Goal: Write a NetworkPolicy allowing only frontend to backend on 5432, then prove the database rejects anything else.</p><p>Hint: Test from a temporary debug pod; its blocked connection is the proof.</p></div>
-<div class="lab-challenge"><h4>Challenge 3: Compare kube-proxy modes</h4><p>Goal: Check whether your cluster uses iptables or IPVS mode and inspect the programmed rules.</p><p>Hint: The kube-proxy pod logs name the mode at startup.</p></div>
+<div class="lab-challenge"><h3>Challenge 1: Two hosts, one ingress</h3><p>Goal: Add a second ingress host routing to a different backend service.</p><p>Hint: One Ingress object can hold many rules; the host field is the router.</p></div>
+<div class="lab-challenge"><h3>Challenge 2: Least-privilege policy</h3><p>Goal: Write a NetworkPolicy allowing only frontend to backend on 5432, then prove the database rejects anything else.</p><p>Hint: Test from a temporary debug pod; its blocked connection is the proof.</p></div>
+<div class="lab-challenge"><h3>Challenge 3: Compare kube-proxy modes</h3><p>Goal: Check whether your cluster uses iptables or IPVS mode and inspect the programmed rules.</p><p>Hint: The kube-proxy pod logs name the mode at startup.</p></div>
 </section>
 
     <section class="related-labs"><h2 id="related-labs">Related Labs</h2>

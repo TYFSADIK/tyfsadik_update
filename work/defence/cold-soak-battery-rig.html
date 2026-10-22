@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>Cold-Soak Battery Test Rig: Defence Build | TYFSADIK</title>
   <meta name="description" content="Heated, instrumented drone battery bay tested in a lab freezer and real Canadian winter: runtime, voltage sag, and failure modes logged against temperature.">
   <meta name="keywords" content="cold weather battery testing drone, LiPo cold soak characterization, DS18B20 temperature logging, INA228 power monitor, Kapton heater pad battery, Arctic ISR drone, Army MINERVA challenge, Defence Drone Initiative, drone battery heated bay, voltage sag low temperature, Canadian winter drone testing, cold weather robotics Canada">
@@ -17,6 +18,8 @@
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
   <meta property="og:image" content="https://tyfsadik.org/Prove/Cold-soak%20characterization%20rig.jpeg">
+  <meta property="og:image:width" content="1408">
+  <meta property="og:image:height" content="768">
   <meta name="twitter:title" content="Cold-Soak Battery Test Rig: Defence Build | TYFSADIK">
   <meta name="twitter:description" content="Heated, instrumented drone battery bay tested in a lab freezer and real Canadian winter: runtime, voltage sag, and failure modes logged against temperature.">
   <meta name="twitter:image" content="https://tyfsadik.org/Prove/Cold-soak%20characterization%20rig.jpeg">
@@ -36,6 +39,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do I fix 'Every sensor read exactly 85.000 °C after wiring.'?", "acceptedAnswer": {"@type": "Answer", "text": "That value is the DS18B20's power-on default, not a real temperature, the bus was up but conversions were failing because the pull-up was at the far end of a long harness. Fix: moved the 4.7 kΩ pull-up to the Pi end. Lesson: finger-test every sensor and log the serial-to-position map before taping anything into the bay."}}, {"@type": "Question", "name": "How do I fix 'Sensors vanished mid-run at freezer temperatures.'?", "acceptedAnswer": {"@type": "Answer", "text": "Parasite power over long cold leads dropped the bus under load. Fix: rewired to powered 3-wire mode (VDD to 3V3) and shortened stub lengths. Lesson: parasite power is for short bench runs, not for a metre of wire into a -30 °C box."}}, {"@type": "Question", "name": "How do I fix 'The heater came on for a second during Pi boot.'?", "acceptedAnswer": {"@type": "Answer", "text": "The GPIO floats until the OS configures it, and the MOSFET gate happily followed the float. Fix: the 10 kΩ gate pull-down from step 01. Lesson: hardware fails-off first, software safety second, the control loop should never be the only thing between a LiPo and an unattended heater."}}, {"@type": "Question", "name": "How do I fix 'Condensation attacked the bay on pull-out.'?", "acceptedAnswer": {"@type": "Answer", "text": "Taking a -20 °C bay into room air frosts it instantly, and frost inside foam insulation becomes water inside foam insulation. Fix: the whole bay goes into a sealed bag before it leaves the cold, and warms up inside the bag, which dovetails with the never-charge-cold rule, since the pack cannot charge until it has warmed anyway."}}, {"@type": "Question", "name": "How do I fix 'Both INA228s answered on 0x40.'?", "acceptedAnswer": {"@type": "Answer", "text": "Two identical breakouts, one default address, the bus scans were chaos until A0 on the heater monitor went to VS+ for 0x41. Lesson: run i2cdetect -y 1 after every wiring change, not just when something breaks."}}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -49,7 +53,7 @@
       <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
       <ul class="nav-links">
         <li><a href="../../about.html" class="nav-link">About Me</a></li>
-        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../work.html" class="nav-link current" aria-current="page">Work</a></li>
         <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
         <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../contact.html" class="nav-link">Contact</a></li>
@@ -58,7 +62,7 @@
     <div class="banner" style="background-image:url('../../images/banner-space.jpg');" role="img" aria-label="Banner photo"></div>
   </div>
 </header>
-<main class="page-content">
+<main class="page-content" id="main-content">
   <div class="container">
     <div class="content-box">
     <div class="breadcrumbs">
@@ -143,7 +147,7 @@
       <h2>Bill of Materials</h2>
       <p>Everything below is purchased and on the bench; the logging host and test packs come from shared program stock.</p>
       <table class="bom-table">
-        <thead><tr><th>Part</th><th>Role</th><th>Details</th><th class="bom-cost">Est. US$</th></tr></thead>
+        <th scope="col"ead><tr><th scope="col">Part</th><th scope="col">Role</th><th scope="col">Details</th><th scope="col" class="bom-cost">Est. US$</th></tr></thead>
         <tbody>
           <tr><td>Sensors</td><td>Temperature and power logging</td><td>6 DS18B20 temperature sensors or thermocouple amps, 2 INA228 power monitors</td><td class="bom-cost">40-70</td></tr>
           <tr><td>Battery heater</td><td>Controlled warming</td><td>Kapton heater pads, logic-level N-MOSFET, foam insulation</td><td class="bom-cost">20-40</td></tr>
@@ -217,7 +221,7 @@ flowchart LR
     </section>    <section id="wiring">
       <h2>Wiring &amp; Connections</h2>
       <table>
-        <thead><tr><th>From</th><th>To</th><th>Cable or interface</th><th>Notes</th></tr></thead>
+        <th scope="col"ead><tr><th scope="col">From</th><th scope="col">To</th><th scope="col">Cable or interface</th><th scope="col">Notes</th></tr></thead>
         <tbody>
           <tr><td>DS18B20 harness (VDD, GND, DATA)</td><td>Pi GPIO4 (pin 7), 3V3 (pin 1), GND (pin 6)</td><td>1-Wire bus, 3-conductor 22 AWG</td><td>Powered 3-wire mode, 4.7 k&Omega; pull-up between 3V3 and DATA at the Pi end; leads pass through the freezer door gasket</td></tr>
           <tr><td>INA228 #1 (discharge path)</td><td>Pi I2C1: SDA (pin 3), SCL (pin 5)</td><td>I2C, address 0x40</td><td>A0/A1 tied to GND; sits in series between the pack and the fixed load</td></tr>
@@ -539,7 +543,7 @@ flowchart LR
       <h3>Targets, Measured Evidence, and Current Status</h3>
       <p>Honest bookkeeping: targets and progress states only. No measured numbers are published until the full matrix and the outdoor validation are complete.</p>
       <table class="viz-results">
-        <thead><tr><th>Metric</th><th>Target</th><th>Measured to date</th><th>Current status</th></tr></thead>
+        <th scope="col"ead><tr><th scope="col">Metric</th><th scope="col">Target</th><th scope="col">Measured to date</th><th scope="col">Current status</th></tr></thead>
         <tbody>
           <tr><td>Room-temperature baseline (Run 1)</td><td>3+ repeats to bound run-to-run spread</td><td class="viz-measured">Logged, not yet published</td><td>Done, baseline runs logged</td></tr>
           <tr><td>Freezer ladder, unheated (Run 2)</td><td>4 setpoints x 3 repeats</td><td class="viz-measured">No numbers published yet</td><td>In progress, warmer setpoints logged, cold end pending</td></tr>
@@ -614,7 +618,7 @@ flowchart LR
       <h2>What You Need</h2>
 <p>The rig is deliberately boring: a freezer, sensors, and discipline. The most important item is the protocol, not the parts.</p>
       <table>
-        <thead><tr><th>Category</th><th>Item</th><th>Notes</th></tr></thead>
+        <th scope="col"ead><tr><th scope="col">Category</th><th scope="col">Item</th><th scope="col">Notes</th></tr></thead>
         <tbody>
           <tr><td>Hardware</td><td>6x DS18B20 temperature sensors</td><td>Powered 3-wire mode for cold runs; pull-up at the host end; serial-to-position map before taping anything down</td></tr>
           <tr><td>Hardware</td><td>2x INA228 power monitors</td><td>Pack voltage, current, and accumulated mAh; set distinct I2C addresses before wiring</td></tr>

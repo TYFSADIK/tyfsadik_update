@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#333333">
   <title>Proxmox Zero-Trust Private Cloud: Guide | TYFSADIK</title>
   <meta name="description" content="Proxmox zero-trust private cloud: 3-node HA cluster with Ceph storage, VLAN segmentation, and Cloudflare Tunnel access by MD. Taki Yasir Faraji Sadik.">
   <meta name="robots" content="index,follow">
@@ -17,6 +18,8 @@
   <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
   <meta property="og:url" content="https://tyfsadik.org/work/infrastructure/proxmox-zero-trust.html">
   <meta property="og:image" content="https://tyfsadik.org/images/projects/proxmox-zero-trust.jpg">
+  <meta property="og:image:width" content="1600">
+  <meta property="og:image:height" content="1067">
   <meta property="og:image:alt" content="Proxmox Zero-Trust Private Cloud | TYFSADIK">
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="og:locale" content="en_CA">
@@ -40,6 +43,7 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://tyfsadik.org/"}, {"@type": "ListItem", "position": 2, "name": "Infrastructure", "item": "https://tyfsadik.org/work.html"}, {"@type": "ListItem", "position": 3, "name": "Proxmox VE Homelab: Zero-Trust Private Cloud", "item": "https://tyfsadik.org/work/infrastructure/proxmox-zero-trust.html"}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="site-header">
   <div class="top-panel">
     <div class="site-id">
@@ -53,7 +57,7 @@
       <button class="nav-mobile-toggle" aria-expanded="false">MENU</button>
       <ul class="nav-links">
         <li><a href="../../about.html" class="nav-link">About Me</a></li>
-        <li><a href="../../work.html" class="nav-link current">Work</a></li>
+        <li><a href="../../work.html" class="nav-link current" aria-current="page">Work</a></li>
         <li><a href="../../blog.html" class="nav-link">Blog/Labs</a></li>
         <li><a href="../../resume.html" class="nav-link">R&eacute;sum&eacute;</a></li>
         <li><a href="../../contact.html" class="nav-link">Contact</a></li>
@@ -63,7 +67,7 @@
   </div>
 </header>
 
-<main class="page-content">
+<main class="page-content" id="main-content">
   <div class="container">
     <div class="content-box">
     <div class="breadcrumbs">
@@ -183,7 +187,7 @@ took 12 snapshots, pruned 3</code></pre>
 <section id="what-you-need">
   <h2>What you need</h2>
   <table>
-    <thead><tr><th>Category</th><th>Item</th><th>Notes</th></tr></thead>
+    <th scope="col"ead><tr><th scope="col">Category</th><th scope="col">Item</th><th scope="col">Notes</th></tr></thead>
     <tbody>
       <tr><td>Hardware</td><td>3 Proxmox nodes with redundant networking</td><td>Quorum needs three; Ceph wants separate fast links</td></tr>
       <tr><td>Software</td><td>Proxmox VE 8.1, Ceph, sanoid</td><td>Clustering, distributed storage, snapshot automation</td></tr>
@@ -211,6 +215,335 @@ took 12 snapshots, pruned 3</code></pre>
     <li>Expand automated policy tests that verify each VLAN boundary.</li>
   </ul>
 </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="requirements">
+      <h2>Requirements &amp; Engineering Objectives</h2>
+      <p>
+        The build was scoped before any hardware was racked. The driving requirement was a hard
+        one: every self-hosted service reachable from anywhere, with zero public ingress. Each
+        objective below maps to a design element documented on this page.
+      </p>
+      <table>
+        <th scope="col"ead><tr><th scope="col">Objective</th><th scope="col">Category</th><th scope="col">Design Target</th><th scope="col">Where Addressed</th></tr></thead>
+        <tbody>
+          <tr><td>Services reachable from anywhere</td><td>Functional</td><td>Public hostnames served without any inbound port forward on the router</td><td>Cloudflare Tunnel (Implementation step 2)</td></tr>
+          <tr><td>No open inbound ports</td><td>Security</td><td>Router exposes zero listeners to the internet; all ingress is egress-originated</td><td>Security Design</td></tr>
+          <tr><td>Identity checked at the edge</td><td>Security</td><td>A Cloudflare Access policy gates every public hostname before traffic reaches a service</td><td>Zero-Trust Access Flow</td></tr>
+          <tr><td>Admin access survives tunnel failure</td><td>Reliability</td><td>An authenticated fallback path independent of Cloudflare</td><td>Tailscale mesh fallback</td></tr>
+          <tr><td>Tolerate a single node failure</td><td>Reliability</td><td>Ceph pools at 3x replication across 3 nodes; Proxmox HA restarts guests on a survivor</td><td>Architecture Deep-Dive</td></tr>
+          <tr><td>Point-in-time recovery</td><td>Reliability</td><td>Automated hourly/daily ZFS snapshots with 30-day retention on local pools</td><td>sanoid (Implementation step 3)</td></tr>
+          <tr><td>Contain lateral movement</td><td>Security</td><td>Four VLANs segmented by trust level with router-side firewalling between segments</td><td>Network Topology</td></tr>
+        </tbody>
+      </table>
+      <p>
+        Constraints were stated up front and accepted, not worked around silently: exactly three
+        nodes (quorum arithmetic leaves no second failure margin), consumer-grade disks (Ceph
+        recovery is I/O heavy, so placement group counts were tuned down), a residential ISP
+        uplink, and a homelab budget that rules out rented rack space or duplicate WAN links.
+      </p>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="architecture-deep-dive">
+      <h2>Architecture Deep-Dive</h2>
+      <p>
+        Two flows define the system. The first is the ingress path: a request reaches the
+        Cloudflare edge, passes the Access identity and policy check, and rides the tunnel that
+        <code>cloudflared</code> established outbound from the DMZ VLAN. Because the tunnel is
+        initiated from inside, no inbound port is ever opened. The second path is the fallback:
+        Tailscale forms an authenticated WireGuard mesh that reaches the management VLAN
+        directly, bypassing Cloudflare entirely.
+      </p>
+      <div class="mermaid" role="img" aria-label="Cloudflare Tunnel egress path with Tailscale fallback to the management VLAN">
+flowchart TB
+  USER["User / Admin"] -->|"HTTPS"| ACC
+  subgraph Edge["Cloudflare Edge"]
+    ACC["Cloudflare Access<br/>identity and policy check"]
+  end
+  subgraph Cluster["Proxmox VE HA Cluster"]
+    subgraph DMZv["VLAN 40 - DMZ"]
+      CFD["cloudflared<br/>egress-only tunnel client"]
+    end
+    subgraph PRODv["VLAN 20 - Prod"]
+      SVC["Docker LXC services"]
+    end
+    subgraph MGMTv["VLAN 10 - Mgmt"]
+      PVE["Proxmox UI and SSH"]
+    end
+  end
+  TS["Tailscale mesh<br/>authenticated fallback"] -.->|"WireGuard"| PVE
+  CFD -->|"outbound tunnel only"| ACC
+  ACC -->|"proxied allowed requests"| CFD
+  CFD --> SVC
+
+style USER fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style ACC fill:#1a1a2e,stroke:#ff8800,color:#e0e0e0
+style CFD fill:#1a1a2e,stroke:#ff8800,color:#e0e0e0
+style SVC fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style PVE fill:#1a1a2e,stroke:#ff4444,color:#e0e0e0
+style TS fill:#1a1a2e,stroke:#aa88ff,color:#e0e0e0
+      </div>
+      <p>
+        Storage follows the same three-node symmetry. Every Ceph pool is configured at 3x
+        replication: a guest write lands on a primary OSD and is replicated to an OSD on each of
+        the other two nodes before it is acknowledged. Three monitors run one per node and hold
+        quorum at 2-of-3, so the cluster keeps serving reads and writes with any one node down,
+        and Proxmox HA restarts the failed node's guests on a surviving host.
+      </p>
+      <div class="mermaid" role="img" aria-label="Ceph 3x replication and monitor quorum across the three nodes">
+flowchart TB
+  W["Guest write"] -->|"primary OSD"| OSD1
+  subgraph N1["Node 1"]
+    OSD1["OSD"]
+    MON1["MON"]
+  end
+  subgraph N2["Node 2"]
+    OSD2["OSD"]
+    MON2["MON"]
+  end
+  subgraph N3["Node 3"]
+    OSD3["OSD"]
+    MON3["MON"]
+  end
+  OSD1 -->|"replica 2"| OSD2
+  OSD1 -->|"replica 3"| OSD3
+  MON1 -.->|"quorum 2 of 3"| MON2
+  MON2 -.-> MON3
+  MON3 -.-> MON1
+
+style W fill:#1a1a2e,stroke:#00d4ff,color:#e0e0e0
+style OSD1 fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style OSD2 fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style OSD3 fill:#1a1a2e,stroke:#00ff88,color:#e0e0e0
+style MON1 fill:#1a1a2e,stroke:#ffcc00,color:#e0e0e0
+style MON2 fill:#1a1a2e,stroke:#ffcc00,color:#e0e0e0
+style MON3 fill:#1a1a2e,stroke:#ffcc00,color:#e0e0e0
+      </div>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="component-reference">
+      <h2>Component Reference</h2>
+      <p>
+        Status labels are honest about what this repository contains. This page is documentation,
+        so items are marked <strong>Documented</strong> unless the page itself shows verification
+        output; work that is described but not yet built is marked <strong>Planned</strong>.
+      </p>
+      <table>
+        <th scope="col"ead><tr><th scope="col">Component</th><th scope="col">Responsibility</th><th scope="col">Technology</th><th scope="col">Dependencies</th><th scope="col">Status</th></tr></thead>
+        <tbody>
+          <tr><td>HA cluster membership</td><td>Node quorum, cluster configuration, guest restart on failure</td><td>Proxmox VE 8.1 (pvecm, corosync)</td><td>3 nodes, management VLAN</td><td>Documented</td></tr>
+          <tr><td>Shared storage</td><td>Replicated block storage for guest disks across all nodes</td><td>Ceph (MON, MGR, OSD; 3x replication)</td><td>Proxmox cluster, tuned PG counts</td><td>Documented</td></tr>
+          <tr><td>Zero-ingress publishing</td><td>Outbound-only tunnel carrying public traffic to services</td><td>cloudflared</td><td>Cloudflare account, tunnel DNS routes</td><td>Documented</td></tr>
+          <tr><td>Identity gate</td><td>Per-hostname authentication and authorization before any request reaches a service</td><td>Cloudflare Access</td><td>Cloudflare Tunnel, identity provider</td><td>Documented</td></tr>
+          <tr><td>Fallback access</td><td>Authenticated admin path to the management VLAN independent of Cloudflare</td><td>Tailscale (WireGuard mesh)</td><td>Tailscale account, ACLs</td><td>Documented</td></tr>
+          <tr><td>Snapshot automation</td><td>Hourly/daily local ZFS snapshots with 30-day retention on rpool</td><td>sanoid</td><td>ZFS pools on each node</td><td>Verified (sampled output shown above)</td></tr>
+          <tr><td>Network segmentation</td><td>Four trust-level VLANs (10 mgmt, 20 prod, 30 IoT, 40 DMZ) with router firewalling</td><td>802.1Q switch config, router ACLs</td><td>Managed switch, router</td><td>Documented</td></tr>
+          <tr><td>Service workloads</td><td>Docker-based services behind the tunnel</td><td>Docker inside LXC on VLAN 20</td><td>Proxmox cluster, Ceph storage</td><td>Documented</td></tr>
+          <tr><td>Ceph data protection</td><td>Snapshot or backup strategy for RBD volumes (outside sanoid's scope)</td><td>Ceph snapshots, rbd mirroring, or vzdump</td><td>Ceph cluster, external storage target</td><td>Planned</td></tr>
+          <tr><td>Device posture checks</td><td>Require device health signals before Access grants a request</td><td>Cloudflare WARP</td><td>Cloudflare Access</td><td>Planned</td></tr>
+          <tr><td>Access audit pipeline</td><td>Log every access decision for review</td><td>To be selected</td><td>Cloudflare Access logs</td><td>Planned</td></tr>
+          <tr><td>Policy boundary tests</td><td>Automated checks that each VLAN boundary actually blocks what it should</td><td>To be selected</td><td>VLAN segmentation</td><td>Planned</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="security-design">
+      <h2>Security Design</h2>
+      <p>
+        The design applies zero-trust principles at homelab scale: no implicit trust for any
+        network location, identity verified on every external request, and blast radius limited
+        by segmentation.
+      </p>
+      <ul>
+        <li>
+          <strong>Egress-only ingress model:</strong> <code>cloudflared</code> initiates the tunnel
+          outbound to Cloudflare's edge. The homelab router forwards no inbound ports, so the
+          entire public attack surface collapses to the Cloudflare edge, where Access policies
+          authenticate and authorize before any byte reaches a service.
+        </li>
+        <li>
+          <strong>Per-service policy, no blanket rules:</strong> each hostname published through
+          the tunnel gets its own Access policy; a new service is not reachable until its policy
+          exists. This is why policy creation is templated alongside the tunnel route, so nothing
+          ships ungated.
+        </li>
+        <li>
+          <strong>Authenticated fallback:</strong> Tailscale provides a second, independent path
+          into the management VLAN. It is a WireGuard mesh with its own identity and ACLs, so a
+          Cloudflare outage does not become an administrative lockout, and the fallback is never
+          an unauthenticated backdoor.
+        </li>
+        <li>
+          <strong>Segmentation by trust level:</strong> management (VLAN 10), production (VLAN 20),
+          IoT (VLAN 30), and DMZ (VLAN 40) are isolated at the switch, with the router firewalling
+          between segments. A compromised IoT device cannot reach the Proxmox management plane.
+        </li>
+        <li>
+          <strong>Certificate and credential handling:</strong> TLS for public hostnames is
+          terminated at the Cloudflare edge, so no certificate private keys need to live on the
+          tunnel-published services. The tunnel credentials file and any API tokens are stored
+          only on the host that runs <code>cloudflared</code>, with restrictive file permissions;
+          commands on this page use placeholders such as <code>&lt;API_TOKEN&gt;</code> rather
+          than real values.
+        </li>
+        <li>
+          <strong>Planned hardening:</strong> device posture enforcement via WARP, short-lived
+          certificates for service-to-service authentication, and an audit pipeline over every
+          Access decision are designed but not yet implemented (see the component reference and
+          limitations).
+        </li>
+      </ul>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="failure-recovery">
+      <h2>Failure Modes &amp; Recovery</h2>
+      <p>
+        Each failure mode below follows from the architecture described above. Commands are
+        sanitized: real hostnames, tokens, and IDs are replaced with placeholders.
+      </p>
+      <h3>Cloudflare outage or tunnel down</h3>
+      <p>
+        Public hostnames stop resolving to a working path, but nothing inside the cluster is
+        affected. Administration continues over the Tailscale fallback, which never touches
+        Cloudflare. Recovery on the DMZ host:
+      </p>
+      <div class="command-block"><div class="command"><code># Is the tunnel client alive?
+systemctl status cloudflared
+
+# Which tunnels does this account know about, and is this one connected?
+cloudflared tunnel list
+cloudflared tunnel info &lt;TUNNEL_NAME&gt;
+
+# Restart the client if it has wedged; it re-dials outbound, no ports to open
+systemctl restart cloudflared</code></div></div>
+      <h3>Single node failure</h3>
+      <p>
+        Ceph monitors hold quorum at 2-of-3, so the surviving two nodes keep the cluster
+        read-write. OSDs on the failed node go down; Ceph marks the pool degraded and begins
+        re-replicating data onto the surviving OSDs. Proxmox HA restarts the failed node's guests
+        on a surviving host. This is the case the design explicitly tolerates; recovery is I/O
+        heavy on consumer disks, which is why PG counts were tuned down for stability over speed.
+      </p>
+      <div class="command-block"><div class="command"><code># Cluster and storage health from any surviving node
+pvecm status
+ceph -s
+ceph osd tree</code></div></div>
+      <h3>Second node failure before the first recovers</h3>
+      <p>
+        With only one node left, corosync and the Ceph monitors lose quorum: the cluster goes
+        read-only and guests stop rather than risk split-brain. This is the accepted limit of a
+        three-node design. After hardware is repaired, rejoining the node lets Ceph backfill and
+        rebalance automatically. If the failed node cannot return, quorum can be temporarily
+        adjusted as a deliberate, documented break-glass step:
+      </p>
+      <div class="command-block"><div class="command"><code># Break-glass only: run the cluster on one node while rebuilding
+pvecm expected 1</code></div></div>
+      <h3>ZFS snapshot rollback on a local pool</h3>
+      <p>
+        sanoid keeps hourly and daily snapshots for 30 days on each node's rpool. Rolling back
+        discards everything written after the snapshot, so it is a deliberate operation:
+      </p>
+      <div class="command-block"><div class="command"><code># List what sanoid has kept
+zfs list -t snapshot -r rpool/data
+
+# Roll back to a known-good snapshot (destroys later snapshots of that dataset)
+zfs rollback rpool/data@autosnap_&lt;DATE&gt;_daily
+
+# Confirm sanoid itself is still creating and pruning on schedule
+systemctl status sanoid.timer</code></div></div>
+      <h3>Ceph RBD data</h3>
+      <p>
+        sanoid does not see Ceph RBD images, so guest disks on Ceph need the separate strategy
+        noted in the component reference (Ceph snapshots, rbd mirroring, or vzdump to external
+        storage). Until that is built, a Ceph pool loss has no point-in-time recovery; this is
+        listed as a limitation below.
+      </p>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="troubleshooting">
+      <h2>Troubleshooting Matrix</h2>
+      <table>
+        <th scope="col"ead><tr><th scope="col">Symptom</th><th scope="col">Possible Cause</th><th scope="col">Diagnostic</th><th scope="col">Safe Remediation</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Public hostname returns 502/503 or times out</td>
+            <td>cloudflared not running, tunnel route missing, or origin service down</td>
+            <td><code>systemctl status cloudflared</code>; <code>cloudflared tunnel list</code>; curl the service locally on VLAN 20</td>
+            <td>Restart cloudflared; re-add the DNS route with <code>cloudflared tunnel route dns &lt;TUNNEL_NAME&gt; &lt;hostname&gt;</code>; restart the LXC service if the tunnel is healthy</td>
+          </tr>
+          <tr>
+            <td>Users hit an Access deny page on a new service</td>
+            <td>Hostname published without a matching Access policy</td>
+            <td>Check the Access application list for the hostname in the Cloudflare dashboard</td>
+            <td>Create the Access policy from the template used at tunnel-route time; never publish a route without its policy</td>
+          </tr>
+          <tr>
+            <td><code>ceph -s</code> shows HEALTH_WARN, degraded PGs</td>
+            <td>Node or OSD down; re-replication in progress after a failure</td>
+            <td><code>ceph osd tree</code>; <code>ceph health detail</code>; <code>pvecm status</code></td>
+            <td>Let backfill finish if a node just returned; if an OSD is permanently gone, replace it and let Ceph rebalance; avoid restarts during recovery</td>
+          </tr>
+          <tr>
+            <td>Cluster commands hang; guests stopped unexpectedly</td>
+            <td>Quorum lost (two nodes down or corosync partition)</td>
+            <td><code>pvecm status</code> on each reachable node; check management VLAN connectivity</td>
+            <td>Restore node connectivity first; use <code>pvecm expected 1</code> only as a documented break-glass step while rebuilding</td>
+          </tr>
+          <tr>
+            <td>Snapshots missing or retention drifting</td>
+            <td>sanoid timer failed, pool full, or config error</td>
+            <td><code>systemctl status sanoid.timer</code>; <code>zfs list -t snapshot -r rpool</code>; <code>zpool list</code> for capacity</td>
+            <td>Fix the config and restart the timer; free pool space above 80% usage; run sanoid once manually to confirm snapshots are taken and pruned</td>
+          </tr>
+          <tr>
+            <td>Tailscale fallback unreachable</td>
+            <td>Node's tailscaled down, ACL change, or expired node key</td>
+            <td><code>tailscale status</code> and <code>tailscale ping &lt;node&gt;</code> from an admin device</td>
+            <td>Restart tailscaled on the node; re-authenticate the node key; review recent ACL changes before reverting anything</td>
+          </tr>
+          <tr>
+            <td>Guests do not restart after a node failure</td>
+            <td>HA resources not configured for the guest, or surviving node lacks capacity</td>
+            <td>Check the HA resource list in Proxmox; review the HA manager log on a surviving node</td>
+            <td>Add the guest as an HA resource; keep enough headroom on each node to absorb one node's guests</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="limitations">
+      <h2>Limitations &amp; Future Work</h2>
+      <ul>
+        <li><strong>No second failure margin:</strong> three nodes means quorum at 2-of-3 and Ceph at 3x replication. One failure is tolerated by design; a second concurrent failure stops the cluster. This is accepted, monitored, and documented rather than hidden.</li>
+        <li><strong>Consumer disks bound Ceph recovery:</strong> re-replication after a node loss is slow and I/O heavy. PG counts are tuned down for stability, which trades away recovery speed.</li>
+        <li><strong>Ceph RBD has no point-in-time recovery yet:</strong> sanoid covers only local ZFS pools. The separate snapshot or backup strategy for Ceph volumes (Ceph snapshots, rbd mirroring, or vzdump to external storage) is planned, not built.</li>
+        <li><strong>Cloudflare is a dependency:</strong> public access depends on the tunnel and Access. The Tailscale fallback covers administration, but it does not restore public service reachability during a Cloudflare outage.</li>
+        <li><strong>Single residential uplink:</strong> one ISP, one router. The zero-trust design removes the need for inbound ports, but it cannot remove the physical single point of failure.</li>
+        <li><strong>Posture, audit, and policy testing are unfinished:</strong> WARP device posture, an access-decision audit pipeline, short-lived service certificates, and automated VLAN boundary tests are the active next steps listed above.</li>
+      </ul>
+    </section>
+
+    <!-- ────────────────────────────────────────────── -->
+    <section id="references">
+      <h2>References</h2>
+      <ul>
+        <li><a href="https://pve.proxmox.com/wiki/Cluster_Manager" target="_blank" rel="noopener">Proxmox VE Cluster Manager (pvecm) documentation</a></li>
+        <li><a href="https://pve.proxmox.com/wiki/High_Availability" target="_blank" rel="noopener">Proxmox VE High Availability documentation</a></li>
+        <li><a href="https://pve.proxmox.com/wiki/Deploy_Hyper_Converged_Ceph_Cluster" target="_blank" rel="noopener">Proxmox VE hyper-converged Ceph cluster guide</a></li>
+        <li><a href="https://docs.ceph.com/" target="_blank" rel="noopener">Ceph official documentation</a> (replication, placement groups, monitors and quorum)</li>
+        <li><a href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/" target="_blank" rel="noopener">Cloudflare Tunnel (cloudflared) documentation</a></li>
+        <li><a href="https://developers.cloudflare.com/cloudflare-one/policies/access/" target="_blank" rel="noopener">Cloudflare Access policies documentation</a></li>
+        <li><a href="https://tailscale.com/kb/" target="_blank" rel="noopener">Tailscale knowledge base</a> (mesh networking and ACLs)</li>
+        <li><a href="https://openzfs.github.io/openzfs-docs/" target="_blank" rel="noopener">OpenZFS documentation</a> (snapshots and rollback)</li>
+        <li><a href="https://github.com/jimsalterjrs/sanoid" target="_blank" rel="noopener">sanoid</a> (ZFS snapshot automation and retention policy)</li>
+      </ul>
+    </section>
 
     <div class="tags">
       <span class="tag">Proxmox VE</span><span class="tag">Ceph</span><span class="tag">VLAN</span><span class="tag">Cloudflare Tunnel</span><span class="tag">Tailscale</span><span class="tag">ZFS</span><span class="tag">Zero Trust</span>
