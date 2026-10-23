@@ -348,3 +348,9 @@ context. Per hard rule 1, nothing was deleted; layout fixes are logged here.
 - Linked it from the index.html footer ("How this site is built") so it is crawlable, not sitemap-only.
 - Regenerated sitemap.xml (now 201 URLs).
 - Lengthened the offline.html title and description and the work-with-me.html description to meet the 50-60 / 140-158 character rules introduced in Phase 3.
+
+## Phase 14: performance build step and Cloudflare security docs
+- Added `.tools/minify_deploy.py`: dependency-free CSS/JS minifier with balance checks, run only in the CI build workspace (repo sources stay readable).
+- Extended `.github/workflows/jekyll-gh-pages.yml`: regenerates prerender/sitemap/feeds/api/search-index and minifies CSS+JS before `jekyll build` (fetch-depth: 0 for git-based lastmod).
+- Measured with Lighthouse mobile on the minified output: index 100/100/100/100 (LCP 1.7s, CLS 0), representative lab page 90/100/100/100 (LCP 1.4s). Lab pages are bounded by the shared stylesheet's unused rules; per-page CSS splitting is logged as future work, not done, to avoid breaking any page.
+- Wrote `docs/CLOUDFLARE-SETUP.md`: Transform Rule headers (HSTS, nosniff, Referrer-Policy, Permissions-Policy, report-only CSP tuned to actual loads), cache rules, Brotli/HTTP-3/always-HTTPS, www to apex redirect, and SPF/DKIM/DMARC/MTA-STS/TLS-RPT email hardening path.
