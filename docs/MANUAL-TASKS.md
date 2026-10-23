@@ -62,10 +62,52 @@ Toronto" / "https://tyfsadik.org". Check GitHub profile, LinkedIn headline
 and location, and any directory listings. The canonical statement lives at
 https://tyfsadik.org/about/facts.html.
 
-## Further steps (added as later phases land)
+## 9. Cloudflare headers, caching, and email DNS hardening
 
-- Cloudflare response headers and cache rules: see docs/CLOUDFLARE-SETUP.md.
-- DNS email hardening (SPF, DKIM, DMARC, MTA-STS, TLS-RPT): Phase 14.
-- GitHub profile README, repo description and topics; LinkedIn alignment.
-- Off-site plan: dev.to/Hashnode syndication with canonical links,
-  r/homelab and r/kubernetes lab write-ups, Show HN for the defence program.
+Follow docs/CLOUDFLARE-SETUP.md step by step: the Transform Rule response
+headers (HSTS, nosniff, Referrer-Policy, Permissions-Policy, report-only
+CSP), cache rules, Brotli and HTTP/3 toggles, the www to apex redirect, and
+the SPF, DKIM, DMARC (quarantine, then reject after two clean weeks),
+MTA-STS, and TLS-RPT records for the self-hosted mail on this domain.
+
+## 10. Credly and certification links
+
+For every certification on resume.html, add its public Credly (or issuer)
+verification URL next to the entry. EducationalOccupationalCredential schema
+is only justified for certs that carry a verification link on the page, so
+the schema can be extended as links are added.
+
+## 11. GitHub profile
+
+- Create the profile README repo (github.com/TYFSADIK/TYFSADIK) linking the
+  site, the defence program hub, and the labs index.
+- On the TYFSADIK/tyfsadik_update repo: set the description ("Portfolio of
+  Taki Sadik: cybersecurity, infrastructure, defence technology, 116 labs"),
+  set the website to https://tyfsadik.org, and add topics: portfolio,
+  cybersecurity, kubernetes, homelab, defence-technology, static-site, seo.
+- Pin the repos behind Chakor and the defence builds so the sameAs graph
+  and the portfolio agree.
+
+## 12. LinkedIn alignment
+
+Headline and location should match the site: "Cybersecurity & IT
+Professional", North York, Toronto. Add https://tyfsadik.org as the profile
+website. Feature the defence hardware program and the labs index.
+
+## 13. Off-site plan (backlinks drive ranking more than any on-page work)
+
+- Syndicate 3-5 of the strongest labs to dev.to or Hashnode with a canonical
+  link back to the original lab URL on tyfsadik.org.
+- Post one lab write-up to r/homelab and r/kubernetes (the 7-node Proxmox
+  cluster is the natural fit).
+- A Show HN for the Canadian Defence Hardware Program once the cold-soak
+  dataset is published.
+- Submit the portfolio to relevant awesome-lists (awesome-portfolios,
+  homelab documentation lists).
+- Answer one or two questions per week on relevant Stack Exchange sites or
+  forums with a link to the matching lab where it genuinely answers the
+  question.
+
+Expect months, not days: indexing and authority accumulate slowly. The
+on-page work in this branch removes the technical reasons not to rank; the
+off-site work is what builds the authority to rank.
