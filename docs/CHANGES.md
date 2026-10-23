@@ -362,3 +362,6 @@ context. Per hard rule 1, nothing was deleted; layout fixes are logged here.
 - `axe-sweep.js` honors CHROME_PATH for CI runners without a preinstalled Chrome.
 - Added `.tools/e2e/lh-ci.js` with honest budgets: index perf >= 95, lab pages perf >= 85 (shared stylesheet caps them around 90-93), accessibility/best-practices/SEO 100 everywhere.
 - Added `tools/verify.sh` (local mirror of CI; `--full` adds axe and Lighthouse). Full local run passes.
+
+## Post-Phase 16 fixes
+- quality.yml: Node 20 -> 22. html-validate 11 uses fs.globSync, which only exists in Node 22.14+; the HTML validation step failed in CI with "fs.globSync is not a function".
