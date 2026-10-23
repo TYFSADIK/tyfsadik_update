@@ -354,3 +354,11 @@ context. Per hard rule 1, nothing was deleted; layout fixes are logged here.
 - Extended `.github/workflows/jekyll-gh-pages.yml`: regenerates prerender/sitemap/feeds/api/search-index and minifies CSS+JS before `jekyll build` (fetch-depth: 0 for git-based lastmod).
 - Measured with Lighthouse mobile on the minified output: index 100/100/100/100 (LCP 1.7s, CLS 0), representative lab page 90/100/100/100 (LCP 1.4s). Lab pages are bounded by the shared stylesheet's unused rules; per-page CSS splitting is logged as future work, not done, to avoid breaking any page.
 - Wrote `docs/CLOUDFLARE-SETUP.md`: Transform Rule headers (HSTS, nosniff, Referrer-Policy, Permissions-Policy, report-only CSP tuned to actual loads), cache rules, Brotli/HTTP-3/always-HTTPS, www to apex redirect, and SPF/DKIM/DMARC/MTA-STS/TLS-RPT email hardening path.
+
+## Phase 15: CI quality gates and local verification
+- Added `.github/workflows/quality.yml` (runs on PRs to main): favicon sha256 check, no-deleted-files check, html-validate, internal link check, title/description length and uniqueness, JSON-LD parse validation, og:image rule check, axe-core sweep, and Lighthouse budgets.
+- Added `.tools/validate_jsonld.py` (659 blocks, all valid) and `.tools/check_og_image.py` (203 pages compliant after adding social tags to offline.html).
+- `phase3_titles.py` and `check_links.py` now exit non-zero on failures so CI can gate on them.
+- `axe-sweep.js` honors CHROME_PATH for CI runners without a preinstalled Chrome.
+- Added `.tools/e2e/lh-ci.js` with honest budgets: index perf >= 95, lab pages perf >= 85 (shared stylesheet caps them around 90-93), accessibility/best-practices/SEO 100 everywhere.
+- Added `tools/verify.sh` (local mirror of CI; `--full` adds axe and Lighthouse). Full local run passes.

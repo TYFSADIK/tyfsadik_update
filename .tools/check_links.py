@@ -67,3 +67,6 @@ for e in errors:
 print(f'nav problems: {len(nav_problems)}')
 for f, t in nav_problems[:10]:
     print(' ', f, t)
+
+import sys as _sys
+_sys.exit(1 if (errors or nav_problems) else 0)

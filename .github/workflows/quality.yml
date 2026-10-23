@@ -1,0 +1,72 @@
+name: Quality gates
+
+on:
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install check tooling
+        run: npm ci
+        working-directory: .tools/e2e
+
+      - name: Install Chrome
+        id: chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: favicon.png hash is unchanged
+        run: echo "4a95fe99473fd1711d5fd1735387e67d9abb046d5f8fbdc1bff983b24198379f  favicon.png" | sha256sum -c -
+
+      - name: No files deleted
+        run: |
+          if git diff --name-status origin/main...HEAD | grep -q '^D'; then
+            echo "Deleted files detected:"; git diff --name-status origin/main...HEAD | grep '^D'; exit 1
+          fi
+
+      - name: HTML validation
+        run: npx html-validate "../../**/*.html"
+        working-directory: .tools/e2e
+
+      - name: Internal link check
+        run: python3 .tools/check_links.py
+
+      - name: Title and description length and uniqueness
+        run: python3 .tools/phase3_titles.py
+
+      - name: JSON-LD validation
+        run: python3 .tools/validate_jsonld.py
+
+      - name: og:image rule (banner-mine first on every page)
+        run: python3 .tools/check_og_image.py
+
+      - name: Accessibility (axe-core)
+        run: node axe-sweep.js
+        working-directory: .tools/e2e
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+
+      - name: Lighthouse budgets
+        run: node lh-ci.js
+        working-directory: .tools/e2e
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}

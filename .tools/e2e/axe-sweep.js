@@ -8,7 +8,7 @@ const PAGES = ['index.html','about.html','work.html','resume.html','blog.html',
 (async () => {
   const server = require('child_process').spawn('python3', ['-m','http.server','8973','--bind','127.0.0.1'], {cwd: ROOT, stdio:'ignore'});
   await new Promise(r => setTimeout(r, 1000));
-  const browser = await chromium.launch({ channel: 'chrome' });
+  const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : { channel: 'chrome' });
   const axeSrc = fs.readFileSync(require.resolve('axe-core/axe.min.js'), 'utf8');
   let fail = 0;
   for (const p of PAGES) {

@@ -40,8 +40,11 @@ one stylesheet (css/style.css), one script (js/main.js), no framework.
 - python3 .tools/build_api.py          # api/{profile,projects,labs,skills}.json
 - python3 .tools/phase3_titles.py      # validates every title/description length
 - python3 .tools/check_links.py        # internal link checker
+- python3 .tools/validate_jsonld.py    # parses every JSON-LD block
+- python3 .tools/check_og_image.py     # banner-mine.jpg first og:image on every page
+- bash tools/verify.sh [--full]        # local mirror of the CI quality gates
 - .tools/e2e: npm project with playwright-core, lighthouse, axe-core,
-  html-validate (uses system Chrome)
+  html-validate (uses system Chrome; set CHROME_PATH in CI)
 
 After editing site-data.json, run build_prerender, build_feeds,
 build_search_index, and build_api.

@@ -178,7 +178,9 @@ def main():
         if not (140 <= len(d_plain) <= 158):
             problems.append(f"desc  {len(d_plain):3d} {f}")
     print("\n".join(problems) if problems else "all titles 50-60, all descriptions 140-158")
+    return 1 if problems else 0
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    sys.exit(main())
