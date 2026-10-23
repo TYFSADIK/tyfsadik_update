@@ -39,9 +39,31 @@ or let CI do it (see the quality workflow).
 `/.well-known/security.txt` expires 2027-10-22. Update the Expires line once
 a year. `_config.yml` includes `.well-known` so the Jekyll pipeline serves it.
 
+## 6. Google Business Profile (service-area business, address hidden)
+
+1. https://business.google.com, add business: name "TYFSADIK: Taki Sadik".
+2. Category: "Website designer" or "Computer consultant" (closest fit).
+3. When asked for an address: choose "No physical location / service-area
+   business" and hide the address. Set service areas: North York, Toronto,
+   GTA, Ontario.
+4. Website: https://tyfsadik.org/work-with-me.html
+5. Phone: only if you want it public; the site deliberately does not publish
+   one. Email contact is fine.
+
+## 7. Bing Places
+
+1. https://www.bingplaces.com, import from Google Business Profile once step
+   6 is verified, or add manually with the same details.
+
+## 8. NAP consistency
+
+Keep Name, Area, URL identical everywhere: "Taki Sadik" / "North York,
+Toronto" / "https://tyfsadik.org". Check GitHub profile, LinkedIn headline
+and location, and any directory listings. The canonical statement lives at
+https://tyfsadik.org/about/facts.html.
+
 ## Further steps (added as later phases land)
 
-- Google Business Profile (service-area business, address hidden): Phase 11.
 - Cloudflare response headers and cache rules: see docs/CLOUDFLARE-SETUP.md.
 - DNS email hardening (SPF, DKIM, DMARC, MTA-STS, TLS-RPT): Phase 14.
 - GitHub profile README, repo description and topics; LinkedIn alignment.

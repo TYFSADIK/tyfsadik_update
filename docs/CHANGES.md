@@ -317,3 +317,17 @@ context. Per hard rule 1, nothing was deleted; layout fixes are logged here.
   clients.claim so deploys take over immediately and stale HTML is never
   served. Offline fallback at /offline.html (noindex, excluded from the
   sitemap). Registration added at the end of js/main.js, load-gated.
+
+## Phase 11: local and map search (MSEO)
+
+- Person schema on index.html and resume.html gained address
+  (locality/region/country only, no street) and areaServed (Toronto, North
+  York, GTA, Ontario, Canada). about.html already had the address block.
+- New page work-with-me.html: services the site already demonstrates
+  (small business websites, infrastructure and homelab builds, security
+  work), each linked to proof pages, with ProfessionalService schema
+  (areaServed, no street address). No doorway pages, one page only.
+- contact.html: visible availability line (North York, GTA, remote in
+  Canada) and a link to Work With Me.
+- docs/MANUAL-TASKS.md: Google Business Profile service-area setup (address
+  hidden), Bing Places, and NAP consistency instructions.
