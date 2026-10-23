@@ -40,9 +40,9 @@ for f in sorted(ROOT.rglob('*.html')):
     p = LinkParser()
     text = f.read_text(encoding='utf-8')
     p.feed(text)
-    # nav check
+    # nav check (404.html and offline.html intentionally have no standard nav)
     tails = {h.split('/')[-1] for h in p.nav_links}
-    if tails != EXPECT_NAV:
+    if tails != EXPECT_NAV and f.name not in ('404.html', 'offline.html'):
         nav_problems.append((f.relative_to(ROOT), sorted(tails)))
     for tag, attr, ref in p.refs:
         if not ref or ref.startswith(('#', 'mailto:', 'tel:', 'data:', 'javascript:')):
@@ -67,3 +67,6 @@ for e in errors:
 print(f'nav problems: {len(nav_problems)}')
 for f, t in nav_problems[:10]:
     print(' ', f, t)
+
+import sys as _sys
+_sys.exit(1 if (errors or nav_problems) else 0)

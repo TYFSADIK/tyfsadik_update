@@ -1,36 +1,45 @@
 /* TYFSADIK.ORG, Main JS */
 
-// --- Mermaid initialization ------------------------------
-if (typeof mermaid !== 'undefined') {
-  mermaid.initialize({
-    startOnLoad: true,
-    theme: 'base',
-    themeVariables: {
-      darkMode: true,
-      background: '#161616',
-      primaryColor: '#262626',
-      primaryTextColor: '#DBDADA',
-      primaryBorderColor: '#5B93EF',
-      lineColor: '#9FA2A4',
-      secondaryColor: '#161616',
-      tertiaryColor: '#2E2E2E',
-      edgeLabelBackground: '#161616',
-      clusterBkg: '#1c1c1c',
-      clusterBorder: '#313131',
-      titleColor: '#FFFFFF',
-      nodeTextColor: '#DBDADA',
-      attributeBackgroundColorEven: '#161616',
-      attributeBackgroundColorOdd: '#262626',
-    },
-    flowchart: { curve: 'basis', padding: 20 },
-    sequence: {
-      actorFontFamily: 'Georgia, serif',
-      noteFontFamily: 'Georgia, serif',
-      messageFontFamily: 'Georgia, serif',
-      actorFontSize: 13,
-      mirrorActors: false,
-    },
-  });
+// --- Mermaid: load on demand only when a diagram exists ----
+// The library is ~680 KiB, so it is injected only on pages that
+// actually contain a .mermaid block (previously loaded site-wide).
+if (document.querySelector('.mermaid')) {
+  const mermaidScript = document.createElement('script');
+  mermaidScript.src = 'https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js';
+  mermaidScript.integrity = 'sha384-EOXBFmc3gx5mb+vn0vPvvGqACToJD24hhacX5Yx+8NUUQrHIle/Qi5Bg9o3zKwW2';
+  mermaidScript.crossOrigin = 'anonymous';
+  mermaidScript.onload = () => {
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        darkMode: true,
+        background: '#161616',
+        primaryColor: '#262626',
+        primaryTextColor: '#DBDADA',
+        primaryBorderColor: '#5B93EF',
+        lineColor: '#9FA2A4',
+        secondaryColor: '#161616',
+        tertiaryColor: '#2E2E2E',
+        edgeLabelBackground: '#161616',
+        clusterBkg: '#1c1c1c',
+        clusterBorder: '#313131',
+        titleColor: '#FFFFFF',
+        nodeTextColor: '#DBDADA',
+        attributeBackgroundColorEven: '#161616',
+        attributeBackgroundColorOdd: '#262626',
+      },
+      flowchart: { curve: 'basis', padding: 20 },
+      sequence: {
+        actorFontFamily: 'Georgia, serif',
+        noteFontFamily: 'Georgia, serif',
+        messageFontFamily: 'Georgia, serif',
+        actorFontSize: 13,
+        mirrorActors: false,
+      },
+    });
+  };
+  document.head.appendChild(mermaidScript);
 }
 
 // --- Mobile nav toggle -----------------------------------
@@ -45,6 +54,15 @@ if (navToggle && navLinks) {
   document.addEventListener('click', (e) => {
     if (!navToggle.contains(e.target) && !navLinks.contains(e.target)) {
       navLinks.classList.remove('open');
+      navToggle.setAttribute('aria-expanded', 'false');
+    }
+  });
+  // Escape closes the menu and returns focus to the toggle
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && navLinks.classList.contains('open')) {
+      navLinks.classList.remove('open');
+      navToggle.setAttribute('aria-expanded', 'false');
+      navToggle.focus();
     }
   });
 }
@@ -164,3 +182,59 @@ document.querySelectorAll('a[href^="#"]').forEach(a => {
     }
   });
 });
+
+// --- Static site search (labs index and 404) ---------------
+// Fetches /search-index.json once, filters client side, and supports ?q=
+// so the WebSite SearchAction schema and the 404 search form work.
+(function initSiteSearch() {
+  const form = document.getElementById('lab-search-form');
+  const resultsBox = document.getElementById('search-results');
+  if (!form || !resultsBox) return;
+  const input = form.querySelector('input[type="search"]');
+  const base = form.getAttribute('data-root') || '../../';
+  let indexPromise = null;
+  const loadIndex = () => {
+    if (!indexPromise) {
+      indexPromise = fetch(base + 'search-index.json').then(r => r.json());
+    }
+    return indexPromise;
+  };
+  const render = (items, q) => {
+    if (!q) { resultsBox.innerHTML = ''; return; }
+    const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const hits = items.filter(it => {
+      const hay = (it.title + ' ' + it.description + ' ' + it.track + ' ' + it.kind).toLowerCase();
+      return terms.every(t => hay.includes(t));
+    }).slice(0, 20);
+    if (!hits.length) {
+      resultsBox.innerHTML = '<p class="search-status">No matches for &ldquo;' +
+        q.replace(/[<>&]/g, '') + '&rdquo;. Try a shorter term.</p>';
+      return;
+    }
+    resultsBox.innerHTML = '<p class="search-status">' + hits.length + ' result' +
+      (hits.length === 1 ? '' : 's') + ' for &ldquo;' + q.replace(/[<>&]/g, '') + '&rdquo;</p>' +
+      '<ul class="search-results">' + hits.map(it =>
+        '<li><a href="' + base + it.url + '"><strong>' + it.title + '</strong></a>' +
+        ' <span class="search-kind">' + it.track + ' ' + it.kind + '</span><br>' +
+        '<span class="search-desc">' + it.description + '</span></li>'
+      ).join('') + '</ul>';
+  };
+  const run = () => {
+    const q = (input.value || '').trim();
+    if (q.length < 2) { resultsBox.innerHTML = ''; return; }
+    loadIndex().then(items => render(items, q)).catch(() => {
+      resultsBox.innerHTML = '<p class="search-status">Search index failed to load.</p>';
+    });
+  };
+  form.addEventListener('submit', (e) => { e.preventDefault(); run(); });
+  input.addEventListener('input', run);
+  const initial = new URLSearchParams(location.search).get('q');
+  if (initial) { input.value = initial; run(); }
+})();
+
+// --- Service worker registration -------------------------
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
