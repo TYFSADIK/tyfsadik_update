@@ -331,3 +331,14 @@ context. Per hard rule 1, nothing was deleted; layout fixes are logged here.
   Canada) and a link to Work With Me.
 - docs/MANUAL-TASKS.md: Google Business Profile service-area setup (address
   hidden), Bing Places, and NAP consistency instructions.
+
+## Phase 12: keyword system
+
+- .tools/build_keywords.py generates docs/seo/: keywords-master.txt (6193
+  unique phrases), keyword-map.md + keyword-map.json (all 202 pages, one
+  primary keyword each derived from its unique title, secondaries from the
+  page's own keywords meta, long-tail and question phrases), entity-list.md
+  (166 tools/standards/products from site-data.json tech stacks and tags).
+- docs/seo/content-gaps.md: 10 prioritized gaps written by hand, including
+  what NOT to build (doorway pages) and what needs owner verification first.
+- Link checker now exempts 404.html and offline.html from the nav rule.
