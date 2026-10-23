@@ -19,10 +19,19 @@ const PAGES = [
   let fail = 0;
   for (const { url, min } of PAGES) {
     const out = `/tmp/lhci-${url.replace(/[\/\.]/g, '-')}.json`;
-    execFileSync('node', [lhBin, 'http://127.0.0.1:8977/' + url, '--quiet',
-      '--chrome-flags=--headless=new', '--form-factor=mobile', '--screenEmulation.mobile=true',
-      '--only-categories=performance,accessibility,best-practices,seo',
-      '--output=json', '--output-path=' + out], { stdio: 'ignore', timeout: 240000 });
+    let ok = true;
+    try {
+      execFileSync('node', [lhBin, 'http://127.0.0.1:8977/' + url, '--quiet',
+        '--chrome-flags=--headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu',
+        '--form-factor=mobile', '--screenEmulation.mobile=true',
+        '--only-categories=performance,accessibility,best-practices,seo',
+        '--output=json', '--output-path=' + out], { stdio: ['ignore', 'pipe', 'pipe'], timeout: 240000 });
+    } catch (e) {
+      console.log(`FAIL ${url}: lighthouse exited ${e.status}`);
+      if (e.stderr) console.log(String(e.stderr).slice(0, 2000));
+      fail = 1; ok = false;
+    }
+    if (!ok) continue;
     const d = JSON.parse(fs.readFileSync(out));
     const scores = Object.fromEntries(Object.entries(d.categories).map(([k, v]) => [k, Math.round(v.score * 100)]));
     console.log(url, scores);

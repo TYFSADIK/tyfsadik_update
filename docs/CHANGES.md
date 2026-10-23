@@ -365,3 +365,4 @@ context. Per hard rule 1, nothing was deleted; layout fixes are logged here.
 
 ## Post-Phase 16 fixes
 - quality.yml: Node 20 -> 22. html-validate 11 uses fs.globSync, which only exists in Node 22.14+; the HTML validation step failed in CI with "fs.globSync is not a function".
+- lh-ci.js: added --no-sandbox --disable-dev-shm-usage --disable-gpu chrome flags (required by the CI runner's Chromium) and stderr capture so future Lighthouse failures print their cause.
