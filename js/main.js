@@ -231,3 +231,10 @@ document.querySelectorAll('a[href^="#"]').forEach(a => {
   const initial = new URLSearchParams(location.search).get('q');
   if (initial) { input.value = initial; run(); }
 })();
+
+// --- Service worker registration -------------------------
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}

@@ -80,7 +80,7 @@ def main():
         if "node_modules" in f.parts or ".tools" in f.parts:
             continue
         rel = str(f.relative_to(ROOT))
-        if rel == "404.html":
+        if rel in ("404.html", "offline.html"):
             continue
         s = f.read_text(encoding="utf-8")
         prio, freq = priority_changefreq(rel)

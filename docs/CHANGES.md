@@ -302,3 +302,18 @@ context. Per hard rule 1, nothing was deleted; layout fixes are logged here.
   (data-section already existed on the labs index).
 - AGENTS.md at the repo root documents the structure, build scripts, and
   hard rules for future agents.
+
+## Phase 10: installability (PWA)
+
+- site.webmanifest upgraded: id, standalone display, lang en-CA, dir,
+  categories, 4 shortcuts (Labs, Defence Program, Resume, Contact), wide and
+  narrow screenshots (Playwright captures of the real homepage), and
+  maskable icon variants.
+- New icon files icon-maskable-192.png and icon-maskable-512.png generated
+  from the existing icons with safe-zone padding on the site background.
+  favicon.png untouched (hash verified at each commit boundary).
+- sw.js: minimal service worker, network-first for navigations (fresh HTML
+  wins), cache-first for static assets, versioned cache name, skipWaiting +
+  clients.claim so deploys take over immediately and stale HTML is never
+  served. Offline fallback at /offline.html (noindex, excluded from the
+  sitemap). Registration added at the end of js/main.js, load-gated.
