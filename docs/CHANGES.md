@@ -342,3 +342,9 @@ context. Per hard rule 1, nothing was deleted; layout fixes are logged here.
 - docs/seo/content-gaps.md: 10 prioritized gaps written by hand, including
   what NOT to build (doorway pages) and what needs owner verification first.
 - Link checker now exempts 404.html and offline.html from the nav rule.
+
+## Phase 13: portfolio build case study
+- Added `how-this-portfolio-is-built.html`: a case study of this site's architecture, build pipeline, measured Lighthouse and Web Vitals results, accessibility results, discovery strategy, and open improvements, with a mermaid pipeline diagram, visible FAQ plus matching FAQPage JSON-LD, cite block, and byline.
+- Linked it from the index.html footer ("How this site is built") so it is crawlable, not sitemap-only.
+- Regenerated sitemap.xml (now 201 URLs).
+- Lengthened the offline.html title and description and the work-with-me.html description to meet the 50-60 / 140-158 character rules introduced in Phase 3.
