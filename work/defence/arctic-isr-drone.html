@@ -276,6 +276,45 @@ flowchart LR
         for flying, a physical six-button macro pad for payload actions, and a stripped-down
         tablet screen for the map and status, all chosen to work with winter mitts.
       </p>
+
+      <h3>Georeferencing: the simplified near-nadir projection model</h3>
+      <p>
+        The georeference step turns a pixel in the thermal frame into a latitude and longitude
+        an operator can walk to. The model is deliberately simple: with the camera held
+        near-nadir (pointing almost straight down) and altitude known from the flight
+        controller, a detection's pixel offset from frame centre becomes a look angle, and the
+        look angle times altitude becomes a ground offset on a local tangent plane. Cueing a
+        ground team does not need survey-grade photogrammetry, so a pinhole model with a
+        small-angle correction for gimbal pitch is enough, and every marker carries its
+        uncertainty with it.
+      </p>
+      <div class="diagram-figure">
+        <svg viewBox="0 0 640 300" width="100%" role="img" aria-label="Illustration of the simplified near-nadir projection model: a drone at altitude h projects a detection's pixel offset theta to a ground offset of h times tan(theta)">
+          <line x1="40" y1="270" x2="620" y2="270" stroke="#4A4A4A" stroke-width="2"/>
+          <text x="560" y="264" fill="#9FA2A4" font-size="11">ground</text>
+          <line x1="330" y1="60" x2="330" y2="270" stroke="#9FA2A4" stroke-width="1" stroke-dasharray="6,4"/>
+          <circle cx="330" cy="52" r="14" fill="none" stroke="#5B93EF" stroke-width="2"/>
+          <text x="300" y="30" fill="#DBDADA" font-size="12">drone</text>
+          <line x1="330" y1="60" x2="440" y2="270" stroke="#E6C947" stroke-width="2"/>
+          <circle cx="440" cy="270" r="5" fill="#E6C947"/>
+          <text x="450" y="264" fill="#E6C947" font-size="12">detection marker</text>
+          <text x="228" y="170" fill="#DBDADA" font-size="12">altitude h</text>
+          <text x="372" y="150" fill="#DBDADA" font-size="12">theta (pixel offset)</text>
+          <text x="360" y="292" fill="#DBDADA" font-size="12">ground offset = h x tan(theta)</text>
+          <path d="M 330 130 A 70 70 0 0 0 356 170" fill="none" stroke="#E6C947" stroke-width="1"/>
+          <text x="336" y="160" fill="#E6C947" font-size="11">theta</text>
+        </svg>
+        <p class="diagram-caption"><strong>Figure 2:</strong> the simplified near-nadir projection model this build will implement: pixel offset from frame centre becomes a look angle theta, altitude h turns it into a ground offset, and the local tangent plane plus the drone's own position turn the offset into lat/lon. Illustrative geometry, not measured data.</p>
+      </div>
+      <p>
+        Two error sources dominate this model in practice, and the build plan measures both.
+        First, time: at a 10 m/s survey speed, one second of lag between frame capture and the
+        telemetry used to project it shifts the marker by 10 m, so frames get timestamped at
+        capture and matched to telemetry by time, not arrival order. Second, attitude: a few
+        degrees of gimbal pitch error at 120 m altitude moves the ground point by metres.
+        That is why the metrics list scores georeference error against surveyed ground marks
+        rather than trusting the model on paper.
+      </p>
     </section>
 
     <section id="how-to-build">

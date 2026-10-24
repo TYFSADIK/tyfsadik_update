@@ -34,6 +34,8 @@ All labels in this build are synthetic. The corpus is synthetic documents marked
         Planned: the guide is published so the design can be scrutinized before a
         single container is deployed.
 
+## Concept Illustration
+
 ## Target Design
 
 Unlike the drone and vehicle builds, this one has no single government specification sheet

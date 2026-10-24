@@ -90,6 +90,27 @@ The flight controller runs ArduPilot and talks to the Pi over MAVLink 2 with pac
         for flying, a physical six-button macro pad for payload actions, and a stripped-down
         tablet screen for the map and status, all chosen to work with winter mitts.
 
+### Georeferencing: the simplified near-nadir projection model
+
+The georeference step turns a pixel in the thermal frame into a latitude and longitude
+        an operator can walk to. The model is deliberately simple: with the camera held
+        near-nadir (pointing almost straight down) and altitude known from the flight
+        controller, a detection's pixel offset from frame centre becomes a look angle, and the
+        look angle times altitude becomes a ground offset on a local tangent plane. Cueing a
+        ground team does not need survey-grade photogrammetry, so a pinhole model with a
+        small-angle correction for gimbal pitch is enough, and every marker carries its
+        uncertainty with it.
+
+Figure 2: the simplified near-nadir projection model this build will implement: pixel offset from frame centre becomes a look angle theta, altitude h turns it into a ground offset, and the local tangent plane plus the drone's own position turn the offset into lat/lon. Illustrative geometry, not measured data.
+
+Two error sources dominate this model in practice, and the build plan measures both.
+        First, time: at a 10 m/s survey speed, one second of lag between frame capture and the
+        telemetry used to project it shifts the marker by 10 m, so frames get timestamped at
+        capture and matched to telemetry by time, not arrival order. Second, attitude: a few
+        degrees of gimbal pitch error at 120 m altitude moves the ground point by metres.
+        That is why the metrics list scores georeference error against surveyed ground marks
+        rather than trusting the model on paper.
+
 ## How to Build
 
 Six phases, ordered so simulation and bench work absorb the risk before anything flies.
