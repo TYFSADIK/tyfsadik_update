@@ -1,5 +1,7 @@
 # Ground: Seismic & Acoustic Perimeter Mesh
 
+Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 29 min read
+
 Solar-powered 915 MHz LoRa mesh of ESP32 sensor nodes with ADXL355 accelerometers (and an SM-24 geophone upgrade path) that classify vehicles vs footsteps vs wind at the edge and report signed detections to a common operating picture.
 
 ## Overview
@@ -303,3 +305,9 @@ A: The first mesh build had no dedup, and two forwarding nodes happily retransmi
 **Q: How do I fix 'Moisture in a "sealed" box.'?**
 
 A: Temperature swings pump moist air past a badly seated gland. Properly tightened IP65 glands plus a desiccant pack per box, and a lesson learned: weatherproofing is a system, not a product you buy.
+
+## Cite This Page
+
+**Q: Citation formats**
+
+A: Plain text

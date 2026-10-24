@@ -14,12 +14,16 @@ metadata. Used for about/mentions schema decisions and internal linking.
 - Aquarian hydrophone
 - Arch
 - ArduPilot
+- ArduPilot Rover
 - ArduPilot SITL
+- ArduPilot secure boot
 - BNO085
 - BTRFS
 - BTS7960
 - Beamforming
+- Blue Robotics Ping
 - BorgBase
+- CI
 - CSS
 - Caddy
 - Calico
@@ -28,6 +32,7 @@ metadata. Used for about/mentions schema decisions and internal linking.
 - Chaos
 - Cloudflare Tunnel
 - Convoy
+- Cursor on Target
 - DDIL
 - DKIM
 - DNS
@@ -45,6 +50,7 @@ metadata. Used for about/mentions schema decisions and internal linking.
 - Ed25519 signing
 - Edge AI
 - Edge ML
+- FAST-LIO2
 - FLIR Lepton
 - FLIR Lepton 3.5
 - FastAPI
@@ -72,6 +78,7 @@ metadata. Used for about/mentions schema decisions and internal linking.
 - Kalman
 - Kalman tracker
 - Kapton heaters
+- Keycloak
 - Kiwix
 - KrakenSDR
 - Kubernetes
@@ -84,26 +91,32 @@ metadata. Used for about/mentions schema decisions and internal linking.
 - LoRa Mesh
 - Longhorn
 - MAVLink
+- MAVLink 2
 - MEMS Array
 - MPPT solar
 - MQTT
 - MQTT/Zenoh
 - MariaDB
+- Mender/RAUC
 - Merkle
 - MetalLB
 - MySQL
 - NATS
 - NATS JetStream
+- Nav2
 - Next.js
 - Nextcloud
 - Nginx
 - NumPy
 - ONNX
 - OPA
+- OPA Rego
 - OR-Tools
 - OTA
 - Ollama
 - Open WebUI
+- OpenBao
+- OpenTDF
 - PHP
 - Pi 5
 - Pi-hole
@@ -116,36 +129,48 @@ metadata. Used for about/mentions schema decisions and internal linking.
 - Proxmox
 - Proxmox VE
 - Pure pursuit
+- PyTAK
+- QGIS
 - RAUC/Mender
 - RFC 6962 Merkle log
 - ROS 2
 - ROS 2 Jazzy
+- RTK GNSS
 - RTL-SDR
 - RTL-SDR Blog V4
 - Rack
 - Raspberry Pi
 - Raspberry Pi 5
 - ReSpeaker 4-mic array
+- SAPIENT
 - SDR
 - SM-24 geophones
 - SQLite
+- SROS2
 - SSL
 - STFT
 - SearXNG
+- Snow
 - Solar
+- Sonar
 - Spectrogram
+- Stone Soup
+- TAK
 - TPM 2.0
 - Tailscale
 - Terraform
 - TimescaleDB
 - TypeScript
 - USB audio interface
+- USV
 - Ubuntu 24.04
 - Unbound
 - VLAN
 - VLAN 10/20/30
 - WSL2
+- Wazuh
 - Web dashboard
+- WireGuard
 - XFCE
 - XRDP
 - Yagi antennas
@@ -159,7 +184,11 @@ metadata. Used for about/mentions schema decisions and internal linking.
 - k3s
 - librosa
 - llama.cpp
+- mmWave radar
+- pgvector
+- promptfoo/garak
 - pyAPRiL
+- pymavlink
 - readsb/tar1090
 - robot_localization
 - rsync.net

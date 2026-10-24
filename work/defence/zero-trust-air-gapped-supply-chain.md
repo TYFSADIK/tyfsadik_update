@@ -1,5 +1,7 @@
 # Zero-Trust Air-Gapped Software Supply Chain
 
+Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 15 min read
+
 A pipeline that builds container images reproducibly, generates SBOMs with syft, signs everything with sigstore/cosign, then transfers artifacts across a simulated one-way data diode into an offline Harbor registry, with controls mapped to Canadian Centre for Cyber Security guidance.
 
 ## Overview
@@ -201,3 +203,9 @@ Each control is documented against the Cyber Centre publication it implements, i
 - DDIL-Proof DevOps, the CI/CD system that produces the signed artifacts this pipeline verifies.
 
 - Decision Black Box, tamper-evident logging that records what the trusted software decided.
+
+## Cite This Page
+
+**Q: Citation formats**
+
+A: Plain text

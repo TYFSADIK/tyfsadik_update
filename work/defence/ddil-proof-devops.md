@@ -1,5 +1,7 @@
 # DDIL-Proof DevOps
 
+Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 14 min read
+
 A CI/CD and telemetry system that keeps working when the network does not: store-and-forward queues, delta updates, cosign-signed artifacts, and edge nodes running k3s, with resilience proven by simulating link loss through chaos engineering.
 
 ## Overview
@@ -205,3 +207,9 @@ tc netem for latency, jitter, and packet loss, plus Toxiproxy scenarios: 30-minu
 - Zero-Trust Air-Gapped Supply Chain, SBOM and cosign signing for artifacts before they ever reach the edge.
 
 - Decision Black Box, tamper-evident audit logging for the human-in-the-loop decisions this pipeline supports.
+
+## Cite This Page
+
+**Q: Citation formats**
+
+A: Plain text

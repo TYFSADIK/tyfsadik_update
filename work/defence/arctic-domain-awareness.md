@@ -1,5 +1,7 @@
 # Arctic Domain Awareness Digital Twin
 
+Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 11 min read
+
 Streaming pipeline that fuses open ADS-B aircraft data, public AIS ship tracking, and Sentinel-1 satellite radar imagery over Canada's North, and flags anomalies such as ships that go dark or aircraft that deviate from known routes.
 
 ## Overview
@@ -180,3 +182,9 @@ Leaflet plus deck.gl for the live picture, Grafana for pipeline health (lag, thr
 - Counter-Drone Sensor Fusion Simulator, the same Kalman-filter fusion approach applied to synthetic radar, RF, acoustic, and camera tracks.
 
 - Canadian Defence Hardware Program, the program hub with all 11 builds, phased BOMs, and build guides.
+
+## Cite This Page
+
+**Q: Citation formats**
+
+A: Plain text

@@ -1,5 +1,7 @@
 # Kubernetes Infrastructure
 
+Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · 21 min read
+
 Production-style 7-node Kubernetes cluster: Ubuntu Server VMs on bare-metal Proxmox hosts, one switch, one router, one wireless backhaul
 
 ## Overview

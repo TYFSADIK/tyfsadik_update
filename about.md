@@ -2,6 +2,8 @@
 
 Cybersecurity & IT Professional based in North York, Ontario, Canada.
 
+Looking for the short, citable version? See the [canonical facts page](about/facts.html).
+
 I'm Taki Sadik, a cybersecurity and IT professional who likes to own his stack end-to-end.
       My day job involves triaging security alerts and analyzing threats at a SOC. Outside of work, I run a
       homelab with Proxmox, self-host services ranging from a private AI model to a public Wikipedia mirror,
@@ -166,29 +168,3 @@ He studies a Bachelor of Engineering in Information Technology at the University
 ### How can I contact Taki Sadik?
 
 By email at [taki@tyfsadik.org](mailto:taki@tyfsadik.org), on [LinkedIn](https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/), or on [GitHub](https://github.com/TYFSADIK). Details are on the [contact page](contact.html).
-
-## Frequently Asked Questions
-
-**Q: Who is Taki Sadik?**
-
-A: MD. Taki Yasir Faraji Sadik is a cybersecurity and IT infrastructure professional based in North York, Toronto, Ontario, Canada. He works as a Data Center Engineer at Microsoft (contract) and as an Incident Analyst at Felixous Technology, and he builds self-hosted infrastructure and defence-technology projects in his homelab.
-
-**Q: What does Taki Sadik specialize in?**
-
-A: Security operations and incident response (Splunk, AlienVault, threat intelligence), networking (TCP/IP, VLANs, firewalls, CCNA fundamentals), Linux and Windows server administration, cloud platforms (Azure AZ-900, AWS Cloud Practitioner), and self-hosted infrastructure: a 7-node Kubernetes cluster on Proxmox, a zero-trust private cloud, and nine self-hosted services.
-
-**Q: What certifications does Taki Sadik hold?**
-
-A: 25+ active certifications including CompTIA A+, Microsoft Azure AZ-900, AWS Cloud Practitioner, AWS Academy Cloud Security, Cisco Cybersecurity Defense Analyst, Google Foundations of Cybersecurity, and OPSWAT CIP and ICIP. He is currently pursuing CompTIA Security+ and CCNA.
-
-**Q: What is the Canadian Defence Hardware Program?**
-
-A: It is Taki's personal program of eleven hobby-scale sensor and robotics builds, including a passive radar early-warning node, a hydrophone vessel monitor, a seismic LoRa perimeter mesh, and a GPS-denied navigation rover. Each build is mapped to a publicly stated requirement from Canada's Defence Drone Initiative or the Army's MINERVA challenges, with full parts lists and build guides on the projects page.
-
-**Q: What education does Taki Sadik have?**
-
-A: He studies a Bachelor of Engineering in Information Technology at the University of Toronto and a postgraduate degree in Cyber/Electronic Operations and Warfare at Seneca College of Applied Arts and Technology, alongside a diploma in Ethical Hacking from Alison.
-
-**Q: How can I contact Taki Sadik?**
-
-A: By email at taki@tyfsadik.org, on LinkedIn, or on GitHub. Details are on the contact page.

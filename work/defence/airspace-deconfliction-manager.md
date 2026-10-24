@@ -1,5 +1,7 @@
 # Mini Airspace Deconfliction Manager
 
+Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 26 min read
+
 A small-scale UAS airspace manager on my bench: ESP32 tracker beacons plus ArduPilot SITL simulated drones, dynamic geofences, predicted-conflict alerts, and a human-in-the-loop override for every resolution.
 
 ## Overview
@@ -255,3 +257,9 @@ A: SITL streams position slowly unless asked, and 1 Hz updates made TCPA estimat
 **Q: How do I fix '"Repeatable" scenarios were not repeatable'?**
 
 A: SITL kept leftover waypoints and parameters between runs, so run 2 never matched run 1. Fix: the harness restarts instances and wipes state (sim_vehicle.py -w) before every run.
+
+## Cite This Page
+
+**Q: Citation formats**
+
+A: Plain text

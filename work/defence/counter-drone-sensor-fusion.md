@@ -1,5 +1,7 @@
 # Counter-Drone Sensor Fusion Simulator
 
+Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 15 min read
+
 A simulation-only, strictly defensive project: synthetic radar, RF, acoustic, and camera tracks (ArduPilot SITL provides the drone flight dynamics) are fused with Kalman filters, every detection gets a confidence score, and alerts are triaged on a dashboard where a human always makes the final call.
 
 ## Overview
@@ -208,3 +210,9 @@ Multi-modal confidence score assembled from named factors, a FastAPI plus Leafle
 - Passive Radar Node, the real KrakenSDR radar build behind the radar channel in the simulation.
 
 - Multi-Domain Common Operating Picture, where fused tracks from every sensor end up on one operator dashboard.
+
+## Cite This Page
+
+**Q: Citation formats**
+
+A: Plain text

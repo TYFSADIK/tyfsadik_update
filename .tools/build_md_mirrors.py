@@ -47,6 +47,9 @@ PAGES = [
         "counter-drone-sensor-fusion.html", "decision-black-box.html",
         "zero-trust-air-gapped-supply-chain.html", "lentus-drone-mapping.html",
         "multi-domain-common-operating-picture.html",
+        "arctic-isr-drone.html", "gps-denied-cargo-ugv.html",
+        "seabed-survey-boat.html", "counter-drone-scoring-harness.html",
+        "secure-fleet-autonomy.html", "sovereign-ai-enclave.html",
     ]
 ]
 

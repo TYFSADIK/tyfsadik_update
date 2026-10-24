@@ -16,6 +16,10 @@ Automate endpoint isolation with Python, yara-python, nftables, and the Proxmox 
 
 ## Who is Taki Sadik?
 
+Cybersecurity and infrastructure professional in Toronto. I cut SOC alert MTTR by 25%,
+              run a [7-node Kubernetes homelab](work/infrastructure/kubernetes-infrastructure.html),
+              and published [116 hands-on IT labs](blog/labs/index.html).
+
 I build and defend infrastructure, and, increasingly, the sensors and robots that run on top
               of it. From triaging security events at a SOC to running self-hosted servers, passive radar
               nodes, and GPS-denied rovers, I care deeply about owning my stack.

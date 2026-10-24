@@ -1,5 +1,7 @@
 # Sky: Passive Aerial Early-Warning Node
 
+Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · 31 min read
+
 A receive-only passive radar node built on a KrakenSDR five-channel coherent SDR: it listens to reflections of existing FM and UHF TV broadcasts bouncing off aircraft, computes range-Doppler plots with pyAPRiL, and scores every detection against an RTL-SDR ADS-B ground-truth receiver. The radar front end is receive-only: it emits nothing of its own.
 
 ## Overview
@@ -297,3 +299,9 @@ A: A very strong local transmitter raised the noise floor across the band and pr
 **Q: How do I fix 'Detections that don't line up with ADS-B truth.'?**
 
 A: First suspect was the algorithm; the actual cause was clock disagreement between the radar captures and the truth log, a few seconds of drift moves a fast aircraft well outside the tolerance window. Fix: chrony on the mini PC disciplining both pipelines off NTP, and a scoring-harness check that rejects runs where the truth log has gaps.
+
+## Cite This Page
+
+**Q: Citation formats**
+
+A: Plain text
