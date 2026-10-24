@@ -1,5 +1,7 @@
 # Canadian Defence Hardware Program
 
+Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · 34 min read
+
 Eleven hands-on hardware builds across sky, water, and ground, each one mapped to a stated Canadian Armed Forces requirement, with full bills of materials, prices, step-by-step build guides, and bench photos of the real rigs.
 
 ## Why This Program Exists
@@ -140,6 +142,22 @@ Each build has its own page with the full step-by-step guide, parts list, and be
 ### The Piece That Ties It Together
 
 - Multi-Domain Common Operating Picture, every node publishes signed detections over MQTT/Zenoh; a central Kalman-filter tracker fuses air, water, and ground tracks; nodes buffer through dead links and sync on reconnect; a human makes every decision. Chaos-tested by cutting links and killing nodes.
+
+### 2027 Build Guides (planned, specs published)
+
+Six larger builds planned against the MINERVA and IDEaS specs, each published as a full build guide with target-spec tables, phased plans, honest spec-gap tables, and safety notes before any hardware is bought. Concept illustrations on these pages are AI-generated planning visuals, not photos of built hardware.
+
+- Arctic ISR Drone, cold-weather thermal detection drone with TAK output and glove-operable controls, against the MINERVA Arctic UAS spec (-40 C, 20 km radius, 90 min endurance).
+
+- GPS-Denied Cargo Ground Vehicle for Snow, LiDAR-inertial navigation with slip-aware EKF on snow, payload and energy sweeps, against the MINERVA cargo and surveillance UGS specs.
+
+- Autonomous Seabed-Survey Boat, ArduPilot Rover USV with a Ping echosounder, gridded seabed models, and planted-target anomaly scoring, the survey-and-detect core of the MCM USV solicitation at hobby scale.
+
+- Counter-Drone Test-and-Scoring Harness, SAPIENT node interfaces, TAK bridge, scenario cards mirroring the IDEaS sandbox, Stone Soup metrics, and a Monte Carlo coverage planner.
+
+- Secure Autonomy for the Robot and Drone Fleet, STRIDE threat model, MAVLink 2 signing, Ed25519 signed firmware, SROS2 enclaves, and a pymavlink IDS, attacked in the lab first.
+
+- Sovereign AI and Data Enclave, Keycloak identity, OPA and OpenTDF policy, HSM-backed OpenBao keys, and label-filtered pgvector retrieval on the Chakor stack.
 
 ## Program Architecture
 
@@ -544,3 +562,9 @@ Five workstreams now advance in parallel (radar processing, rover EKF tuning, hy
 - The multi-domain common operating picture tying every node together, chaos-tested by cutting links and killing nodes.
 
 - Each build page graduates from protocol to measured results as its dataset or dashboard lands.
+
+## Cite This Page
+
+**Q: Citation formats**
+
+A: Plain text

@@ -1,5 +1,7 @@
 # Proxmox VE Homelab: Zero-Trust Private Cloud
 
+Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · 15 min read
+
 A 3-node Proxmox VE HA cluster with Ceph storage, VLAN segmentation, and zero-trust external access via Cloudflare Tunnel with Tailscale mesh fallback.
 
 ## Overview
@@ -268,3 +270,9 @@ sanoid does not see Ceph RBD images, so guest disks on Ceph need the separate st
 - OpenZFS documentation (snapshots and rollback)
 
 - sanoid (ZFS snapshot automation and retention policy)
+
+## Cite This Page
+
+**Q: Citation formats**
+
+A: Plain text

@@ -1,5 +1,7 @@
 # Water: Passive Acoustic Vessel Monitor
 
+Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · 31 min read
+
 A dock-mounted hydrophone node that listens to the water, detects and classifies passing vessels from their machinery and propeller signatures, and uses an RTL-SDR AIS receiver as ground truth, solar powered, receive-only on the sensing side, and built to buffer through dead links.
 
 ## Overview
@@ -302,3 +304,9 @@ A: Early labels were off by minutes because the Pi's clock drifted after sitting
 **Q: How do I fix 'Condensation in the IP67 box.'?**
 
 A: A sealed box on a dock breathes with temperature swings and fogs from the inside. Fix: desiccant packs, a breathable waterproof vent gland, and all cable glands on the bottom face. Cheap insurance, water inside the box ends the node far more reliably than any software bug.
+
+## Cite This Page
+
+**Q: Citation formats**
+
+A: Plain text

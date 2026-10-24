@@ -1,5 +1,7 @@
 # Labs
 
+Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · 6 min read
+
 116 hands-on lab writeups documenting real skills built through practice.
 
 ## Start Here: A Suggested Learning Path
@@ -99,3 +101,9 @@ The workflow behind everything else here. Labs cover Git fundamentals, branching
         CI/CD pipeline that tests, scans, and deploys a container on every push. Learn this early,
         because every other track uses it.
         Difficulty mix: 1 beginner, 4 intermediate, 1 advanced.
+
+## Cite This Page
+
+**Q: Citation formats**
+
+A: Plain text

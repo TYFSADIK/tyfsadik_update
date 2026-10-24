@@ -1,5 +1,7 @@
 # GPS-Denied Navigation Rover
 
+Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 33 min read
+
 A ROS 2 rover that keeps navigating after GNSS is cut: wheel odometry, a BNO085 IMU, and 2D LiDAR fused with an Extended Kalman Filter, with position drift measured against a u-blox reference track (meter-class GNSS, not survey grade).
 
 ## Overview
@@ -285,3 +287,9 @@ A: Symptom: the robot flickered between two positions a metre apart. Cause: both
 **Q: How do I fix 'Scan matcher diverging along a blank wall.'?**
 
 A: Symptom: /odom_rf2o froze or jumped while driving past a featureless wall. Cause: scan matching has nothing to lock onto without features, a known RF2O limitation, not a bug. Fix: RF2O enters the EKF with a larger covariance than wheel odometry, so the filter degrades gracefully toward encoder+IMU behaviour. Lesson: every aiding sensor needs a designed failure mode, not just a happy path.
+
+## Cite This Page
+
+**Q: Citation formats**
+
+A: Plain text

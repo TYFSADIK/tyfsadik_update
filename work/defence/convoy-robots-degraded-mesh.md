@@ -1,5 +1,7 @@
 # Convoy-Following Robots on a Degraded Mesh
 
+Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 31 min read
+
 Two rovers convoy behind a lead vehicle over a 915 MHz LoRa broadcast link with a Wi-Fi fallback, hold formation through induced link drops, and recover on reconnect, the Army resupply-convoy and DDIL communications problem, reproduced on my bench.
 
 ## Overview
@@ -251,3 +253,9 @@ A: One blackout run logged zero sequence gaps, suspiciously perfect data. Cause:
 **Q: How do I fix 'Grace window too generous.'?**
 
 A: With an early 10-second grace window, the follower tracked a stale extrapolated vector into the lead's braking zone during a blackout test. Fix: a much shorter grace window and mandatory deceleration in HOLD. Lesson: every degraded-link parameter is a safety parameter, tune it like one.
+
+## Cite This Page
+
+**Q: Citation formats**
+
+A: Plain text

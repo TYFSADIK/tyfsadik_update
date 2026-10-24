@@ -1,5 +1,7 @@
 # Cold-Soak Battery Characterization Rig
 
+Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 32 min read
+
 A heated, instrumented drone battery bay soaked in a lab freezer and in real Canadian winter, logging runtime, voltage sag, and failure modes against temperature, and publishing it all as a reproducible dataset.
 
 ## Overview
@@ -284,3 +286,9 @@ A: Taking a -20 °C bay into room air frosts it instantly, and frost inside foam
 **Q: How do I fix 'Both INA228s answered on 0x40.'?**
 
 A: Two identical breakouts, one default address, the bus scans were chaos until A0 on the heater monitor went to VS+ for 0x41. Lesson: run i2cdetect -y 1 after every wiring change, not just when something breaks.
+
+## Cite This Page
+
+**Q: Citation formats**
+
+A: Plain text

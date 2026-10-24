@@ -1,5 +1,7 @@
 # Passive Acoustic Drone Detector
 
+Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 28 min read
+
 A MEMS microphone array on a Raspberry Pi that listens for the harmonic comb of drone rotors, rejects birds and aircraft, and estimates direction of arrival by beamforming. The sensing front end emits nothing at all; only network reporting leaves the box.
 
 ## Overview
@@ -254,3 +256,9 @@ The cheapest counter-drone layer in the program: about the cost of a dinner out,
 - Signed MQTT feed into the common operating picture, fused with the passive radar node's tracks.
 
 - The T6 fusion dry run with the passive radar node: two receive-only sky sensors scoring the same targets.
+
+## Cite This Page
+
+**Q: Citation formats**
+
+A: Plain text

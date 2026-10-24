@@ -1,5 +1,7 @@
 # Homelab Server Room
 
+Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · 7 min read
+
 The cozy basement room where the entire self-hosted stack physically lives: racked hardware, managed switching, and the cable plant behind the 7-node cluster
 
 ## Overview

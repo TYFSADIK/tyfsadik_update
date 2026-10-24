@@ -1,5 +1,7 @@
 # Operation LENTUS-Style Disaster Response Drone Mapping
 
+Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 15 min read
+
 Simulated drone flights with ArduPilot SITL and Gazebo survey a flood or wildfire scenario, an edge computer-vision pipeline detects affected areas from the simulated camera feed, and detections stream into a live situational-awareness map.
 
 ## Overview
@@ -210,3 +212,9 @@ A durable application outbox buffers detections on the edge node through link lo
 - Airspace Deconfliction Manager, the tracker beacons and geofencing that keep mapping drones separated.
 
 - Canadian Defence Hardware Program, the program hub with all 11 builds, phased BOMs, and build guides.
+
+## Cite This Page
+
+**Q: Citation formats**
+
+A: Plain text

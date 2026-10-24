@@ -1,5 +1,7 @@
 # Secure Robot-Fleet Updates
 
+Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 29 min read
+
 Every node in my fleet boots only signed code, accepts only updates signed by an offline key, and rolls a bad update back automatically, then I prove it in a freezer, because that is where Canadian robots actually work.
 
 ## Overview
@@ -298,3 +300,9 @@ A: Random mid-flash power cuts are exactly what consumer cards hate; the card, n
 **Q: How do I fix 'Condensation in the freezer.'?**
 
 A: The first cold run ended with a damp node that I was not about to power up. Fix: the node now goes into and out of the freezer in a sealed bag and warms to room temperature before power-up, the same discipline as never charging a cold battery. Conformal coating is on the list for nodes that will live outdoors.
+
+## Cite This Page
+
+**Q: Citation formats**
+
+A: Plain text

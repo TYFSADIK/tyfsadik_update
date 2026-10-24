@@ -1,5 +1,7 @@
 # Multi-Domain Common Operating Picture
 
+Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 28 min read
+
 The fusion layer that ties every sensor build together: nodes publish signed detections over MQTT, buffer through dead links, a Kalman-filter tracker fuses air, water, and ground tracks, and a human makes every decision from one dashboard.
 
 ## Overview
@@ -463,3 +465,9 @@ This build is mostly software on hardware the program already owns. The non-obvi
 - Wire tracker-version records into the hash-chained audit log so the evidence trail covers what fused what.
 
 - Prototype the Zenoh brokerless transport as a second-transport experiment for links where a broker is a liability.
+
+## Cite This Page
+
+**Q: Citation formats**
+
+A: Plain text
