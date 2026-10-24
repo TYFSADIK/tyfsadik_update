@@ -379,3 +379,4 @@ context. Per hard rule 1, nothing was deleted; layout fixes are logged here.
 - Regenerated all derived files: feeds (59 items), search-index (183), api (50 projects, 195 skills), sitemap (207 URLs), 48 md mirrors (build_md_mirrors.py PAGES list extended), keyword map (209 pages, 6430 phrases), and per-project metadata enrichment on the new pages (JSON-LD about entities and article:tag).
 - Fixed two over-length descriptions (160/159 chars -> 158) on the new pages, in meta/og/twitter/JSON-LD.
 - Validated: all gates in tools/verify.sh pass, html-validate clean on all defence pages, axe clean and no 320px overflow on all six new pages.
+- work.html: added the six 2027 build-guide cards to the static card grid (the grid is hardcoded, not JSON-driven; this was why the new projects did not appear on work.html) and updated the header count from 44 to 50 projects.
