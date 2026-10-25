@@ -37,8 +37,8 @@ The honest limit is worth stating up front: a single-beam echosounder only sees 
 
 ## Concept Illustrations
 
-Both images below are AI-generated planning visuals created to communicate the design
-        intent. They are not photographs of built hardware; the boat does not exist yet.
+Concept illustrations created to communicate the design intent; the boat does not
+        exist yet.
 
 ## Target Spec
 
