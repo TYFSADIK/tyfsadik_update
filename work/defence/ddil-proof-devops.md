@@ -32,6 +32,36 @@ The part I care about most is proof. Resilience claims are cheap, so the whole s
 
 ## Architecture
 
+Edge Nodes (DDIL)
+
+Store-and-Forward Layer
+
+Hub (homelab core, well-connected)
+
+sync when link up(delta layers only)
+
+replay when link up
+
+Giteagit hosting
+
+CI runners(Woodpecker / GitLab Runner)
+
+OCI registry(Harbor / Zot)
+
+cosign sign+ attestations
+
+Grafana + Lokitelemetry
+
+Artifact queueNATS JetStream
+
+Telemetry spoolGrafana Agentwrite-ahead log
+
+k3s node ASQLite datastore
+
+k3s node BSQLite datastore
+
+Local registry mirror(Zot, pull-through cache)
+
 Figure 1: the hub builds and signs artifacts; queues and spools bridge the DDIL gap to autonomous k3s edge nodes.
 
 The dotted links are the ones that fail in testing, deliberately and often. When they are

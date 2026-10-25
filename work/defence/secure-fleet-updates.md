@@ -44,6 +44,30 @@ Everything below is already purchased and on my bench. The fleet nodes themselve
 
 ## Architecture
 
+FLEET NODE (Pi)
+
+HOMELAB FLEET SERVER
+
+OFFLINE SIGNING
+
+checks fail
+
+YubiKeyEd25519 root key
+
+Image buildsyft SBOM + sign
+
+Update serverper-device identity + policy
+
+Store-and-forwardcampaign queue
+
+Signed bootloader+ kernel
+
+TPM 2.0measured boot (PCRs)
+
+A/B slotsRAUC
+
+Health checksauto rollback
+
 Figure 1: images are signed by a key that never touches a network, delivered through a store-and-forward campaign queue, and installed into the inactive A/B slot, health checks decide whether the new slot stays or the node rolls back.
 
 Two trust chains meet here. The boot chain (signed bootloader, signed
@@ -62,6 +86,30 @@ Steps 01 through 04 implement two different ideas that are easy to conflate. Sec
         Register (PCR), so at the end the TPM holds a fingerprint of exactly what booted, and
         the disk keys are sealed to that fingerprint. Tamper with the image and the PCRs change;
         the TPM then refuses to unseal, and the attacker gets a brick, not the data.
+
+extends hash
+
+extends hash
+
+measurements match baseline
+
+any stage changed
+
+Bootloader(signed, OTP key)
+
+Kernel + initramfs(bundled in boot image)
+
+Rootfs(LUKS2 encrypted)
+
+PCR 0(firmware)
+
+PCR 7(secure-boot policy)
+
+LUKS key sealedto PCRs 0+7
+
+Disk unlocks
+
+TPM refuses to unseal
 
 Figure 2: the measured-boot chain: each boot stage extends a PCR, and the LUKS disk key is sealed to PCRs 0+7. A modified initramfs changes the measurements, the seal policy fails, and the disk stays locked. This is the mechanism T2 exercises.
 

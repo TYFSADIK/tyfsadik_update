@@ -60,6 +60,30 @@ There is very little copper in this build, most of the "wiring" is UDP sockets, 
 
 ## Architecture
 
+Traffic Sources
+
+ArduPilot SITLthree drone instances
+
+ESP32 tracker beaconsstand-in live tracks
+
+Track ingestMAVLink + UDPpymavlink
+
+Track storeposition history
+
+Conflict enginetrajectory predictiontime-to-closest-approach
+
+Geofence service3D keep-in / keep-out
+
+Alert queueadvisory only
+
+Operator dashboardmap + volumes + queue
+
+Human operatorapproves every resolution
+
+Resolution commandsMAVLink to SITL
+
+Common operatingpicture feed
+
 Figure 1: simulated and physical tracks flow into one track store; the conflict engine and geofence service raise alerts; a human approves every resolution before any command goes back to an aircraft.
 
 ## How Conflict Prediction Works
@@ -67,6 +91,28 @@ Figure 1: simulated and physical tracks flow into one track store; the conflict 
 The conflict engine answers one question for every pair of live tracks: when will
         these two aircraft be closest to each other, and how close will that be? The
         pipeline runs in four stages, all of them on the constant-velocity model from step 05:
+
+yes
+
+no
+
+Track A(position + velocity)
+
+Track B(position + velocity)
+
+Relative positionand velocity vectors
+
+Closest-point time(d of dist-squared = 0)
+
+Miss distance(horizontal + vertical)
+
+Inside lookaheadand separation bubble?
+
+Hysteresis(3 consecutive violations)
+
+Advisory alert queue
+
+Stays quiet
 
 Figure 2: the four-stage prediction pipeline: relative motion, time of closest approach, miss distance in horizontal and vertical components, then a stability gate before anything reaches the operator.
 

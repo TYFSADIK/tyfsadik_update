@@ -29,6 +29,32 @@ Why build this: the interesting engineering in counter-UAS is not any single sen
 
 ## Architecture
 
+Simulated sensors
+
+Simulation (truth)
+
+ArduPilot SITLvirtual quad/plane
+
+Scenario enginebirds, clutter, weather
+
+Radarrange + dopplerPd 0.9, clutter false alarms
+
+RF scannercontrol-link detectionprotocol fingerprint
+
+Acoustic arraypropeller harmonicsshort range bearing
+
+Camera (synthetic)YOLO on rendered frames
+
+Message busNATS / Kafka
+
+Track fusionKalman filters + gating
+
+Confidence scorer0-100 + explanation
+
+Track & alert storePostgreSQL
+
+Triage dashboardmap + alert queuehuman confirms/dismisses
+
 Figure 1: simulated truth, four noisy sensor models, a common bus, fusion, scoring, and the human triage loop.
 
 ArduPilot SITL is the source of truth: I fly real mission plans (waypoints, loiters,
@@ -41,6 +67,50 @@ ArduPilot SITL is the source of truth: I fly real mission plans (waypoints, loit
         on the message bus, which is what makes the sensors swappable.
 
 ## Track Fusion and Confidence Scoring
+
+yes
+
+no
+
+not yet
+
+confirmed
+
+no
+
+yes
+
+no
+
+yes
+
+New detection(any sensor)
+
+Gating: inside an existingtrack's predicted gate?
+
+Associate to nearest trackKalman update (correct step)
+
+Tentative trackM-of-N confirmationswithin time window?
+
+Hold tentative(do not alert)
+
+Promote to confirmed trackstart Kalman filter
+
+Missed updates >coast limit?
+
+Score: sensor agreement,kinematics, RF fingerprint,camera class
+
+Drop track(log for analysis)
+
+Confidence > alertthreshold?
+
+Keep tracking silently
+
+ALERT queued withexplanation: which sensors,which features, score history
+
+Human operator:confirm / dismiss / snooze
+
+Label written backused to tune thresholds
 
 Figure 2: the detection-to-alert lifecycle, with tentative tracks, Kalman gating, and human feedback.
 

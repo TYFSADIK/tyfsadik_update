@@ -50,6 +50,30 @@ All components are already purchased and on my bench. Total lands around US$700-
 
 ## Architecture
 
+labels + scoring
+
+HydrophoneAquarian H2dM / H2dX
+
+USB audio interface48 V phantom
+
+VHF marine antenna162 MHz
+
+RTL-SDR Blog V4rtl_ais / AISdecoder
+
+Pi 5arecord / sox 48 kHz
+
+Spectrograms + featureslibrosa / scipy
+
+Classifierboat type + direction
+
+AIS logMMSI, position, timestamps
+
+Local bufferhigh-endurance SD / NVMe
+
+MQTT syncstore-and-forward
+
+Common operating picture
+
 Figure 1: two receive-only sensors feed the Pi; the AIS stream labels and scores the acoustic classifier; everything buffers locally and syncs over MQTT when a link exists.
 
 ## Reading a Vessel in Sound
@@ -150,6 +174,26 @@ Labelling audio by hand is slow and subjective; AIS does it automatically and ho
           with a known blind spot: vessels not broadcasting (or with transmitters off) simply never get
           labels, so the classifier's reported scores apply to cooperative traffic only. That limitation
           is stated on the page, not hidden.
+
+yes
+
+no
+
+Acoustic event(spectrogram + lines)
+
+AIS track(MMSI, type, position, time)
+
+Inside time windowand range gate?
+
+Labelled dataset(class from ship type)
+
+Split by passage(no leakage)
+
+Train classifier(scikit-learn)
+
+Pi 5 inference(per detected event)
+
+Unlabelled(held out)
 
 Figure: the labelling pipeline. AIS tracks supply class labels through a time-and-range gate; the dataset is split by passage so one vessel's legs never leak across train and test; the trained model runs per event on the Pi 5.
 

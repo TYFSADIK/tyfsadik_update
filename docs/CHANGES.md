@@ -411,3 +411,15 @@ context. Per hard rule 1, nothing was deleted; layout fixes are logged here.
 - Lighthouse mobile on kubernetes-infrastructure.html: performance 60 -> 93,
   LCP 8.4s -> 2.8s, TBT 410ms -> 80ms, CLS 0. Full JS-disabled sweep of all
   187 diagram pages: every SVG present. tools/verify.sh all green.
+
+## 2026-10-24: Homepage updated for the six 2027 defence build guides
+- index.html: new "Doing: six build guides for Canada's 2027 defence calls"
+  section linking all six build-guide pages; Career Highlights gains a
+  matching bullet; "Next" gains the business-readiness/incorporation step.
+- site-data.json stats.projects_built 44 -> 50 (live stat was stale);
+  index.html fallback updated to match.
+- Person schema knowsAbout extended (SAPIENT, CoT/TAK, MAVLink Security,
+  Sovereign AI, Autonomous Marine Survey); meta keywords extended with the
+  six build topics. Description/title unchanged and still accurate.
+- index.md mirror regenerated; verify.sh all green; homepage screenshot
+  verified, zero overflow.

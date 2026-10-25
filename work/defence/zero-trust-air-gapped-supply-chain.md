@@ -30,6 +30,34 @@ This is a DevOps-engineering take on a defence-grade problem. I am mapping each 
 
 ## Architecture
 
+Disconnected Side (High)
+
+Connected Side (Low)
+
+approved bundle
+
+Git repo(pinned deps,lockfiles)
+
+CI runner(reproducible build,SOURCE_DATE_EPOCH)
+
+SBOM generation(syft, SPDX + CycloneDX)
+
+Signing(cosign, keyless+ local key)
+
+Attestations(SLSA provenance,in-toto)
+
+Verification gatesignatures + scan+ SBOM policy
+
+Data diode simulation(one-way UDP,no return path)
+
+Receiver / importerhash-chain check
+
+Harbor registry(offline, internal CA)
+
+Offline re-scan(grype, cached DB)
+
+Disconnected consumers(k3s, workstations)
+
 Figure 1: build, attest, verify, one-way transfer, and offline distribution stages.
 
 The low side is a normal CI pipeline with one extra property: the build is reproducible,

@@ -40,6 +40,58 @@ The entire infrastructure runs from a single physical location. Three desktop PC
         the access design). A wireless radio bridges the laptop nodes
         into the cluster network over a dedicated 5 GHz backhaul link.
 
+Laptop Nodes (Wireless)
+
+Desktop Nodes (Wired)
+
+Network Fabric
+
+Edge Layer
+
+Public Internet
+
+WAN
+
+Trunk
+
+Eth VLAN 20
+
+Eth VLAN 20
+
+Eth VLAN 20
+
+Eth VLAN 20
+
+5 GHz Bridge
+
+5 GHz Bridge
+
+5 GHz Bridge
+
+5 GHz Bridge
+
+ISP Uplink
+
+RouterNAT / Firewall / DHCPInter-VLAN RoutingPort Forwarding
+
+Managed Switch802.1Q VLAN TrunkingVLAN 10: ManagementVLAN 20: ClusterVLAN 30: Storage
+
+Wireless Radio5 GHz BackhaulBridge Mode
+
+PC-01 • Control Plane8C/32GB/512GB NVMeUbuntu Server 24.04etcd + API Server
+
+PC-02 • Worker Node6C/16GB/1TB SSDUbuntu Server 24.04Longhorn Storage
+
+PC-03 • Worker Node6C/16GB/1TB SSDUbuntu Server 24.04Longhorn Storage
+
+Laptop-01 • Worker4C/8GB/256GB
+
+Laptop-02 • Worker4C/8GB/256GB
+
+Laptop-03 • Worker4C/8GB/512GB
+
+Laptop-04 • Worker4C/16GB/512GB
+
 ## Virtualization and Cluster Topology
 
 No Kubernetes node runs directly on the hardware. Each physical machine is a
@@ -48,6 +100,68 @@ No Kubernetes node runs directly on the hardware. Each physical machine is a
         carries two virtual NICs, one on VLAN 20 (cluster traffic) and one on VLAN 30 (storage
         traffic). The diagram below shows the full stack, from bare-metal hosts to the nine
         hosted services.
+
+Cluster Stack
+
+Network Planes
+
+Kubernetes Nodes: Ubuntu Server 24.04 VMs
+
+Physical Hosts: Proxmox VE 8.x (bare metal)
+
+replication
+
+scrapes and ships
+
+Nine Hosted Services
+
+Nextcloud
+
+TYF-AI
+
+Immich
+
+Kiwix
+
+Pi-hole DNS
+
+Email
+
+SearXNG
+
+Grafana
+
+Prometheus and Loki
+
+PC-018C / 32GB / 512GB NVMe
+
+PC-026C / 16GB / 1TB SSD
+
+PC-036C / 16GB / 1TB SSD
+
+Laptops 01 to 045 GHz wireless backhaul
+
+Control Plane VMkube-apiserver and etcd
+
+Worker VMs 1 and 2on desktop hosts
+
+Worker VMs 3 to 6on laptop hosts
+
+VLAN 10 - Management10.10.10.0/24
+
+VLAN 20 - Cluster10.20.20.0/24
+
+VLAN 30 - Storage10.30.30.0/24
+
+Calico CNIpod networking and policy
+
+MetalLB L2ARP service IPs
+
+Nginx IngressTLS via cert-manager
+
+Longhorn3x replicated volumes
+
+PrometheusGrafana and Loki
 
 ## Network Architecture
 
@@ -62,7 +176,91 @@ Network segmentation is enforced at the switch level using three VLANs. The rout
 | Cluster | 20 | 10.20.20.0/24 | Kubernetes API server, pod-to-pod (Calico with BGP peering between nodes on the same VLAN), MetalLB external IPs |
 | Storage | 30 | 10.30.30.0/24 | NFS mounts, ZFS snapshot sync, backup traffic; Longhorn replica I/O only with the Longhorn storage network feature configured |
 
+Firewall Rules
+
+Firewall Rules
+
+VLAN 30 - Storage
+
+Longhornreplica traffic
+
+NFS Exports
+
+ZFS Snapshots
+
+VLAN 20 - Cluster
+
+K8s API Server :6443
+
+Calico CNIBGP / VXLAN
+
+MetalLB10.20.20.200-250
+
+Pod Network192.168.0.0/16
+
+VLAN 10 - Management
+
+SSH Bastion
+
+Proxmox Web UI
+
+Switch Mgmt
+
 ## Kubernetes Architecture
+
+Observability Stack
+
+Network Layer
+
+Worker Nodes: PC-02, PC-03, LP-01..04
+
+Control Plane: PC-01
+
+watch/report
+
+metrics
+
+metrics
+
+logs
+
+Storage Layer
+
+LonghornDistributed Block Storage3x Replication
+
+PersistentVolumes
+
+PersistentVolumeClaims
+
+etcdCluster State Store
+
+kube-apiserver:6443
+
+kube-scheduler
+
+kube-controller-manager
+
+kubelet
+
+kube-proxyiptables / IPVS
+
+containerdContainer Runtime
+
+Calico CNIBGP Peering + NetworkPolicy
+
+MetalLBL2 / ARP ModeExternal IP Pool
+
+Nginx Ingress ControllerTLS Termination
+
+PrometheusMetrics Collection
+
+GrafanaDashboards + Alerts
+
+LokiLog Aggregation
+
+PromtailLog Shipping
+
+Node ExporterHardware Metrics
 
 ## Tech Stack
 
@@ -430,6 +628,30 @@ Nine services run across the homelab. The cluster provides DNS, ingress, and the
 | Prometheus + Loki | Prometheus + Loki + Promtail | Cluster namespace: monitoring | Internal | Metrics collection and centralized log aggregation from all nodes and pods |
 
 ## Deployment Workflow
+
+webhook
+
+build + push
+
+image pull
+
+metrics
+
+Developergit push
+
+GitHub ActionsCI Pipeline
+
+Container RegistryDocker Hub
+
+Kuberneteskubectl apply
+
+Rolling Updaterolling deploy
+
+Health Checkliveness + readiness
+
+Prometheusmonitoring
+
+Grafanaalert + dashboard
 
 ## Challenges & Solutions
 

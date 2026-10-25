@@ -60,6 +60,24 @@ There is deliberately little to wire, no SDR front end, no antennas, no RF anyth
 
 ## Architecture
 
+4-mic MEMS array(USB audio)
+
+CaptureALSA / arecord4 channels synced
+
+STFT spectrogramsper channel
+
+Harmonic-comb detectorfundamental ~100-500 Hzplus spaced harmonics
+
+Classifierdrone vs bird vs aircraft(thresholds / SVM)
+
+DoA beamformingGCC-PHAT / SRP-PHATazimuth estimate
+
+Tracker + polar plotazimuth vs time
+
+MQTT publishersigned detections
+
+Common operating picturefused with passive radar
+
 Figure 1: capture, spectrogram, harmonic-comb detection, classification, beamforming, and reporting. Everything runs on the Pi; only signed detections leave the node.
 
 The two analysis branches share one spectrogram stage. Detection and classification work
@@ -75,6 +93,20 @@ GCC-PHAT (generalized cross-correlation with phase transform) is doing something
         mic channels directly, those loud peaks dominate the correlation, and the delay estimate
         locks onto the loudest tone instead of the wavefront as a whole, including its echoes
         off the ground and nearby objects.
+
+1 s window(4 channels)
+
+FFTper channel
+
+Cross-spectrum(R = SIG times conj of REF)
+
+PHAT whitening(R divided by its magnitude)
+
+Inverse FFT(cross-correlation)
+
+Peak lag(time delay estimate)
+
+SRP-PHAT scan(steer candidate delaysper azimuth, max energy)
 
 Figure 2: the GCC-PHAT delay pipeline. PHAT whitening is the key step: after dividing by the magnitude, every frequency bin contributes equally to the correlation, so the broadband wavefront wins over the loudest single harmonic.
 

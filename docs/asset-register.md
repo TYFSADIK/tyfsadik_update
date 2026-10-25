@@ -105,6 +105,66 @@ One picture of the whole estate: confirmed layers are drawn with solid lines and
         the virtualization layer (Proxmox), the orchestration layer (Kubernetes), and the service
         plane (DNS, AI, monitoring, backups, public domains).
 
+OWNER-STATED: pending independent evidence
+
+CONFIRMED: running lab (photographed, in daily use)
+
+7-VM Kubernetes (kubeadm)
+
+hosts
+
+hosts Chakor AI (ai.tyfsadik.org)
+
+bulk storage + backups
+
+media storage
+
+DNS filtering + telemetry + domain watchdog
+
+power + mechanical integration undocumented
+
+expansion Proxmox / service nodes
+
+ISP Uplink
+
+RouterNAT / DHCP / inter-VLAN
+
+Managed SwitchVLANs 10 / 20 / 30
+
+5 GHz Bridge
+
+3 Desktop Proxmox Hosts
+
+4 Laptop Proxmox Hosts
+
+Control plane
+
+Workers
+
+Longhorn storage
+
+Prometheus + Grafana
+
+Self-hosted servicesDNS / AI workspace / apps
+
+Zero-trust tunnel layer
+
+tyfsadik.org + project domains
+
+3 hosting stacks + separate GPU stack
+
+24x OptiPlex 5060 SFF hosting fleet
+
+4x JBOD enclosures~2 PB intended raw aggregate
+
+Cisco switchingmodels UNKNOWN
+
+Raspberry Pi utility serverPi-hole + security + domain watchdog
+
+Media library hostingmovies / series / anime
+
+GPU rental stack20x OptiPlex 5060 SFFi7-8700 / 16 GB + RTX 4090-class each
+
 Reading guide: solid arrows are paths that carry traffic today. Dashed arrows are
         owner-stated relationships awaiting independent evidence. The GPU rental stack links into
         the estate through the switching layer, but its power and mechanical integration is exactly

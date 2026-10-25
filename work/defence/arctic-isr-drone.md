@@ -74,6 +74,26 @@ A bench-scale drone cannot meet the full spec, so the build is scoped to prove f
 
 ## Architecture
 
+MAVLink 2, signed
+
+FLIR Lepton 3.5thermal camera
+
+PureThermal boardUSB capture
+
+Pi 5 + Hailo AI HAT+detect and track
+
+Georeferencingposition, attitude,camera geometry
+
+ArduPilot flight controllerPixhawk-class
+
+Cursor on Targetvia PyTAK
+
+TAK Server / ATAKoperator markers
+
+RC linkELRS
+
+6-button macro pad +stripped-down tablet
+
 Figure 1: thermal frames are captured over USB, inference runs on the Hailo accelerator, detections fuse with signed MAVLink telemetry into coordinates, and Cursor on Target messages carry the markers to TAK, while the operator flies by RC link and works the payload with a physical macro pad.
 
 The sensing chain starts at a FLIR Lepton 3.5 thermal camera on a PureThermal board,
