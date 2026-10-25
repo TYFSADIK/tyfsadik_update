@@ -29,8 +29,9 @@ Right now I work as a Data Center Engineer at
               Incident Manager at Felixous Technology Inc.. Alongside all of that I am building
               [Chakor](work/infrastructure/chakor.html), an open-source self-hosted AI workspace, and the
               [Canadian Defence Hardware Program](work/defence/defence-hardware-program.html) -
-              eleven sensor and robotics builds across sky, water, and ground, each mapped to a real requirement
-              from Canada's Defence Drone Initiative and the Army's MINERVA challenges.
+              eleven sensor and robotics builds across sky, water, and ground, plus
+              [six detailed build guides](#build-guides-2027) written against the measurable specs in
+              Canada's MINERVA challenges and the IDEaS counter-drone sandbox.
 
 I got into IT through surveillance operations and discovered I cared more about the network
               underneath the cameras than the footage they captured. That curiosity led me to networking, then
@@ -60,6 +61,8 @@ MD. Taki Yasir Faraji Sadik  ·  North York, ON, Canada  · 
 
 - Building an 11-project defence hardware program, a receive-only passive radar early-warning node (KrakenSDR + pyAPRiL, scored against ADS-B truth), a ROS 2 GPS-denied rover with EKF drift measurements, a thermal SAR drone, and a cold-soak battery rig producing a public dataset, each mapped to a stated Defence Drone Initiative or MINERVA requirement.
 
+- Published six defence build guides for Canada's 2027 calls, an Arctic ISR drone, a GPS-denied snow cargo UGV, a seabed-survey boat, a counter-drone SAPIENT scoring harness, secure fleet autonomy (MAVLink signing, signed firmware, SROS2), and a sovereign AI enclave, each with tiered sim/bench/field steps and an honest spec-gap table.
+
 - Built a 7-node Kubernetes cluster on Proxmox hosts, VLAN segmentation, Calico CNI, MetalLB, Longhorn storage, and Prometheus + Grafana observability, all on consumer hardware.
 
 - Kept healthcare systems at 99%+ uptime, architected a VLAN-segmented network and documented data flows for compliance at CardiOCare.
@@ -83,7 +86,10 @@ I also build the hardware side myself. My
               is eleven active builds, passive radar, a hydrophone vessel monitor, a seismic LoRa mesh,
               GPS-denied rovers, a thermal SAR drone, and secure fleet updates, each one mapped to a real
               requirement from the Defence Drone Initiative or the Army's MINERVA challenges, each with full
-              parts lists, prices, and step-by-step guides.
+              parts lists, prices, and step-by-step guides. On top of that, my
+              [six 2027 build guides](#build-guides-2027) turn the MINERVA and IDEaS specs into
+              measured bench plans for an Arctic ISR drone, a snow cargo UGV, a seabed-survey boat, a
+              counter-drone scoring harness, secure fleet autonomy, and a sovereign AI enclave.
 
 ## DevOps in Practice
 
@@ -145,6 +151,25 @@ Full parts lists, prices, and build guides: [Canadian Defence Hardware Program h
 
 - Operation LENTUS-Style Drone Mapping, simulated disaster-response flights with edge computer vision and a live situational-awareness map.
 
+### Doing: six build guides for Canada's 2027 defence calls
+
+Canada now publishes its needs as measurable specs, so I wrote six build guides that treat those
+              specs as requirements documents. Each guide has an architecture, tiered build steps (simulation,
+              bench, field), metrics to publish, and an honest spec-gap table that says exactly what a hobby-scale
+              build proves and what it does not:
+
+- Arctic ISR Drone, heated battery bay with cold-test data, thermal person/vehicle detection measured in pixels-on-target, detections georeferenced into TAK, and a glove-operable control kit, against the MINERVA Arctic UAS spec.
+
+- GPS-Denied Cargo Ground Vehicle for Snow, ROS 2 EKF navigation with LiDAR-inertial odometry, a snow-noise filter, wheel-slip detection, and a payload sweep, against the MINERVA cargo and surveillance ground specs.
+
+- Autonomous Seabed-Survey Boat, lawnmower survey lines with a single-beam echosounder, gridded seabed models, and anomaly detection scored against planted targets, the survey-and-detect core of the mine-countermeasures vessel call.
+
+- Counter-Drone Test-and-Scoring Harness, SAPIENT interfaces on sensor nodes, a Cursor on Target bridge to TAK, scenario cards mirroring the IDEaS sandbox, Stone Soup metrics, and a coverage planner.
+
+- Secure Autonomy for the Fleet, MAVLink 2 signing, WireGuard link encryption, signed ArduPilot firmware, SROS2 enclaves, and a pymavlink intrusion detector, attacked and fixed in my own lab.
+
+- Sovereign AI and Data Enclave, Keycloak identity, OPA policy, OpenTDF data protection, OpenBao key custody with an HSM, and pgvector retrieval with row-level security, tested for zero cross-label leaks.
+
 ### What I did
 
 - Cut SOC alert MTTR by 25% and automated 30+ daily security alerts with Python and Splunk SPL correlation, mapped the triage workflow, found the bottlenecks, shipped the enrichment pipelines.
@@ -168,6 +193,8 @@ Full parts lists, prices, and build guides: [Canadian Defence Hardware Program h
 - Roll signed OTA updates across the rover fleet, validated in the cold chamber.
 
 - Tie every node into the Multi-Domain Common Operating Picture and chaos-test it by cutting links and killing nodes.
+
+- Incorporate a Canadian entity and work through the business-readiness checklist (Controlled Goods, CPCSC Level 1 self-assessment, supplier cyber certification) so the six build guides can become real IDEaS and Innovative Solutions Canada submissions.
 
 ## Featured Projects
 

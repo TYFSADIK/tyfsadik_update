@@ -52,6 +52,38 @@ A solo bench build cannot field a national counter-drone capability, and this pa
 
 ## Architecture
 
+Sensor nodes
+
+Truth sources
+
+ArduPilot SITL multi-drone + sensor models
+
+Real flight logs (own drone, ArduPilot + GNSS)
+
+Node 1: sensor + SAPIENT adapter
+
+Node 2: sensor + SAPIENT adapter
+
+Node N: sensor + SAPIENT adapter
+
+GPS PPS + chrony time sync on every node
+
+Fusion node: SAPIENT middleware (protobuf over TCP)
+
+SAPIENT to CoT bridge (snstac sapientcot) + native CoT output
+
+TAK Server / ATAK
+
+YAML scenario cards
+
+Scoring harness: Stone Soup SIAP, OSPA, CLEAR-MOT
+
+Coverage planner: Monte Carlo node count and spacing
+
+CI: nightly scenarios, regression thresholds, signed images
+
+Fleet ops: A/B OTA (Mender or RAUC) + Prometheus health
+
 Every sensor node runs a small adapter that registers with the fusion node and sends status and detection reports as SAPIENT protobuf messages over TCP, the edge-to-fusion pattern defined in BSI Flex 335. The fusion node runs the open-source Dstl middleware. A bridge converts detections to Cursor on Target so they appear in TAK Server and ATAK, using snstac sapientcot where version support allows (verify), plus a native CoT output path as a fallback.
 
 Scoring depends on truth and time. Truth comes from two sources: ArduPilot SITL multi-drone simulation feeding sensor models with detection probability and noise vs range, and recorded logs from my own drone flown with GNSS (RTK if possible). Every node gets GPS PPS and chrony so timestamps line up, and clock offset is logged as a health metric, because scoring without synchronized clocks is fiction. The scoring harness consumes fused tracks plus truth and scenario cards, and its outputs feed the coverage planner, the nightly CI regression run, and the fleet operations layer that keeps deployed nodes patched and observable.

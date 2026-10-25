@@ -22,6 +22,28 @@ Three things set it apart: it reads your RAM and GPU and tags every model FITS, 
 
 ## Architecture Overview
 
+Browser: app/ + components/
+
+Next.js 15 app
+
+api/chat
+
+lib/system-prompt.ts: behavior
+
+lib/dispatch.ts: route + trim context
+
+lib/providers.ts: ollama / openai / anthropic / google / openrouter
+
+lib/llama-supervisor.ts: local llama.cpp child process
+
+lib/agent.ts + tools.ts: function calling
+
+lib/searxng.ts: web search + fallbacks
+
+lib/rag.ts: document retrieval
+
+lib/db.ts: SQLite on your disk
+
 One file, no database server: better-sqlite3 keeps the whole workspace in a single SQLite file, which makes backup and migration trivial. The tradeoff is write serialization, so WAL mode and short transactions matter once multiple users write concurrently; read-heavy single-node use is where this design shines.
 
 ## Quick Start
@@ -49,6 +71,22 @@ Chakor needs something to talk to. The simplest route is Ollama; Chakor auto-dis
 - Hardware-aware: Settings → Models shows detected RAM/GPU and marks each model FITS, TIGHT, or TOO BIG with a RECOMMENDED pick.
 
 ## How Model Switching Works
+
+yes
+
+no
+
+Pick engine in model menu
+
+Unload previous model
+
+Load new model
+
+Engine up?
+
+Chat uses it
+
+Point you at a running engine
 
 Switch model per message from the chat header, flip engines (llama.cpp / Ollama / LM Studio) in one tap, and download in the background so you can close the tab. On a roomy GPU, enable "keep multiple models loaded" for instant switching; on a modest machine it stays safely one-at-a-time so two models never OOM.
 
@@ -138,6 +176,44 @@ Every chat message travels the same path through the stack, from the browser dow
         conversation to fit the model’s context window and selects a provider, optional
         tools (web search and document retrieval) add grounding, the engine streams tokens back
         to the browser, and the finished exchange is persisted to the local SQLite database.
+
+web search
+
+document chat
+
+none
+
+local
+
+cloud
+
+User submits prompt in browser
+
+/api/chat: authenticate session, validate input
+
+lib/system-prompt.ts: behavior prompt applied
+
+lib/dispatch.ts: trim context, select provider
+
+Tools requested?
+
+lib/searxng.ts: SearXNG, Brave, DuckDuckGo fallback
+
+lib/rag.ts: retrieve relevant chunks
+
+Assemble request: prompt + memory + tool results
+
+Local or cloud model?
+
+llama.cpp supervisor / Ollama / LM Studio
+
+OpenAI / Anthropic / Google / OpenRouter
+
+Stream tokens to browser
+
+lib/db.ts: persist chat and messages to SQLite
+
+Response rendered; notes and memory updated where configured
 
 Two branches in this flow decide where your data goes, and the next section breaks them
         down: the local/cloud decision at inference time, and the tool decision that can send
@@ -252,6 +328,104 @@ Persistence is deliberately simple: better-sqlite3 keeps the whole workspace in 
         give the assistant continuity across sessions. The diagram below is an illustrative
         sketch of those relationships, not a verified schema dump; the authoritative schema lives
         in the repository.
+
+owns
+
+writes
+
+accumulates
+
+contains
+
+USERS
+
+string
+
+id
+
+string
+
+email
+
+string
+
+role
+
+CHATS
+
+string
+
+id
+
+string
+
+user_id
+
+string
+
+title
+
+string
+
+created_at
+
+NOTES
+
+string
+
+id
+
+string
+
+user_id
+
+string
+
+title
+
+string
+
+body
+
+MEMORIES
+
+string
+
+id
+
+string
+
+user_id
+
+string
+
+summary
+
+string
+
+updated_at
+
+MESSAGES
+
+string
+
+id
+
+string
+
+chat_id
+
+string
+
+role
+
+string
+
+content
+
+string
+
+created_at
 
 The single-file design makes backup, migration, and full deletion trivial file operations.
         The tradeoff is write serialization: SQLite allows one writer at a time, so WAL mode and

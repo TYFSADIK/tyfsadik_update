@@ -24,6 +24,32 @@ This is directly relevant to NORAD modernization and Canada's Arctic
 
 ## Architecture
 
+Ingestion
+
+Open Data Sources
+
+ADS-B aircraft beacons(adsb.fi / OpenSky)
+
+AIS ship tracks(aisstream.io)
+
+Sentinel-1 SAR imagery(Copernicus Data Space)
+
+Poller / websocketconnectors
+
+Kafkatopics per source
+
+Stream processor(Flink / Faust)normalise + geofence Arctic bbox
+
+Time-series store(TimescaleDB)
+
+Anomaly detectorsdark-ship, route deviation
+
+Alert log
+
+Map UI(Leaflet + deck.gl)
+
+Grafana dashboards
+
 Figure 1: sources, streaming backbone, storage, detection, and presentation layers.
 
 Every source gets its own Kafka topic so a slow or broken feed never blocks the others.
@@ -32,6 +58,28 @@ Every source gets its own Kafka topic so a slow or broken feed never blocks the 
         bounding box before anything hits storage, which keeps the dataset small and cheap.
 
 ## Anomaly Detection Logic
+
+no
+
+yes
+
+no
+
+yes
+
+AIS track stops transmitting
+
+Timer > threshold(e.g. 30 min)
+
+No alert
+
+Query Sentinel-1 SAR detectionsin last-known area + drift cone
+
+Radar contactwith no AIS match?
+
+Likely anchored / dockedlog only
+
+ALERT: dark vesselconfidence scored by distance + course
 
 Figure 2: dark-vessel detection correlates a silent AIS track with radar-only contacts.
 

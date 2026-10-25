@@ -49,6 +49,32 @@ All of it is already bought and on the bench. The 915 MHz detail matters: that i
 
 ## Architecture
 
+Sensor node (x5)
+
+tasks
+
+confirmation
+
+ADXL355 / SM-24 geophone
+
+Feature extractionRMS + band energies
+
+Edge classifiervehicle / footsteps / wind
+
+Store-and-forwardbuffer
+
+915 MHz LoRa mesh
+
+Pi gatewayLoRa HAT
+
+MQTT broker
+
+Common operating picturefused tracks + alert queue
+
+Human in the loop
+
+Verify assetrover / thermal drone
+
 Figure 1: each node senses, classifies, and buffers locally; only signed detections cross the mesh to the gateway and the common operating picture, where a human tasks a verify asset.
 
 The design rule is that the mesh carries detections, not data. A signed JSON
@@ -180,6 +206,24 @@ The protocol is built around labelled ground truth I generate myself, on land I 
 - T7, Power endurance. Setup: sealed node on solar, voltage and charge state logged continuously through real weather, including cold snaps. Metric: uptime through multi-day overcast stretches, and agreement between the measured average current and the power budget.
 
 ### Outage Replay Protocol (T6)
+
+yes
+
+no
+
+gateway back
+
+Classifier fires(signed detection)
+
+Gatewayreachable?
+
+Send via mesh(flood, hop limit)
+
+LittleFS buffer(oldest first)
+
+Heartbeat probe
+
+Replay buffered detections(dedup at gateway)
 
 Figure 2: the T6 outage protocol. Detections either flood the mesh immediately or wait in the on-device buffer; on reconnect the node replays oldest-first and the gateway dedups, so the operator sees a gapless log.
 

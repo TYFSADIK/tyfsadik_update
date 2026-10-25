@@ -96,6 +96,36 @@ The hobby-scale build is a 10-30 kg payload testbed. It does not carry cargo
 
 ## Architecture
 
+cuts motor power
+
+Wheel encoders
+
+robot_localization EKF
+
+IMU
+
+3D or 2D LiDAR
+
+Snow filterdynamic radius outlier removal
+
+FAST-LIO2or slam_toolbox 2D
+
+TI mmWave radarDoppler ego-velocity (optional)
+
+Slip detectorIMU yaw vs wheel yaw
+
+Nav2 planner and controller
+
+Motor-control MCU
+
+Wireless hardware E-stop
+
+rosbag2 MCAP logging
+
+RTK GNSSground truth only
+
+evo trajectory errorKITTI-style + APE/RPE
+
 The estimate being graded never sees GNSS. Wheel encoders and the IMU feed the
         robot_localization EKF as the dead-reckoning base; LiDAR runs through a snow
         filter (dynamic radius outlier removal, Charron et al. 2018) before

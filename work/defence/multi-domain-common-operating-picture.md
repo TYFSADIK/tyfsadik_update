@@ -52,6 +52,32 @@ This build is mostly software. The broker, tracker, and dashboard run on hardwar
 
 ## Architecture
 
+Sensor nodes
+
+disciplines clocks
+
+Air: passive radar+ acoustic detector
+
+Water: hydrophonevessel monitor
+
+Ground: seismicperimeter mesh
+
+u-blox M9N PPSclock discipline
+
+Ed25519 signatureper node key
+
+Local store-and-forwardbuffer on each node
+
+MQTT broker(Zenoh evaluated)
+
+Kalman-filter trackerassociation + confidence
+
+Tamper-evidentevidence log
+
+COP dashboardmap + alert queue
+
+Human in the loopevery decision
+
 Figure 1: every detection is signed, timestamped by a disciplined clock, buffered through dead links, fused into tracks, and audited, with a human making every decision.
 
 The bus is deliberately thin. Nodes publish small signed JSON detections

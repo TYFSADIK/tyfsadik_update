@@ -72,6 +72,32 @@ A homelab enclave cannot certify anything, and this one will not claim to. What 
 
 ## Architecture
 
+Analyst (browser)
+
+Keycloak OIDCsynthetic clearance, compartment,releasability attributes
+
+Enclave gateway
+
+OPA policy checkRego: attributes vs labels
+
+OpenTDF Key Access Serverkeys only to matching attributes
+
+OpenBaoPKCS#11 auto-unseal, transit engine
+
+HSM tokenmaster key never leaves hardware
+
+Retrieval service
+
+PostgreSQL + pgvectorrow-level security + label columns
+
+LLM servingFirejail/container, default-deny egress
+
+Guardrailsdeterministic label checks on output
+
+Answer to analyst
+
+Tamper-evident audit logdecision black box
+
 Figure 1: every request passes identity and policy before retrieval, retrieval is label-filtered at the database before similarity ranking, the model runs sandboxed with no uncontrolled egress, and the gateway, retrieval service, and guardrails all write to the tamper-evident audit log.
 
 The request path is deliberately layered so no single component is trusted on its own.

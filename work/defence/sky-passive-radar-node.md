@@ -73,6 +73,30 @@ Every cable on the receive side; nothing on this node ever transmits.
 
 ## Architecture
 
+direct path
+
+illuminates
+
+reflected echo
+
+FM / UHF TVbroadcast transmitter
+
+Aircraft(reflects signal)
+
+Reference Yagi(direct signal)
+
+Surveillance antennas(sky-facing)
+
+KrakenSDR5 coherent channels
+
+Mini PCrange-Doppler + pyAPRiL
+
+RTL-SDR ADS-Breadsb + tar1090
+
+Scorerdetections vs truth
+
+MQTT busfused detections
+
 Figure 1: the transmitter is someone else's; the node only receives. Reference and surveillance channels cross-correlate into range-Doppler detections, which are scored against independent ADS-B truth before publishing to the fusion bus.
 
 ## How Passive Radar Processing Works
@@ -95,6 +119,20 @@ The loudest thing on that map is never an aircraft: it is the direct path and
           channel, which is exactly why the build compares both illuminators (T3 vs T4).
 
 Figure: why the build compares illuminators: bandwidth sets the best-case bistatic range resolution (the speed of light over the bandwidth, c / B, the passive-radar excess-path convention). TV's 6 MHz channel resolves about 50 m where FM manages about 1500 m; away from the transmitter-receiver baseline the bistatic angle degrades this further, and real performance follows from the T3/T4 scoring runs.
+
+Coherent IQ capture(KrakenSDR, calibrated)
+
+Channel preparation(reference + surveillance)
+
+Clutter cancellation(ECA / ECA-B / ECA-S)
+
+Cross-ambiguity(range-Doppler map)
+
+CA-CFAR detection(adaptive threshold)
+
+Direction of arrival(pyArgus beamforming)
+
+Scored hits(vs ADS-B truth)
 
 Figure: the offline pipeline the build follows, mirroring pyAPRiL's modules: prepare the channels, cancel the clutter ridge, correlate into a range-Doppler map, detect adaptively, estimate direction, then score against the ADS-B log.
 

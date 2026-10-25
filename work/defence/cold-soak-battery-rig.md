@@ -44,6 +44,32 @@ Everything below is purchased and on the bench; the logging host and test packs 
 
 ## Architecture
 
+Sensing
+
+Instrumented Battery Bay
+
+1-Wire + I2C
+
+LiPo pack(test subject)
+
+Kapton heater pads
+
+Foam insulation
+
+6x DS18B20cell / bay / pad / ambient
+
+2x INA228voltage + current + mAh
+
+Logging hostRaspberry Pi / ESP32
+
+MOSFET driver
+
+Thermostat / pre-heat control
+
+Fixed discharge load
+
+DatasetCSV + plots
+
 Figure 1: the instrumented bay is sensed over 1-Wire and I2C; the logging host drives the heater MOSFET and writes every run to the dataset.
 
 One design decision shapes everything else: the logging host never enters the cold
@@ -159,6 +185,24 @@ The protocol is fixed before the numbers are collected, so the results, whatever
 - Run 5, Outdoor winter validation. Setup: porch/balcony runs at real conditions, weather-tagged per step 08. Procedure: identical discharge. Metric: agreement between outdoor curves and the nearest freezer setpoint, this validates (or indicts) the freezer as a proxy.
 
 - Run 6, Heater energy accounting. Setup: aggregated across Runs 3-4. Procedure: heater-branch mAh vs. recovered capacity per setpoint. Metric: the break-even temperature, below which heating pays for itself, above which it does not.
+
+Charge(warm only)
+
+Rest 1 h
+
+Soak(cell within 0.5 Cof setpoint, 15 min)
+
+Discharge(resistive, ~4 A nominal, to 12.8 V)
+
+Log every few seconds(temp + power)
+
+Warm to room temp
+
+Recharge
+
+Cross-check(Fluke vs INA228)
+
+Publish(CSV + plots)
 
 Figure: the per-run skeleton every run in the matrix follows. Charge and recharge only ever happen warm; the soak criterion is measured on the cell-surface sensor, not the freezer display.
 

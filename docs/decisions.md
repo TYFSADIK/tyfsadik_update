@@ -176,6 +176,22 @@ Expose management and selected services through an outbound-only tunnel (Cloudfl
       zero-trust access layer in front. No inbound ports are opened on the router; every request is authenticated before it
       reaches the lab.
 
+HTTPS, authenticated
+
+allowed requests only
+
+outbound only
+
+Remote user
+
+Zero-trust access layer
+
+Outbound tunnel
+
+Management interfacesProxmox, Grafana, services
+
+Home routerno inbound ports open
+
 ### Alternatives Considered
 
 - Port forwarding plus dynamic DNS: simple and fully self-controlled, but every exposed service must be hardened individually, scanning and credential-stuffing begin within minutes of opening a port, and residential IP changes add fragility. Rejected on attack surface.

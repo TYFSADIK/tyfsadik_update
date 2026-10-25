@@ -55,6 +55,36 @@ All of this is purchased and on hand. The chassis, compute, motor driver, and po
 
 ## Architecture
 
+Follower Rover R2
+
+Lead Rover R1
+
+pose/heading/speedfixed-rate packets
+
+same packetsfallback path
+
+telemetry
+
+Pose source(wheel odometry + IMU)
+
+ESP32 LoRa TX915 MHz
+
+Wi-Fi fallback
+
+ESP32 LoRa RX
+
+Wi-Fi RX(tc netem impairment)
+
+Link watchdogtimeout + hold
+
+Pure-pursuit-stylegap-following controller
+
+E-stop /safe-stop
+
+BTS7960 driver+ wheel encoders
+
+Laptop loggerloss vs control quality
+
 Figure 1: the lead broadcasts its pose at a fixed rate over LoRa (with an impaired Wi-Fi fallback); the follower's watchdog arbitrates the link, and the controller drives through the e-stop interlock at all times.
 
 Both paths carry the same packet format, so the follower does not care which radio delivered
@@ -68,6 +98,24 @@ The watchdog is the only part of the follower that decides what happens to the m
         it is worth seeing as a state machine. The controller from step 05 never sees a raw packet:
         it only ever receives goal points the watchdog has approved for the current state. The
         four states, with the thresholds straight from the firmware:
+
+link degrades
+
+link recovers
+
+grace expires
+
+fresh packet arrives
+
+gap within tolerance
+
+FOLLOW(packet age under 1.0 s)
+
+HOLD(age 1.0 to 4.0 s)
+
+SAFE_STOP(age over 4.0 s)
+
+REJOIN(first fresh packet)
 
 Figure 2: the watchdog as a state machine. FOLLOW tracks the newest packet; HOLD tracks an extrapolated vector while ramping speed down; SAFE_STOP ramps to a controlled stop and waits; REJOIN closes the gap from where the follower actually is, at half speed, instead of snapping to the lead.
 

@@ -27,6 +27,38 @@ The framing is deliberately Canadian: the Canadian Armed Forces regularly suppor
 
 ## Architecture
 
+Edge Node (Jetson-class)
+
+Mission Control
+
+Simulation
+
+MAVLink
+
+RTSP stream
+
+JSON detections
+
+telemetry
+
+Gazebo world(flood / wildfire scenario)
+
+ArduPilot SITLquadcopter
+
+Simulated camera(gimballed, downward)
+
+Mission Planner scriptlawnmower survey grid
+
+CV pipelineOpenCV + ONNX Runtime
+
+MQTT broker(Mosquitto)
+
+PostGISdetections + tracks
+
+Live map UI(Leaflet)
+
+Grafanamission metrics
+
 Figure 1: simulated flight, edge detection, and the path from detection to the shared map.
 
 The autopilot, the world, and the detector are three separate processes talking over
@@ -37,6 +69,28 @@ The autopilot, the world, and the detector are three separate processes talking 
         without touching the detection or mapping code.
 
 ## Edge Detection Pipeline
+
+no
+
+yes
+
+Grab frame(RTSP, 10 fps downsampled to 2 fps)
+
+Preprocessresize 640x640, normalise
+
+Segmentation model(ONNX, flood / fire / smoke classes)
+
+Affected area> min pixel threshold?
+
+Discard framelog heartbeat only
+
+Georeferencepixel centroid + drone pose+ terrain height
+
+De-duplicateskip if within 25 m ofrecent detection
+
+Publish MQTT detection{class, lat, lon, confidence,frame_id, timestamp}
+
+Save annotated framefor review
 
 Figure 2: each video frame becomes a georeferenced, de-duplicated detection or is dropped.
 

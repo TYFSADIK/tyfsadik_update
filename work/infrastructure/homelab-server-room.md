@@ -46,6 +46,50 @@ The room is organized so that signal flow matches physical layout: uplink enters
         and the wireless radio hangs off a switch trunk port to serve the laptop shelf. Power and
         data are dressed separately to keep interference and trip hazards down.
 
+Basement Server Room
+
+Ops Desk
+
+Laptop Shelf (wireless)
+
+Desktop Rack (wired)
+
+Network Shelf
+
+WAN
+
+VLAN trunk
+
+Cat6 access, VLAN 20
+
+Cat6 access, VLAN 20
+
+Cat6 access, VLAN 20
+
+Trunk, VLAN 20
+
+5 GHz bridge
+
+VLAN 10 mgmt
+
+RouterNAT / DHCP / Inter-VLAN routing
+
+Managed Switch802.1Q VLANs 10, 20, 30
+
+5 GHz RadioBridge mode
+
+PC-01Control-plane host
+
+PC-02Worker / storage host
+
+PC-03Worker / storage host
+
+Laptops 01 to 04Worker hosts
+
+Monitoring stationDashboards and logs
+
+ISP Uplink
+
 This is the physical view of the same design drawn logically on the
         [Kubernetes Infrastructure page](kubernetes-infrastructure.html). Where that page
         shows VMs, pods, and networks, this one shows racks, ports, and cables.

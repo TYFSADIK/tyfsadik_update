@@ -14,7 +14,45 @@ On three nodes, Ceph runs its monitors in quorum with pools at 3x replication, s
 
 ## Network Topology
 
+Proxmox VE HA Cluster: Ceph
+
+cloudflared tunnel
+
+fallback
+
+Internet
+
+Cloudflare EdgeAccess policies
+
+VLAN 40 DMZ
+
+Tailscale Mesh
+
+VLAN 10 Mgmt
+
+VLAN 20 Prod
+
+VLAN 30 IoT
+
+Docker LXC services
+
 ## Zero-Trust Access Flow
+
+allow
+
+deny
+
+Request
+
+IdentityCloudflare Access
+
+Device Postureplanned via WARP
+
+Policy
+
+Service
+
+403
 
 ## Implementation
 
@@ -122,11 +160,69 @@ Two flows define the system. The first is the ingress path: a request reaches th
         Tailscale forms an authenticated WireGuard mesh that reaches the management VLAN
         directly, bypassing Cloudflare entirely.
 
+Proxmox VE HA Cluster
+
+Cloudflare Edge
+
+VLAN 10 - Mgmt
+
+VLAN 20 - Prod
+
+VLAN 40 - DMZ
+
+HTTPS
+
+WireGuard
+
+outbound tunnel only
+
+proxied allowed requests
+
+User / Admin
+
+Cloudflare Accessidentity and policy check
+
+cloudflaredegress-only tunnel client
+
+Docker LXC services
+
+Proxmox UI and SSH
+
+Tailscale meshauthenticated fallback
+
 Storage follows the same three-node symmetry. Every Ceph pool is configured at 3x
         replication: a guest write lands on a primary OSD and is replicated to an OSD on each of
         the other two nodes before it is acknowledged. Three monitors run one per node and hold
         quorum at 2-of-3, so the cluster keeps serving reads and writes with any one node down,
         and Proxmox HA restarts the failed node's guests on a surviving host.
+
+Node 3
+
+Node 2
+
+Node 1
+
+primary OSD
+
+replica 2
+
+replica 3
+
+quorum 2 of 3
+
+Guest write
+
+OSD
+
+MON
+
+OSD
+
+MON
+
+OSD
+
+MON
 
 ## Component Reference
 

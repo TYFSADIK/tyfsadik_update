@@ -71,6 +71,24 @@ A bench fleet cannot prove operational security for a military program. What it 
 
 ## Architecture
 
+signed MAVLink 2
+
+serial, key setup over USB only
+
+Ground stationmission planning + monitoring
+
+WireGuard tunnellink encryption over IP
+
+Pixhawk or Cube FCArduPilot, MAVLink 2 signingsigned Ed25519 firmware
+
+Pi 5 companionROS 2 Jazzy, SROS2 enclaves
+
+pymavlink IDSsigning, sysID, replay checks
+
+SIEMWazuh or ELK
+
+Signed A/B OTATPM measured boot
+
 Figure 1: every trust boundary carries a named control. The GCS link is encrypted by WireGuard and authenticated by MAVLink 2 signing; firmware and updates are signed; the ROS 2 graph is partitioned by SROS2 enclaves; and a protocol-aware IDS watches the traffic that remains, alerting into a SIEM.
 
 The design rule is that each boundary in the threat model maps to exactly one primary

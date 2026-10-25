@@ -72,6 +72,28 @@ The biggest contributor is not the camera, it is time. At a 10 m/s survey speed,
 
 ## Architecture
 
+MAVLink / UART
+
+FLIR Lepton 3.5thermal camera
+
+Pi 5capture + preprocessing
+
+Hailo AI HAT+person detection (HailoRT)
+
+Pixhawk-class FCArduPilot
+
+Pi 5 companionfusion + georeferencing
+
+mavlink-routertelemetry split
+
+Ground stationmission planner
+
+MQTT broker
+
+Leaflet live mapdetections + confidence
+
+Human operatorconfirms every detection
+
 Figure 1: thermal frames are acquired and preprocessed on the Pi 5, inference runs on the Hailo HAT+, detections fuse with flight telemetry on the Pi, and land on a live map where a human confirms each detection.
 
 ## Wiring & Connections

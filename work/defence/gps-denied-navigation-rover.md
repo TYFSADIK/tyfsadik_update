@@ -65,6 +65,30 @@ The full interconnect map. Two rules govern everything: motor power and logic po
 
 ## Architecture
 
+Wheel encoders4WD chassis
+
+BNO085 IMUUART / I2C
+
+LD19 2D LiDAR/scan topic
+
+Pi Camera Module 3visual record
+
+ros2_controldiff-drive stack
+
+Wheel odometry/odom
+
+robot_localization EKFwheel odom + IMU
+
+rf2o scan matcherLiDAR odometry
+
+SLAM Toolboxmap + pose
+
+Nav2 path planningand control
+
+u-blox M9N GNSSground truth only
+
+rosbag2 loggingdrift analysis
+
 Figure 1: sensors feed the EKF estimate that drives Nav2; GNSS logs alongside as ground truth and never enters the control loop.
 
 The key discipline: GNSS is not an input to the estimator. It is logged in
@@ -142,6 +166,18 @@ A skid-steer rover turns by driving its left and right wheels at different speed
           calibrates an effective wheel separation on the 5 m line instead of trusting
           the tape measure: the number that matters is the one that predicts how far the rover turned,
           not how far apart the wheels sit.
+
+Drive loop(GNSS on, truth logging)
+
+CUT(navigation output off)
+
+Keep driving(odom + IMU only)
+
+Keep driving(odom + IMU + LiDAR)
+
+Compare EKF posevs truth track
+
+Error vs distance(drift curve)
 
 Figure 2: the Run 5 GNSS-cut experiment. The rover drives the surveyed loop with GNSS logging truth, the navigation output is switched off mid-loop, and driving continues in both estimator configurations; the comparison of EKF belief against the truth track is the drift measurement.
 

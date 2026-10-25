@@ -29,6 +29,30 @@ Why bother: accountability and responsible AI are treated seriously in Canadian 
 
 ## Architecture
 
+Audit Layer
+
+Simulation (open data only)
+
+Airspace scenario generator(fictional tracks, Python)
+
+Decision support stub(rule-based recommender)
+
+Ingestion API(Go, HTTP + gRPC)
+
+Append-only loghash chain + Merkle tree
+
+Signer(Ed25519, key in KMS-style seal)
+
+OPA sidecar(Rego policies)
+
+Event store(PostgreSQL, WORM semantics)
+
+Signed tree headsgossip endpoint
+
+Replay toolrebuild state at entry N
+
+Audit dashboard(proofs, policy verdicts)
+
 Figure 1: simulated sources feed the ingestion API; every event is policy-checked, chained, signed, and stored before it can be replayed or audited.
 
 The ingestion API is the only writer. An event (sensor observation, recommendation,
@@ -41,6 +65,34 @@ The ingestion API is the only writer. An event (sensor observation, recommendati
         an outside auditor verify the log without trusting me.
 
 ## Hash-Chain Verification and Replay
+
+no
+
+yes
+
+no
+
+yes
+
+Auditor requests prooffor entry N
+
+Fetch Merkle inclusion proofentry N vs signed tree head
+
+Hash path recomputesto signed root?
+
+TAMPER: entry or treedoes not match signed head
+
+Fetch signed tree headsT_old and T_new
+
+Consistency proof valid?(T_old is a prefix of T_new)
+
+TAMPER: history was rewrittenor forked
+
+Log verified:append-only, untampered
+
+Replay: fold events 1..Nthrough the state machine
+
+Reconstructed decision state:tracks, recommendations, approvals,policy verdicts at that moment
 
 Figure 2: verification proves the log is append-only before replay reconstructs the state at any entry.
 

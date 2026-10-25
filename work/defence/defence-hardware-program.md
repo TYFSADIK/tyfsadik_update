@@ -161,9 +161,71 @@ Six larger builds planned against the MINERVA and IDEaS specs, each published as
 
 ## Program Architecture
 
+TRUST & ENV
+
+cold derating data
+
+signed OTA
+
+signed OTA
+
+GROUND
+
+Seismic perimeter meshESP32 LoRa nodes
+
+GPS-denied roverROS 2 + EKF
+
+Convoy robotsLoRa mesh
+
+WATER
+
+Hydrophone vessel monitor+ AIS truth
+
+SKY
+
+Passive radar nodeKrakenSDR + RTL-SDR ADS-B
+
+Acoustic drone detectorMEMS mic array
+
+Thermal SAR droneLepton + Hailo HAT+
+
+Airspace deconflictionESP32 beacons + SITL
+
+Cold-soak rigbattery dataset
+
+Secure OTA updatesTPM + signed images
+
+Signed detections busMQTT / Zenoh + store-and-forward
+
+Kalman tracker + fusion service
+
+Common operating picture dashboardtracks + confidence + alert queue
+
+Human in the loopevery decision
+
 Figure 1: every node is receive-only or self-contained, signs its output, and feeds one fused picture with a human deciding.
 
 ## Build Roadmap
+
+ground truth early
+
+cold derating data
+
+Phase 0Workshop and shared bench
+
+Phase 1Sky node: ADS-B truth, then passive radar
+
+Phase 2Water node: hydrophone and AIS truth
+
+Phase 3Ground mesh and deconfliction beacons
+
+Phase 4Rovers: GPS-denied navigation and convoy
+
+Phase 5Drone: thermal SAR and acoustic detector
+
+Phase 6Cold-soak rig and secure updates
+
+Multi-domain COPsigned bus, fusion, chaos tests
 
 Figure 2: seven phases in build order; the COP fusion layer grows alongside them and gets chaos-tested once the nodes are feeding it.
 

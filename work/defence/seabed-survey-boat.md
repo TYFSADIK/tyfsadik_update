@@ -81,6 +81,26 @@ It will also prove its own limitation. Because the Ping is a single-beam sensor,
 
 ## Architecture
 
+RC transmitter
+
+ArduPilot Rover boat frame on Pixhawk or Cube
+
+GNSS receiver, RTK optional
+
+Blue Robotics Ping echosounder
+
+Two thrusters, catamaran hull
+
+Telemetry radio or LTE
+
+Shore station: Mission Planner or MAVProxy
+
+Onboard DataFlash and sonar logs
+
+Processing: pymavlink export, corrections, QGIS grid
+
+Gridded seabed model + anomaly map
+
 The vessel is a small catamaran driven by two thrusters, which gives differential steering
         without a rudder and a stable, wide stance for a straight-down sonar. ArduPilot Rover in its
         boat frame configuration runs on a Pixhawk or Cube flight controller and fuses GNSS
