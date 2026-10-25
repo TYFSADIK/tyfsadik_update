@@ -34,8 +34,8 @@ The build is defensive only: detect, survey, and report. Nothing here jams, spoo
 
 ## Concept Illustrations
 
-These are AI-generated planning visuals made while scoping the build. They are concept
-        illustrations, not photos of built hardware, because the hardware does not exist yet.
+Concept illustrations made while scoping the build; they show the design intent,
+        not finished hardware.
 
 ## Target Spec
 
