@@ -1,16 +1,18 @@
 /* TYFSADIK.ORG, Main JS */
 
-// --- Mermaid: load on demand only when a diagram exists ----
-// The library is ~680 KiB, so it is injected only on pages that
-// actually contain a .mermaid block (previously loaded site-wide).
-if (document.querySelector('.mermaid')) {
+// --- Mermaid: runtime fallback for diagrams without a pre-render ----
+// Diagrams are pre-rendered to inline SVG at build time
+// (.tools/e2e/prerender_mermaid.mjs), so the ~680 KiB library is only
+// injected when a page contains a diagram that still needs rendering.
+const mermaidTodo = document.querySelectorAll('.mermaid:not([data-prerendered])');
+if (mermaidTodo.length) {
   const mermaidScript = document.createElement('script');
   mermaidScript.src = 'https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js';
   mermaidScript.integrity = 'sha384-EOXBFmc3gx5mb+vn0vPvvGqACToJD24hhacX5Yx+8NUUQrHIle/Qi5Bg9o3zKwW2';
   mermaidScript.crossOrigin = 'anonymous';
   mermaidScript.onload = () => {
     mermaid.initialize({
-      startOnLoad: true,
+      startOnLoad: false,
       theme: 'base',
       themeVariables: {
         darkMode: true,
@@ -38,6 +40,7 @@ if (document.querySelector('.mermaid')) {
         mirrorActors: false,
       },
     });
+    mermaid.run({ nodes: mermaidTodo });
   };
   document.head.appendChild(mermaidScript);
 }

@@ -395,3 +395,19 @@ context. Per hard rule 1, nothing was deleted; layout fixes are logged here.
 - `#concept` / `#proof` gallery sections keep the 2-column grid with lone images centered at 560px; mobile (<=767px) stacks everything full width.
 - Screenshot-verified at 1280px and 375px on chakor, kubernetes-infrastructure, arctic-isr-drone, acoustic-drone-detector; zero horizontal overflow on all.
 - `tools/verify.sh` all green (209 pages og:image rule, 677 JSON-LD blocks).
+
+## 2026-10-24: Mermaid pre-render + LCP performance fix
+- All 391 mermaid diagrams across 187 pages are now pre-rendered to inline
+  SVG at build time (`.tools/e2e/prerender_mermaid.mjs`, idempotent, seeded
+  Math.random for byte-stable output, original source kept in an inert
+  <template class="mermaid-source">, role/aria-label attributes preserved).
+- js/main.js no longer downloads the 913 KiB mermaid.min.js on these pages;
+  a runtime fallback remains for any future unprerendered diagram.
+- Diagrams now render with JavaScript disabled and never flash raw source
+  on slow connections (this was the "mermaid broken" symptom).
+- 33 project-hero images: loading="lazy" removed, fetchpriority="high"
+  added, and 768w avif/webp/jpg variants wired via srcset+sizes (hero LCP
+  request drops from ~125 KiB to ~19 KiB).
+- Lighthouse mobile on kubernetes-infrastructure.html: performance 60 -> 93,
+  LCP 8.4s -> 2.8s, TBT 410ms -> 80ms, CLS 0. Full JS-disabled sweep of all
+  187 diagram pages: every SVG present. tools/verify.sh all green.

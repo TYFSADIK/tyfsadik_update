@@ -55,8 +55,11 @@ build_search_index, and build_api.
   depth-2 (work/*/, blog/labs/*/) use ../../. 404.html uses root-absolute
   paths because it serves under arbitrary URLs.
 - Mermaid diagrams: <div class="mermaid" role="img" aria-label="..."> with
-  < escaped as &lt;. The library loads on demand from js/main.js (pinned,
-  SRI); do not add eager script tags.
+  < escaped as &lt;. Diagrams are pre-rendered to inline SVG at build time
+  (cd .tools/e2e && node prerender_mermaid.mjs); the source lives in an
+  inert <template class="mermaid-source"> inside each div. After adding or
+  editing a diagram, re-run the prerender script. js/main.js only loads the
+  mermaid library for divs without data-prerendered (runtime fallback).
 - New public pages need: unique 50-60 char title, 140-158 char description,
   canonical, og/twitter block (banner-mine first image), breadcrumb +
   BreadcrumbList, sitemap entry (rerun build_sitemap.py).
