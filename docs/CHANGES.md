@@ -388,3 +388,10 @@ context. Per hard rule 1, nothing was deleted; layout fixes are logged here.
 - Removed the remaining "AI-generated planning visuals" intro sentences from the concept sections of arctic-isr-drone.html and seabed-survey-boat.html (owner request); regenerated the markdown mirrors.
 - Project images are now Wikipedia-style: on screens 768px and wider, section images on the 50 project pages (body class "project-page", additive attribute) float right at 340px with text wrapping beside them and captions beneath; on smaller screens they go full width. Diagrams (.diagram-figure) and non-project pages (home, about, labs) are untouched. Verified in-browser: desktop float right 340px, mobile full width, no overflow.
 - Replaced the Wikipedia-style right float after owner review (it left empty voids beside tall images in short sections). New layout: project images are centered at max 560px; concept/proof sections with multiple images use a two-column grid on desktop; a lone image in those sections spans and centers instead of leaving an empty column. Verified with in-browser screenshots on arctic-isr-drone, sovereign-ai-enclave, thermal-sar-drone, and sky-passive-radar-node.
+
+## 2026-10-24: Project image layout, final Wikipedia-style pass
+- css/style.css: desktop (>=768px) float-right rule for `figure.project-hero` and non-gallery section figures/pictures on all 50 project pages at `min(340px, 45%)`, with captions underneath and clearfix on sections and `.content-box`.
+- Diagram figures excluded via `:not([class*="diagram"]):not(:has(svg))` so wide inline-SVG schematics (e.g. kubernetes VLAN diagram) keep full width; fixes the squeezed/clipped diagram regression.
+- `#concept` / `#proof` gallery sections keep the 2-column grid with lone images centered at 560px; mobile (<=767px) stacks everything full width.
+- Screenshot-verified at 1280px and 375px on chakor, kubernetes-infrastructure, arctic-isr-drone, acoustic-drone-detector; zero horizontal overflow on all.
+- `tools/verify.sh` all green (209 pages og:image rule, 677 JSON-LD blocks).
