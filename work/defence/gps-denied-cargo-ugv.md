@@ -31,7 +31,7 @@ Winter is the point of the build, not a complication. Published research says Li
         modes: it goes looking for them, logs them, and reports the limits instead of the highlight
         reel.
 
-## Concept Illustrations
+## Gallery
 
 ## Target Spec
 

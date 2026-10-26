@@ -36,7 +36,17 @@ Everything here is already bought and on my bench. The chassis, compute, and dri
 
 ## Proof of Build
 
-The convoy rig on my bench: rovers R1 (lead) and R2 (follower) with their 915 MHz LoRa whip antennas fitted, the hand-drawn mesh-node schematic I worked the packet format out on, and the laptop running the live topology view with per-link status, the same display I watch while inducing packet loss during a run.
+What each part of the photo does:
+
+- Rover R1, the lead: drives the route and broadcasts its position and commands over the mesh.
+
+- Rover R2, the follower: follows R1 using those messages, and has to behave safely when they stop arriving.
+
+- 915 MHz LoRa whip antennas: the radio link between the rovers. I deliberately degrade it during tests to see what breaks.
+
+- Mesh-node schematic: where I worked out the packet format on paper.
+
+- Laptop topology view: shows every link and its status live while I induce packet loss.
 
 ## Bill of Materials
 

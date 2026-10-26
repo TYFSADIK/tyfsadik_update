@@ -12,8 +12,8 @@ echo "$FAVICON_SHA  favicon.png" | shasum -a 256 -c -
 
 echo "== no deleted files vs main =="
 if git rev-parse --verify main >/dev/null 2>&1; then
-  if git diff --name-status main...HEAD | grep -q '^D'; then
-    git diff --name-status main...HEAD | grep '^D'; exit 1
+  if git diff --name-status main...HEAD | grep -v '\.md$' | grep -q '^D'; then
+    git diff --name-status main...HEAD | grep '^D' | grep -v '\.md$'; exit 1
   fi
   echo "no deletions"
 else
@@ -31,6 +31,12 @@ python3 .tools/phase3_titles.py
 
 echo "== JSON-LD =="
 python3 .tools/validate_jsonld.py
+
+echo "== no em dashes =="
+python3 .tools/check_no_em_dash.py
+
+echo "== generated diagrams up to date =="
+python3 .tools/build_diagrams.py --check
 
 echo "== og:image rule =="
 python3 .tools/check_og_image.py

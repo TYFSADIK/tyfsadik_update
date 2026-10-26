@@ -41,7 +41,7 @@ def render_recent_labs(labs: list) -> str:
 
 def render_featured_projects(projects: list) -> str:
     cards = []
-    for p in [p for p in projects if p.get("featured")][:3]:
+    for p in [p for p in projects if p.get("featured")][:6]:
         title = html.escape(p["title"])
         category = html.escape(p["category"])
         description = html.escape(p["description"])

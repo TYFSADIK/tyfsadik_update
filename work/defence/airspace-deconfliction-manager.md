@@ -28,7 +28,15 @@ The design rule that shapes everything: the manager is advisory, never autonomou
 
 ## Proof of Build
 
-The bench as it sits today: three labelled ESP32 tracker beacons, the breadboarded controller with its OLED status display, the signed test-case result sheets, and the laptop running ArduPilot SITL with 3D geofence volumes and a live conflict alert on a drone track.
+What each part of the photo does:
+
+- Three ESP32 tracker beacons: stand in for drones in the air. Each one reports a position, like a real aircraft tracker would.
+
+- Breadboarded controller with OLED: shows the manager's status at a glance: how many tracks it sees and whether any conflict is active.
+
+- Signed test-case sheets: each scenario has an expected result written down first, then signed off when the run matches it.
+
+- Laptop with ArduPilot SITL: simulates several drones and draws the 3D geofence volumes. The red alert is a live conflict between two tracks.
 
 ## Bill of Materials
 

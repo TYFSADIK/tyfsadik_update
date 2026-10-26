@@ -30,12 +30,22 @@ This is Phase 1 of my [Canadian Defence
 
 ## Proof of Build
 
-The real rig on my bench: the KrakenSDR five-channel coherent receiver with its five whip antennas, a Raspberry Pi running the KrakenSDR software, and a laptop showing range-Doppler waterfall plots beside the live tar1090 ADS-B aircraft map that serves as ground truth.
-
 Everything in the photo is already purchased and running. The ADS-B side went live first:
         a live aircraft map fed by an RTL-SDR, because a passive radar without independent ground
         truth is just a screensaver. The KrakenSDR and its antennas are the radar side; the laptop is
         where both halves meet for scoring.
+
+What each part of the photo does:
+
+- KrakenSDR: five receive channels sampled from one clock, so the phase between them is meaningful. One channel listens to the broadcast transmitter, the other four listen to the sky.
+
+- Five whip antennas: bench antennas for testing the chain end to end. The directional reference and surveillance antennas in the bill of materials replace them outdoors.
+
+- Raspberry Pi: runs the KrakenSDR software that captures the channels and computes the cross-correlation.
+
+- Laptop, left plots: the range-Doppler waterfalls, where a moving aircraft shows up as a streak at its bistatic range and Doppler shift.
+
+- Laptop, right map: tar1090, the ADS-B aircraft map. Every radar detection is checked against it before it counts.
 
 ## Bill of Materials
 

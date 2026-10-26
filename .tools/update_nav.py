@@ -43,7 +43,7 @@ def new_header(p: str, active: str, banner: str) -> str:
   <div class="top-panel">
     <div class="site-id">
       <a href="{p}index.html" class="site-name">Taki Sadik</a>
-      <div class="site-tagline">Cybersecurity &amp; IT Professional &mdash; North York, ON, Canada</div>
+      <div class="site-tagline">Cybersecurity &amp; IT Professional, North York, ON, Canada</div>
     </div>
     <a href="{p}contact.html" class="contact-link" aria-label="Contact Taki Sadik"><span aria-hidden="true">&#9993;</span> <span class="contact-link-text">Contact</span></a>
   </div>

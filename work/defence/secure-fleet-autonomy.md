@@ -32,7 +32,7 @@ Scope honesty up front: this guide covers a bench fleet of one to three vehicles
         is receive-only, and GNSS work is detection only. Only gear owned by the project gets
         tested, with permission.
 
-## Concept Illustrations
+## Gallery
 
 ## Target Spec
 

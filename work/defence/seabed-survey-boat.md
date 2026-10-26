@@ -35,10 +35,7 @@ The honest limit is worth stating up front: a single-beam echosounder only sees 
         build measures it: how detection rate against planted targets changes as line spacing
         widens is one of the headline results the project will publish.
 
-## Concept Illustrations
-
-Concept illustrations created to communicate the design intent; the boat does not
-        exist yet.
+## Gallery
 
 ## Target Spec
 

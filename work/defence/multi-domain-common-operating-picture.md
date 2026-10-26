@@ -35,7 +35,15 @@ Everything below is the real build: the actual configs on my broker, the actual 
 
 ## Proof of Build
 
-The COP dashboard on the bench: a laptop shows the PERIMETER SECURE COP screen with ground, air, and water tracks, an alert queue, and live seismic and acoustic signal panels, beside the solar LoRa mesh node hardware. Note: this is the shared bench photo from the seismic and acoustic perimeter mesh build (the photo file lives with that build), which is why the node hardware is in frame; a dedicated COP dashboard screenshot will replace it once the full dashboard UI is published.
+What each part of the photo does:
+
+- Laptop with the COP dashboard: one screen with ground, air and water tracks, an alert queue, and live seismic and acoustic panels.
+
+- Track list: every track carries its domain and its source sensor, so an operator can see why it is there.
+
+- Alert queue: new alerts wait for a human. The system cues, it never acts on its own.
+
+- Solar LoRa node: one of the data sources. It publishes detections over the same MQTT topics the dashboard listens to.
 
 ## Bill of Materials
 
