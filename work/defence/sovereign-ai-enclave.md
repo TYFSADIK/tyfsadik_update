@@ -34,7 +34,15 @@ All labels in this build are synthetic. The corpus is synthetic documents marked
         Planned: the guide is published so the design can be scrutinized before a
         single container is deployed.
 
-## Concept Illustration
+## Gallery
+
+What each part of the photo does:
+
+- Hardware tokens: hold signing and access keys outside any computer, so a stolen disk does not mean stolen keys.
+
+- Keycards: physical access control for whoever is allowed to touch the hosts.
+
+- Hosts: the machines that will run the enclave's models without any connection to outside cloud services.
 
 ## Target Design
 

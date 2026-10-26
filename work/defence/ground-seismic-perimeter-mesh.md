@@ -27,12 +27,22 @@ The reason this belongs in a DevOps engineer's portfolio: keeping cheap nodes al
 
 ## Proof of Build
 
-Sensor node v2.1 on my bench: three labelled geophones and an acoustic microphone wired to the node board, 18650 cells and the small solar panel for power, and my rugged laptop running the perimeter common-operating-picture dashboard with ground, air, and water tracks.
-
 Everything in the photo is purchased and assembled, not a rendering. The node board on the
         left runs the firmware described below; the laptop on the right is subscribed to the same MQTT
         topic the deployed nodes publish to, so a bench detection shows up as a track on the dashboard
         exactly the way a field detection will.
+
+What each part of the photo does:
+
+- Three labelled geophones: pick up ground vibration from footsteps and vehicles. Three of them let the node compare arrival times instead of trusting a single sensor.
+
+- Acoustic microphone: adds the airborne sound channel, so a detection can be confirmed by both vibration and sound.
+
+- Node board v2.1: samples the sensors, runs the detection firmware, and sends short alerts over the LoRa mesh.
+
+- 18650 cells and solar panel: keep the node running unattended in the field without mains power.
+
+- Rugged laptop: runs the common operating picture, where ground, air and water tracks appear on one map.
 
 ## Bill of Materials
 

@@ -27,7 +27,15 @@ And because these robots are meant to operate in the cold, the same cold the MIN
 
 ## Proof of Build
 
-The rig on my bench: a Raspberry Pi fleet node wired to its TPM 2.0 module, with the oscilloscope alongside and the laptop showing a verified secure-boot log, TPM integrity status, and the rollback interface after a forced bad-update test.
+What each part of the photo does:
+
+- Raspberry Pi fleet node: the same kind of computer that runs the rovers and sensors, used here as the update target.
+
+- TPM 2.0 module: measures the boot chain and holds keys, so the node can prove it booted only signed software.
+
+- Oscilloscope: used while bringing up the TPM connection to the Pi.
+
+- Laptop: shows the verified secure-boot log, the TPM integrity status, and the rollback screen after a deliberately bad update.
 
 ## Bill of Materials
 

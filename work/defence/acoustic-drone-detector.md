@@ -28,7 +28,15 @@ The context is the same one driving the whole program: Canada's
 
 ## Proof of Build
 
-The real rig on my bench: the circular 4-mic MEMS array on a stand, wired to the Raspberry Pi running the DSP chain. The oscilloscope shows the four mic channels side by side for sync checking, and the laptop runs the direction-of-arrival tracker, the polar plot has a track locked onto rotor harmonics near 660 Hz from one of my own drones.
+What each part of the photo does:
+
+- Circular 4-mic MEMS array: four microphones at known positions. A drone's sound reaches each one at a slightly different time, and those tiny delays give its direction.
+
+- Raspberry Pi: runs the DSP chain: it filters the audio, looks for rotor harmonics, and estimates the direction of arrival.
+
+- Oscilloscope: shows the four mic channels side by side, so I can confirm they are sampled in sync before trusting any direction estimate.
+
+- Laptop polar plot: the direction-of-arrival tracker. In the photo it is locked onto rotor harmonics near 660 Hz from one of my own drones.
 
 ## Bill of Materials
 

@@ -17,8 +17,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# index, about, resume, contact and docs/ are deliberately not mirrored:
+# their .md files were removed from the repo and must not be regenerated.
 PAGES = [
-    "index.html", "about.html", "work.html", "resume.html", "contact.html",
+    "work.html",
     "blog.html", "blog/labs/index.html",
     "blog/labs/linux-fundamentals/index.html",
     "blog/labs/linux-server/index.html",
@@ -29,8 +31,6 @@ PAGES = [
     "blog/labs/cloud-azure/index.html",
     "blog/labs/containers-kubernetes/index.html",
     "blog/labs/devops/index.html",
-    "docs/index.html", "docs/asset-register.html", "docs/glossary.html",
-    "docs/decisions.html",
     "work/infrastructure/kubernetes-infrastructure.html",
     "work/infrastructure/proxmox-zero-trust.html",
     "work/infrastructure/chakor.html",

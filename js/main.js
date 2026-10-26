@@ -235,6 +235,38 @@ document.querySelectorAll('a[href^="#"]').forEach(a => {
   if (initial) { input.value = initial; run(); }
 })();
 
+// --- Keyboard access to sideways-scrolling regions ---------
+// Wide tables and diagrams scroll horizontally on phones; a region that
+// actually overflows gets tabindex so keyboard users can scroll it too.
+(function initScrollRegions() {
+  const regions = document.querySelectorAll('.table-scroll, figure[class*="diagram"]');
+  if (!regions.length) return;
+  const update = () => regions.forEach(el => {
+    if (el.scrollWidth > el.clientWidth + 1) {
+      el.tabIndex = 0;
+      if (!el.hasAttribute('aria-label')) el.setAttribute('aria-label', 'Scrollable ' + (el.matches('figure') ? 'diagram' : 'table'));
+    } else {
+      el.removeAttribute('tabindex');
+    }
+  });
+  update();
+  let t;
+  window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(update, 150); });
+})();
+
+// --- Picture protection (every page) ---------------------
+// Pictures cannot be opened, saved or dragged out through the browser's
+// own menus: no right-click menu, no drag into a new tab, no long-press menu
+// on phones. A deterrent only: screenshots and developer tools still work.
+// Page zoom is deliberately left alone, because blocking it locks out
+// people who need to enlarge the page to read it.
+(function protectImages() {
+  const isPicture = (el) => el instanceof Element && el.closest('img, picture');
+  document.addEventListener('contextmenu', (e) => { if (isPicture(e.target)) e.preventDefault(); });
+  document.addEventListener('dragstart', (e) => { if (isPicture(e.target)) e.preventDefault(); });
+  document.querySelectorAll('img').forEach((img) => { img.draggable = false; });
+})();
+
 // --- Service worker registration -------------------------
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

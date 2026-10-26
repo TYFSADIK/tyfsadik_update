@@ -25,7 +25,15 @@ The design rule throughout: the drone cues, a human confirms. Nothing beyond
 
 ## Proof of Build
 
-The rig on my bench: the X500-class quadcopter on a workbench stand with the gimbal camera and Pi 5 companion computer fitted, next to the laptop running the thermal SAR live feed, detected persons highlighted, and the search map with the planned flight path.
+What each part of the photo does:
+
+- X500-class quadcopter: the airframe, with a Pixhawk-class flight controller and GPS.
+
+- Gimbal camera: keeps the camera steady and pointed at the ground while the drone moves.
+
+- Pi 5 companion computer: runs person detection on the video on board, so the drone does not depend on a radio link to spot people.
+
+- Laptop: shows the thermal live feed with detected people highlighted, and the search map with the planned flight path.
 
 ## Bill of Materials
 

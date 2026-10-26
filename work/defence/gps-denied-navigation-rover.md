@@ -28,7 +28,17 @@ The build pattern is not mine. Published research (including work on arXiv) show
 
 ## Proof of Build
 
-The rover on my bench: 4WD chassis with the LiDAR puck and Pi Camera Module 3 mounted around the Raspberry Pi 5, next to the laptop running ROS 2 RViz with the fused map, planned path, and live battery and IMU telemetry.
+What each part of the photo does:
+
+- 4WD skid-steer chassis: the wheeled base. Its wheel encoders give odometry, the starting point for knowing where it is without GPS.
+
+- LiDAR puck: scans the room. Matching scans corrects the drift that builds up from the wheels and the IMU.
+
+- Pi Camera Module 3: visual verification, so a run can be checked against what the robot actually saw.
+
+- Raspberry Pi 5: runs the ROS 2 navigation stack.
+
+- Laptop with RViz: shows the fused map, the planned path, and live battery and IMU telemetry.
 
 ## Bill of Materials
 

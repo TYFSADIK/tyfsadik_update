@@ -14,7 +14,15 @@ The sandbox itself rewards honesty. Teams are encouraged to push a system to fai
 
 The work is software and simulation first, which fits the southern Ontario winter calendar: this is one of the builds scheduled for the October to December window, before any outdoor drone work resumes in spring. It follows the shared rules for all six defence builds on this site: defensive only, synthetic data where anything mimics protected material, testing only my own gear with permission, and one repo with README, docs, sim, test, data, results, LICENSE, SBOM and signed releases.
 
-## Concept Illustrations
+## Gallery
+
+What each part of the photo does:
+
+- Sensor nodes: each detection sensor reports what it saw and when, so every claim can be scored.
+
+- Scoring dashboard: plots detection probability against range, the honest way to compare sensors.
+
+- Coverage map: shows the planned node placement and where the gaps in coverage are.
 
 ## Target Spec: What the IDEaS Sandbox Asks
 

@@ -324,7 +324,7 @@ Self-hosting moves the trust boundary onto your own machine, but an AI workspace
 
 Persistence is deliberately simple: better-sqlite3 keeps the whole workspace in a single
         SQLite file with no database server. At the level this page documents, the store revolves
-        around four entities — chats and their messages, plus the notes and memories that
+        around four entities: chats and their messages, plus the notes and memories that
         give the assistant continuity across sessions. The diagram below is an illustrative
         sketch of those relationships, not a verified schema dump; the authoritative schema lives
         in the repository.

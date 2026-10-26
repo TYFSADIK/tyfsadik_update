@@ -28,12 +28,22 @@ The sensing path emits nothing. It listens to the water and listens to the 162 M
 
 ## Proof of Build
 
-The rig on my bench: the hydrophone submerged in a glass test tank, the USB audio interface and Pi 5 with the RTL-SDR dongle beside it, and the laptop running live spectrograms and classification histograms.
-
 Nothing here is simulated. The hydrophone sits in the test tank so the full capture chain
         (sensor, interface, Pi, classifier) can be exercised with controlled sounds before anything goes
         near real water. The laptop shows the two views I watch while testing: the live spectrogram of
         what the hydrophone hears, and the running histogram of classifier outputs.
+
+What each part of the photo does:
+
+- Hydrophone in the glass tank: the underwater microphone. The tank lets me play known sounds into it and check the whole chain before deployment.
+
+- USB audio interface: powers the hydrophone and turns its signal into clean digital audio for the Pi.
+
+- Raspberry Pi 5: records the audio, computes the spectrogram, and runs the vessel classifier.
+
+- RTL-SDR dongle: receives AIS ship broadcasts, the ground truth that tells me which vessel was really making the sound.
+
+- Laptop: shows the live spectrogram and the histogram of classifier outputs while I test.
 
 ## Bill of Materials
 

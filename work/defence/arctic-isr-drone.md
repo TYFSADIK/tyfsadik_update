@@ -32,10 +32,7 @@ The build is defensive only: detect, survey, and report. Nothing here jams, spoo
         inside Transport Canada rules. Numbers marked (est.) are calculated from cited specs, and
         items marked (verify) were not confirmed against a primary source.
 
-## Concept Illustrations
-
-Concept illustrations made while scoping the build; they show the design intent,
-        not finished hardware.
+## Gallery
 
 ## Target Spec
 

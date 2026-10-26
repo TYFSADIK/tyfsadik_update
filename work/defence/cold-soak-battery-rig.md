@@ -28,7 +28,17 @@ The deliverable is deliberately boring and valuable: a clean, public dataset of 
 
 ## Proof of Build
 
-The rig on my bench: the insulated battery bay with its Kapton heater pad mounted on the quadcopter frame, the Fluke multimeter and Pico datalogger on the measurement side, the hand-drawn heating-system schematic, the lab freezer labelled for its -20 °C setpoint, and a laptop graphing a voltage-sag trace from a live run.
+What each part of the photo does:
+
+- Insulated battery bay: holds the pack on the quadcopter frame, with a Kapton heater pad to keep the cells warm before and during flight.
+
+- Fluke multimeter and Pico datalogger: the measurement side: voltage, current and temperature are logged through the whole run.
+
+- Lab freezer at -20 °C: cold-soaks the battery to Canadian winter temperatures before each test.
+
+- Laptop graph: plots voltage sag under load, the number that shows whether a cold battery can still fly the drone safely.
+
+- Hand-drawn schematic: the heating-system wiring, which I worked out on paper before building it.
 
 ## Bill of Materials
 
