@@ -34,6 +34,7 @@ PAGES = [
     "work/infrastructure/kubernetes-infrastructure.html",
     "work/infrastructure/proxmox-zero-trust.html",
     "work/infrastructure/chakor.html",
+    "work/infrastructure/daru.html",
     "work/infrastructure/homelab-server-room.html",
 ] + [
     f"work/defence/{p}" for p in [
@@ -137,6 +138,7 @@ def main():
            "work/infrastructure/kubernetes-infrastructure.html",
            "work/infrastructure/proxmox-zero-trust.html",
            "work/infrastructure/chakor.html",
+           "work/infrastructure/daru.html",
            "work/infrastructure/homelab-server-room.html",
            "docs/asset-register.html"]
     parts = ["# TYFSADIK full-text mirror",
