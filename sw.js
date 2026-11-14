@@ -16,7 +16,7 @@ const PRECACHE = [
   '/css/style.css',
   '/js/main.js',
   '/offline.html',
-  '/images/banner-mine.jpg',
+  '/images/banner-space.jpg',
   '/fonts/DepartureMono-Regular.woff',
 ];
 
