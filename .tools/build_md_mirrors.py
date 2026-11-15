@@ -53,6 +53,9 @@ PAGES = [
         "secure-fleet-autonomy.html", "sovereign-ai-enclave.html",
     ]
 ]
+# Every project page gets a mirror too (AI assistants and agents read these).
+PAGES += sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "work").glob("*/*.html")
+                if p.relative_to(ROOT).as_posix() not in PAGES)
 
 
 def text(el: str) -> str:
