@@ -179,6 +179,16 @@ Layout stability with placeholder content. Setting image aspect ratios before fi
 
 Attributes over classes for behaviour. Driving filters from data-* attributes kept a clean separation: classes describe appearance, attributes describe data. That contract survives redesigns that a class-based approach would break.
 
+## Live Site, Hosting and Email
+
+The business now trades as Hakimi Fresh Produce, a wholesale fruit and vegetable supplier in Toronto, and the site is live at [hakimiproduce.com](https://hakimiproduce.com/). It is built from the public [HakimiFruit](https://github.com/TYFSADIK/HakimiFruit) repository (24 commits, starting 2025-10-25), with sections for products, weekly fresh boxes, bundles, a gallery, reviews and contact.
+
+The site is static and hosted on GitHub Pages with the client's custom domain. Cloudflare sits in front as the DNS provider and proxy (TLS, caching and DDoS protection on the free plan), and GitHub's Fastly CDN serves the files from its Toronto edge. Every push to the main branch redeploys the site through a GitHub Actions workflow.
+
+Incoming mail for the domain is handled by Cloudflare Email Routing (MX records on route1-3.mx.cloudflare.net, with a matching SPF record), which forwards messages sent to the business address into a real inbox.
+
+The repository also contains an admin/ folder with a Decap CMS configuration for editing products (name, category, price, description and image) through a web interface. It is not connected yet: its backend still points at a placeholder repository.
+
 ## What Is Next
 
 - Live product search alongside the category filters

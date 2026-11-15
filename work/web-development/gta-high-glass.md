@@ -168,6 +168,14 @@ The iOS Safari fixed-background bug. Parallax that looks perfect on desktop can 
 
 Discovery before code. The structured brief and competitor analysis surfaced requirements that would otherwise have arrived as rework halfway through the build. An hour of analysis saved several hours of refactoring.
 
+## Live Site, Hosting and Email
+
+The site is live at [gtahighglass.com](https://gtahighglass.com/), built from the [GTA_High_glass](https://github.com/TYFSADIK/GTA_High_glass) repository (13 commits, starting 2025-10-06).
+
+The site is static and hosted on GitHub Pages with the client's custom domain. Cloudflare sits in front as the DNS provider and proxy (TLS, caching and DDoS protection on the free plan), and GitHub's Fastly CDN serves the files from its Toronto edge. Every push to the main branch redeploys the site through a GitHub Actions workflow.
+
+Mail for the domain is set up in DNS. Incoming mail is handled by Cloudflare Email Routing (MX records on route1-3.mx.cloudflare.net) and forwarded to a real inbox. Outgoing mail goes through the Brevo SMTP relay and is signed with DKIM (the brevo1 and brevo2 keys), with an SPF record and a DMARC policy that sends aggregate reports, so messages from the domain authenticate and land in inboxes instead of spam.
+
 ## What Is Next
 
 - Online quote calculator: window dimensions in, price estimate out, before the form submission
