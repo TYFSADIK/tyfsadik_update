@@ -1,12 +1,12 @@
 # Multi-Domain Common Operating Picture
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 28 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · Status: Building · 28 min read
 
 The fusion layer that ties every sensor build together: nodes publish signed detections over MQTT, buffer through dead links, a Kalman-filter tracker fuses air, water, and ground tracks, and a human makes every decision from one dashboard.
 
 ## Overview
 
-Every sensor build in my [defence hardware program](defence-hardware-program.html)
+Every sensor build in my [defence hardware program](defence-hardware-program)
         ends at the same question: now that a node sees something, where does that knowledge go?
         This project is the answer. It is the common operating picture (COP) that
         sits above the passive radar node, the hydrophone monitor, the seismic perimeter mesh, and
@@ -202,7 +202,7 @@ makestep 1.0 3
 
 How I verified: ppstest /dev/pps0 shows a clean once-per-second assert, and chronyc sources -v shows the PPS refclock selected (*) with NMEA locked but not selected. ESP32 mesh nodes without their own GNSS inherit time from their gateway over LoRa and stamp detections with both their local tick and the gateway-corrected estimate, so the tracker can weight them accordingly. What goes wrong: chrony locking onto NMEA instead of PPS, see the troubleshooting section, because it happened to me.
 
-This is the DDIL pattern from my [DDIL-Proof DevOps](ddil-proof-devops.html) work applied to physical nodes. Every node keeps a local outbound queue: a SQLite database in WAL mode on the Pi-class nodes, a ring buffer in flash on the ESP32s. A detection is written to the outbox first, then published with MQTT QoS 1, and only marked acknowledged when the PUBACK arrives. When the link drops, rows pile up; when it returns, the node replays the backlog in ID order, and the broker sees late data clearly marked by its original signed timestamps.
+This is the DDIL pattern from my [DDIL-Proof DevOps](ddil-proof-devops) work applied to physical nodes. Every node keeps a local outbound queue: a SQLite database in WAL mode on the Pi-class nodes, a ring buffer in flash on the ESP32s. A detection is written to the outbox first, then published with MQTT QoS 1, and only marked acknowledged when the PUBACK arrives. When the link drops, rows pile up; when it returns, the node replays the backlog in ID order, and the broker sees late data clearly marked by its original signed timestamps.
 
 SQL, the outbox schema on every Pi-class node
 
@@ -312,7 +312,7 @@ spec:
 
 How I verified: with a node firing test detections, I watch the track appear on the map within a couple of seconds and the Grafana last-seen panel tick with it; kubectl rollout status deploy/cop-dashboard after each image bump keeps the deploy honest. What goes wrong: a reconnecting node replaying a two-minute backlog can flood the websocket and freeze the map, fixed by server-side batching of replay bursts, the hard way.
 
-Every alert carries its full evidence chain: the raw detection payloads it was fused from, the node signatures that authenticate them, the tracker version and parameters that produced it, and the operator's disposition. All of it is appended to the tamper-evident log from my [Decision Black Box](decision-black-box.html) build, a hash-chained, append-only file where each line embeds the SHA-256 of the previous line, so any silent edit, deletion, or reorder breaks the chain and is detectable on audit.
+Every alert carries its full evidence chain: the raw detection payloads it was fused from, the node signatures that authenticate them, the tracker version and parameters that produced it, and the operator's disposition. All of it is appended to the tamper-evident log from my [Decision Black Box](decision-black-box) build, a hash-chained, append-only file where each line embeds the SHA-256 of the previous line, so any silent edit, deletion, or reorder breaks the chain and is detectable on audit.
 
 PYTHON, hash-chained append (the whole trick is prev_hash)
 

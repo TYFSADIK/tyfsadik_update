@@ -1,6 +1,6 @@
 # Secure Autonomy for the Robot and Drone Fleet
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-24 · Status: Planned, build guide published · 17 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-24 · Status: Planned, build guide published · 17 min read
 
 A STRIDE threat model and tested hardening controls for a robot and drone fleet: MAVLink 2 signing, Ed25519 signed firmware, SROS2 least-privilege enclaves, WireGuard link encryption, a pymavlink IDS, and signed A/B updates, attacked in the lab first.
 

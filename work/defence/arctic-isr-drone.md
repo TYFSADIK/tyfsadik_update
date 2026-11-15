@@ -1,6 +1,6 @@
 # Arctic ISR Drone (Cold, Glove-Operable, Thermal, TAK)
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-24 · Status: Planned, build guide published · 13 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-24 · Status: Planned, build guide published · 13 min read
 
 A hobby-scale build against the MINERVA Arctic UAS spec: heated battery bay with cold data, thermal person detection measured in pixels-on-target, detections georeferenced into TAK, and a glove-operable control kit.
 

@@ -1,6 +1,6 @@
 # Counter-Drone Sensor Fusion Simulator
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 15 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · Status: Building · 15 min read
 
 A simulation-only, strictly defensive project: synthetic radar, RF, acoustic, and camera tracks (ArduPilot SITL provides the drone flight dynamics) are fused with Kalman filters, every detection gets a confidence score, and alerts are triaged on a dashboard where a human always makes the final call.
 

@@ -1,6 +1,6 @@
 # Sovereign AI and Data Enclave
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-24 · Status: Planned, build guide published · 12 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-24 · Status: Planned, build guide published · 12 min read
 
 A security-controlled private AI enclave built on the Chakor stack: Keycloak identity with synthetic clearance labels, OPA and OpenTDF policy enforcement, HSM-backed OpenBao keys, pgvector retrieval filtered by authorization before similarity search, and a tamper-evident audit log.
 
@@ -19,7 +19,7 @@ DND's AI strategy stresses well-governed data, secure cloud, and data-centric se
         to that debate: a small enclave where every key, byte, process, and log lives on hardware I
         control, with a published sovereignty statement showing who can reach what.
 
-The base is my existing private-AI stack, [Chakor](../../work/infrastructure/chakor.html).
+The base is my existing private-AI stack, [Chakor](../../work/infrastructure/chakor).
         Chakor already runs local models with no telemetry on homelab hardware; this build adds the
         controls and the proof on top: identity with synthetic clearance attributes, policy that
         travels with the data, keys sealed in hardware, retrieval that filters by authorization

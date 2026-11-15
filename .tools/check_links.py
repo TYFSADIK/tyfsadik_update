@@ -31,7 +31,7 @@ class LinkParser(HTMLParser):
 
 errors = []
 nav_problems = []
-EXPECT_NAV = {'about.html', 'work.html', 'blog.html', 'resume.html', 'contact.html'}
+EXPECT_NAV = {'about', 'work', 'blog', 'resume', 'contact'}  # extensionless URLs (see pretty_urls.py)
 count = 0
 for f in sorted(ROOT.rglob('*.html')):
     if '.tools' in f.parts:
@@ -41,7 +41,7 @@ for f in sorted(ROOT.rglob('*.html')):
     text = f.read_text(encoding='utf-8')
     p.feed(text)
     # nav check (404.html and offline.html intentionally have no standard nav)
-    tails = {h.split('/')[-1] for h in p.nav_links}
+    tails = {h.split('/')[-1].split('#')[0].removesuffix('.html') for h in p.nav_links}
     if tails != EXPECT_NAV and f.name not in ('404.html', 'offline.html'):
         nav_problems.append((f.relative_to(ROOT), sorted(tails)))
     for tag, attr, ref in p.refs:
@@ -57,6 +57,10 @@ for f in sorted(ROOT.rglob('*.html')):
             target = (f.parent / path).resolve()
         if not target.exists() and path.endswith('/'):
             target = target / 'index.html'
+        if not target.exists() and not target.suffix:
+            target = target.with_name(target.name + '.html')  # GitHub Pages serves foo.html at /foo
+        if path in ('', './') or path.endswith('/'):
+            target = (target if target.suffix == '.html' else target / 'index.html')
         if not target.exists():
             errors.append(f'{f.relative_to(ROOT)}: {tag}[{attr}] -> {ref} MISSING')
 

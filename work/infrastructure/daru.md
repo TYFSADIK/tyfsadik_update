@@ -1,6 +1,6 @@
 # Daru: Your Logs, Your Hardware, Your SIEM
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-11-13 · 15 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-11-13 · 15 min read
 
 An open-source, self-hosted log analytics and SIEM platform in a single Go binary plus ClickHouse. Search, dashboards, alerts, incident triage, syslog, an append-only audit trail, and live packet capture, with no API keys, no cloud, and no per-GB licensing.
 

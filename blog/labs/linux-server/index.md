@@ -1,6 +1,6 @@
 # Linux Server Administration
 
-Written by [Taki Sadik](../../../about.html) · Last updated 2026-10-22 · 1 min read
+Written by [Taki Sadik](../../../about) · Last updated 2026-10-22 · 1 min read
 
 12 hands-on labs covering Linux server administration end to end: provisioning VMs, post-install hardening, disk and LVM storage, systemd services, package management, backups, log management, and task scheduling. Each lab includes expected outputs, troubleshooting tables, and practice challenges.
 

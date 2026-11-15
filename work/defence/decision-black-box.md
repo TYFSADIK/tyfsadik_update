@@ -1,6 +1,6 @@
 # Decision Black Box
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 14 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · Status: Building · 14 min read
 
 A tamper-evident audit layer for human-in-the-loop decisions in a simulated airspace-deconfliction scenario: a hash-chained, signed, append-only log in the style of certificate transparency, a replay tool that reconstructs any decision state, and OPA policy-as-code checks on every entry.
 

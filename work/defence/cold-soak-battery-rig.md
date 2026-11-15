@@ -1,6 +1,6 @@
 # Cold-Soak Battery Characterization Rig
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 32 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · Status: Building · 32 min read
 
 A heated, instrumented drone battery bay soaked in a lab freezer and in real Canadian winter, logging runtime, voltage sag, and failure modes against temperature, and publishing it all as a reproducible dataset.
 

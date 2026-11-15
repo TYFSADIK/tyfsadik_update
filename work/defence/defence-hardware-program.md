@@ -1,6 +1,6 @@
 # Canadian Defence Hardware Program
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · 34 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · 34 min read
 
 Eleven hands-on hardware builds across sky, water, and ground, each one mapped to a stated Canadian Armed Forces requirement, with full bills of materials, prices, step-by-step build guides, and bench photos of the real rigs.
 
@@ -29,13 +29,13 @@ The DDI, launched July 23, 2026, names its first priority areas plainly: low-cos
         drones, and ground robots for resupply, casualty evacuation, and terrain too hazardous for
         personnel. Read as a spec, that is three requirements: cheap enough to be attritable, useful
         sensors on board, and autonomy that keeps working when the operator link does not. The
-        [thermal SAR drone](thermal-sar-drone.html) answers the ISR line, an X500-class
+        [thermal SAR drone](thermal-sar-drone) answers the ISR line, an X500-class
         airframe with edge detection so the platform is useful even with a degraded downlink. The
-        [GPS-denied rover](gps-denied-navigation-rover.html) and
-        [convoy robots](convoy-robots-degraded-mesh.html) answer the ground-robot line,
+        [GPS-denied rover](gps-denied-navigation-rover) and
+        [convoy robots](convoy-robots-degraded-mesh) answer the ground-robot line,
         with the emphasis on continuing the mission through link loss rather than stopping and
         waiting. The DDI also talks about supply-chain integrity for uncrewed systems, which is the
-        requirement the [secure fleet updates](secure-fleet-updates.html) build takes on
+        requirement the [secure fleet updates](secure-fleet-updates) build takes on
         directly: secure boot, TPM, signed OTA images, and automatic rollback.
 
 ### Requirement Source 2: Army MINERVA Challenges
@@ -46,9 +46,9 @@ The MINERVA challenge text is unusually candid: the Army says it has bought fore
         conditions. The Arctic drone call closed September 24, 2026, and the full text reads like an
         evaluator's checklist, endurance in the cold, sensors that work in snow and low light,
         operation alongside Canadian Rangers. Two of my builds map straight onto it: the
-        [cold-soak characterization rig](cold-soak-battery-rig.html) attacks the stated
+        [cold-soak characterization rig](cold-soak-battery-rig) attacks the stated
         cold-weather pain point head-on by publishing runtime, voltage sag, and failure-mode data
-        against temperature, and the [thermal SAR drone](thermal-sar-drone.html) matches
+        against temperature, and the [thermal SAR drone](thermal-sar-drone) matches
         the Arctic-sovereignty and SAR-with-Rangers requirement with a thermal camera and on-board
         person detection. The supply-chain complaint is covered by the secure-updates build above.
 
@@ -58,11 +58,11 @@ DRDC's field-trial pattern, exercised on events like Operation NANOOK, keeps ret
         the same four themes: GPS-denied navigation, convoying, cold-weather performance, and
         resilient operation when communications are degraded. These are trial scenarios, so my
         builds mirror them as test protocols rather than as products: the
-        [GPS-denied rover](gps-denied-navigation-rover.html) cuts GNSS deliberately and
+        [GPS-denied rover](gps-denied-navigation-rover) cuts GNSS deliberately and
         measures EKF drift against a recorded reference track; the
-        [convoy robots](convoy-robots-degraded-mesh.html) hold formation through induced
+        [convoy robots](convoy-robots-degraded-mesh) hold formation through induced
         link drops on a LoRa/Wi-Fi mesh; and the [cold-soak
-        rig](cold-soak-battery-rig.html) reproduces the cold-weather axis in a freezer and in a real Canadian winter. The
+        rig](cold-soak-battery-rig) reproduces the cold-weather axis in a freezer and in a real Canadian winter. The
         point is not to replicate NANOOK, it is to have bench-scale evidence on the same variables
         the trials measure.
 
@@ -71,10 +71,10 @@ DRDC's field-trial pattern, exercised on events like Operation NANOOK, keeps ret
 The NRC/DRDC counter-drone direction asks for a detection system that picks up the signature
         of a drone's rotating propellers without emitting any radio signal that could reveal its
         own location. That constraint, receive-only, is the interesting part, and it shapes
-        two builds. The [passive acoustic drone detector](acoustic-drone-detector.html)
+        two builds. The [passive acoustic drone detector](acoustic-drone-detector)
         listens for rotor harmonics with a MEMS microphone array, rejects birds and aircraft, and
         estimates direction of arrival by beamforming. Its RF sibling, the
-        [passive radar node](sky-passive-radar-node.html), detects aircraft by listening
+        [passive radar node](sky-passive-radar-node), detects aircraft by listening
         to reflections of someone else's broadcast transmitters, again emitting nothing. Both feed
         detections into the common operating picture, because a single passive sensor is a hint and
         two agreeing sensors are a track.
@@ -83,11 +83,11 @@ The NRC/DRDC counter-drone direction asks for a detection system that picks up t
 
 The Army is studying how to manage airspace shared by many uncrewed aircraft at once, the
         problem that appears the moment cheap drones stop being rare. The
-        [mini airspace deconfliction manager](airspace-deconfliction-manager.html)
+        [mini airspace deconfliction manager](airspace-deconfliction-manager)
         builds this at simulation scale: ESP32 beacons plus ArduPilot SITL simulated drones, dynamic
         geofences, conflict alerts, and a human-in-the-loop override. It also doubles as the traffic
         layer for the [multi-domain common
-        operating picture](multi-domain-common-operating-picture.html), since a fused air picture is exactly what a deconfliction cell would
+        operating picture](multi-domain-common-operating-picture), since a fused air picture is exactly what a deconfliction cell would
         need to look at.
 
 ## What Canada Is Building (and Where I Fit)
@@ -296,9 +296,9 @@ Phase notes: the KrakenSDR was the anchor purchase, it is the only
         Blog V4 for ADS-B truth arrived first and was logging aircraft weeks before the KrakenSDR
         shipped, that ordering was deliberate, since a passive radar without independent ground
         truth is just a screensaver. This phase is consumed by the
-        [sky passive radar node](sky-passive-radar-node.html) build page, and its
+        [sky passive radar node](sky-passive-radar-node) build page, and its
         detections feed the [multi-domain common
-        operating picture](multi-domain-common-operating-picture.html).
+        operating picture](multi-domain-common-operating-picture).
 
 ### Phase 2, Water Node: Hydrophone + AIS (~US$700-1,000)
 
@@ -321,7 +321,7 @@ Phase notes: the one real fork in this phase is the hydrophone connector.
         receiver from Phase 1, which keeps spares interchangeable. The Pi 5 and RTL-SDR arrived
         first; the hydrophone and solar gear came later. This phase is consumed by the
         [water passive acoustic vessel
-        monitor](water-passive-acoustic-vessel-monitor.html) build page.
+        monitor](water-passive-acoustic-vessel-monitor) build page.
 
 ### Phase 3, Ground Mesh & Deconfliction Beacons (~US$500-750)
 
@@ -344,8 +344,8 @@ Phase notes: the 915 MHz boards are non-negotiable, that is the North
         of each node. The three bare ESP32 beacons are deliberately the cheapest boards in the whole
         program; they only need to blink a position report for the deconfliction simulation. The
         node boards arrived first, sensors a week later. This phase is consumed by the
-        [ground seismic perimeter mesh](ground-seismic-perimeter-mesh.html) and the
-        [mini airspace deconfliction manager](airspace-deconfliction-manager.html).
+        [ground seismic perimeter mesh](ground-seismic-perimeter-mesh) and the
+        [mini airspace deconfliction manager](airspace-deconfliction-manager).
 
 ### Phase 4, Rovers: GPS-Denied Navigation & Convoy (~US$800-1,300)
 
@@ -371,8 +371,8 @@ Phase notes: the chassis choice was driven by one requirement, encoders on
         before duplicating the cost. The 8 GB Pi 5s were picked over 4 GB because SLAM and
         visualization on the robot eat RAM, and the physical e-stop switch is in the BOM because a
         software stop is not a stop. This phase is consumed by the
-        [GPS-denied navigation rover](gps-denied-navigation-rover.html) and the
-        [convoy robots on a degraded mesh](convoy-robots-degraded-mesh.html).
+        [GPS-denied navigation rover](gps-denied-navigation-rover) and the
+        [convoy robots on a degraded mesh](convoy-robots-degraded-mesh).
 
 ### Phase 5, Drone: Thermal SAR + Acoustic Detector (~US$1,300-1,950)
 
@@ -399,8 +399,8 @@ Phase notes: the X500-class kit was chosen because it is the airframe the
         else on a flying platform. Four LiPo packs is the minimum for a useful field day, one in the
         air, one on the charger, one cooling, one spare. The ELRS radio arrived first (it also works
         with the simulator for stick time), the airframe second, and the thermal camera last. This
-        phase is consumed by the [thermal SAR drone](thermal-sar-drone.html) and the
-        [passive acoustic drone detector](acoustic-drone-detector.html), the ReSpeaker
+        phase is consumed by the [thermal SAR drone](thermal-sar-drone) and the
+        [passive acoustic drone detector](acoustic-drone-detector), the ReSpeaker
         array lives in this phase because it shares the drone's bench time, though the detector
         itself is a ground node.
 
@@ -423,8 +423,8 @@ Phase notes: this is the cheapest phase and the one that makes the rest of
         key with no backup is a single point of failure that bricks your own fleet, so one lives
         on the bench and one lives in a drawer off-site. The TPM board was the last item to arrive
         and the only one that needed a cross-border order. This phase is consumed by the
-        [cold-soak characterization rig](cold-soak-battery-rig.html) and the
-        [secure robot-fleet updates](secure-fleet-updates.html) build pages.
+        [cold-soak characterization rig](cold-soak-battery-rig) and the
+        [secure robot-fleet updates](secure-fleet-updates) build pages.
 
 ## Workshop Setup and Safety
 

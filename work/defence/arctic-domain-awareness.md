@@ -1,6 +1,6 @@
 # Arctic Domain Awareness Digital Twin
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 11 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · Status: Building · 11 min read
 
 Streaming pipeline that fuses open ADS-B aircraft data, public AIS ship tracking, and Sentinel-1 satellite radar imagery over Canada's North, and flags anomalies such as ships that go dark or aircraft that deviate from known routes.
 

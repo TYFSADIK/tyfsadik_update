@@ -1,6 +1,6 @@
 # Secure Robot-Fleet Updates
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 29 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · Status: Building · 29 min read
 
 Every node in my fleet boots only signed code, accepts only updates signed by an offline key, and rolls a bad update back automatically, then I prove it in a freezer, because that is where Canadian robots actually work.
 

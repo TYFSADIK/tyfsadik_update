@@ -1,6 +1,6 @@
 # DDIL-Proof DevOps
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 14 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · Status: Building · 14 min read
 
 A CI/CD and telemetry system that keeps working when the network does not: store-and-forward queues, delta updates, cosign-signed artifacts, and edge nodes running k3s, with resilience proven by simulating link loss through chaos engineering.
 

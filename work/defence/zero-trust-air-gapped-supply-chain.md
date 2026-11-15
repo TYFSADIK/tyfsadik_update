@@ -1,6 +1,6 @@
 # Zero-Trust Air-Gapped Software Supply Chain
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 15 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · Status: Building · 15 min read
 
 A pipeline that builds container images reproducibly, generates SBOMs with syft, signs everything with sigstore/cosign, then transfers artifacts across a simulated one-way data diode into an offline Harbor registry, with controls mapped to Canadian Centre for Cyber Security guidance.
 

@@ -1,6 +1,6 @@
 # Ground: Seismic & Acoustic Perimeter Mesh
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 29 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · Status: Building · 29 min read
 
 Solar-powered 915 MHz LoRa mesh of ESP32 sensor nodes with ADXL355 accelerometers (and an SM-24 geophone upgrade path) that classify vehicles vs footsteps vs wind at the edge and report signed detections to a common operating picture.
 

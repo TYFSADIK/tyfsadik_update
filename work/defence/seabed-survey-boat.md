@@ -1,6 +1,6 @@
 # Autonomous Boat for Seabed Surveys and Anomaly Detection
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-24 · Status: Planned, build guide published · 17 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-24 · Status: Planned, build guide published · 17 min read
 
 A small catamaran USV running ArduPilot Rover lawnmower surveys with a Ping echosounder, producing georeferenced, gridded seabed models and an anomaly detector scored against planted targets, the survey-and-detect core of the mine-countermeasures USV solicitation at hobby scale.
 

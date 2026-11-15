@@ -1,12 +1,12 @@
 # Water: Passive Acoustic Vessel Monitor
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · 31 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · 31 min read
 
 A dock-mounted hydrophone node that listens to the water, detects and classifies passing vessels from their machinery and propeller signatures, and uses an RTL-SDR AIS receiver as ground truth, solar powered, receive-only on the sensing side, and built to buffer through dead links.
 
 ## Overview
 
-This is the water node of my [defence hardware program](defence-hardware-program.html):
+This is the water node of my [defence hardware program](defence-hardware-program):
         a hydrophone hanging off a dock (or, later, a mooring), a Raspberry Pi 5 that records and
         classifies what it hears, and a cheap AIS receiver that tells me what actually went past so the
         classifier can be trained and scored against reality. Every vessel passage becomes a labelled

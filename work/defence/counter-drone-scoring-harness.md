@@ -1,6 +1,6 @@
 # Counter-Drone Test-and-Scoring Harness with Sensor-Fleet Operations
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-24 · Status: Planned, build guide published · 13 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-24 · Status: Planned, build guide published · 13 min read
 
 A test-and-scoring harness for counter-drone sensors: SAPIENT (BSI Flex 335) interfaces on the nodes, a TAK bridge, scenario cards mirroring the IDEaS sandbox, Stone Soup metrics, a Monte Carlo coverage planner, and fleet operations with signed OTA and health monitoring.
 
@@ -10,7 +10,7 @@ This is a published build guide for a counter-drone test-and-scoring harness: so
 
 Status: Planned. Nothing on this page is built, tested, measured, or flown yet. The guide is written against real Canadian government requirements: the IDEaS counter-drone sandbox guide, which asks for systems that integrate into military C2 and names networks of low-cost sensors as an emphasis area, and the CAF national counter-drone tender, which asked a contractor to design, install, integrate, test, validate, maintain, sustain and modernize the capability as a service (verify dates/scope). This build puts DevOps and test discipline into that gap: the boring, decisive work of knowing what a sensor network actually does and proving it with numbers.
 
-The sandbox itself rewards honesty. Teams are encouraged to push a system to failure so its limits are understood, and plain radar, acoustic, RF or optical detection is less likely to be selected unless it is clearly improved. A scoring harness is exactly the tool for that: it produces the detection probability vs range curves, false-alarm rates and failure envelopes that make a submission credible, and it stays useful for any sensor build, including the [counter-drone sensor fusion](counter-drone-sensor-fusion.html) build on this site.
+The sandbox itself rewards honesty. Teams are encouraged to push a system to failure so its limits are understood, and plain radar, acoustic, RF or optical detection is less likely to be selected unless it is clearly improved. A scoring harness is exactly the tool for that: it produces the detection probability vs range curves, false-alarm rates and failure envelopes that make a submission credible, and it stays useful for any sensor build, including the [counter-drone sensor fusion](counter-drone-sensor-fusion) build on this site.
 
 The work is software and simulation first, which fits the southern Ontario winter calendar: this is one of the builds scheduled for the October to December window, before any outdoor drone work resumes in spring. It follows the shared rules for all six defence builds on this site: defensive only, synthetic data where anything mimics protected material, testing only my own gear with permission, and one repo with README, docs, sim, test, data, results, LICENSE, SBOM and signed releases.
 

@@ -1,6 +1,6 @@
 # GPS-Denied Navigation Rover
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 33 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · Status: Building · 33 min read
 
 A ROS 2 rover that keeps navigating after GNSS is cut: wheel odometry, a BNO085 IMU, and 2D LiDAR fused with an Extended Kalman Filter, with position drift measured against a u-blox reference track (meter-class GNSS, not survey grade).
 

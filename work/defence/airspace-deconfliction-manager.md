@@ -1,6 +1,6 @@
 # Mini Airspace Deconfliction Manager
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 26 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · Status: Building · 26 min read
 
 A small-scale UAS airspace manager on my bench: ESP32 tracker beacons plus ArduPilot SITL simulated drones, dynamic geofences, predicted-conflict alerts, and a human-in-the-loop override for every resolution.
 

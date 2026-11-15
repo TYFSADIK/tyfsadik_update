@@ -1,6 +1,6 @@
 # Homelab Server Room
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · 7 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · 7 min read
 
 The cozy basement room where the entire self-hosted stack physically lives: racked hardware, managed switching, and the cable plant behind the 7-node cluster
 
@@ -37,7 +37,7 @@ The engineering problem a server room solves is not compute, it is order: one kn
 
 - Budget constraint: consumer and repurposed hardware only; no rented rack space, no cloud spend.
 
-Measured acceptance criteria (verified against the running lab): all 7 hosts boot to Proxmox and join their clusters; wired nodes hold stable link at negotiated speed; the wireless backhaul keeps laptop nodes in Ready state after the tuning documented on the [Kubernetes page](kubernetes-infrastructure.html).
+Measured acceptance criteria (verified against the running lab): all 7 hosts boot to Proxmox and join their clusters; wired nodes hold stable link at negotiated speed; the wireless backhaul keeps laptop nodes in Ready state after the tuning documented on the [Kubernetes page](kubernetes-infrastructure).
 
 ## Physical Architecture
 
@@ -91,7 +91,7 @@ Monitoring stationDashboards and logs
 ISP Uplink
 
 This is the physical view of the same design drawn logically on the
-        [Kubernetes Infrastructure page](kubernetes-infrastructure.html). Where that page
+        [Kubernetes Infrastructure page](kubernetes-infrastructure). Where that page
         shows VMs, pods, and networks, this one shows racks, ports, and cables.
 
 ## Component Reference
@@ -116,7 +116,7 @@ Power: hosts are distributed across standard household outlets with
 Cooling: the basement location does the heavy lifting: ambient temperatures
         stay low year-round in a Canadian basement, which is also why this room doubles as the
         cold-end reference point for the [cold-soak
-        battery rig](../defence/cold-soak-battery-rig.html) work. No dedicated HVAC; racks are spaced for front-to-back airflow and
+        battery rig](../defence/cold-soak-battery-rig) work. No dedicated HVAC; racks are spaced for front-to-back airflow and
         nothing is stacked exhaust-to-intake.
 
 Noise: fan noise is contained by the room itself. Laptop nodes run cool and
@@ -135,7 +135,7 @@ Mapped which outlets share circuits, spread the hosts across them, and kept powe
 
 ### Network core
 
-Mounted the router, switch, and radio on the network shelf. Configured the three VLANs and trunk ports exactly as documented in the [Kubernetes build](kubernetes-infrastructure.html), then patched the desktop rack to access ports on VLAN 20.
+Mounted the router, switch, and radio on the network shelf. Configured the three VLANs and trunk ports exactly as documented in the [Kubernetes build](kubernetes-infrastructure), then patched the desktop rack to access ports on VLAN 20.
 
 ### Wireless backhaul
 

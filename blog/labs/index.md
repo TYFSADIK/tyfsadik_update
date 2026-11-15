@@ -1,6 +1,6 @@
 # Labs
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · 6 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · 6 min read
 
 116 hands-on lab writeups documenting real skills built through practice.
 

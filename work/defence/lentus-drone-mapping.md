@@ -1,6 +1,6 @@
 # Operation LENTUS-Style Disaster Response Drone Mapping
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 15 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · Status: Building · 15 min read
 
 Simulated drone flights with ArduPilot SITL and Gazebo survey a flood or wildfire scenario, an edge computer-vision pipeline detects affected areas from the simulated camera feed, and detections stream into a live situational-awareness map.
 

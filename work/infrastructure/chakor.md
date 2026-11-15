@@ -1,6 +1,6 @@
 # Chakor: Your AI, on Your Hardware
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · 18 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · 18 min read
 
 An open-source AI workspace you run yourself. Local and cloud models, web search, document chat, model compare, notes, and memory, all private on your own machine.
 

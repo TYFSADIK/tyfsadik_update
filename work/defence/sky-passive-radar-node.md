@@ -1,6 +1,6 @@
 # Sky: Passive Aerial Early-Warning Node
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · 31 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · 31 min read
 
 A receive-only passive radar node built on a KrakenSDR five-channel coherent SDR: it listens to reflections of existing FM and UHF TV broadcasts bouncing off aircraft, computes range-Doppler plots with pyAPRiL, and scores every detection against an RTL-SDR ADS-B ground-truth receiver. The radar front end is receive-only: it emits nothing of its own.
 
@@ -24,7 +24,7 @@ What you can build is the open, hobby-scale, receive-only analogue: a
         channels), then cross-correlate the two to find echoes.
 
 This is Phase 1 of my [Canadian Defence
-        Hardware Program](defence-hardware-program.html). It is the flagship sky-domain node: every detection it makes will
+        Hardware Program](defence-hardware-program). It is the flagship sky-domain node: every detection it makes will
         eventually publish over MQTT into the multi-domain common operating picture, fused with the
         water and ground nodes.
 

@@ -1,6 +1,6 @@
 # Proxmox VE Homelab: Zero-Trust Private Cloud
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · 15 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · 15 min read
 
 A 3-node Proxmox VE HA cluster with Ceph storage, VLAN segmentation, and zero-trust external access via Cloudflare Tunnel with Tailscale mesh fallback.
 

@@ -1,6 +1,6 @@
 # Thermal Search-and-Rescue Drone
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building, first results published · 26 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · Status: Building, first results published · 26 min read
 
 X500-class quadcopter with a FLIR Lepton thermal camera and a Hailo AI HAT+ running person detection at the edge, pushing georeferenced detections to a live map, the Army MINERVA Arctic ISR requirement at hobby scale.
 

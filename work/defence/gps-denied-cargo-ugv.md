@@ -1,6 +1,6 @@
 # GPS-Denied Cargo Ground Vehicle for Snow
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-24 · Status: Planned, build guide published · 13 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-24 · Status: Planned, build guide published · 13 min read
 
 A 10-30 kg payload testbed that measures navigation error, wheel slip, and energy use across sensor sets, payloads, and snow conditions, with RTK GNSS used only as ground truth, against the MINERVA cargo and surveillance UGS specs.
 

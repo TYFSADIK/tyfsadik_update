@@ -1,6 +1,6 @@
 # Convoy-Following Robots on a Degraded Mesh
 
-Written by [Taki Sadik](../../about.html) · Last updated 2026-10-22 · Status: Building · 31 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-10-22 · Status: Building · 31 min read
 
 Two rovers convoy behind a lead vehicle over a 915 MHz LoRa broadcast link with a Wi-Fi fallback, hold formation through induced link drops, and recover on reconnect, the Army resupply-convoy and DDIL communications problem, reproduced on my bench.
 
@@ -29,7 +29,7 @@ Why this specific problem: the Defence Drone Initiative (launched July 23, 2026)
         does in the gap between "link fine" and "link dead," and how gracefully it recovers.
 
 Everything here is already bought and on my bench. The chassis, compute, and drive electronics
-        are shared with my [GPS-denied navigation rover](gps-denied-navigation-rover.html),
+        are shared with my [GPS-denied navigation rover](gps-denied-navigation-rover),
         and the LoRa boards come from the same Phase 3 mesh stock as the seismic perimeter nodes, so
         this build reuses proven hardware and adds the convoy link, the follow controller, and a
         disciplined degraded-link test protocol.

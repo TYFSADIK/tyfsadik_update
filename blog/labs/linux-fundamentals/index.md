@@ -1,6 +1,6 @@
 # Linux Labs
 
-Written by [Taki Sadik](../../../about.html) · Last updated 2026-10-22 · 2 min read
+Written by [Taki Sadik](../../../about) · Last updated 2026-10-22 · 2 min read
 
 24 hands-on labs that build Linux fluency from the ground up: file and text manipulation, permissions, shell scripting, processes, users, storage, and virtualization. Each lab pairs concise steps with expected outputs, troubleshooting, and practice challenges.
 
