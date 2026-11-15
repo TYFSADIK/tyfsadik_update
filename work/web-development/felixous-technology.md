@@ -32,7 +32,7 @@ Built with Next.js (React), which serves interactive pages such as the scanners,
 
 ## Hosting and Delivery
 
-Unlike the static client sites, this one is not served from GitHub Pages: the Next.js application runs on its own server, with Cloudflare in front for DNS, TLS and protection.
+Unlike the static client sites, this one is not served from GitHub Pages: I host the Next.js application on the client's own server machine, with Cloudflare in front for DNS, TLS and protection, so the business owns its hardware and data.
 
 ## Domain Email
 
@@ -60,7 +60,7 @@ The site declares the company as a schema.org Organization and LocalBusiness, pu
 
 **Q: What is felixoustech.com built with?**
 
-A: Next.js (React), running as an application behind Cloudflare rather than as a static GitHub Pages site.
+A: Next.js (React), running on the client's own server machine behind Cloudflare rather than as a static GitHub Pages site.
 
 **Q: What can visitors do on the site?**
 
