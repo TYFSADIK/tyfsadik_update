@@ -35,7 +35,7 @@
   <meta property="og:description" content="Get flexible server storage with LVM: initialize PVs and a volume group, create and format logical volumes, mount them, and grow everything online safely.">
   <meta property="og:type" content="article">
   <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
-  <meta property="article:modified_time" content="2026-10-22T05:41:50-04:00">
+  <meta property="article:modified_time" content="2026-11-14T00:00:00-05:00">
   <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-server/lvm.html">
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="article:tag" content="server lvm tutorial">
@@ -67,14 +67,14 @@
     <link rel="help" href="../../../humans.txt">
   <link rel="security" href="../../../.well-known/security.txt">
 <link rel="manifest" href="../../../site.webmanifest">
-  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Server Storage with Logical Volume Management", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-14", "dateModified": "2026-09-29", "proficiencyLevel": "Advanced", "dependencies": "LVM2, ext4/xfs", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux server administration", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["server lvm tutorial", "pvcreate vgcreate lvcreate", "lvextend resize2fs online", "flexible storage linux", "Linux system administration", "server hardening guide", "server lvm", "server lvm tutorial lab", "server lvm tutorial guide", "server lvm tutorial tutorial", "server lvm tutorial explained", "server lvm tutorial homelab", "pvcreate vgcreate lvcreate lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "Linux"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Server Storage with Logical Volume Management", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-14", "dateModified": "2026-11-14", "proficiencyLevel": "Advanced", "dependencies": "LVM2, ext4/xfs", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux server administration", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["server lvm tutorial", "pvcreate vgcreate lvcreate", "lvextend resize2fs online", "flexible storage linux", "Linux system administration", "server hardening guide", "server lvm", "server lvm tutorial lab", "server lvm tutorial guide", "server lvm tutorial tutorial", "server lvm tutorial explained", "server lvm tutorial homelab", "pvcreate vgcreate lvcreate lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "Linux"}]}</script>
   <script type="application/ld+json">{
     "@context": "https://schema.org",
     "@type": "HowTo",
     "name": "Server LVM: Flexible Storage and Online Resize",
     "description": "Get flexible server storage with LVM: initialize PVs and a volume group, create and format logical volumes, mount them, and grow everything online safely.",
     "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
-    "dateModified": "2026-09-29",
+    "dateModified": "2026-11-14",
     "step": [
       {"@type": "HowToStep", "name": "Initialize physical volumes and a group", "url": "https://tyfsadik.org/blog/labs/linux-server/lvm.html#steps"},
       {"@type": "HowToStep", "name": "Create and format a logical volume", "url": "https://tyfsadik.org/blog/labs/linux-server/lvm.html#steps"},
@@ -115,7 +115,7 @@
 
     <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Logical Volume Management</span></nav>
     <div class="page-header"><h1>Server LVM: Flexible Storage and Online Resize</h1>
-      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-10-22">2026-10-22</time> &middot; 7 min read</p>
+      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-11-14">2026-11-14</time> &middot; 7 min read</p>
       <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Linux</span><span class="lab-time">~3 hours</span></div>
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">LVM</span><span class="tag">pvcreate</span><span class="tag">lvextend</span><span class="tag">resize2fs</span></div>
     </div>
@@ -170,33 +170,50 @@ graph LR
     </ul></div>
 
     <section id="steps"><h2>Step-by-Step Execution</h2>
+      <p class="lab-step-note lab-rerun-note">The outputs on this page come from a re-run on 14 November 2026 in an Ubuntu 24.04 container (arm64), with two 20 GB virtual disks attached as /dev/sdb and /dev/sdc. Sample files, users, and hosts were created for the run, so names, numbers, and timestamps reflect that run.</p>
       <div class="steps">
         <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Initialize physical volumes and a group</strong>
           <p>This labels the disks for LVM and pools them into one resizable group.</p>
           <div class="command-block" data-copy><div class="command"><code>sudo pvcreate /dev/sdb /dev/sdc &amp;&amp; sudo vgcreate data /dev/sdb /dev/sdc</code></div><div class="note">[ROOT REQUIRED] Creates PVs and the 'data' volume group.
-          <p class="lab-output-label">Expected output:</p><pre><code>  Physical volume "/dev/sdb" successfully created.
+          <p class="lab-output-label">Output:</p><pre><code>  Physical volume "/dev/sdb" successfully created.
   Physical volume "/dev/sdc" successfully created.
   Volume group "data" successfully created</code></pre>
           <p class="lab-step-note">What this teaches: pvcreate stamps disks as LVM-managed; vgcreate pools their extents into one resizable volume group named data. Check free space with sudo vgs before carving volumes; the default physical extent size is 4 MiB (adjust with vgcreate -s if you plan many small LVs).</p></div></div>
         </div></div>
         <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Create and format a logical volume</strong>
           <p>The LV behaves like a partition but can grow across both disks.</p>
-          <div class="command-block" data-copy><div class="command"><code>sudo lvcreate -L 10G -n srv data &amp;&amp; sudo mkfs.ext4 /dev/data/srv</code>
-          <p class="lab-output-label">Expected output:</p><pre><code>  Logical volume "srv" created.
-Creating filesystem with 2621440 4k blocks: done</code></pre>
-          <p class="lab-step-note">What this teaches: lvcreate carves a 10G logical volume from the pool; mkfs.ext4 formats the resulting /dev/data/srv device like any partition.</p></div></div>
+          <div class="command-block" data-copy><div class="command"><code>sudo lvcreate -L 10G -n srv data &amp;&amp; sudo mkfs.ext4 /dev/data/srv</code></div></div>
+          <p class="lab-output-label">Output:</p><pre><code>  Logical volume "srv" created.
+mke2fs 1.47.0 (5-Feb-2023)
+Discarding device blocks:       0/2621440               done
+Creating filesystem with 2621440 4k blocks and 655360 inodes
+Filesystem UUID: 4d3d78fd-f9e7-4c48-ab2d-c3dcccb969c0
+Superblock backups stored on blocks:
+	32768, 98304, 163840, 229376, 294912, 819200, 884736, 1605632
+
+Allocating group tables:  0/80     done
+Writing inode tables:  0/80     done
+Creating journal (16384 blocks): done
+Writing superblocks and filesystem accounting information:  0/80     done</code></pre>
+          <p class="lab-step-note">What this teaches: lvcreate carves a 10G logical volume from the pool; mkfs.ext4 formats the resulting /dev/data/srv device like any partition.</p>
         </div></div>
         <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Mount it</strong>
-          <div class="command-block" data-copy><div class="command"><code>sudo mkdir -p /srv/store &amp;&amp; sudo mount /dev/data/srv /srv/store</code>
-          <p class="lab-output-label">Expected output:</p><pre><code>(no output on success; verify with: df -h /srv/store)</code></pre>
-          <p class="lab-step-note">What this teaches: The LV is a normal block device: mkdir the mountpoint and mount it. From here applications cannot tell it is not a partition.</p></div></div>
+          <div class="command-block" data-copy><div class="command"><code>sudo mkdir -p /srv/store &amp;&amp; sudo mount /dev/data/srv /srv/store</code></div></div>
+          <p class="lab-output-label">Output:</p><pre><code>$ df -h /srv/store
+Filesystem            Size  Used Avail Use% Mounted on
+/dev/mapper/data-srv  9.8G   24K  9.3G   1% /srv/store</code></pre>
+          <p class="lab-step-note">What this teaches: The LV is a normal block device: mkdir the mountpoint and mount it. From here applications cannot tell it is not a partition.</p>
         </div></div>
         <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Grow the volume online</strong>
           <p>Extend the LV, then grow the filesystem, all while it stays mounted and in use.</p>
-          <p class="lab-output-label">Expected output:</p>
+          <p class="lab-output-label">Output:</p>
           <div class="terminal-session">
             <div class="terminal-line"><span class="prompt">#</span> <span class="input">lvextend -L +5G /dev/data/srv &amp;&amp; resize2fs /dev/data/srv</span></div>
-            <div class="terminal-output">Size of logical volume data/srv changed from 10.00 GiB (2560 extents) to 15.00 GiB (3840 extents).
+            <div class="terminal-output">  Size of logical volume data/srv changed from 10.00 GiB (2560 extents) to 15.00 GiB (3840 extents).
+  Logical volume data/srv successfully resized.
+resize2fs 1.47.0 (5-Feb-2023)
+Filesystem at /dev/data/srv is mounted on /srv/store; on-line resizing required
+old_desc_blocks = 2, new_desc_blocks = 2
 The filesystem on /dev/data/srv is now 3932160 (4k) blocks long.</div>
           </div>
           <p class="lab-step-note">What this teaches: lvextend grows the device and resize2fs grows the filesystem, both online. This two-phase growth is the core LVM superpower. Shortcut: lvextend -r (or --resizefs) runs the filesystem grow for you; the manual two steps are shown here so you see both layers. For XFS the second step is xfs_growfs /srv/store instead of resize2fs.</p></div></div>

@@ -35,7 +35,7 @@
   <meta property="og:description" content="Master systemd services: inspect units and dependencies, author custom unit files with auto-restart enabled, and read service logs via journalctl filters.">
   <meta property="og:type" content="article">
   <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
-  <meta property="article:modified_time" content="2026-10-22T05:41:50-04:00">
+  <meta property="article:modified_time" content="2026-11-14T00:00:00-05:00">
   <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-server/service-management.html">
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="article:tag" content="systemd tutorial">
@@ -67,14 +67,14 @@
     <link rel="help" href="../../../humans.txt">
   <link rel="security" href="../../../.well-known/security.txt">
 <link rel="manifest" href="../../../site.webmanifest">
-  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Linux Service Management with systemd", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-20", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "systemd, journald", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux server administration", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["systemd tutorial", "systemctl service management", "write systemd unit file", "Restart=on-failure", "journalctl", "systemd service management", "systemd tutorial lab", "systemd tutorial guide", "systemd tutorial tutorial", "systemd tutorial explained", "systemd tutorial homelab", "systemctl service management lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "Linux"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Linux Service Management with systemd", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-20", "dateModified": "2026-11-14", "proficiencyLevel": "Intermediate", "dependencies": "systemd, journald", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux server administration", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["systemd tutorial", "systemctl service management", "write systemd unit file", "Restart=on-failure", "journalctl", "systemd service management", "systemd tutorial lab", "systemd tutorial guide", "systemd tutorial tutorial", "systemd tutorial explained", "systemd tutorial homelab", "systemctl service management lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "Linux"}]}</script>
   <script type="application/ld+json">{
     "@context": "https://schema.org",
     "@type": "HowTo",
     "name": "Service Management with systemd: Units, Logs, and Auto-Restart",
     "description": "Master systemd services: inspect units and dependencies, author custom unit files with auto-restart enabled, and read service logs via journalctl filters.",
     "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
-    "dateModified": "2026-09-29",
+    "dateModified": "2026-11-14",
     "step": [
       {"@type": "HowToStep", "name": "Inspect an existing service", "url": "https://tyfsadik.org/blog/labs/linux-server/service-management.html#steps"},
       {"@type": "HowToStep", "name": "Author a custom unit with auto-restart", "url": "https://tyfsadik.org/blog/labs/linux-server/service-management.html#steps"},
@@ -115,7 +115,7 @@
 
     <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Service Management</span></nav>
     <div class="page-header"><h1>Service Management with systemd: Units, Logs, and Auto-Restart</h1>
-      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-10-22">2026-10-22</time> &middot; 6 min read</p>
+      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-11-14">2026-11-14</time> &middot; 6 min read</p>
       <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~2 hours</span></div>
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">systemd</span><span class="tag">unit files</span><span class="tag">journald</span><span class="tag">Restart=</span></div>
     </div>
@@ -171,41 +171,53 @@ graph LR
     </ul></div>
 
     <section id="steps"><h2>Step-by-Step Execution</h2>
+      <p class="lab-step-note lab-rerun-note">The outputs on this page come from a re-run on 14 November 2026 in an Ubuntu 24.04 container (arm64). Sample files, users, and hosts were created for the run, so names, numbers, and timestamps reflect that run.</p>
       <div class="steps">
         <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Inspect an existing service</strong>
           <p>Understanding state and dependencies is the basis of all service management.</p>
-          <div class="command-block" data-copy><div class="command"><code>systemctl status ssh --no-pager &amp;&amp; systemctl list-dependencies ssh</code>
-          <p class="lab-output-label">Expected output:</p><pre><code>ssh.service - OpenBSD Secure Shell server
-   Loaded: loaded (/lib/systemd/system/ssh.service; enabled)
-   Active: active (running)</code></pre>
-          <p class="lab-step-note">What this teaches: status shows state, main PID, and recent logs; list-dependencies reveals ordering, which explains why a service waits at boot. Note: the unit is named ssh.service on Debian/Ubuntu but sshd.service on RHEL/Fedora; adjust the command to your distro.</p></div></div>
+          <div class="command-block" data-copy><div class="command"><code>systemctl status ssh --no-pager &amp;&amp; systemctl list-dependencies ssh</code></div></div>
+          <p class="lab-output-label">Output (first 14 lines):</p><pre><code>● ssh.service - OpenBSD Secure Shell server
+     Loaded: loaded (/usr/lib/systemd/system/ssh.service; disabled; preset: enabled)
+     Active: active (running) since Sat 2026-11-14 17:32:04 EST; 14ms ago
+TriggeredBy: ● ssh.socket
+       Docs: man:sshd(8)
+             man:sshd_config(5)
+    Process: 457 ExecStartPre=/usr/sbin/sshd -t (code=exited, status=0/SUCCESS)
+   Main PID: 458 (sshd)
+      Tasks: 1 (limit: 7040)
+     Memory: 1.1M (peak: 1.5M)
+        CPU: 14ms
+     CGroup: /docker/e18ffc53785729c64117a4ec9895a6a9cedb99e3dbbf9d7b31d42a665b4cd81f/system.slice/ssh.service
+             └─458 "sshd: /usr/sbin/sshd -D [listener] 0 of 10-100 startups"
+ssh.service</code></pre>
+          <p class="lab-step-note">What this teaches: status shows state, main PID, and recent logs; list-dependencies reveals ordering, which explains why a service waits at boot. Note: the unit is named ssh.service on Debian/Ubuntu but sshd.service on RHEL/Fedora; adjust the command to your distro.</p>
         </div></div>
         <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Author a custom unit with auto-restart</strong>
           <p>The Restart directive makes the daemon self-heal after a crash, key for reliability.</p>
           <div class="command-block" data-copy><div class="command"><code>printf '[Unit]\nDescription=My App\n[Service]\nExecStart=/usr/local/bin/app\nRestart=on-failure\nRestartSec=3\n[Install]\nWantedBy=multi-user.target\n' | sudo tee /etc/systemd/system/app.service</code></div><div class="note">[ROOT REQUIRED] Creates a restart-on-failure service unit.
-          <p class="lab-output-label">Expected output:</p><pre><code>[Unit]
+          <p class="lab-output-label">Output:</p><pre><code>[Unit]
 Description=My App
 [Service]
 ExecStart=/usr/local/bin/app
 Restart=on-failure
 RestartSec=3
 [Install]
-WantedBy=multi-user.target
-(unit file written)</code></pre>
+WantedBy=multi-user.target</code></pre>
           <p class="lab-step-note">What this teaches: A minimal unit needs [Unit], [Service] with ExecStart, and [Install]; Restart=on-failure plus RestartSec makes the daemon self-healing. Type defaults to simple, so systemd tracks the foreground process you start; use Type=forking only for daemons that background themselves.</p></div></div>
         </div></div>
         <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Reload, enable, and start</strong>
-          <div class="command-block" data-copy><div class="command"><code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now app.service</code>
-          <p class="lab-output-label">Expected output:</p><pre><code>(no output on success; verify with: systemctl is-active app.service)
+          <div class="command-block" data-copy><div class="command"><code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now app.service</code></div></div>
+          <p class="lab-output-label">Output:</p><pre><code>Created symlink /etc/systemd/system/multi-user.target.wants/app.service → /etc/systemd/system/app.service.
+$ systemctl is-active app.service
 active</code></pre>
-          <p class="lab-step-note">What this teaches: daemon-reload makes systemd re-read unit files; enable wires it into the boot target; --now starts it immediately too.</p></div></div>
+          <p class="lab-step-note">What this teaches: daemon-reload makes systemd re-read unit files; enable wires it into the boot target; --now starts it immediately too.</p>
         </div></div>
         <div class="step"><div class="step-num">04</div><div class="step-body"><strong>Read the logs</strong>
-          <p class="lab-output-label">Expected output:</p>
+          <p class="lab-output-label">Output:</p>
           <div class="terminal-session">
             <div class="terminal-line"><span class="prompt">#</span> <span class="input">journalctl -u app.service -n 5 --no-pager</span></div>
-            <div class="terminal-output">Jun 17 09:02 srv01 systemd[1]: Started My App.
-Jun 17 09:02 srv01 app[5123]: listening on :8080</div>
+            <div class="terminal-output">Nov 14 17:32:05 srv01 systemd[1]: Started app.service - My App.
+Nov 14 17:32:05 srv01 app[522]: app started, listening on :8080</div>
           </div>
           <p class="lab-step-note">What this teaches: journalctl -u filters the journal to one unit's logs; stdout/stderr of the service land here automatically with no logfile config.</p></div></div>
       </div>

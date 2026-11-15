@@ -27,7 +27,7 @@
   <meta property="og:description" content="Implement PostgreSQL backups with pg_dump and WAL-based point-in-time recovery, then test restores against defined RPO and RTO targets with restore drills.">
   <meta property="og:type" content="article">
   <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
-  <meta property="article:modified_time" content="2026-10-22T05:41:50-04:00">
+  <meta property="article:modified_time" content="2026-11-14T00:00:00-05:00">
   <meta property="og:url" content="https://tyfsadik.org/blog/labs/databases/backup-recovery.html">
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="article:tag" content="postgresql backup">
@@ -67,7 +67,7 @@
     <link rel="help" href="../../../humans.txt">
   <link rel="security" href="../../../.well-known/security.txt">
 <link rel="manifest" href="../../../site.webmanifest">
-  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Database Backup and Recovery with pg_dump and PITR", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-04-01", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "PostgreSQL 16, pg_dump, WAL archiving", "articleSection": "Databases", "learningResourceType": "Hands-on lab", "teaches": "databases and SQL", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["postgresql backup", "pg_dump", "pg_basebackup", "point-in-time recovery", "PITR", "RPO RTO", "database backup & recovery", "postgresql backup lab", "postgresql backup guide", "postgresql backup tutorial", "postgresql backup explained", "postgresql backup homelab", "pg_dump lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "Linux"}, {"@type": "Thing", "name": "PostgreSQL"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Database Backup and Recovery with pg_dump and PITR", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-04-01", "dateModified": "2026-11-14", "proficiencyLevel": "Intermediate", "dependencies": "PostgreSQL 16, pg_dump, WAL archiving", "articleSection": "Databases", "learningResourceType": "Hands-on lab", "teaches": "databases and SQL", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["postgresql backup", "pg_dump", "pg_basebackup", "point-in-time recovery", "PITR", "RPO RTO", "database backup & recovery", "postgresql backup lab", "postgresql backup guide", "postgresql backup tutorial", "postgresql backup explained", "postgresql backup homelab", "pg_dump lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "Linux"}, {"@type": "Thing", "name": "PostgreSQL"}]}</script>
   <script type="application/ld+json">{
   "@context": "https://schema.org",
   "@type": "HowTo",
@@ -133,7 +133,7 @@
 
     <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/databases/index.html">Databases</a> &rsaquo; <span>Backup &amp; Recovery</span></nav>
     <div class="page-header"><h1>Database Backup and Recovery with pg_dump and Point-in-Time Recovery</h1>
-      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-10-22">2026-10-22</time> &middot; 6 min read</p>
+      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-11-14">2026-11-14</time> &middot; 6 min read</p>
       <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Databases</span><span class="lab-time">~4 hours</span></div>
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">pg_dump</span><span class="tag">WAL</span><span class="tag">PITR</span><span class="tag">RPO/RTO</span></div>
     </div>
@@ -179,29 +179,31 @@ flowchart LR
     </section>
 
     <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <p class="lab-step-note lab-rerun-note">The outputs on this page come from a re-run on 14 November 2026 in an Ubuntu 24.04 container with PostgreSQL 16 (arm64). Sample files, users, and hosts were created for the run, so names, numbers, and timestamps reflect that run.</p>
       <h3>1. Logical backup with pg_dump</h3>
       <div class="command-block"><div class="command"><code>pg_dump -Fc appdb -f /backups/appdb-$(date +%F).dump</code></div>
-      <p class="lab-output-label">Expected output:</p>
-      <pre><code>(dump file written to /backups/)</code></pre>
+      <p class="lab-output-label">Output:</p>
+      <pre><code>$ ls /backups
+appdb-2026-11-14.dump</code></pre>
       <p class="lab-step-note">What this teaches: Custom format (-Fc) compresses and allows selective restore; the date-stamped filename makes retention and rotation trivial.</p></div>
       <h3>2. Base backup for PITR</h3>
       <div class="command-block"><div class="command"><code>pg_basebackup -D /backups/base -Fp -Xs -P</code></div>
-      <p class="lab-output-label">Expected output:</p>
-      <pre><code>(base backup streamed to /backups/base)</code></pre>
+      <p class="lab-output-label">Output:</p>
+      <pre><code>waiting for checkpoint
+36696/36696 kB (100%), 0/1 tablespace
+36696/36696 kB (100%), 1/1 tablespace</code></pre>
       <p class="lab-step-note">What this teaches: pg_basebackup copies the data directory while -X stream includes the WAL needed for consistency; together with archived WAL this enables PITR. Streaming mode opens two WAL sender connections (one for the backup, one for the WAL stream), so set <code>max_wal_senders</code> to at least 2 and run the command as a superuser or a role with the REPLICATION attribute.</p></div>
       <h3>3. Restore and verify</h3>
-      <div class="command-block"><div class="command"><code>createdb appdb_test &amp;&amp; pg_restore -d appdb_test /backups/appdb-2026-06-17.dump &amp;&amp; psql appdb_test -c "SELECT count(*) FROM orders;"</code></div></div>
-<pre><code class="language-bash"> count
--------
- 81234</code></pre>
-      <p class="lab-output-label">Expected output:</p>
+      <div class="command-block"><div class="command"><code>createdb appdb_test &amp;&amp; pg_restore -d appdb_test /backups/appdb-$(date +%F).dump &amp;&amp; psql appdb_test -c "SELECT count(*) FROM orders;"</code></div></div>
+      <p class="lab-output-label">Output:</p>
       <pre><code> count
 -------
- 81234</code></pre>
+ 81234
+(1 row)</code></pre>
       <p class="lab-step-note">What this teaches: Restoring into appdb_test (never production) and counting rows proves the backup is restorable; a backup without a tested restore is a hope, not a plan. pg_restore -d connects to an existing database, so createdb runs first; the -C flag is the alternative when you want the dump to create the database itself.</p>
       <h3>4. Configure WAL archiving</h3>
       <div class="command-block"><div class="command"><code>ALTER SYSTEM SET archive_mode = 'on'; ALTER SYSTEM SET archive_command = 'test ! -f /backups/wal/%f &amp;&amp; cp %p /backups/wal/%f';</code></div>
-      <p class="lab-output-label">Expected output:</p>
+      <p class="lab-output-label">Output:</p>
       <pre><code>ALTER SYSTEM
 ALTER SYSTEM</code></pre>
       <p class="lab-step-note">What this teaches: archive_mode only takes effect at server start, so a restart is required after setting it; archive_command then runs once per completed WAL segment. Verify with <code>SELECT * FROM pg_stat_archiver;</code> and confirm last_failed_time stays empty after the next checkpoint.</p></div>

@@ -41,12 +41,12 @@
     <link rel="help" href="../../../humans.txt">
   <link rel="security" href="../../../.well-known/security.txt">
 <link rel="manifest" href="../../../site.webmanifest">
-  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "OpenFlow Protocol: Flow Tables and Match-Action", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-04-15", "dateModified": "2026-09-29", "proficiencyLevel": "Advanced", "dependencies": "OpenFlow 1.3, Open vSwitch, ovs-ofctl", "articleSection": "Networking", "learningResourceType": "Hands-on lab", "teaches": "computer networking fundamentals", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["OpenFlow", "OVS", "ovs-ofctl", "flow table", "SDN southbound", "match fields", "priority", "openflow protocol explained", "OpenFlow lab", "OpenFlow guide", "OpenFlow tutorial", "OpenFlow explained", "OpenFlow homelab", "OVS lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "OpenFlow Protocol: Flow Tables and Match-Action", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-04-15", "dateModified": "2026-11-14", "proficiencyLevel": "Advanced", "dependencies": "OpenFlow 1.3, Open vSwitch, ovs-ofctl", "articleSection": "Networking", "learningResourceType": "Hands-on lab", "teaches": "computer networking fundamentals", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["OpenFlow", "OVS", "ovs-ofctl", "flow table", "SDN southbound", "match fields", "priority", "openflow protocol explained", "OpenFlow lab", "OpenFlow guide", "OpenFlow tutorial", "OpenFlow explained", "OpenFlow homelab", "OVS lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}]}</script>
   <meta property="og:title" content="OpenFlow Protocol Explained: Networking Lab | TYFSADIK">
   <meta property="og:description" content="Program OpenFlow flow tables by hand: ovs-ofctl match fields, priority resolution, forward and drop actions, and verified per-flow counters on Open vSwitch.">
   <meta property="og:type" content="article">
   <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
-  <meta property="article:modified_time" content="2026-10-22T05:41:50-04:00">
+  <meta property="article:modified_time" content="2026-11-14T00:00:00-05:00">
   <meta property="og:url" content="https://tyfsadik.org/blog/labs/networking/openflow-protocol.html">
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="article:tag" content="OpenFlow">
@@ -130,7 +130,7 @@
 
     <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>OpenFlow Protocol</span></nav>
     <div class="page-header"><h1>OpenFlow Protocol: Programming Flow Tables on Open vSwitch</h1>
-      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-10-22">2026-10-22</time> &middot; 6 min read</p>
+      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-11-14">2026-11-14</time> &middot; 6 min read</p>
       <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Networking</span><span class="lab-time">~5 hours</span></div>
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">OpenFlow 1.3</span><span class="tag">OVS</span><span class="tag">flow tables</span><span class="tag">match-action</span></div>
     </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
@@ -188,22 +188,24 @@ flowchart LR
 </section>
 
     <section id="step-by-step-execution"><h2>Step-by-Step Execution</h2>
+      <p class="lab-step-note lab-rerun-note">The outputs on this page come from a re-run on 14 November 2026 in an Ubuntu 24.04 container with systemd and Open vSwitch (arm64), with two hosts in network namespaces. Sample files, users, and hosts were created for the run, so names, numbers, and timestamps reflect that run.</p>
       <h3>1. Install a proactive forwarding flow</h3>
       <div class="command-block"><div class="command"><code>ovs-ofctl -O OpenFlow13 add-flow s1 "priority=200,in_port=1,actions=output:2"</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Output:</p>
 <pre><code>(no output: add-flow succeeds silently; the flow is installed)</code></pre>
 <p class="lab-step-note">What this teaches: a flow entry is a prioritized match plus an action, which is the entire OpenFlow programming model.</p>
 <h3>2. Add a higher-priority drop rule</h3>
       <div class="command-block"><div class="command"><code>ovs-ofctl -O OpenFlow13 add-flow s1 "priority=300,ip,nw_dst=10.0.0.9,actions=drop"</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Output:</p>
 <pre><code>(no output: the higher-priority drop rule is installed above the forward rule)</code></pre>
 <p class="lab-step-note">What this teaches: priority resolves overlapping matches deterministically, so a drop rule can override a forward rule.</p>
 <p class="lab-step-note">Two subtleties: actions=drop installs an empty action set (the OpenFlow way to say discard), and nw_dst=10.0.0.9 matches a single /32 address unless a mask is given. Flows installed by hand live alongside controller flows: a connected controller can overwrite or expire them, so re-dump the table after any controller event.</p>
 <h3>3. Inspect counters per flow</h3>
       <div class="command-block"><div class="command"><code>ovs-ofctl -O OpenFlow13 dump-flows s1</code></div></div>
-<p class="lab-output-label">Expected output:</p>
-<pre><code class="language-bash">priority=300,ip,nw_dst=10.0.0.9 actions=drop  n_packets=14
-priority=200,in_port=1 actions=output:2       n_packets=88</code></pre>
+<p class="lab-output-label">Output:</p>
+<pre><code class="language-bash">OFPST_FLOW reply (OF1.3) (xid=0x2):
+ cookie=0x0, duration=5.134s, table=0, n_packets=14, n_bytes=1372, priority=300,ip,nw_dst=10.0.0.9 actions=drop
+ cookie=0x0, duration=5.147s, table=0, n_packets=7, n_bytes=510, priority=200,in_port=1 actions=output:2</code></pre>
 <p class="lab-step-note">What this teaches: per-flow counters are the ground truth of what the switch actually did with packets.</p>
 </section>    <section id="how-it-works">
       <div class="lab-explainer"><h3>How It Works</h3>

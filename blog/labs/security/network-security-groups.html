@@ -41,12 +41,12 @@
     <link rel="help" href="../../../humans.txt">
   <link rel="security" href="../../../.well-known/security.txt">
 <link rel="manifest" href="../../../site.webmanifest">
-  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Cloud Network Security Groups: Azure NSG and AWS SG", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-04-08", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "Azure CLI, AWS CLI, NSG, Security Groups", "articleSection": "Security", "learningResourceType": "Hands-on lab", "teaches": "cybersecurity and security operations", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["Azure NSG", "AWS security groups", "cloud firewall", "network segmentation", "flow logs", "least privilege", "network security groups explained", "Azure NSG lab", "Azure NSG guide", "Azure NSG tutorial", "Azure NSG explained", "Azure NSG homelab", "AWS security groups lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "DNS"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "PostgreSQL"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Cloud Network Security Groups: Azure NSG and AWS SG", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-04-08", "dateModified": "2026-11-14", "proficiencyLevel": "Intermediate", "dependencies": "Azure CLI, AWS CLI, NSG, Security Groups", "articleSection": "Security", "learningResourceType": "Hands-on lab", "teaches": "cybersecurity and security operations", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["Azure NSG", "AWS security groups", "cloud firewall", "network segmentation", "flow logs", "least privilege", "network security groups explained", "Azure NSG lab", "Azure NSG guide", "Azure NSG tutorial", "Azure NSG explained", "Azure NSG homelab", "AWS security groups lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "DNS"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "PostgreSQL"}]}</script>
   <meta property="og:title" content="Network Security Groups Explained: Security Lab | TYFSADIK">
   <meta property="og:description" content="Segment cloud networks with Azure NSGs and AWS security groups: tiered allow rules, effective-policy checks, flow-log verification, and any-any audits.">
   <meta property="og:type" content="article">
   <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
-  <meta property="article:modified_time" content="2026-10-22T05:41:50-04:00">
+  <meta property="article:modified_time" content="2026-11-14T00:00:00-05:00">
   <meta property="og:url" content="https://tyfsadik.org/blog/labs/security/network-security-groups.html">
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="article:tag" content="Azure NSG">
@@ -160,7 +160,7 @@
 
     <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Network Security Groups</span></nav>
     <div class="page-header"><h1>Cloud Network Security Groups with Azure NSG and AWS SG</h1>
-      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-10-22">2026-10-22</time> &middot; 22 min read</p>
+      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-11-14">2026-11-14</time> &middot; 22 min read</p>
       <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Security</span><span class="lab-time">~4 hours</span></div>
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">Azure NSG</span><span class="tag">AWS SG</span><span class="tag">UDR</span><span class="tag">least privilege</span></div>
     </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
@@ -225,7 +225,8 @@ flowchart LR
       <p>Concretely, the Azure side uses one VNet (10.0.0.0/16) with <code>web-subnet</code> 10.0.1.0/24, <code>app-subnet</code> 10.0.2.0/24, and <code>db-subnet</code> 10.0.3.0/24, each holding one Ubuntu test VM. The AWS side mirrors this in a VPC with public, app, and data subnets. Network Contributor is required on Azure because creating NSGs and associating them to subnets writes to the network resource provider; Reader alone is enough for the audit queries at the end.</p>
       <p>Verify both CLIs are authenticated before touching any rules:</p>
       <div class="command-block"><div class="command"><code>az account show --query "{sub:name, user:user.name}" -o table &amp;&amp; aws sts get-caller-identity</code></div></div>
-<pre><code class="language-bash">Sub          User
+      <p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
+<pre><code>Sub          User
 -----------  ---------------------------
 Lab-Sub      taki@tyfsadik.org
 {
@@ -255,11 +256,12 @@ Lab-Sub      taki@tyfsadik.org
     </section>
 
     <section id="step-by-step-execution"><h2>Step-by-Step Execution</h2>
+      <p class="lab-step-note lab-rerun-note">The steps on this page were not re-run on 14 November 2026: it needs Azure and AWS accounts. The outputs shown are examples from the original lab environment, and each is marked as such.</p>
 
       <h3>1. Create an Azure NSG rule allowing only HTTPS inbound</h3>
       <p>The web tier is the only public entry point, so its NSG gets exactly one inbound allow: TCP 443 from the internet service tag. Rule priority 100 leaves room above and below for later rules, priorities are evaluated lowest-number-first, and the first match wins. The original command from the lab run:</p>
       <div class="command-block"><div class="command"><code>az network nsg rule create -g rg --nsg-name web-nsg -n allow-https --priority 100 --destination-port-ranges 443 --access Allow --protocol Tcp</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
 <pre><code>{
   &quot;name&quot;: &quot;allow-https&quot;,
   &quot;provisioningState&quot;: &quot;Succeeded&quot;
@@ -267,7 +269,8 @@ Lab-Sub      taki@tyfsadik.org
 
       <p>The fully-qualified form I actually recommend in scripts (explicit direction, source tag, and double-dash flags so nothing depends on shorthand parsing):</p>
       <div class="command-block"><div class="command"><code>az network nsg rule create --resource-group rg-lab --nsg-name web-nsg --name allow-https --priority 100 --direction Inbound --source-address-prefixes Internet --destination-port-ranges 443 --access Allow --protocol Tcp</code></div></div>
-<pre><code class="language-bash">{
+      <p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
+<pre><code>{
   "access": "Allow",
   "destinationPortRange": "443",
   "direction": "Inbound",
@@ -282,7 +285,7 @@ Lab-Sub      taki@tyfsadik.org
 <h3>2. Scope the data tier to the app subnet only</h3>
       <p>The data tier accepts PostgreSQL (5432) exclusively from the app subnet CIDR. Scoping by source prefix, not by "VirtualNetwork", is what turns a flat network into a segmented one. The original lab command:</p>
       <div class="command-block"><div class="command"><code>az network nsg rule create -g rg --nsg-name db-nsg -n allow-app --priority 100 --source-address-prefixes 10.0.2.0/24 --destination-port-ranges 5432 --access Allow</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
 <pre><code>{
   &quot;name&quot;: &quot;allow-app&quot;,
   &quot;provisioningState&quot;: &quot;Succeeded&quot;
@@ -290,7 +293,7 @@ Lab-Sub      taki@tyfsadik.org
 
       <p>One allow rule is not enough on Azure, because the built-in default rule <code>AllowVnetInBound</code> (priority 65000) still permits every other subnet in the VNet to reach 5432. To get true tier isolation, add an explicit deny that sits above the defaults but below the allow:</p>
       <div class="command-block"><div class="command"><code>az network nsg rule create --resource-group rg-lab --nsg-name db-nsg --name deny-all-inbound --priority 4096 --direction Inbound --source-address-prefixes '*' --destination-port-ranges '*' --access Deny --protocol '*'</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
 <pre><code class="language-bash">{
   "access": "Deny",
   "destinationPortRange": "*",
@@ -306,11 +309,12 @@ Lab-Sub      taki@tyfsadik.org
 <h3>3. Equivalent AWS security-group ingress</h3>
       <p>AWS security groups have no priorities and no explicit deny, they are allow-only with an implicit deny at the end, so "deny everything else" is free. The powerful feature used here is <em>source-group referencing</em>: instead of a CIDR, the rule allows any instance attached to the app-tier SG, which survives instance replacement and autoscaling without rule edits.</p>
       <div class="command-block"><div class="command"><code>aws ec2 authorize-security-group-ingress --group-id sg-db --protocol tcp --port 5432 --source-group sg-app</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
 <pre><code class="language-bash">{"Return": true, "SecurityGroupRules": [{"IpProtocol": "tcp", "FromPort": 5432}]}</code></pre>
       <p>Confirm the rule landed with the expected referenced group. The <code>sg-app</code> and <code>sg-db</code> IDs below are the IDs returned when the groups were created (<code>aws ec2 create-security-group --query GroupId -o text</code>); in your run, substitute the real IDs or look them up by tag with <code>aws ec2 describe-security-groups --filters Name=tag:Tier,Values=db --query "SecurityGroups[].GroupId"</code>:</p>
       <div class="command-block"><div class="command"><code>aws ec2 describe-security-group-rules --filter Name=group-id,Values=sg-db --query "SecurityGroupRules[?IsEgress==`false`].[IpProtocol,FromPort,ToPort,ReferencedGroupInfo.GroupId]" -o table</code></div></div>
-<pre><code class="language-bash">----------------------------------
+      <p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
+<pre><code>----------------------------------
 |  tcp  |  5432  |  5432  | sg-app  |
 ----------------------------------</code></pre>
       <p><strong>Common mistake:</strong> opening 5432 to the VPC CIDR (10.0.0.0/16) "temporarily" and never tightening it, functionally identical to no segmentation. If a broad rule already exists, remove it with <code>aws ec2 revoke-security-group-ingress</code> rather than layering the tight rule on top.</p>
@@ -318,7 +322,7 @@ Lab-Sub      taki@tyfsadik.org
 <h3>4. Check effective rules, not just configured rules</h3>
       <p>On Azure, a NIC can have its own NSG <em>and</em> inherit one from its subnet, and both are enforced (traffic must pass both). The only reliable view of what a VM actually experiences is the effective-rule list, which merges subnet and NIC NSGs:</p>
       <div class="command-block"><div class="command"><code>az network nic list-effective-nsg --resource-group rg-lab --name db-vm-nic -o table</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
 <pre><code class="language-bash">Access    Protocol  SourceAddressPrefix  DestinationPortRange  Priority  Direction
 --------  --------  -------------------  --------------------  --------  ---------
 Allow     Tcp       10.0.2.0/24          5432                  100       Inbound
@@ -326,7 +330,7 @@ Deny      *         *                    *                     4096      Inbound
 Allow     *         VirtualNetwork       *                     65000     Inbound (default, shadowed)</code></pre>
       <p>The equivalent sanity check on AWS lists every rule on the group so nothing unexpected (like a forgotten 0.0.0.0/0 SSH rule) hides in the set:</p>
       <div class="command-block"><div class="command"><code>aws ec2 describe-security-groups --group-ids sg-db --query "SecurityGroups[].IpPermissions" -o json</code></div></div>
-<p class="lab-output-label">Expected output (one ingress permission, referencing the app tier's security group, not a CIDR):</p>
+<p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
 <pre><code>[
   {
     &quot;FromPort&quot;: 5432,
@@ -342,7 +346,7 @@ Allow     *         VirtualNetwork       *                     65000     Inbound
       <p>Rules without telemetry are unverifiable. Azure virtual network flow logs (written to a storage account, one flow log per VNet rather than per NSG) record every 5-tuple with an Allow/Deny verdict; AWS VPC Flow Logs do the same to CloudWatch or S3 with ACCEPT/REJECT. Note: Microsoft stopped allowing <em>new</em> NSG-scoped flow logs on 2025-06-30 (full retirement 2027-09-30), so the current command targets the VNet, which is also the scope that captures east-west lateral traffic between subnets. Enable both before testing so the deny evidence exists:</p>
       <div class="command-block"><div class="command"><code>az network watcher configure --locations eastus --enabled true</code></div><div class="command"><code>az network flow-log create --resource-group rg-lab --name lab-vnet-flowlog --location eastus --vnet lab-vnet --storage-account saflowlogs123</code></div></div>
       <div class="command-block"><div class="command"><code>aws ec2 create-flow-logs --resource-type VPC --resource-ids vpc-0abc123 --traffic-type ALL --log-destination-type cloud-watch-logs --log-group-name /vpc/flowlogs --deliver-logs-permission-arn arn:aws:iam::123456789012:role/flowlogsRole</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
 <pre><code class="language-bash">{
     "FlowLogIds": ["fl-0123abcd4567efgh8"],
     "Unsuccessful": []
@@ -352,17 +356,18 @@ Allow     *         VirtualNetwork       *                     65000     Inbound
 <h3>6. Test tier-to-tier connectivity</h3>
       <p>Positive test first: from the web VM, the app tier must answer on 8080. Negative test second: from the web VM, the data tier must be unreachable. Use TCP probes, not ping, ICMP is governed by different rules and proves nothing about the application paths:</p>
       <div class="command-block"><div class="command"><code>curl -s -o /dev/null -w "%{http_code}\n" http://10.0.2.15:8080/health</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
 <pre><code class="language-bash">200</code></pre>
       <div class="command-block"><div class="command"><code>nc -zvw3 10.0.3.20 5432</code></div></div>
-<pre><code class="language-bash">nc: connect to 10.0.3.20 port 5432 (tcp) timed out: Operation now in progress</code></pre>
+      <p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
+<pre><code>nc: connect to 10.0.3.20 port 5432 (tcp) timed out: Operation now in progress</code></pre>
       <p>A timeout, not "connection refused", is the expected failure mode, because a stateful deny drops the SYN silently rather than answering with a RST. Repeat the matrix in both clouds: web&rarr;app succeeds, app&rarr;db succeeds, web&rarr;db and internet&rarr;db time out. <strong>Common mistake:</strong> testing from a VM whose own guest firewall (ufw, firewalld) is also filtering; if a "should-pass" test fails, temporarily check <code>sudo ufw status</code> before blaming the NSG.</p>
 <p class="lab-step-note">What this teaches: testing tier-to-tier connectivity proves the policy works in both directions.</p>
 <h3>7. Associate the NSGs to their subnets</h3>
       <p>An Azure NSG enforces nothing until it is associated, creating rules on an unattached NSG is the single most common reason a "configured" policy has zero effect. Attach each NSG to its subnet (subnet-level association is preferred over NIC-level here because it automatically covers every VM deployed into the tier, including ones added later):</p>
       <div class="command-block"><div class="command"><code>az network vnet subnet update --resource-group rg-lab --vnet-name lab-vnet --name web-subnet --network-security-group web-nsg</code></div></div>
       <div class="command-block"><div class="command"><code>az network vnet subnet update --resource-group rg-lab --vnet-name lab-vnet --name db-subnet --network-security-group db-nsg</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
 <pre><code class="language-bash">{
   "name": "db-subnet",
   "addressPrefix": "10.0.3.0/24",
@@ -376,7 +381,7 @@ Allow     *         VirtualNetwork       *                     65000     Inbound
 <h3>8. Restrict egress from the data tier</h3>
       <p>Inbound rules stop attackers getting in; egress rules slow them getting data out. The data tier has no legitimate reason to initiate internet connections, so its outbound path gets an explicit deny on Azure (placed above the default <code>AllowInternetOutBound</code> at 65001):</p>
       <div class="command-block"><div class="command"><code>az network nsg rule create --resource-group rg-lab --nsg-name db-nsg --name deny-internet-outbound --priority 200 --direction Outbound --source-address-prefixes '*' --destination-address-prefixes Internet --destination-port-ranges '*' --access Deny --protocol '*'</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
 <pre><code class="language-bash">{
   "access": "Deny",
   "destinationAddressPrefix": "Internet",
@@ -387,7 +392,8 @@ Allow     *         VirtualNetwork       *                     65000     Inbound
 }</code></pre>
       <p>AWS security groups ship with a default egress rule allowing 0.0.0.0/0 on all ports, the one default rule that must be actively removed. Revoke it, then add back only what the tier needs (responses are stateful, so no return-traffic rule is required):</p>
       <div class="command-block"><div class="command"><code>aws ec2 revoke-security-group-egress --group-id sg-db --protocol all --cidr 0.0.0.0/0</code></div></div>
-<pre><code class="language-bash">{
+      <p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
+<pre><code>{
     "Return": true,
     "UnknownIpPermissions": []
 }</code></pre>
@@ -396,7 +402,7 @@ Allow     *         VirtualNetwork       *                     65000     Inbound
 <h3>9. Audit for residual any-any rules</h3>
       <p>The final gate is an automated check that no rule exposes all ports to the world. Audit the custom rules of every NSG; the nested <code>defaultSecurityRules</code> array is a separate lookup, so check custom rules explicitly per NSG rather than trying to flatten both arrays in one JMESPath expression:</p>
       <div class="command-block"><div class="command"><code>for n in web-nsg app-nsg db-nsg; do echo "== $n =="; az network nsg rule list -g rg-lab --nsg-name $n --query "[?access=='Allow' &amp;&amp; direction=='Inbound'].{name:name, src:sourceAddressPrefix, port:destinationPortRange}" -o table; done</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
 <pre><code class="language-bash">== web-nsg ==
 Name         Src       Port
 -----------  --------  ------
@@ -411,7 +417,8 @@ Name       Src          Port
 allow-app  10.0.2.0/24  5432</code></pre>
       <p>AWS equivalent, any ingress permission open to the world on either IPv4 or IPv6 is a finding; note the <code>Ipv6Ranges</code> half, a <code>::/0</code> rule is just as open as <code>0.0.0.0/0</code> and is the audit item most teams forget:</p>
       <div class="command-block"><div class="command"><code>aws ec2 describe-security-groups --query "SecurityGroups[].IpPermissions[?IpRanges[?CidrIp=='0.0.0.0/0'] || Ipv6Ranges[?CidrIpv6=='::/0']].[FromPort,ToPort,IpProtocol]" -o table</code></div></div>
-<pre><code class="language-bash">---------------------
+      <p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
+<pre><code>---------------------
 |  443   |  443 | tcp |
 ---------------------</code></pre>
       <p>The audit passes when the only internet-facing row is the deliberate web-443 exposure (the Azure <code>Internet</code> service tag covers both IPv4 and IPv6 internet addresses). <strong>Common mistake:</strong> auditing only custom rules and forgetting IPv6, a <code>::/0</code> range on AWS is just as open as 0.0.0.0/0, so include <code>Ipv6Ranges</code> in the query in production.</p>
@@ -436,17 +443,18 @@ flowchart LR
       <p>From the web tier attempt a direct connection to the data tier; it must time out. Use Azure NSG flow logs and AWS VPC Flow Logs to confirm the DENY verdict. Pass criteria: only adjacent-tier traffic is permitted and no rule allows 0.0.0.0/0 except web 443.</p>
       <p>Query the flow logs to prove the deny was enforced at the network layer rather than by chance (e.g., the service being down). For Azure, the storage-account JSON blobs show the verdict per flow; virtual network flow logs land in the <code>insights-logs-networkflowlogevent</code> container (NSG flow logs used <code>insights-logs-networksecuritygroupflowevent</code>, a common source of confusion). A quick filter with <code>jq</code> surfaces the denied attempts from the web subnet to 5432:</p>
       <div class="command-block"><div class="command"><code>az storage blob download --account-name saflowlogs123 -c insights-logs-networkflowlogevent -n &lt;blob-path&gt; -f flowlog.json &amp;&amp; jq -r '.records[].flowRecords[].flows[].flowGroups[].flowTuples[] | select(test("5432")) | select(endswith("D"))' flowlog.json</code></div></div>
-<pre><code class="language-bash">1758566400,10.0.1.10,10.0.3.20,51234,5432,T,I,D
+      <p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
+<pre><code>1758566400,10.0.1.10,10.0.3.20,51234,5432,T,I,D
 1758566460,10.0.1.10,10.0.3.20,51236,5432,T,I,D</code></pre>
       <p>On AWS, a CloudWatch Logs Insights query returns the equivalent REJECT evidence:</p>
       <div class="command-block"><div class="command"><code>aws logs start-query --log-group-name /vpc/flowlogs --start-time $(date -d '1 hour ago' +%s) --end-time $(date +%s) --query-string 'filter dstPort = 5432 and action = "REJECT" | stats count() by srcAddr'</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
 <pre><code>{
   &quot;queryId&quot;: &quot;a1b2c3d4-5678-90ab-cdef-1234567890ab&quot;
 }</code></pre>
       <p><code>start-query</code> only launches the query; the results arrive through a second call. Poll until the status is <code>Complete</code>:</p>
       <div class="command-block"><div class="command"><code>aws logs get-query-results --query-id a1b2c3d4-5678-90ab-cdef-1234567890ab</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
 <pre><code>{
   &quot;results&quot;: [
     [{&quot;field&quot;: &quot;srcAddr&quot;, &quot;value&quot;: &quot;10.0.1.10&quot;}, {&quot;field&quot;: &quot;count()&quot;, &quot;value&quot;: &quot;12&quot;}]
@@ -519,11 +527,11 @@ flowchart LR
       <p>Cloud labs keep billing until everything is torn down, and NSG-adjacent resources (public IPs, flow-log storage, CloudWatch log groups) are easy to forget. Tear down in reverse dependency order: disassociate NSGs from subnets first, then delete the NSGs, then the VMs, then logging resources.</p>
       <div class="command-block"><div class="command"><code>az network vnet subnet update -g rg-lab --vnet-name lab-vnet -n db-subnet --network-security-group null &amp;&amp; az network nsg delete -g rg-lab -n db-nsg</code></div>
 </div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
 <pre><code>(no output on success)</code></pre>
 
       <div class="command-block"><div class="command"><code>aws ec2 delete-security-group --group-id sg-db &amp;&amp; aws ec2 delete-flow-logs --flow-log-ids fl-0123abcd4567efgh8</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs Azure and AWS accounts):</p>
 <pre><code>(no output on success)</code></pre>
 
       <p>Because the whole Azure side lives in one resource group, <code>az group delete -n rg-lab</code> is the blunt but reliable fallback. <strong>Common mistake:</strong> deleting a security group that is still referenced as a source by another SG, AWS rejects the delete with a dependency violation; revoke the referencing rule first, which is also a useful confirmation of which groups are actually coupled.</p>

@@ -35,7 +35,7 @@
   <meta property="og:description" content="Control Linux processes: read ps output, master the kill signal model, tune priority with nice, and manage services through systemd units and systemctl.">
   <meta property="og:type" content="article">
   <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
-  <meta property="article:modified_time" content="2026-10-22T05:41:50-04:00">
+  <meta property="article:modified_time" content="2026-11-14T00:00:00-05:00">
   <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-fundamentals/process-management.html">
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="article:tag" content="linux process management">
@@ -67,14 +67,14 @@
     <link rel="help" href="../../../humans.txt">
   <link rel="security" href="../../../.well-known/security.txt">
 <link rel="manifest" href="../../../site.webmanifest">
-  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Linux Process Management with ps, top, and systemd", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-30", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "procps-ng, systemd", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux fundamentals and command-line skills", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["linux process management", "ps kill tutorial", "signals SIGTERM SIGKILL", "systemd service management", "nice renice", "linux process management lab", "linux process management guide", "linux process management tutorial", "linux process management explained", "linux process management homelab", "ps kill tutorial lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "Linux"}, {"@type": "Thing", "name": "Nginx"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Linux Process Management with ps, top, and systemd", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-30", "dateModified": "2026-11-14", "proficiencyLevel": "Intermediate", "dependencies": "procps-ng, systemd", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux fundamentals and command-line skills", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["linux process management", "ps kill tutorial", "signals SIGTERM SIGKILL", "systemd service management", "nice renice", "linux process management lab", "linux process management guide", "linux process management tutorial", "linux process management explained", "linux process management homelab", "ps kill tutorial lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "Linux"}, {"@type": "Thing", "name": "Nginx"}]}</script>
   <script type="application/ld+json">{
     "@context": "https://schema.org",
     "@type": "HowTo",
     "name": "Linux Process Management with ps, top, kill, and systemd",
     "description": "Control Linux processes: read ps output, master the kill signal model, tune priority with nice, and manage services through systemd units and systemctl.",
     "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
-    "dateModified": "2026-09-29",
+    "dateModified": "2026-11-14",
     "step": [
       {"@type": "HowToStep", "name": "Find the offending process", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/process-management.html#steps"},
       {"@type": "HowToStep", "name": "Signal it gracefully, then forcefully", "url": "https://tyfsadik.org/blog/labs/linux-fundamentals/process-management.html#steps"},
@@ -114,7 +114,7 @@
 
     <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-fundamentals/index.html">Linux Fundamentals</a> &rsaquo; <span>Process Management</span></nav>
     <div class="page-header"><h1>Linux Process Management with ps, top, kill, and systemd</h1>
-      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-10-22">2026-10-22</time> &middot; 7 min read</p>
+      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-11-14">2026-11-14</time> &middot; 7 min read</p>
       <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~3 hours</span></div>
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">ps</span><span class="tag">top</span><span class="tag">signals</span><span class="tag">systemd</span></div>
     </div>
@@ -165,25 +165,39 @@ flowchart LR
     </section>
 
     <section id="steps"><h2>Step-by-Step Execution</h2>
+      <p class="lab-step-note lab-rerun-note">The outputs on this page come from a re-run on 14 November 2026 in an Ubuntu 24.04 container (arm64). Sample files, users, and hosts were created for the run, so names, numbers, and timestamps reflect that run.</p>
       <h3>1. Find the offending process</h3>
       <div class="command-block"><div class="command"><code>ps -eo pid,ppid,%cpu,%mem,comm --sort=-%cpu | head</code></div></div>
       <p class="lab-step-note">What this teaches: -e selects every process; -o picks exact columns so output stays parseable; --sort=-%cpu orders by CPU descending, surfacing the offender at the top without eyeballing hundreds of rows.</p>
     <h3>2. Signal it gracefully, then forcefully</h3>
-      <div class="command-block"><div class="command"><code>kill -TERM 4412 ; sleep 5 ; kill -KILL 4412 2>/dev/null</code></div></div>
-      <p class="lab-output-label">Expected output:</p><pre><code>(no output if the process exits gracefully)
-$ ps -p 4412
-  PID TTY          TIME CMD
-(no such process: terminated)</code></pre>
+      <div class="command-block"><div class="command"><code>pid=$(pgrep -o -x sleep); kill -TERM "$pid"; sleep 5; kill -KILL "$pid" 2&gt;/dev/null</code></div></div>
+      <p class="lab-output-label">Output:</p><pre><code>$ ps -p $pid
+    PID TTY          TIME CMD</code></pre>
       <p class="lab-step-note">What this teaches: SIGTERM asks the process to clean up and exit; SIGKILL (-KILL) cannot be caught and the kernel reaps the process immediately. TERM first is both polite and safer for data integrity.</p>
     <h3>3. Manage a service with systemd</h3>
       <div class="command-block"><div class="command"><code>systemctl restart nginx &amp;&amp; systemctl status nginx --no-pager</code></div></div>
-<p class="lab-output-label">Expected output:</p><pre><code class="language-bash">nginx.service: active (running)
-Main PID: 812 (nginx)</code></pre>
+<p class="lab-output-label">Output:</p><pre><code class="language-bash">● nginx.service - A high performance web server and a reverse proxy server
+     Loaded: loaded (/usr/lib/systemd/system/nginx.service; enabled; preset: enabled)
+     Active: active (running) since Sat 2026-11-14 17:06:42 EST; 16ms ago
+       Docs: man:nginx(8)
+    Process: 430 ExecStartPre=/usr/sbin/nginx -t -q -g daemon on; master_process on; (code=exited, status=0/SUCCESS)
+    Process: 431 ExecStart=/usr/sbin/nginx -g daemon on; master_process on; (code=exited, status=0/SUCCESS)
+   Main PID: 433 (nginx)
+        CPU: 16ms
+     CGroup: /docker/28ef689a527c570f3e80e7f43f1fd1e227c1e2d8828dc02d1fc441311a09c869/system.slice/nginx.service
+             ├─433 "nginx: master process /usr/sbin/nginx -g daemon on; master_process on;"
+             ├─434 "nginx: worker process"
+             ├─435 "nginx: worker process"
+             ├─437 "nginx: worker process"
+             └─438 "nginx: worker process"
+
+Nov 14 17:06:42 srv01 systemd[1]: Starting nginx.service - A high performance web server and a reverse proxy server...
+Nov 14 17:06:42 srv01 systemd[1]: Started nginx.service - A high performance web server and a reverse proxy server.</code></pre>
       <p class="lab-step-note">What this teaches: systemctl is the control plane for the init system: restart bounces the service (it prints nothing on success), and status shows state, main PID, and recent log lines in one view.</p>
     <h3>4. Tune scheduling priority with nice and renice</h3>
-      <div class="command-block"><div class="command"><code>nice -n 10 ./heavy-job.sh &amp; renice -n 5 -p $!</code></div></div>
-      <p class="lab-output-label">Expected output:</p><pre><code>4412 (process ID) old priority 10, new priority 5</code></pre>
-      <p class="lab-step-note">What this teaches: nice -n 10 starts a process with lowered priority (higher niceness means a smaller CPU share); renice adjusts a running process by PID, and $! is the PID of the backgrounded job. Only root may set negative niceness to raise priority. Priority only matters when processes actually compete for CPU, which is why a lone busy loop shows no difference.</p>
+      <div class="command-block"><div class="command"><code>nice -n 10 ./heavy-job.sh &amp; sleep 1; renice -n 5 -p $!</code></div></div>
+      <p class="lab-output-label">Output:</p><pre><code>440 (process ID) old priority 10, new priority 5</code></pre>
+      <p class="lab-step-note">What this teaches: nice -n 10 starts a process with lowered priority (higher niceness means a smaller CPU share); renice adjusts a running process by PID, and $! is the PID of the backgrounded job. Only root may set negative niceness to raise priority. The sleep 1 gives nice time to take effect before renice reads the old value; without it renice can report an old priority of 0. Priority only matters when processes actually compete for CPU, which is why a lone busy loop shows no difference.</p>
     </section>
 
     <section id="how-it-works"><div class="lab-explainer"><h3>How It Works</h3>

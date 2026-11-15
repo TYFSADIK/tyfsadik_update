@@ -41,12 +41,12 @@
     <link rel="help" href="../../../humans.txt">
   <link rel="security" href="../../../.well-known/security.txt">
 <link rel="manifest" href="../../../site.webmanifest">
-  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Mandatory Access Control with SELinux and AppArmor", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-07-29", "dateModified": "2026-09-29", "proficiencyLevel": "Advanced", "dependencies": "SELinux (RHEL 9), AppArmor (Ubuntu 22.04), audit2allow", "articleSection": "Security", "learningResourceType": "Hands-on lab", "teaches": "cybersecurity and security operations", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["SELinux", "AppArmor", "MAC", "mandatory access control", "audit2allow", "semanage", "AVC denials", "selinux & apparmor explained", "SELinux lab", "SELinux guide", "SELinux tutorial", "SELinux explained", "SELinux homelab", "AppArmor lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "Linux"}, {"@type": "Thing", "name": "Nginx"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Mandatory Access Control with SELinux and AppArmor", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-07-29", "dateModified": "2026-11-14", "proficiencyLevel": "Advanced", "dependencies": "SELinux (RHEL 9), AppArmor (Ubuntu 22.04), audit2allow", "articleSection": "Security", "learningResourceType": "Hands-on lab", "teaches": "cybersecurity and security operations", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["SELinux", "AppArmor", "MAC", "mandatory access control", "audit2allow", "semanage", "AVC denials", "selinux & apparmor explained", "SELinux lab", "SELinux guide", "SELinux tutorial", "SELinux explained", "SELinux homelab", "AppArmor lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "Linux"}, {"@type": "Thing", "name": "Nginx"}]}</script>
   <meta property="og:title" content="SELinux &amp; AppArmor Explained: Security Lab | TYFSADIK">
   <meta property="og:description" content="Enforce mandatory access control on Linux: SELinux enforcing mode, AVC denial analysis, custom policy modules, booleans, and AppArmor profile authoring.">
   <meta property="og:type" content="article">
   <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
-  <meta property="article:modified_time" content="2026-10-22T05:41:50-04:00">
+  <meta property="article:modified_time" content="2026-11-14T00:00:00-05:00">
   <meta property="og:url" content="https://tyfsadik.org/blog/labs/security/selinux-apparmor.html">
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="article:tag" content="SELinux">
@@ -150,7 +150,7 @@
 
     <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/security/index.html">Security</a> &rsaquo; <span>SELinux &amp; AppArmor</span></nav>
     <div class="page-header"><h1>Mandatory Access Control with SELinux and AppArmor</h1>
-      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-10-22">2026-10-22</time> &middot; 26 min read</p>
+      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-11-14">2026-11-14</time> &middot; 26 min read</p>
       <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Security</span><span class="lab-time">~6 hours</span></div>
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">SELinux</span><span class="tag">AppArmor</span><span class="tag">audit2allow</span><span class="tag">MAC</span></div>
     </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
@@ -216,7 +216,7 @@ flowchart LR
         </ul>
       <p>Install the tooling first. The <code>policycoreutils-python-utils</code> package provides both <code>semanage</code> and <code>audit2allow</code> on RHEL 9, and <code>setroubleshoot-server</code> translates raw AVC denials into human-readable advice. (The older <code>policycoreutils-devel</code> package is only needed if you compile reference-policy modules with <code>audit2allow -R</code> macros; it is not required for this lab.) On Ubuntu, <code>apparmor-utils</code> provides <code>aa-genprof</code>, <code>aa-logprof</code>, and <code>aa-status</code>.</p>
       <div class="command-block"><div class="command"><code># RHEL 9</code></div><div class="command"><code>sudo dnf install -y policycoreutils-python-utils setroubleshoot-server audit nginx</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: SELinux needs a RHEL 9 host, and AppArmor profiles load into the host kernel, which a container cannot do):</p>
 <pre><code>Complete!
 Installed: policycoreutils-python-utils, setroubleshoot-server, audit, nginx</code></pre>
 
@@ -251,12 +251,13 @@ apparmor module is loaded.
 </section>
 
     <section id="step-by-step-execution"><h2>Step-by-Step Execution</h2>
+      <p class="lab-step-note lab-rerun-note">The steps on this page were not re-run on 14 November 2026: SELinux needs a RHEL 9 host, and AppArmor profiles load into the host kernel, which a container cannot do. The outputs shown are examples from the original lab environment, and each is marked as such.</p>
       <p>The workflow splits into two tracks. Steps 1-5 are the RHEL/SELinux track: enforce, observe, generate policy, fix labels, flip booleans. Steps 6-7 are the Ubuntu/AppArmor track: enforce the shipped profile, then author a custom one. Both tracks end in the same validation routine.</p>
 
       <h3>1. Confirm and set SELinux enforcing [ROOT REQUIRED]</h3>
       <p>SELinux has three modes. <strong>Enforcing</strong> blocks and logs policy violations. <strong>Permissive</strong> logs violations but allows them, useful for policy development. <strong>Disabled</strong> turns SELinux off entirely (and on RHEL requires a relabel of the whole filesystem on the way back, which is slow and risky). <code>setenforce</code> changes the runtime mode only; the persistent value lives in <code>/etc/selinux/config</code> and is read at boot. Set both so a reboot cannot silently drop the system back to permissive.</p>
       <div class="command-block"><div class="command"><code>sudo setenforce 1 &amp;&amp; getenforce &amp;&amp; sudo sed -i 's/^SELINUX=.*/SELINUX=enforcing/' /etc/selinux/config &amp;&amp; grep ^SELINUX= /etc/selinux/config</code></div></div>
-      <p class="lab-output-label">Expected output:</p>
+      <p class="lab-output-label">Example output (not re-run: SELinux needs a RHEL 9 host, and AppArmor profiles load into the host kernel, which a container cannot do):</p>
 <pre><code class="language-bash">$ getenforce
 Enforcing
 $ grep ^SELINUX= /etc/selinux/config
@@ -268,7 +269,7 @@ SELINUX=enforcing</code></pre>
       <p>Before writing policy, look at what the kernel already sees. Every process and file carries a context in the form <code>user:role:type:level</code>; for type enforcement the <strong>type</strong> field is the one that matters. nginx workers run in the <code>httpd_t</code> domain, and web content is labeled <code>httpd_sys_content_t</code>. The <code>-Z</code> flag on <code>ps</code> and <code>ls</code> shows these contexts.</p>
       <div class="command-block"><div class="command"><code>ps -eZ | grep nginx &amp;&amp; ls -lZ /usr/share/nginx/html/</code></div></div>
       <p class="code-label">Expected output, processes in httpd_t, content labeled httpd_sys_content_t</p>
-      <p class="lab-output-label">Expected output:</p>
+      <p class="lab-output-label">Example output (not re-run: SELinux needs a RHEL 9 host, and AppArmor profiles load into the host kernel, which a container cannot do):</p>
 <pre><code class="language-bash">system_u:system_r:httpd_t:s0      2043 ?  00:00:00 nginx
 system_u:system_r:httpd_t:s0      2044 ?  00:00:00 nginx
 -rw-r--r--. root root system_u:object_r:httpd_sys_content_t:s0 index.html</code></pre>
@@ -293,7 +294,7 @@ Do
 <h3>3. Generate a policy module from denials</h3>
       <p>Once the service has run long enough to hit its legitimate denials, feed those AVC records to <code>audit2allow</code>. It converts them into type-enforcement rules and, with <code>-M</code>, compiles them into a loadable policy module. Generate the module first, then <strong>review the <code>.te</code> source before installing anything</strong>, <code>audit2allow</code> happily converts an attacker's activity into policy, so the install step must never be chained blindly onto the generation step.</p>
       <div class="command-block"><div class="command"><code>sudo ausearch -m avc -ts recent | sudo audit2allow -M nginx_local</code></div><div class="command"><code>cat nginx_local.te</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Example output (not re-run: SELinux needs a RHEL 9 host, and AppArmor profiles load into the host kernel, which a container cannot do):</p>
 <pre><code class="language-bash">******************** IMPORTANT ********************
 
 To make this policy package active, execute:
@@ -326,7 +327,7 @@ $ sudo ausearch -m avc -ts recent -i   # no new output after re-testing</code></
       <p>Scenario: you moved the site to <code>/srv/www/</code> and nginx now returns 403s with AVC denials, because the files carry <code>var_t</code> instead of <code>httpd_sys_content_t</code>.</p>
       <div class="command-block"><div class="command"><code>sudo semanage fcontext -a -t httpd_sys_content_t "/srv/www(/.*)?" &amp;&amp; sudo restorecon -Rv /srv/www</code></div></div>
       <p class="code-label">Expected output</p>
-      <p class="lab-output-label">Expected output:</p>
+      <p class="lab-output-label">Example output (not re-run: SELinux needs a RHEL 9 host, and AppArmor profiles load into the host kernel, which a container cannot do):</p>
 <pre><code class="language-bash">$ sudo restorecon -Rv /srv/www
 Relabeled /srv/www from unconfined_u:object_r:var_t:s0 to unconfined_u:object_r:httpd_sys_content_t:s0
 Relabeled /srv/www/index.html from unconfined_u:object_r:var_t:s0 to unconfined_u:object_r:httpd_sys_content_t:s0</code></pre>
@@ -342,7 +343,7 @@ $ matchpathcon /srv/www/index.html
       <p>Booleans are pre-built policy switches for common scenarios, the answer when the denial matches a known, supported use case. nginx reverse-proxying to a backend, for example, needs <code>httpd_can_network_connect</code>; serving home directories needs <code>httpd_enable_homedirs</code>. Always check the boolean list before writing a custom module: the boolean is maintained by the distribution and reviewed by people who know the policy better than you do.</p>
       <div class="command-block"><div class="command"><code>getsebool -a | grep httpd</code></div><div class="command"><code>sudo setsebool -P httpd_can_network_connect on</code></div></div>
       <p class="code-label">Expected output</p>
-      <p class="lab-output-label">Expected output:</p>
+      <p class="lab-output-label">Example output (not re-run: SELinux needs a RHEL 9 host, and AppArmor profiles load into the host kernel, which a container cannot do):</p>
 <pre><code class="language-bash">$ getsebool httpd_can_network_connect
 httpd_can_network_connect --&gt; on</code></pre>
       <p>A related fix that is neither a boolean nor a custom module: labeling a non-standard port. When nginx must connect to or listen on a port outside the defaults, add the port to an existing type rather than writing allow rules. This is exactly the fix <code>sealert</code> suggested in step 2. Use <code>-m</code> (modify) instead of <code>-a</code> (add) if the port already carries a label you need to change.</p>
@@ -358,7 +359,7 @@ httpd_can_network_connect --&gt; on</code></pre>
       <p>If the file is missing, generate one with the workflow from step 7 (<code>sudo aa-genprof /usr/sbin/nginx</code>, exercise the server, then enforce), or install a community profile from a source you trust. Only then flip it into enforce mode and confirm with <code>aa-status</code>.</p>
       <div class="command-block"><div class="command"><code>sudo aa-enforce /etc/apparmor.d/usr.sbin.nginx &amp;&amp; sudo aa-status</code></div></div>
       <p class="code-label">Expected output (excerpt)</p>
-      <p class="lab-output-label">Expected output:</p>
+      <p class="lab-output-label">Example output (not re-run: SELinux needs a RHEL 9 host, and AppArmor profiles load into the host kernel, which a container cannot do):</p>
 <pre><code class="language-bash">Setting /etc/apparmor.d/usr.sbin.nginx to enforce mode.
 ...
 16 profiles are in enforce mode.
@@ -375,7 +376,7 @@ httpd_can_network_connect --&gt; on</code></pre>
       <div class="command-block"><div class="command"><code>sudo aa-genprof /usr/local/bin/myapp   # then exercise myapp, press S to scan, F to finish</code></div></div>
       <p>The result is a human-readable profile. A minimal web-service profile looks like this:</p>
       <p class="code-label">/etc/apparmor.d/usr.local.bin.myapp</p>
-      <p class="lab-output-label">Expected output:</p>
+      <p class="lab-output-label">Example output (not re-run: SELinux needs a RHEL 9 host, and AppArmor profiles load into the host kernel, which a container cannot do):</p>
 <pre><code class="language-bash">#include &lt;tunables/global&gt;
 
 /usr/local/bin/myapp {

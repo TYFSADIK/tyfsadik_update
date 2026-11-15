@@ -27,7 +27,7 @@
   <meta property="og:description" content="Write advanced SQL with JOINs, CTEs, and window functions like ROW_NUMBER, then verify performance with EXPLAIN ANALYZE for real analytics workloads today.">
   <meta property="og:type" content="article">
   <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
-  <meta property="article:modified_time" content="2026-10-22T05:41:50-04:00">
+  <meta property="article:modified_time" content="2026-11-14T00:00:00-05:00">
   <meta property="og:url" content="https://tyfsadik.org/blog/labs/databases/joins-complex-queries.html">
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="article:tag" content="sql joins">
@@ -67,7 +67,7 @@
     <link rel="help" href="../../../humans.txt">
   <link rel="security" href="../../../.well-known/security.txt">
 <link rel="manifest" href="../../../site.webmanifest">
-  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "SQL JOINs, CTEs, and Window Functions", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-02-11", "dateModified": "2026-09-29", "proficiencyLevel": "Intermediate", "dependencies": "PostgreSQL 16, SQL window functions", "articleSection": "Databases", "learningResourceType": "Hands-on lab", "teaches": "databases and SQL", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["sql joins", "CTE", "common table expressions", "window functions", "ROW_NUMBER", "EXPLAIN ANALYZE", "sql joins & complex queries", "sql joins lab", "sql joins guide", "sql joins tutorial", "sql joins explained", "sql joins homelab", "CTE lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "PostgreSQL"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "SQL JOINs, CTEs, and Window Functions", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-02-11", "dateModified": "2026-11-14", "proficiencyLevel": "Intermediate", "dependencies": "PostgreSQL 16, SQL window functions", "articleSection": "Databases", "learningResourceType": "Hands-on lab", "teaches": "databases and SQL", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["sql joins", "CTE", "common table expressions", "window functions", "ROW_NUMBER", "EXPLAIN ANALYZE", "sql joins & complex queries", "sql joins lab", "sql joins guide", "sql joins tutorial", "sql joins explained", "sql joins homelab", "CTE lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "PostgreSQL"}]}</script>
   <script type="application/ld+json">{
   "@context": "https://schema.org",
   "@type": "HowTo",
@@ -133,7 +133,7 @@
 
     <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/databases/index.html">Databases</a> &rsaquo; <span>JOINs &amp; Complex Queries</span></nav>
     <div class="page-header"><h1>SQL JOINs, CTEs, and Window Functions</h1>
-      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-10-22">2026-10-22</time> &middot; 7 min read</p>
+      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-11-14">2026-11-14</time> &middot; 7 min read</p>
       <div class="lab-meta"><span class="difficulty difficulty-intermediate">Intermediate</span><span class="lab-category">Databases</span><span class="lab-time">~4 hours</span></div>
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">JOIN</span><span class="tag">CTE</span><span class="tag">window functions</span><span class="tag">EXPLAIN</span></div>
     </div>
@@ -178,38 +178,59 @@ flowchart LR
     </section>
 
     <section><h2 id="step-by-step-execution">Step-by-Step Execution</h2>
+      <p class="lab-step-note lab-rerun-note">The outputs on this page come from a re-run on 14 November 2026 in an Ubuntu 24.04 container with PostgreSQL 16 (arm64). Sample files, users, and hosts were created for the run, so names, numbers, and timestamps reflect that run.</p>
       <h3>1. Join and aggregate in a CTE</h3>
       <div class="command-block"><div class="command"><code>WITH totals AS (SELECT customer_id, SUM(amount) t FROM invoice GROUP BY customer_id) SELECT * FROM totals JOIN customer ON customer.id = totals.customer_id;</code></div>
-      <p class="lab-output-label">Expected output:</p>
-      <pre><code>(customer totals joined to customer rows)</code></pre>
+      <p class="lab-output-label">Output (first 6 rows):</p>
+      <pre><code> customer_id |    t    | id |     name     | region
+-------------+---------+----+--------------+--------
+           1 | 7470.00 |  1 | Customer 001 | West
+           2 | 8112.00 |  2 | Customer 002 | North
+           3 | 7804.00 |  3 | Customer 003 | South
+           4 | 8396.00 |  4 | Customer 004 | East
+           5 | 8088.00 |  5 | Customer 005 | West
+           6 | 7780.00 |  6 | Customer 006 | North</code></pre>
       <p class="lab-step-note">What this teaches: The CTE names the intermediate result, so the final SELECT reads as intent: aggregate once, then join, instead of a nested subquery puzzle.</p></div>
       <h3>2. Rank with a window function</h3>
       <div class="command-block"><div class="command"><code>SELECT name, ROW_NUMBER() OVER (PARTITION BY region ORDER BY total DESC) FROM v_customer_totals;</code></div>
-      <p class="lab-output-label">Expected output:</p>
-      <pre><code>(names ranked 1..N within each region)</code></pre>
+      <p class="lab-output-label">Output (first 8 rows):</p>
+      <pre><code>     name     | row_number
+--------------+------------
+ Customer 004 |          1
+ Customer 016 |          2
+ Customer 028 |          3
+ Customer 008 |          4
+ Customer 020 |          5
+ Customer 012 |          6
+ Customer 024 |          7
+ Customer 032 |          8</code></pre>
       <p class="lab-step-note">What this teaches: PARTITION BY restarts the numbering per region; without it you get a single global ranking, which answers a different question.</p></div>
       <h3>3. Verify the plan with the full query</h3>
       <div class="command-block"><div class="command"><code>EXPLAIN ANALYZE WITH totals AS (SELECT customer_id, SUM(amount) AS t FROM invoice GROUP BY customer_id) SELECT c.name, t.t FROM totals t JOIN customer c ON c.id = t.customer_id ORDER BY t.t DESC LIMIT 5;</code></div></div>
-      <p class="lab-output-label">Expected output:</p>
-      <pre><code>Limit  (cost=120.42..120.43 rows=5 width=72) (actual time=1.204..1.210 rows=5 loops=1)
-  ->  Sort  (cost=120.42..122.45 rows=812 width=72) (actual time=1.202..1.205 rows=5 loops=1)
-        Sort Key: t.t DESC
-        Sort Method: top-N heapsort  Memory: 25kB
-        ->  Hash Join  (cost=68.90..118.39 rows=812 width=72) (actual time=0.612..1.051 rows=812 loops=1)
-              Hash Cond: (c.id = t.customer_id)
-              ->  Seq Scan on customer c  (cost=0.00..18.00 rows=500 width=68) (actual time=0.009..0.148 rows=500 loops=1)
-              ->  Hash  (cost=66.87..66.87 rows=812 width=12) (actual time=0.571..0.571 rows=812 loops=1)
-                    Buckets: 1024  Batches: 1  Memory Usage: 47kB
-                    ->  Subquery Scan on t  (cost=64.84..66.87 rows=812 width=12) (actual time=0.301..0.481 rows=812 loops=1)
-                          ->  HashAggregate  (cost=64.84..66.87 rows=812 width=12) (actual time=0.299..0.412 rows=812 loops=1)
-                                Group Key: invoice.customer_id
-                                ->  Index Scan using idx_invoice_customer on invoice  (cost=0.29..52.58 rows=5000 width=12) (actual time=0.018..0.189 rows=5000 loops=1)
-Planning Time: 0.187 ms
-Execution Time: 1.263 ms</code></pre>
-      <p class="lab-step-note">What this teaches: EXPLAIN ANALYZE runs the query and reports actual rows and time per node, not estimates. Read bottom up: the Index Scan feeds the HashAggregate, the CTE result is hashed once, and the top-N sort keeps only 5 rows. The Execution Time line is the wall-clock proof that the plan is healthy.</p>
+      <p class="lab-output-label">Output:</p>
+      <pre><code>                                                                QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=16.48..16.49 rows=5 width=44) (actual time=0.202..0.204 rows=5 loops=1)
+   -&gt;  Sort  (cost=16.48..16.57 rows=38 width=44) (actual time=0.201..0.202 rows=5 loops=1)
+         Sort Key: t.t DESC
+         Sort Method: top-N heapsort  Memory: 25kB
+         -&gt;  Hash Join  (cost=14.33..15.85 rows=38 width=44) (actual time=0.164..0.172 rows=38 loops=1)
+               Hash Cond: (c.id = t.customer_id)
+               -&gt;  Seq Scan on customer c  (cost=0.00..1.40 rows=40 width=16) (actual time=0.006..0.009 rows=40 loops=1)
+               -&gt;  Hash  (cost=13.86..13.86 rows=38 width=36) (actual time=0.148..0.149 rows=38 loops=1)
+                     Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                     -&gt;  Subquery Scan on t  (cost=13.00..13.86 rows=38 width=36) (actual time=0.131..0.139 rows=38 loops=1)
+                           -&gt;  HashAggregate  (cost=13.00..13.48 rows=38 width=36) (actual time=0.131..0.136 rows=38 loops=1)
+                                 Group Key: invoice.customer_id
+                                 Batches: 1  Memory Usage: 32kB
+                                 -&gt;  Seq Scan on invoice  (cost=0.00..10.00 rows=600 width=9) (actual time=0.004..0.038 rows=600 loops=1)
+ Planning Time: 0.481 ms
+ Execution Time: 0.266 ms
+(16 rows)</code></pre>
+      <p class="lab-step-note">What this teaches: EXPLAIN ANALYZE runs the query and reports actual rows and time per node, not estimates. Read bottom up: the Seq Scan on invoice feeds the HashAggregate (on a table this small, scanning beats an index), the CTE result is hashed once, and the top-N sort keeps only 5 rows. The Execution Time line is the wall-clock proof that the plan is healthy.</p>
       <h3>4. Find customers with no invoices (anti-join)</h3>
       <div class="command-block"><div class="command"><code>SELECT c.name FROM customer c WHERE NOT EXISTS (SELECT 1 FROM invoice i WHERE i.customer_id = c.id);</code></div>
-      <p class="lab-output-label">Expected output:</p>
+      <p class="lab-output-label">Output:</p>
       <pre><code>     name
 --------------
  Acme Imports

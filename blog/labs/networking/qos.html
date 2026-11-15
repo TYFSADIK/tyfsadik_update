@@ -41,12 +41,12 @@
     <link rel="help" href="../../../humans.txt">
   <link rel="security" href="../../../.well-known/security.txt">
 <link rel="manifest" href="../../../site.webmanifest">
-  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Quality of Service with DSCP and Linux tc", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-05-13", "dateModified": "2026-09-29", "proficiencyLevel": "Advanced", "dependencies": "Linux tc (HTB), DSCP, iperf3", "articleSection": "Networking", "learningResourceType": "Hands-on lab", "teaches": "computer networking fundamentals", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["QoS", "HTB", "tc", "DSCP", "traffic shaping", "iperf3", "bandwidth", "prioritization", "quality of service explained", "QoS lab", "QoS guide", "QoS tutorial", "QoS explained", "QoS homelab", "HTB lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "Linux"}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": ["TechArticle", "LearningResource"], "headline": "Quality of Service with DSCP and Linux tc", "author": {"@type": "Person", "@id": "https://tyfsadik.org/#person", "name": "MD. Taki Yasir Faraji Sadik", "url": "https://tyfsadik.org/about.html", "sameAs": ["https://github.com/TYFSADIK"]}, "datePublished": "2025-05-13", "dateModified": "2026-11-14", "proficiencyLevel": "Advanced", "dependencies": "Linux tc (HTB), DSCP, iperf3", "articleSection": "Networking", "learningResourceType": "Hands-on lab", "teaches": "computer networking fundamentals", "speakable": {"@type": "SpeakableSpecification", "cssSelector": [".lead", ".faq"]}, "keywords": ["QoS", "HTB", "tc", "DSCP", "traffic shaping", "iperf3", "bandwidth", "prioritization", "quality of service explained", "QoS lab", "QoS guide", "QoS tutorial", "QoS explained", "QoS homelab", "HTB lab"], "about": [{"@type": "Thing", "name": "Animation"}, {"@type": "Thing", "name": "HTML"}, {"@type": "Thing", "name": "Linux"}]}</script>
   <meta property="og:title" content="Quality of Service Explained: Networking Lab | TYFSADIK">
   <meta property="og:description" content="Enforce Quality of Service on Linux: HTB class hierarchies, DSCP classification with tc filters, and verification of priority behavior under iperf3 load.">
   <meta property="og:type" content="article">
   <meta property="article:published_time" content="2026-09-30T00:00:00-04:00">
-  <meta property="article:modified_time" content="2026-10-22T05:41:50-04:00">
+  <meta property="article:modified_time" content="2026-11-14T00:00:00-05:00">
   <meta property="og:url" content="https://tyfsadik.org/blog/labs/networking/qos.html">
   <meta property="og:site_name" content="TYFSADIK">
   <meta property="article:tag" content="QoS">
@@ -130,7 +130,7 @@
 
     <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../../../index.html">Home</a> &rsaquo; <a href="../../../blog/labs/index.html">Labs</a> &rsaquo; <a href="../../../blog/labs/networking/index.html">Networking</a> &rsaquo; <span>Quality of Service</span></nav>
     <div class="page-header"><h1>Quality of Service with DSCP Marking and Linux tc</h1>
-      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-10-22">2026-10-22</time> &middot; 8 min read</p>
+      <p class="byline">Written by <a href="../../../about.html">Taki Sadik</a> &middot; Last updated <time datetime="2026-11-14">2026-11-14</time> &middot; 8 min read</p>
       <div class="lab-meta"><span class="difficulty difficulty-advanced">Advanced</span><span class="lab-category">Networking</span><span class="lab-time">~5 hours</span></div>
       <div class="tags" style="margin-top:0.75rem;"><span class="tag">DSCP</span><span class="tag">tc HTB</span><span class="tag">shaping</span><span class="tag">iperf3</span></div>
     </div>    <nav class="lab-toc" aria-label="On this page"><strong>On this page</strong>
@@ -190,37 +190,38 @@ flowchart TB
 </section>
 
     <section id="step-by-step-execution"><h2>Step-by-Step Execution</h2>
+      <p class="lab-step-note lab-rerun-note">The outputs on this page come from a re-run on 14 November 2026 in an Ubuntu 24.04 container (arm64). Sample files, users, and hosts were created for the run, so names, numbers, and timestamps reflect that run.</p>
       <h3>1. Build the HTB hierarchy [PRIVILEGED]</h3>
       <div class="command-block"><div class="command"><code>tc qdisc add dev eth0 root handle 1: htb default 30 &amp;&amp; tc class add dev eth0 parent 1: classid 1:1 htb rate 100mbit</code></div></div>
-<p class="lab-output-label">Expected output:</p>
-<pre><code>(no output on success)</code></pre>
-<p class="lab-step-note">What this teaches: the qdisc is the root scheduler; HTB lets child classes borrow unused bandwidth while respecting ceilings.</p>
+<p class="lab-output-label">Output:</p>
+<pre><code>Warning: sch_htb: quantum of class 10001 is big. Consider r2q change.</code></pre>
+<p class="lab-step-note">What this teaches: the qdisc is the root scheduler; HTB lets child classes borrow unused bandwidth while respecting ceilings. The quantum warning is harmless: HTB derives each class's quantum as rate divided by r2q (default 10), which at 100 Mbit exceeds its preferred maximum. Set <code>quantum</code> on the class, or <code>r2q</code> on the qdisc, to silence it.</p>
 <h3>2. Add priority and bulk classes</h3>
       <div class="command-block"><div class="command"><code>tc class add dev eth0 parent 1:1 classid 1:10 htb rate 60mbit prio 0 &amp;&amp; tc class add dev eth0 parent 1:1 classid 1:30 htb rate 40mbit prio 1</code></div></div>
-<p class="lab-output-label">Expected output:</p>
-<pre><code>class htb 1:1 root prio 0 rate 100Mbit ceil 100Mbit burst 1375b cburst 1375b
-class htb 1:10 parent 1:1 leaf 10: prio 0 rate 60Mbit ceil 60Mbit burst 1375b cburst 1375b
-class htb 1:30 parent 1:1 leaf 30: prio 1 rate 40Mbit ceil 40Mbit burst 1375b cburst 1375b</code></pre>
+<p class="lab-output-label">Output:</p>
+<pre><code>Warning: sch_htb: quantum of class 10010 is big. Consider r2q change.
+Warning: sch_htb: quantum of class 10030 is big. Consider r2q change.
+$ tc class show dev eth0
+class htb 1:10 parent 1:1 prio 0 rate 60Mbit ceil 60Mbit burst 1600b cburst 1600b
+class htb 1:1 root rate 100Mbit ceil 100Mbit burst 1600b cburst 1600b
+class htb 1:30 parent 1:1 prio 1 rate 40Mbit ceil 40Mbit burst 1600b cburst 1600b</code></pre>
 <p class="lab-step-note">What this teaches: classes turn a flat link into isolated lanes with guaranteed rates and priorities.</p>
 <p class="lab-step-note">The second class is 1:30 (matching the classid in the command), and its ceiling defaults to its rate, 40Mbit. Now add the classifier that actually steers traffic into these classes:</p>
 <div class="command-block"><div class="command"><code>tc filter add dev eth0 parent 1:0 protocol ip prio 1 u32 match ip dsfield 0xb8 0xfc flowid 1:10</code></div></div>
-<p class="lab-output-label">Expected output:</p>
+<p class="lab-output-label">Output:</p>
 <pre><code>(no output on success)</code></pre>
 <p class="lab-step-note">Without this filter, marked packets fall into the default class 1:30 and the priority class never sees traffic: classification is what makes QoS real. match ip dsfield 0xb8 0xfc compares the TOS byte against 0xb8 (DSCP 46, EF) with mask 0xfc, which ignores the two ECN bits. Confirm with: tc filter show dev eth0.</p>
 <h3>3. Mark and verify under load with iperf3</h3>
       <div class="command-block"><div class="command"><code>iperf3 -c 192.168.10.30 -S 0xb8 &amp;&amp; tc -s class show dev eth0</code></div></div>
-<p class="lab-output-label">Expected output:</p>
-<pre><code class="language-bash">class htb 1:10 parent 1:1 leaf 10: prio 0 rate 60Mbit ceil 60Mbit burst 1375b cburst 1375b
- Sent 75497472 bytes 51456 pkt (dropped 0, overlimits 0 requeues 0)
- backlog 0b 0p requeues 0
- lended: 51456 borrowed: 0 giants: 0
- tokens: 16762 ctokens: 16762
-
-class htb 1:30 parent 1:1 leaf 30: prio 1 rate 40Mbit ceil 40Mbit burst 1375b cburst 1375b
- Sent 50331648 bytes 34320 pkt (dropped 214, overlimits 391 requeues 0)
- backlog 0b 0p requeues 0
- lended: 34320 borrowed: 0 giants: 0
- tokens: 12500 ctokens: 12500</code></pre>
+<p class="lab-output-label">Output (iperf3 summary and the 1:10 class):</p>
+<pre><code class="language-bash">[ ID] Interval           Transfer     Bitrate         Retr
+[  5]   0.00-10.00  sec  68.8 MBytes  57.7 Mbits/sec    0             sender
+[  5]   0.00-10.00  sec  67.6 MBytes  56.7 Mbits/sec                  receiver
+class htb 1:10 parent 1:1 prio 0 rate 60Mbit ceil 60Mbit burst 1600b cburst 1600b
+ Sent 74180187 bytes 48999 pkt (dropped 0, overlimits 1183 requeues 0)
+ backlog 136326b 3p requeues 0
+ lended: 1187 borrowed: 0 giants: 0
+ tokens: -138604 ctokens: -138604</code></pre>
 <p class="lab-step-note">What this teaches: DSCP marks survive across the network, so classification at the edge drives treatment everywhere downstream.</p>
 <p class="lab-step-note">iperf3 -S 0xb8 sets the TOS byte to 0xb8 (184 decimal): the top six bits are DSCP 46 (EF), the low two are ECN. Under contention the priority class drops nothing while the bulk class sheds packets (overlimits), which is the visible proof the filter steered the EF-marked flow into 1:10. tc shapes egress only; inbound shaping needs an ingress qdisc or IFB.</p>
 </section>    <section id="how-it-works">
