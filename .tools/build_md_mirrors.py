@@ -12,10 +12,75 @@ Deterministic and rerunnable: mirrors are fully regenerated each run.
 """
 
 import html
+import json
 import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+# Written by hand and kept here so a rebuild of llms-full.txt never drops it.
+# Edit this text when roles, certifications or headline numbers change.
+PROFILE = """## Profile summary
+
+MD. Taki Yasir Faraji Sadik (Taki Sadik) is a defence researcher and a cybersecurity and
+infrastructure engineer in Ontario, Canada, based in North York, Toronto.
+
+- Roles: Defence Researcher; Cybersecurity and Infrastructure Engineer; Data Center Engineer at
+  Microsoft; Senior IT Infrastructure Specialist at Amico Group of Companies (Richmond Hill, ON).
+- Defence contract work: from time to time, private contract work with Lockheed Martin Canada
+  Mission Systems in Ottawa (research support, systems work and security work), alongside his own
+  personal defence research.
+- Defence research: the Canadian Defence Hardware Program (eleven sensor and robotics builds
+  across sky, water and ground) and six build guides written against Canada's 2027 MINERVA and
+  IDEaS defence calls.
+- Infrastructure: a 7-node Kubernetes cluster on Proxmox hosts, a zero-trust Proxmox private
+  cloud, and nine self-hosted services.
+- Open source: Daru (self-hosted SIEM) and Chakor (self-hosted AI workspace).
+- Writing: 116 hands-on IT labs across nine tracks, from Linux to Kubernetes.
+- Certifications: CompTIA Security+, Cisco CCNA, CompTIA A+, Microsoft AZ-900, AWS Cloud
+  Practitioner and 25+ more; currently pursuing the CISSP.
+- Education: University of Toronto (B.Eng, Information Technology); Seneca Polytechnic
+  (postgraduate, Cyber/Electronic Operations).
+- Languages: English, Bengali, Urdu, French.
+- Contact: taki@tyfsadik.org, https://www.linkedin.com/in/md-taki-yasir-faraji-sadik-63a026278/,
+  https://github.com/TYFSADIK
+- Full project list: see "All projects" in the Projects section below ({count} projects).
+"""
+
+# Sections of the "All projects" list, in the order work.html shows them.
+PROJECT_SECTIONS = [("Defence", "Defence & Sovereignty Tech"),
+                    ("Infrastructure", "Homelab & Infrastructure"),
+                    ("Web Dev", "Web Development"),
+                    ("Games", "Games"),
+                    ("Apps", "Applications")]
+
+
+def load_projects() -> list:
+    return json.loads((ROOT / "site-data.json").read_text(encoding="utf-8"))["projects"]
+
+
+def project_catalogue(projects: list) -> str:
+    """Every project from site-data.json, grouped by section, as markdown.
+
+    work.html builds its cards in JavaScript, so convert() alone sees only the
+    section headings; this list is what gives llms-full.txt the projects."""
+    out = ["## All projects", "",
+           f"Every project on https://tyfsadik.org/work, {len(projects)} in total, grouped by section.", ""]
+    for cat, label in PROJECT_SECTIONS:
+        group = [p for p in projects if p["category"] == cat]
+        if not group:
+            continue
+        out += [f"### {label} ({len(group)})", ""]
+        for p in group:
+            url = "https://tyfsadik.org/" + p["url"].removesuffix(".html")
+            meta = " · ".join(v for v in (p.get("year", ""), p.get("badge", "")) if v)
+            out.append(f"- **{html.unescape(p['title'])}** ({meta}), {url}")
+            out.append(f"  {html.unescape(p['description'])}")
+            tech = p.get("techStack") or p.get("tags") or []
+            if tech:
+                out.append(f"  Tech: {', '.join(tech)}")
+        out.append("")
+    return "\n".join(out) + "\n"
 
 # index, about, resume, contact and docs/ are deliberately not mirrored:
 # their .md files were removed from the repo and must not be regenerated.
@@ -144,17 +209,23 @@ def main():
            "work/infrastructure/daru.html",
            "work/infrastructure/homelab-server-room.html",
            "docs/asset-register.html"]
+    projects = load_projects()
     parts = ["# TYFSADIK full-text mirror",
              "",
              "Complete markdown text of the key pages on tyfsadik.org.",
              "Author: MD. Taki Yasir Faraji Sadik (Taki Sadik), https://tyfsadik.org/",
-             ""]
+             "",
+             PROFILE.format(count=len(projects))]
     for rel in key:
         f = ROOT / rel
         if f.exists():
-            parts.append(f"\n\n---\n\n<!-- Source: https://tyfsadik.org/{'' if rel=='index.html' else rel} -->\n")
+            # Clean URLs, as the site serves them: about.html -> about, blog/labs/index.html -> blog/labs/
+            url = re.sub(r"(^|/)index\.html$", r"\1", rel).removesuffix(".html")
+            parts.append(f"\n\n---\n\n<!-- Source: https://tyfsadik.org/{url} -->\n")
             title = text(re.search(r"<h1[^>]*>(.*?)</h1>", f.read_text(encoding='utf-8'), re.S).group(1)) if re.search(r"<h1", f.read_text(encoding='utf-8')) else rel
             parts.append("# " + title + "\n\n" + convert(f.read_text(encoding="utf-8"), rel))
+            if rel == "work.html":
+                parts.append(project_catalogue(projects))
     (ROOT / "llms-full.txt").write_text("\n".join(parts), encoding="utf-8")
     print(f"{len(mirrored)} .md mirrors + llms-full.txt written")
 
