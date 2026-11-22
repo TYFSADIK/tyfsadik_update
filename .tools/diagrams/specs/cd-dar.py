@@ -48,46 +48,84 @@ kit = (
 
 decision = (
     Sequence("cddar-decision", "From detection to an approved response",
-             "A sensor detection travels through the pipeline to the scorer, which ranks it and opens a TheHive "
-             "alert with reasons. Only the analyst can run a response. Every step is written to the hash-chained "
-             "approval log.",
-             [("sensor", "Sensors", "cyan"), ("pipe", "Vector + Kafka", "blue"), ("score", "Scorer", "yellow"),
-              ("hive", "TheHive", "orange"), ("analyst", "Analyst", "green"), ("act", "Router / Velociraptor", "red"),
-              ("log", "Approval log", "purple")])
-    .msg("sensor", "pipe", "Suricata, Zeek or Wazuh alert")
-    .msg("pipe", "pipe", "normalise to OCSF, store in OpenSearch")
-    .msg("pipe", "score", "Detection Finding")
-    .msg("score", "score", "criticality x stage x confidence x severity")
-    .msg("score", "hive", "alert: score, priority, reasons")
-    .msg("hive", "analyst", "ranked queue")
+             "Detections are scored and correlated into an incident, a local model explains the incident with "
+             "evidence, code checks the explanation, and only the analyst can run a response. Every step is "
+             "written to the hash-chained approval log.",
+             [("sensor", "Sensors + rules", "cyan"), ("score", "Scorer", "yellow"), ("corr", "Correlator", "blue"),
+              ("ai", "Local LLM", "purple"), ("hive", "TheHive", "orange"), ("analyst", "Analyst", "green"),
+              ("act", "Playbooks", "red")])
+    .msg("sensor", "score", "finding with ATT&CK technique")
+    .msg("score", "corr", "score, priority, reasons")
+    .msg("corr", "hive", "one alert per incident, with timeline")
+    .msg("corr", "ai", "incident evidence E1..En")
+    .msg("ai", "hive", "summary, checked in code, suggestions only")
     .note("nothing acts on its own up to here", over=("sensor", "hive"))
-    .msg("analyst", "act", "approve: block IP or collect evidence")
-    .msg("act", "analyst", "result", dashed=True)
-    .msg("hive", "log", "every event, hash-chained")
+    .msg("hive", "analyst", "ranked incident queue")
+    .msg("analyst", "act", "approve: triage, contain or block")
+    .msg("act", "analyst", "result, every step logged", dashed=True)
+)
+
+aisoc = (
+    Flow("cddar-aisoc", "AI-assisted SOC pipeline",
+         "Logs from Linux, Windows and the network are collected, normalised and stored; a Python detection "
+         "engine and the sensors' rules produce findings; the scorer ranks them; the correlator groups them into "
+         "incidents; a local model explains each incident; the analyst approves any response; everything is "
+         "audited and reported.", cols=4)
+    .node("src", "Linux, Windows, network", "14 test machines, Zeek, Suricata, field kit", at=(0, 0), color="grey")
+    .node("col", "Log collection", "Wazuh, Sysmon, auditd, Vector, Kafka, Splunk HEC input", at=(0, 1), color="blue")
+    .node("cdr", "Data repository", "OpenSearch (OCSF) and a copy in the Daru SIEM", at=(0, 2), color="blue")
+    .node("det", "Detection engine", "Python rules: match, threshold, sequence, plus sensor rules", at=(0, 3), color="cyan")
+    .node("score", "Scoring", "criticality x stage x confidence x severity", at=(1, 3), color="yellow")
+    .node("corr", "Incident correlation", "shared IP or user within 30 min, merged stories", at=(1, 2), color="yellow")
+    .node("ai", "AI investigation", "local LLM on vLLM, evidence-cited, checked in code", at=(1, 1), color="purple")
+    .node("dash", "Analyst dashboard", "Grafana COP, incidents, TheHive cases", at=(1, 0), color="orange")
+    .node("appr", "Human approval", "analyst starts a responder", at=(2, 0), color="green")
+    .node("resp", "Response playbooks", "triage, contain, release, block", at=(2, 1), color="red")
+    .node("audit", "Audit and reporting", "hash-chained log, incident reports", at=(2, 2), span=2, color="grey")
+    .edge("src", "col").edge("col", "cdr").edge("cdr", "det")
+    .edge("det", "score").edge("score", "corr").edge("corr", "ai").edge("ai", "dash")
+    .edge("dash", "appr").edge("appr", "resp").edge("resp", "audit")
+)
+
+guardrails = (
+    Flow("cddar-guardrails", "How the model's answer is checked",
+         "The incident's evidence is numbered and cleaned, the model answers in JSON, and code removes any "
+         "statement without valid evidence, any action outside the allow-list and any target not in the evidence. "
+         "If nothing grounded is left, the model gets one retry. Only the checked answer reaches the analyst.", cols=4)
+    .node("ev", "Number and clean the evidence", "E1..En findings, C1..Cn context; attacker text stripped and cut", at=(0, 0), color="cyan")
+    .node("llm", "Local model (vLLM)", "evidence fenced as data; JSON answer only", at=(0, 1), color="purple")
+    .node("chk", "Checks in code", "cited ids exist, action on the allow-list, target in the evidence", at=(0, 2), color="yellow")
+    .node("out", "Checked summary", "into TheHive, suggestions only; hashes to the approval log", at=(0, 3), color="green")
+    .node("drop", "Removed and listed", "uncited claims, unknown targets, disallowed actions", at=(1, 2), color="red")
+    .edge("ev", "llm").edge("llm", "chk").edge("chk", "out", "kept")
+    .edge("chk", "drop", "fails")
+    .edge("drop", "llm", "nothing grounded: one retry", dashed=True, exit="l", enter="b")
 )
 
 stack = (
     Stack("cddar-stack", "Software stack",
-          "Five layers from capture to decision, all open source: sensors, transport, the Cyber Data Repository, "
-          "decision services, and the analyst consoles.")
+          "Six layers from capture to decision, all open source: sensors, transport, the Cyber Data Repository and "
+          "SIEM, detection and decision services, the AI layer, and the analyst consoles.")
     .layer("Sensors", ["Zeek 7\nnetwork logs", "Suricata 7\nET Open + lab rules", "Wazuh 4.9\nhost alerts",
                        "Sysmon / auditd\nprocess events", "Nmap + NetBox\ndiscovery"], "cyan")
-    .layer("Transport", ["Vector 0.62\nedge + core", "Kafka 3.9\n5 topics", "WireGuard\nkit and laptop"], "blue")
-    .layer("Cyber Data Repository", ["OpenSearch 2.18\nOCSF 1.3 indices", "Index template\ntyped fields",
-                                     "Retention\n30 / 180 days"], "green")
-    .layer("Decision services", ["Scorer\nranked, with reasons", "Discovery\nactive + passive",
-                                 "Approval log\nSHA-256 hash chain"], "yellow")
-    .layer("Analyst consoles", ["Grafana\nCyber COP", "TheHive 5\ncases", "Cortex 3\nresponders",
-                                "Velociraptor\nremote forensics"], "orange")
+    .layer("Transport", ["Vector 0.62\nedge + core", "Kafka 3.9\n8 topics", "Splunk HEC\ninput", "WireGuard\nkit and laptop"], "blue")
+    .layer("Repository and SIEM", ["OpenSearch 2.18\nOCSF 1.3 indices", "Daru SIEM\nClickHouse", "Retention\n30 / 180 days"], "green")
+    .layer("Detection and decision", ["Detection engine\nYAML rules", "Scorer\nranked, with reasons",
+                                      "Correlator\nincidents", "Approval log\nSHA-256 chain"], "yellow")
+    .layer("AI layer", ["vLLM\nlocal model on my GPU", "Investigator\nevidence-cited summary", "Checks in code\nallow-list, citations"], "purple")
+    .layer("Analyst consoles", ["Grafana\nCOP + incidents", "TheHive 5\ncases", "Cortex 3\nplaybooks",
+                                "Velociraptor\nforensics + quarantine"], "orange")
 )
 
 ram = (
     Bars("cddar-ram", "Planned memory per machine (GB)",
-         "Memory allocated to each lab VM in the full build, 59 GB in total; the lite profile cuts core and SOC "
-         "to 12 GB each.", unit="GB", max_value=20)
-    .bar("cddar-core", 20, "OpenSearch, Kafka, NetBox", "blue")
-    .bar("cddar-soc", 16, "Wazuh, TheHive, Cortex", "blue")
+         "Memory allocated to each lab VM in the full build, 71 GB in total; the lite profile cuts core and SOC "
+         "and uses four extra test machines instead of eight. The language model runs on a separate GPU machine.",
+         unit="GB", max_value=20)
+    .bar("cddar-core", 20, "OpenSearch, Kafka, NetBox, AI services", "blue")
+    .bar("cddar-soc", 20, "Wazuh, Daru, TheHive, Cortex", "blue")
     .bar("cddar-sensor", 6, "Zeek, Suricata", "cyan")
+    .bar("srv03-srv10", 8, "1 GB each, 8 machines", "purple")
     .bar("dc01 / ws01", 4, "each", "purple")
     .bar("atk01", 4, "Caldera", "red")
     .bar("srv01 / srv02", 2, "each", "purple")
@@ -108,13 +146,13 @@ scores = (
 
 timeline = (
     Timeline("cddar-timeline", "Build status",
-             "Where the build stands: the code and offline tests are done, the physical build is next, then the "
-             "lab deployment, emulation runs and the deployable-kit outage test.")
-    .phase("Code and offline tests", "86 files, 29 tests passing", "done")
-    .phase("Physical build", "kit, switch, Windows VMs", "doing")
-    .phase("Lab deploy", "deploy.sh all", "next")
-    .phase("Emulation runs", "coverage, MTTD, MTTR", "next")
-    .phase("Kit outage test", "zero lost events", "next")
+             "Where the build stands: the lab code and the AI SOC layer are written and tested offline, the "
+             "physical build is next, then the lab deployment, the model on vLLM, and the test runs.")
+    .phase("Lab code", "pipeline, COP, forensics, kit", "done")
+    .phase("AI SOC layer", "rules, incidents, LLM, playbooks; 62 tests", "done")
+    .phase("Physical build", "kit, switch, Windows, GPU", "doing")
+    .phase("Lab deploy", "deploy.sh all + llm", "next")
+    .phase("Test runs", "scripted, Caldera, Atomic", "next")
 )
 
-DIAGRAMS = [topology, kit, decision, stack, ram, scores, timeline]
+DIAGRAMS = [topology, kit, decision, aisoc, guardrails, stack, ram, scores, timeline]

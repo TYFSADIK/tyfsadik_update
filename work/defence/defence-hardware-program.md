@@ -159,6 +159,8 @@ Six larger builds planned against the MINERVA and IDEaS specs, each published as
 
 - Sovereign AI and Data Enclave, Keycloak identity, OPA and OpenTDF policy, HSM-backed OpenBao keys, and label-filtered pgvector retrieval on the Chakor stack.
 
+- CD-DAR Testbed: AI-Assisted SOC, an AI-assisted security operations centre shaped by DND's CD-DAR project: detection rules, incident correlation, local-LLM investigation with evidence checks, and human-approved response.
+
 ## Program Architecture
 
 TRUST & ENV

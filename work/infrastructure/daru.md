@@ -687,6 +687,8 @@ Security claims are tested, not just written down: the audit table's permissions
 
 ## Related Work
 
+- CD-DAR Testbed: AI-Assisted SOC, where Daru is the SIEM receiving every event over Splunk HEC
+
 - Chakor: Self-Hosted AI Workspace
 
 - TYF-AI: Self-Hosted Local AI Security Platform

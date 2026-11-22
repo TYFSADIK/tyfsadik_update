@@ -1,8 +1,8 @@
-# Cyber Defence Decision Analysis and Response (CD-DAR) Testbed
+# CD-DAR Testbed: an AI-Assisted Security Operations Centre
 
-Written by [Taki Sadik](../../about) · Last updated 2026-11-21 · Status: code ready, physical build next · 18 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-11-21 · Status: code ready, physical build next · 22 min read
 
-A bench-scale defensive cyber operations testbed shaped by National Defence's CD-DAR project: network discovery, integrated open-source defence tools, a cyber data repository, a cyber common operating picture, remote forensics, and response actions that a human approves.
+An AI-assisted security operations centre shaped by National Defence's Cyber Defence - Decision Analysis and Response (CD-DAR) project: it collects logs from 14 test machines, detects suspicious activity with its own rules, correlates alerts into incidents, has a local language model explain each incident with evidence, and lets an analyst approve every response.
 
 ## Overview
 
@@ -20,17 +20,20 @@ CD-DAR is one of the largest cyber projects in the Defence Capabilities Blueprin
         much larger scale and with much higher stakes.
 
 This build takes the public requirement list and answers each line with open-source tools
-        on my own homelab: Zeek and Suricata on the wire, Wazuh and my own
-        [Daru SIEM](../../work/infrastructure/daru) on the hosts, OpenSearch as the data
-        repository, Grafana as the operating picture, Velociraptor for remote forensics, and TheHive
-        for cases and response. The design rule throughout: the tools rank and explain, a
-        person decides. Every response action needs human approval and is written to a
+        on my own homelab: Zeek and Suricata on the wire, Wazuh on the hosts, my own
+        [Daru SIEM](../../work/infrastructure/daru) holding a copy of everything, OpenSearch
+        as the data repository, Grafana as the operating picture, Velociraptor for remote forensics,
+        and TheHive for cases and response. On top sits an AI-assisted SOC layer: a
+        Python detection engine, a correlator that turns alerts into incidents, and a local language
+        model on vLLM that explains each incident with evidence. The design rule throughout:
+        the tools rank and explain, a person decides. The model only suggests, code
+        checks what it says, and every response needs human approval and is written to a
         tamper-evident log.
 
 This is independent research, not part of the CD-DAR project. It uses only public
         information, synthetic data and my own machines. Where it stands: the whole
-        testbed is now written as code: 86 files of Proxmox scripts, cloud-init, Docker stacks, data
-        pipelines, three Python services and 29 automated tests that pass. What is left is the physical
+        testbed is now written as code: 120 files of Proxmox scripts, cloud-init, Docker stacks, data
+        pipelines, six Python services, response playbooks and 62 automated tests that pass. What is left is the physical
         build and the first full run; nothing on this page is measured yet.
 
 ## The DND Project
@@ -69,8 +72,10 @@ Each row maps one stated CD-DAR need to the component that answers it in this te
 | Integrated cyber defence tools | Zeek, Suricata, Wazuh, Daru | Network sensors on a SPAN port and agents on every host, all feeding one pipeline instead of separate consoles. |
 | Cyber Data Repository | Vector, Kafka, OpenSearch | Every event normalised to one schema (OCSF), tagged with its source and asset, kept with a stated retention, and searchable from one place. |
 | Cyber Common Operating Picture | Grafana, OpenSearch Dashboards | One screen showing assets, live alerts, ATT&CK stage, and which mission-critical services each alert touches, refreshed in under a minute. |
+| Detection | Python detection engine, Suricata, Zeek, Wazuh | Rules as code (match, threshold, sequence) on the normalised event stream, next to the sensors' own rules, every hit tagged with its ATT&CK technique. |
 | Decision analysis | Scoring service, MITRE ATT&CK | Each alert ranked by asset criticality, detection confidence and ATT&CK stage, with a plain-language reason shown next to the score. |
-| Response | TheHive, Cortex, playbooks | Playbooks suggest actions (isolate host, block indicator, collect evidence); a person approves each one before it runs. |
+| Contextual analysis | Incident correlator, local LLM on vLLM | Related alerts grouped into one incident with a timeline; a local model explains it, citing evidence; code removes anything not grounded in the evidence. |
+| Response | TheHive, Cortex playbooks | Playbooks (triage, contain, release, block) run only when an analyst starts them, each step logged. |
 | Remote forensics | Velociraptor | Collect memory, disk artefacts and logs from any enrolled host without being there, with every artefact hashed for chain of custody. |
 | Human factors | Workload study | Analyst workload measured (alerts per hour, time per triage, NASA-TLX survey) so the tooling is judged on whether it helps people, not only on what it detects. |
 | Deployable networks | k3s kit, store-and-forward | A small deployable sensor kit that keeps collecting when its link drops and syncs to the central repository when it returns. |
@@ -111,6 +116,8 @@ A homelab cannot stand in for a national defence network, and this one will not 
 - Discovery finds what the inventory misses. Planted unknown devices are found and flagged, and discovery completeness is measured against the known asset list.
 
 - Forensics can be done remotely. Evidence is collected from a distant host in a measured time, with hashes that prove it was not changed.
+
+- AI can help without being trusted. A local model's incident summaries are measured for how often they pass evidence checks, how much of the evidence they cite, and how often the analyst agrees, while the model is never allowed to act.
 
 - A person stays in charge. No response action runs without approval, and every decision can be replayed from the tamper-evident log.
 
@@ -188,9 +195,92 @@ Every score carries its reasons, in plain words, into the alert the analyst read
 - Sensor severity is critical.
 No response action has been taken.
 
+## The AI-Assisted SOC
+
+Scoring single alerts is not enough: an analyst needs to see an attack as one story, with the
+        evidence, and decide quickly. Four pieces turn the testbed into an AI-assisted security
+        operations centre.
+
+### 1. Detection engine: rules as code
+
+A small Python engine reads every normalised event from Kafka and applies YAML rules, alongside
+        the rules Suricata, Zeek and Wazuh already ship. Three rule types cover most needs:
+
+| Type | Fires when | Shipped rules |
+| --- | --- | --- |
+| Match | One event meets every condition | Admin share opened over SMB (T1021.002); any connection from the attacker network into the command network (T1046) |
+| Threshold | N events, or N distinct values, per source in a window | Port scan, 40 ports in 2 minutes (T1046); host sweep (T1018); SSH password guessing (T1110.001); DNS tunnelling, 10 long names in 10 minutes (T1048.003) |
+| Sequence | Finding A, then finding B, on the same host in a window | Credential access then lateral movement (T1021); discovery then exfiltration (T1048) |
+
+### 2. Incident correlation
+
+The correlator groups scored findings into incidents. Two findings join the same incident when
+        they share an IP address, in either role, or a user account, within 30 minutes. A finding that
+        links two open incidents merges them, so a workstation that is attacked and then attacks the
+        domain controller stays one story. The incident score is the highest finding score plus 3 for
+        every extra ATT&CK tactic it reached. TheHive gets one alert per incident,
+        updated as it grows, with the full timeline, instead of one alert per detection.
+
+### 3. AI investigation with a local model
+
+When an incident scores 60 or more and goes quiet for 90 seconds, the investigator asks a
+        local language model, served by vLLM on my own GPU (Qwen2.5-7B-Instruct by
+        default), to explain it. No incident data leaves the lab. Because attackers control some of the
+        text the model reads (DNS names, user agents, file names), the model is treated as untrusted:
+
+- Evidence is numbered and fenced. Each finding becomes E1, E2, and so on; network context becomes C1, C2. Control characters are stripped and long fields are cut. The prompt says the evidence is data, never instructions.
+
+- Every claim must cite evidence that exists. A statement with no valid evidence ID is removed.
+
+- Suggested actions come from an allow-list (block an IP, isolate a host, collect triage, reset credentials, monitor), and the target must appear in the evidence. In the test suite, a DNS name that tells the model to "block 8.8.8.8" produces a suggestion that the checks remove.
+
+- One retry, then give up. If nothing grounded is left, the model gets the list of problems once; after that the analyst works the incident without a summary.
+
+- Recorded. The model name, the prompt hash and the answer hash go into the approval log, so every summary can be traced.
+
+This is the shape of what lands in the TheHive alert (format from the test suite, not a lab result):
+
+### AI investigation (model: cddar-llm, suggestions only)
+An outside host scanned dc01, then ws01 showed LSASS access and DNS exfiltration.
+
+What happened
+- atk01 scanned dc01 (E1)
+- Credentials were read from LSASS on ws01 (E2)
+- Data left ws01 over DNS (E3)
+
+Suggested actions (an analyst decides):
+- block_ip on 10.10.66.10: source of the scan (E1)
+- isolate_host on ws01: stop exfiltration (E3)
+
+Checks removed 5 item(s) from the model's answer:
+- recommended_actions[1]: target '8.8.8.8' is not in the evidence, removed
+- recommended_actions[2]: 'wipe_disk' is not an allowed action, removed
+
+### 4. Human-approved response playbooks
+
+| Responder | What it does |
+| --- | --- |
+| Triage | Velociraptor collects client info, running processes, network connections and scheduled tasks |
+| Contain host | Collects triage first, then quarantines the host so it can only talk to Velociraptor. If collection fails, it stops before the quarantine |
+| Release host | Removes the quarantine |
+| Block IP | Adds the address to the lab router's block list, refusing anything outside the lab ranges |
+
+These are Cortex responders. They run only when an analyst starts one on an observable in
+        TheHive, and every step is written to the approval log. I chose custom playbooks over a full
+        SOAR platform such as Shuffle to keep the lab small and every action easy to audit.
+
+### Daru and Splunk-compatible ingestion
+
+Every normalised event is also sent to my [Daru SIEM](../../work/infrastructure/daru)
+        over Splunk's HTTP Event Collector protocol, so Daru's search, dashboards and alerts work on the
+        whole lab. The pipeline also accepts Splunk HEC itself, so any forwarder or script that speaks
+        it can send logs in, and they go through the same detection engine. Incident reports bring it
+        together: one command writes the timeline with evidence IDs, the checked AI summary, every
+        decision and response step, and the approval log's chain check.
+
 ## The Operating Picture
 
-The Grafana dashboard has twelve panels, each answering one question an analyst asks:
+The main Grafana dashboard has twelve panels, each answering one question an analyst asks. A second dashboard, Incidents and AI Investigation, lists incidents by score with their kill chain and checked AI summary, and tracks how often the model's answers pass the checks, how much evidence they cite, and how long they take.
 
 - P1 findings, all findings, unknown devices, decisions logged: is anything on fire right now?
 
@@ -212,7 +302,7 @@ The build splits into a physical part, which I do by hand over about one weekend
 
 ### Step 1: The physical part
 
-- Proxmox node: free about 64 GB of RAM (47 GB with the lite profile) and 900 GB of disk on one node, enable Snippets on the local storage, and install git, rsync and genisoimage.
+- Proxmox node: free about 71 GB of RAM (53 GB with the lite profile) and 1 TB of disk on one node, enable Snippets on the local storage, and install git, rsync and genisoimage.
 
 - Windows ISOs: download the free Windows Server 2022 and Windows 11 Enterprise evaluation images and virtio-win.iso, and upload them to Proxmox.
 
@@ -222,13 +312,15 @@ The build splits into a physical part, which I do by hand over about one weekend
 
 - Switch mirror port: on a TP-Link Easy Smart switch, Monitoring > Port Mirror: enable, destination port 2, sources ports 1 and 3 to 5, ingress and egress. Netgear calls it System > Monitoring > Mirroring.
 
+- GPU machine for the model: any box with an NVIDIA GPU of 16 GB or more, the NVIDIA driver and the NVIDIA Container Toolkit. An existing vLLM or other OpenAI-compatible server works too.
+
 - Windows installs: install Windows Server in dc01 and Windows 11 in ws01 from the Proxmox console, loading the vioscsi driver so the disk appears.
 
 ### Step 2: Build the lab (scripted)
 
 cp lab.env.example lab.env          # set node name, storage, SSH key
 ./proxmox/setup-lab-bridge.sh        # isolated VLAN-aware bridge in hub mode
-./proxmox/create-lab.sh              # router, core, soc, sensor, srv01, srv02, atk01
+./proxmox/create-lab.sh              # router, core, soc, sensor, srv01-srv10, atk01
 ./proxmox/create-windows-shells.sh   # dc01 and ws01, with a CD of lab scripts
 
 ### Step 3: Windows domain (three scripts from the CD)
@@ -242,11 +334,13 @@ E:\01-ws01-join.ps1                              # ws01: join the domain
 ./deploy/deploy.sh all          # 30 to 60 minutes
 ./deploy/deploy.sh passwords    # every web console login
 ./deploy/deploy.sh status       # every service should say "up"
+./deploy/deploy.sh llm lab@192.168.1.60   # vLLM on my GPU machine for the AI investigator
 
 That one command generates every password and key, then sets up the router (responder key,
         WireGuard configs), the core (OpenSearch, Kafka, Vector, Grafana, NetBox with the asset list,
-        scorer, discovery, approval log), the SOC (Wazuh, TheHive, Cortex with the block responder,
-        Velociraptor, and links them all), the sensor (Zeek, Suricata with ET Open rules), the Linux
+        detection engine, scorer, correlator, AI investigator, discovery, approval log), the SOC
+        (Wazuh, Daru, TheHive, Cortex with the block and playbook responders, Velociraptor, and links
+        them all), the sensor (Zeek, Suricata with ET Open rules), the Linux
         agents and Caldera. Then E:\install-agents.ps1 on both Windows machines adds
         Sysmon, the Wazuh agent and the Velociraptor client.
 
@@ -262,6 +356,7 @@ The kit becomes the gateway and DHCP server for its field network, opens WireGua
 ### Step 6: Test it
 
 ./tests/emulation/run-all.sh   # 10 attack steps, then scores coverage, MTTD, MTTR
+.\run-atomics.ps1 -RunId ...    # on ws01: Atomic Red Team, 15 techniques, scored the same way
 ./deploy/deploy.sh ddil        # kit outage test: healthy, degraded, cut, restored
 
 | ATT&CK | Step | From | Expected detector |
@@ -291,22 +386,27 @@ All of it is open source under the MIT licence:
 | proxmox/ | Lab bridge, VM creation, cloud-init for every Linux VM, including the router's default-deny firewall, WireGuard and the restricted lab-block command |
 | deploy/ | Secret generator and one deploy script with all, per-machine, kit, internet on|off, status, passwords and ddil targets |
 | stacks/ | Docker Compose stacks for core, SOC and sensor; the Vector OCSF mapping with built-in tests; the OpenSearch index template and retention; the generated Grafana dashboard; Zeek policy and Suricata lab rules |
-| services/ | Decision scorer, discovery (Nmap plus passive Zeek sightings against NetBox) and the hash-chained approval log, in Python |
-| responders/ | Cortex responder that blocks a lab IP on the router, refusing anything outside the lab ranges |
+| services/ | Six Python services: detection engine with YAML rules, decision scorer, incident correlator, AI investigator, discovery (Nmap plus passive Zeek sightings against NetBox) and the hash-chained approval log |
+| responders/ | Cortex responders: block an IP on the router; triage, contain and release playbooks driving Velociraptor |
+| stacks/llm/ | vLLM for the AI investigator on a GPU machine |
 | endpoints/ | Windows domain scripts and the Sysmon, Wazuh and Velociraptor installers for Windows and Linux |
 | kit/ | Field kit setup, the k3s sensor pod, and the outage test |
-| tests/, tools/ | Emulation runners, Caldera launcher, NASA-TLX workload scoring, run scoring, NetBox seeding, TheHive and Cortex setup, chain-of-custody hashing |
+| tests/, tools/ | Emulation runners, Caldera launcher, Atomic Red Team runner, NASA-TLX workload scoring, run scoring, incident reports, NetBox, TheHive, Cortex and Daru setup, chain-of-custody hashing |
 
 Checked before any hardware is touched:
 
-- 29 automated tests pass: 23 Python tests (scoring, correlation, alert content, discovery reconciliation, hash-chain tamper and deletion detection, run scoring) and 6 Vector pipeline tests (Zeek, Suricata, Wazuh and discovery events mapped to OCSF).
+- 62 automated tests pass: 54 Python tests (detection rules, incident correlation and merging, AI answer checks including a prompt-injection case, playbook ordering, scoring, discovery, hash-chain tamper and deletion detection, run scoring, incident reports) and 8 Vector pipeline tests (Zeek, Suricata, Wazuh, Splunk HEC and discovery events mapped to OCSF).
 
-- All three Docker Compose stacks validate, every shell script passes ShellCheck, every cloud-init template renders with no missing values.
+- All four Docker Compose stacks validate, including the Daru override checked against Daru's own compose file, every shell script passes ShellCheck, every cloud-init template renders with no missing values.
 
 - A security review of my own code caught one real problem before it shipped: the endpoint download server would have exposed Velociraptor's private server keys. It now serves a separate folder holding only client files.
 
 What tests on a laptop cannot prove is how it behaves on real hardware. Expect first-run fixes;
         they will be recorded here.
+
+Testing also caught a real problem in a dependency: Vector 0.62 no longer fills in environment
+        variables in its configuration unless a flag is set, so every pipeline would have started with
+        placeholder text instead of its passwords and addresses. The flag is now set explicitly.
 
 ## Spec-Gap and Status Table
 
@@ -319,8 +419,13 @@ What tests on a laptop cannot prove is how it behaves on real hardware. Expect f
 | Integrated sensors | Zeek, Suricata, Wazuh and Daru feeding one pipeline | Code ready |
 | Cyber Data Repository | OpenSearch with OCSF-normalised events and stated retention | Code ready |
 | Cyber COP | Single picture of assets, alerts, ATT&CK stage and mission impact | Code ready |
+| Detection engine | Match, threshold and sequence rules as code, ATT&CK-tagged | Code ready |
 | Decision scoring | Context-ranked alerts with a readable reason | Code ready |
-| Human-approved response | TheHive playbooks; no action without approval; every decision logged | Code ready |
+| Incident correlation | Findings grouped and merged into incidents with timelines; one alert per incident | Code ready |
+| AI investigation | Local model on vLLM; evidence-cited summaries checked in code; suggestions only | Code ready |
+| AI answer quality | Check pass rate, evidence coverage, analyst agreement, latency | Not tested |
+| Daru SIEM and HEC ingestion | Every event copied to Daru; Splunk-compatible input | Code ready |
+| Human-approved response | Triage, contain, release and block playbooks; no action without approval; every step logged | Code ready |
 | Remote forensics | Velociraptor collection with hashed chain of custody | Code ready |
 | ATT&CK coverage | Caldera and Atomic Red Team scenarios scored per technique | Not tested |
 | Human factors | Workload and triage time measured against a plain queue | Not tested (form and script ready) |
@@ -344,6 +449,10 @@ What tests on a laptop cannot prove is how it behaves on real hardware. Expect f
 
 - Deployable kit: events lost during link outages, target zero.
 
+- Incident correlation: alerts per incident, and how many separate alerts the analyst no longer has to open.
+
+- AI investigation: share of answers that pass the evidence checks, evidence coverage, analyst agreement with the assessment, items the checks removed, and latency.
+
 ## Hardware to Buy First
 
 Most of the build runs on the homelab I already have. The shopping list is short:
@@ -354,7 +463,8 @@ Most of the build runs on the homelab I already have. The shopping list is short
 | USB 3 gigabit Ethernet adapter | Third port on the kit, for the mirror port | RTL8153 or AX88179 chipsets work well on Linux |
 | 5 or 8 port managed switch with port mirroring | The field network | TP-Link TL-SG105E / TL-SG108E or Netgear GS305E / GS308E |
 | One or two small devices | Something on the field network to watch | A Raspberry Pi or an old laptop |
-| RAM for the Proxmox node, if short | The lab needs about 59 GB, 47 GB in lite mode | See Figure 7 |
+| RAM for the Proxmox node, if short | The lab needs about 71 GB, 53 GB in lite mode | See Figure 9 |
+| NVIDIA GPU, 16 GB or more (if none at home) | Runs the local model for AI investigation | Optional: any OpenAI-compatible server works, but data must stay local |
 
 ## Safety and Legal Notes
 
@@ -370,7 +480,11 @@ A: No. This is an independent, personal research build. It uses only the public 
 
 **Q: Which open-source tools does the testbed use?**
 
-A: Zeek and Suricata for network sensing, Nmap and NetBox for discovery and the asset source of truth, Wazuh and Daru for host telemetry and SIEM, OpenSearch with an OCSF-normalised schema as the Cyber Data Repository, Grafana and OpenSearch Dashboards for the cyber COP, Velociraptor for remote forensics, and TheHive with Cortex for cases and human-approved response.
+A: Zeek and Suricata for network sensing, Nmap and NetBox for discovery, Wazuh with Sysmon and auditd on hosts, the Daru SIEM, Vector and Kafka feeding OpenSearch as the OCSF Cyber Data Repository, a Python detection engine and incident correlator, a local language model on vLLM for incident investigation, Grafana for the cyber COP, TheHive and Cortex for cases and approved response, Velociraptor for remote forensics and quarantine, and Caldera with Atomic Red Team for testing.
+
+**Q: Does the AI take any action on its own?**
+
+A: No. A local model on vLLM writes an incident summary and suggests actions, and code checks every claim: each statement must cite evidence that exists, each suggested action must be on an allow-list, and each target must appear in the evidence, or it is removed. The checked summary goes into the TheHive alert. Nothing runs until an analyst starts a responder, and the model's answer is recorded in the tamper-evident approval log.
 
 **Q: How will detection and response be tested?**
 
@@ -378,7 +492,7 @@ A: With adversary emulation in an isolated lab segment: MITRE Caldera and Atomic
 
 **Q: Is anything built or measured yet?**
 
-A: The code is. The whole testbed is written as scripts, configuration and three Python services, with 29 automated tests that pass. The physical build and the first lab run come next, so no capability is measured yet; results will be added to the status table as each one is.
+A: The code is. The whole testbed is written as scripts, configuration, six Python services and response playbooks, with 62 automated tests that pass. The physical build and the first lab run come next, so no capability is measured yet; results will be added to the status table as each one is.
 
 ## Related Builds
 
