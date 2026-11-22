@@ -54,6 +54,34 @@ if (mermaidTodo.length) {
   if (el) el.textContent = (new Date().getFullYear() - 2020) + '+';
 })();
 
+// --- Light / dark mode -----------------------------------
+// The inline script in <head> sets data-theme before first paint (dark
+// unless the visitor chose light). This wires the toggle, saves the choice,
+// keeps the browser UI colour in step and syncs other open tabs.
+(function themeToggle() {
+  const root = document.documentElement;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  const BAR = { dark: '#333333', light: '#E3E3E0' };
+  function apply(t) {
+    root.setAttribute('data-theme', t);
+    if (meta) meta.setAttribute('content', BAR[t]);
+    document.querySelectorAll('.theme-toggle').forEach((b) => {
+      b.setAttribute('aria-label', t === 'light' ? 'Switch to dark mode' : 'Switch to light mode');
+    });
+  }
+  apply(root.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
+  document.querySelectorAll('.theme-toggle').forEach((b) => {
+    b.addEventListener('click', () => {
+      const t = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+      apply(t);
+      try { localStorage.setItem('theme', t); } catch (e) { /* private mode: this page only */ }
+    });
+  });
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'theme') apply(e.newValue === 'light' ? 'light' : 'dark');
+  });
+})();
+
 // --- Mobile nav toggle -----------------------------------
 const navToggle = document.querySelector('.nav-mobile-toggle');
 const navLinks  = document.querySelector('.nav-links');
