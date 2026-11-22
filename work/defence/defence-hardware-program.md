@@ -165,6 +165,8 @@ Six larger builds planned against the MINERVA and IDEaS specs, each published as
 
 - ITI C2 Testbed: Three-Site Resilient Infrastructure, a multi-site lab shaped by DND's ITI in Support of Command and Control project: K3s and Longhorn at each site, a database replicated across sites, failover that never lets two sites write at once, and measured recovery times.
 
+- ICAM Testbed: Identity, Credentials and Access, an identity, credential and access platform shaped by DND's CAF ICAM project: one identity per person and device, MFA, short-lived certificates, attribute-based access to web, servers and badge doors, and a hash-chained audit trail.
+
 ## Program Architecture
 
 TRUST & ENV
