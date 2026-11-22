@@ -130,6 +130,7 @@ timeline = (
     .phase("Real passes", "SatNOGS, own decodes", "next")
 )
 
+
 ttd = (
     Bars("avedlek-ttd", "Mean hours to detect a fault, by station layout",
          "Mean time from a fault starting to the first finding, over five fault types and six start times each, "
@@ -137,6 +138,7 @@ ttd = (
     .bar("Ottawa", 4.71, "5 passes/day", "blue")
     .bar("Toronto", 3.45, "6 passes/day", "blue")
     .bar("Inuvik", 2.06, "10 passes/day", "cyan")
+    .bar("Inuvik + Toronto", 1.18, "16 passes/day", "purple")
     .bar("Alert", 0.65, "15 passes/day", "green")
 )
 

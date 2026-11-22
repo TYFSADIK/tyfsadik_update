@@ -192,16 +192,16 @@ tools/evaluate.py trains the models on 48 hours of normal telemetry for each
         hours with the forger starting after 24. These are simulation results, labelled as such;
         real-satellite results come after the physical build.
 
-| Fault (mean / worst hours to detect) | Toronto | Ottawa | Inuvik | Alert |
-| --- | --- | --- | --- | --- |
-| Solar string fails | 4.7 / 10.9 | 4.7 / 10.8 | 3.4 / 9.9 | 0.7 / 1.1 |
-| Weak battery cell | 3.1 / 6.9 | 4.7 / 10.8 | 1.7 / 5.9 | 0.6 / 1.1 |
-| Heater stuck on | 3.1 / 6.9 | 4.7 / 10.8 | 1.7 / 5.9 | 0.6 / 1.1 |
-| Tumble (attitude control fails) | 3.1 / 6.9 | 4.7 / 10.8 | 1.7 / 5.9 | 0.6 / 1.1 |
-| Flight computer reboot loop | 3.3 / 7.2 | 4.7 / 10.8 | 1.8 / 6.0 | 0.7 / 1.1 |
-| Passes per day | 6 | 5 | 10 | 15 |
-| Longest gap between contacts | 9.9 h | 11.4 h | 9.6 h | 1.5 h |
-| False alarms per day | 0 | 0 | 0 | 0 |
+| Fault (mean / worst hours to detect) | Toronto | Ottawa | Inuvik | Alert | Inuvik + Toronto |
+| --- | --- | --- | --- | --- | --- |
+| Solar string fails | 4.7 / 10.9 | 4.7 / 10.8 | 3.4 / 9.9 | 0.7 / 1.1 | 2.1 / 6.9 |
+| Weak battery cell | 3.1 / 6.9 | 4.7 / 10.8 | 1.7 / 5.9 | 0.6 / 1.1 | 0.9 / 2.9 |
+| Heater stuck on | 3.1 / 6.9 | 4.7 / 10.8 | 1.7 / 5.9 | 0.6 / 1.1 | 0.9 / 2.9 |
+| Tumble (attitude control fails) | 3.1 / 6.9 | 4.7 / 10.8 | 1.7 / 5.9 | 0.6 / 1.1 | 0.9 / 2.9 |
+| Flight computer reboot loop | 3.3 / 7.2 | 4.7 / 10.8 | 1.8 / 6.0 | 0.7 / 1.1 | 1.0 / 2.9 |
+| Passes per day | 6 | 5 | 10 | 15 | 16 |
+| Longest gap between contacts | 9.9 h | 11.4 h | 9.6 h | 1.5 h | 6.6 h |
+| False alarms per day | 0 | 0 | 0 | 0 | 0 |
 
 | Spoofing run | Forged or replayed frames decoded | Caught | Reached the telemetry | Real frames wrongly quarantined |
 | --- | --- | --- | --- | --- |
@@ -213,6 +213,8 @@ tools/evaluate.py trains the models on 48 hours of normal telemetry for each
 | Inuvik, forgery | 282 | 282 | 0 | 0 |
 | Alert, replay | 274 | 274 | 0 | 0 |
 | Alert, forgery | 274 | 274 | 0 | 0 |
+| Inuvik + Toronto, replay | 282 | 282 | 0 | 0 |
+| Inuvik + Toronto, forgery | 282 | 282 | 0 | 0 |
 
 ## The Dashboard
 
