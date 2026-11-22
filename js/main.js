@@ -45,6 +45,15 @@ if (mermaidTodo.length) {
   document.head.appendChild(mermaidScript);
 }
 
+// --- Years in IT (homepage At a Glance) ------------------
+// Counted from 2022 in the visitor's browser, so the number goes up every
+// January with no rebuild or commit. The build sets the same value in the
+// HTML (.tools/build_prerender.py) for visitors without JavaScript.
+(function yearsInIT() {
+  const el = document.getElementById('stat-years');
+  if (el) el.textContent = (new Date().getFullYear() - 2022) + '+';
+})();
+
 // --- Mobile nav toggle -----------------------------------
 const navToggle = document.querySelector('.nav-mobile-toggle');
 const navLinks  = document.querySelector('.nav-links');
