@@ -163,6 +163,8 @@ Six larger builds planned against the MINERVA and IDEaS specs, each published as
 
 - AVEDLEK Testbed: Northern Satellite Ground Station, a satellite ground station shaped by DND's AVEDLEK project: pass prediction from public orbits, a software radio, telemetry decoding, machine-learning anomaly detection and spoofing checks.
 
+- ITI C2 Testbed: Three-Site Resilient Infrastructure, a multi-site lab shaped by DND's ITI in Support of Command and Control project: K3s and Longhorn at each site, a database replicated across sites, failover that never lets two sites write at once, and measured recovery times.
+
 ## Program Architecture
 
 TRUST & ENV

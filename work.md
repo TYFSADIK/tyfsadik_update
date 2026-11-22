@@ -1,10 +1,10 @@
 # Projects
 
-Defence technology, homelab infrastructure, web development, games, and applications, 61 projects total.
+Defence technology, homelab infrastructure, web development, games, and applications, 62 projects total.
 
-**Q: Portfolio map (61 projects across 5 sections)**
+**Q: Portfolio map (62 projects across 5 sections)**
 
-A: 61 Projects
+A: 62 Projects
 
 ## Defence & Sovereignty Tech
 
