@@ -161,6 +161,8 @@ Six larger builds planned against the MINERVA and IDEaS specs, each published as
 
 - CD-DAR Testbed: AI-Assisted SOC, an AI-assisted security operations centre shaped by DND's CD-DAR project: detection rules, incident correlation, local-LLM investigation with evidence checks, and human-approved response.
 
+- AVEDLEK Testbed: Northern Satellite Ground Station, a satellite ground station shaped by DND's AVEDLEK project: pass prediction from public orbits, a software radio, telemetry decoding, machine-learning anomaly detection and spoofing checks.
+
 ## Program Architecture
 
 TRUST & ENV
