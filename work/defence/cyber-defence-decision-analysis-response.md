@@ -207,8 +207,8 @@ The Grafana dashboard has twelve panels, each answering one question an analyst 
 ## How to Build It
 
 The build splits into a physical part, which I do by hand over about one weekend, and a scripted
-        part, which the repository does. Full step-by-step instructions, with screenshots of where each
-        setting lives, are in the repository's docs/ folder.
+        part, which the repository does. Full step-by-step instructions, with the exact menu path for every
+        setting, are in the docs/ folder of the [public repository on GitHub](https://github.com/TYFSADIK/cd-dar-testbed).
 
 ### Step 1: The physical part
 
@@ -282,6 +282,9 @@ Each step is logged to the approval log before it starts, so the scoring script 
         failure: tune the detection, re-run, and publish both runs.
 
 ## What Is in the Code
+
+All of it is open source under the MIT licence:
+        [github.com/TYFSADIK/cd-dar-testbed](https://github.com/TYFSADIK/cd-dar-testbed).
 
 | Folder | What it holds |
 | --- | --- |
@@ -378,6 +381,8 @@ A: With adversary emulation in an isolated lab segment: MITRE Caldera and Atomic
 A: The code is. The whole testbed is written as scripts, configuration and three Python services, with 29 automated tests that pass. The physical build and the first lab run come next, so no capability is measured yet; results will be added to the status table as each one is.
 
 ## Related Builds
+
+- CD-DAR Testbed source code, every script, configuration, service and test behind this page.
 
 - Daru SIEM, my self-hosted SIEM, which feeds host and network telemetry into this testbed.
 
