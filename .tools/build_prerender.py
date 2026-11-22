@@ -79,14 +79,14 @@ def replace_block(source: str, name: str, content: str) -> str:
 
 
 ABOUT = ROOT / "about.html"
-# Taki started working in IT in 2022 (programming since grade 8 is not counted).
-IT_START_YEAR = 2022
+# Taki started working in IT in 2020 (programming since grade 8 is not counted).
+IT_START_YEAR = 2020
 
 
 def compute_stats(data: dict) -> dict:
     """At a Glance numbers that should never go stale.
 
-    years:    whole years since IT_START_YEAR, e.g. "4+" in 2026, "5+" in 2027
+    years:    whole years since IT_START_YEAR, e.g. "6+" in 2026, "7+" in 2027
     certs:    active certifications listed on the About page
     projects: projects in site-data.json (the same list as the Work page)
     services: kept from site-data.json, edited by hand"""
