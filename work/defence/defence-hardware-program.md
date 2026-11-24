@@ -169,6 +169,8 @@ Six larger builds planned against the MINERVA and IDEaS specs, each published as
 
 - CASE Testbed: Synthetic Environment and Digital Twin, a distributed synthetic environment shaped by DND's Canadian Advanced Synthetic Environment project: a town rebuilt from OpenStreetMap, 95 virtual sensors, two training sites over DIS with dead reckoning, a ROS 2 robot, and a twin that tells sensor faults from real events.
 
+- Space Surveillance Testbed, a space situational awareness platform shaped by DND's Surveillance of Space 2 project: the public catalogue propagated with SGP4, conjunction screening validated against CelesTrak SOCRATES, uncertainty measured against operator orbits, a GEO belt watch over Canadian satellites, and an optical sensor pipeline.
+
 ## Program Architecture
 
 TRUST & ENV
