@@ -173,6 +173,8 @@ Six larger builds planned against the MINERVA and IDEaS specs, each published as
 
 - Net C2 ISAC Testbed, IT service health awareness for commanders, shaped by DND's Net C2 ISAC project: synthetic transactions at two sites, a service model from mission capabilities to components, site-aware root-cause inference, and a fault-injection rehearsal that caught 36 of 36 faults with the right cause named first.
 
+- Multi-Source Intelligence Fusion, the analysis side of DND's Combined/Joint Intelligence Modernization: five synthetic sources, vLLM extraction and evidence-linked summaries on local models, copies and clock errors corrected, events with provenance and NATO-grading confidence, and analyst review, all scored against ground truth.
+
 ## Program Architecture
 
 TRUST & ENV
