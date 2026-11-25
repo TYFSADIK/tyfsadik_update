@@ -171,6 +171,8 @@ Six larger builds planned against the MINERVA and IDEaS specs, each published as
 
 - Space Surveillance Testbed, a space situational awareness platform shaped by DND's Surveillance of Space 2 project: the public catalogue propagated with SGP4, conjunction screening validated against CelesTrak SOCRATES, uncertainty measured against operator orbits, a GEO belt watch over Canadian satellites, and an optical sensor pipeline.
 
+- Net C2 ISAC Testbed, IT service health awareness for commanders, shaped by DND's Net C2 ISAC project: synthetic transactions at two sites, a service model from mission capabilities to components, site-aware root-cause inference, and a fault-injection rehearsal that caught 36 of 36 faults with the right cause named first.
+
 ## Program Architecture
 
 TRUST & ENV
