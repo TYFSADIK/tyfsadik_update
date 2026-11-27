@@ -37,21 +37,23 @@ stack = (
     Stack("macstyle-stack", "What it is built from",
           "macstyle's own code ties the pieces together and makes every change reversible; the rest is open source "
           "from many authors, credited in the repository.")
-    .layer("Linux desktop", ["GNOME Shell\n43 to 51", "17 to 19\nextensions", "WhiteSur theme,\nMacTahoe icons"], "blue")
+    .layer("GNOME", ["GNOME Shell\n43 to 51", "17 to 19\nextensions", "WhiteSur theme,\nMacTahoe icons"], "blue")
+    .layer("KDE Plasma", ["Plasma 6:\ntop bar, dock", "MacTahoe global\ntheme, Kvantum", "Konsole follows\ndark mode"], "cyan")
     .layer("macstyle", ["install.sh,\nuninstall.sh", "Dark Style\nswitch", "Version-checked\ndownloads", "Backups of\nevery change"], "yellow")
     .layer("Terminal", ["zsh,\nPowerlevel10k", "Starship\n(Windows)", "fastfetch, lsd,\nzoxide, fzf"], "green")
     .layer("Windows", ["Seelen UI\ndock + top bar", "QuickLook,\nPowerToys", "Auto Dark Mode,\nmacOS cursor"], "purple")
-    .layer("Tests", ["6 Linux versions\nin containers", "Headless\nGNOME Shell", "Windows\nServer 2025"], "grey")
+    .layer("Tests", ["6 GNOME and\n4 KDE systems", "Headless GNOME\nShell and Plasma", "Windows\nServer 2025"], "grey")
 )
 
 timeline = (
     Timeline("macstyle-timeline", "Build status",
-             "Installs, loads every extension and uninstalls cleanly on six Linux versions and Windows in CI; "
+             "Installs, checks and uninstalls cleanly on six GNOME and four KDE Plasma systems and on Windows in CI; "
              "next is a test on real hardware with a live login.")
     .phase("Fedora", "GNOME 50, 51", "done")
     .phase("Ubuntu, Debian", "any GNOME 43+", "done")
     .phase("Windows", "10 and 11", "done")
-    .phase("CI, 8 jobs", "all green", "done")
+    .phase("KDE Plasma", "Plasma 6.3 to 6.8", "done")
+    .phase("CI, 12 jobs", "all green", "done")
     .phase("Live login", "real hardware", "next")
 )
 
