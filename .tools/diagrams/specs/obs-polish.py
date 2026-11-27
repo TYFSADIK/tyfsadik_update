@@ -57,14 +57,14 @@ stack = (
 
 timeline = (
     Timeline("polish-timeline", "Build status",
-             "Version 0.4.0 adds eye makeup, foundation, soft light and more face shaping on Windows, macOS and Linux; "
-             "next is GPU inference for the face models.")
+             "Version 0.5.0 adds 47 effects, contrast and a vignette that lightens on Windows, macOS and Linux; "
+             "GPU inference for the face models comes next.")
     .phase("Filter + Vision", "beauty, shape", "done")
     .phase("Release 0.1.0", "11 checks", "done")
     .phase("Makeup, 0.2.0", "14 checks", "done")
     .phase("Windows, Linux, 0.3.0", "OBS 30 to 33", "done")
     .phase("Eyes, face, 0.4.0", "24 checks", "done")
-    .phase("GPU inference", "DirectML, CUDA", "next")
+    .phase("Effects, 0.5.0", "29 checks", "done")
 )
 
 DIAGRAMS = [pipeline, analysis, cost, stack, timeline]

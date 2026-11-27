@@ -1,6 +1,6 @@
 # Polish for OBS
 
-Written by [Taki Sadik](../../about) · Last updated 2026-11-25 · 17 min read
+Written by [Taki Sadik](../../about) · Last updated 2026-11-27 · 17 min read
 
 Free, open-source beauty, makeup and camera effects for OBS Studio on Windows, macOS and Linux, with no watermark
 
@@ -19,7 +19,8 @@ The source code is on GitHub at [TYFSADIK/obs-polish](https://github.com/TYFSADI
 | Beauty | Smooth skin, brighten skin, foundation in a shade you pick, soft light, sharpen | An edge-preserving filter limited to skin inside each tracked face; a brightness curve that keeps skin's own colour; foundation takes colour from the filtered skin around each pixel, so blotches fade and light and shade stay; soft light screens a blurred copy over the picture |
 | Face shape | Slim face, V-shape jaw, chin length, slim nose, bigger eyes, fuller lips | A displacement field from nine jaw and chin landmarks, a squeeze across the nose, and soft zooms on the eyes and lips |
 | Makeup | Lipstick, blush, eyeshadow, eyeliner, eyebrows and eye colour, each in any colour; whiter teeth, brighter eyes | Masks drawn from the landmarks: lips and mouth; brows, lid, lash line and iris. The iris is found from the darkest part of each eye, and its reflections are left white |
-| Colour | 17 looks in Portrait, Food, Landscape and Modern groups, with a strength slider; exposure, warmth, saturation, vignette, film grain | A 64-step 3D lookup table per look |
+| Colour | 17 looks in Portrait, Food, Landscape and Modern groups, with a strength slider; exposure, contrast, warmth, saturation, a vignette that darkens or lightens, film grain | A 64-step 3D lookup table per look |
+| Effects | 47, each with a strength: colour (grayscale, sepia, duotone, colour pass and more), light (HDR, bloom, light leak), blur (motion, zoom, tilt-shift, bokeh), retro (VHS, CRT, Super 8, halftone) and stylize (glitch, pixelate, fisheye, kaleidoscope, thermal, night vision, echo trails) | GPU shaders run after every other pass, so stickers take the effect too; an effect at 0 costs nothing |
 | Background | Blur, solid colour, four built-in backdrops (Studio, Gradient, Bokeh lights, Sunset), your own image, edge softness | The person mask (Vision or MediaPipe) composited on the GPU; blur from a chain of half-size steps |
 | Stickers | 10: sunglasses, star glasses, crown, flower crown, cat ears, bunny ears, devil horns, halo, hearts, party hat | Placed from the eyes and rotated with the head |
 | Compare | A checkbox, and a hotkey you hold | Shows the untouched input, exactly |
@@ -81,20 +82,20 @@ Each look is a 512 by 512 lookup table (64 tiles of 64 by 64) produced by a Pyth
 
 A Tools menu entry adds the filter to the selected source, or to the first camera in the scene, and opens its settings. A hotkey you hold shows the original on every Polish filter at once, and its binding is saved with the scene collection. Labels are translated into English, French, Spanish, German, Portuguese, Chinese, Japanese and Korean, and follow OBS's language setting.
 
-Every push builds all five packages on GitHub's macOS, Windows (x64 and ARM64) and Linux (x86_64 and ARM64) machines, then installs each into a real OBS on that platform and runs the 24 checks: the official OBS 33 on Windows with Direct3D 11, the OBS Project's newest build and Ubuntu's own OBS 30 on Linux under Xvfb, and OBS 33 on macOS with OpenGL and Metal and both face backends. A tag publishes the packages with their checksums. Linux builds on Ubuntu 22.04, so they also run on newer distributions and in the Flatpak OBS.
+Every push builds all five packages on GitHub's macOS, Windows (x64 and ARM64) and Linux (x86_64 and ARM64) machines, then installs each into a real OBS on that platform and runs the 29 checks: the official OBS 33 on Windows with Direct3D 11, the OBS Project's newest build and Ubuntu's own OBS 30 on Linux under Xvfb, and OBS 33 on macOS with OpenGL and Metal and both face backends. A tag publishes the packages with their checksums. Linux builds on Ubuntu 22.04, so they also run on newer distributions and in the Flatpak OBS.
 
 ## Testing
 
-The test suite renders a public-domain NASA portrait (Chris Hadfield) through the filter inside a real libobs and checks the pixels against what OBS shows without the filter. All 24 checks pass on every platform:
+The test suite renders a public-domain NASA portrait (Chris Hadfield) through the filter inside a real libobs and checks the pixels against what OBS shows without the filter. All 29 checks pass on every platform:
 
 | Platform | OBS | Graphics | Result |
 | --- | --- | --- | --- |
-| Windows x64 | 33.0.3, official release | Direct3D 11 | 24 of 24 |
-| Windows ARM64 | 33.0.3, official release | Direct3D 11 | 24 of 24 |
-| Linux x86_64 | 32.2, OBS Project PPA | OpenGL (Mesa) | 24 of 24 |
-| Linux ARM64 | 30.0.2, Ubuntu's package | OpenGL (Mesa) | 24 of 24 |
-| macOS, Vision | 33.0.3 | OpenGL and Metal | 24 of 24 each |
-| macOS, ONNX | 33.0.3 | OpenGL and Metal | 24 of 24 each |
+| Windows x64 | 33.0.3, official release | Direct3D 11 | 29 of 29 |
+| Windows ARM64 | 33.0.3, official release | Direct3D 11 | 29 of 29 |
+| Linux x86_64 | 32.2, OBS Project PPA | OpenGL (Mesa) | 29 of 29 |
+| Linux ARM64 | 30.0.2, Ubuntu's package | OpenGL (Mesa) | 29 of 29 |
+| macOS, Vision | 33.0.3 | OpenGL and Metal | 29 of 29 each |
+| macOS, ONNX | 33.0.3 | OpenGL and Metal | 29 of 29 each |
 
 | Check | Result |
 | --- | --- |
@@ -119,6 +120,7 @@ The test suite renders a public-domain NASA portrait (Chris Hadfield) through th
 | Slim nose, fuller lips | Changes centred on the nose and on the mouth |
 | Eyeshadow, eyeliner, eyebrows | Above the eyes, on the lash line and on the brows; liner and brows darker by 20 to 26 levels |
 | Eye colour | Every changed pixel inside an iris, and the iris takes the new colour |
+| Effects | All 47 render and change the picture; grayscale, invert, threshold, posterize, pixelate, mirror, blur, unsharp mask, outline, night vision and echo each meet an exact property |
 
 Testing found real bugs. The face-shape warp tore the lower face apart: the six control points overlap, and applying their pushes one after another added them up, so a 4-pixel setting moved the chin about 20 pixels. Plotting the landmarks on the photo showed they were right, logging the shader's inputs showed they were right too, and the fix was to average the pushes instead of chaining them. The first contact sheet of looks and stickers showed no effect at all, which turned out to be renders from before the assets existed; the identity-look test had passed anyway, because an identity look changes nothing, which is why the suite now also checks that Mono removes colour. The first smoothing check failed because it measured the whole face box, where eyes and moustache are edges the filter is meant to keep; it now measures forehead skin. The first CI run never started because GitHub had retired the macOS runner image it named. And while adding the new stickers, a fix to the bunny ears did not show up: the build copied the assets into the plugin only when the code was relinked, so a change to an image alone left the old one in place. The copy is now a build step that always runs.
 
